@@ -32,3 +32,6 @@ release/
 
 # Keys (encrypted, but still exclude)
 keys.json
+
+# Windows Zone.Identifier files
+*:Zone.Identifier
