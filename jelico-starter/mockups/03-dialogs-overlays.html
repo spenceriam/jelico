@@ -1,0 +1,1164 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Jelico - Dialogs & Overlays</title>
+  
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&family=JetBrains+Mono:wght@400;500&family=Instrument+Serif:ital@0;1&display=swap" rel="stylesheet">
+  
+  <style>
+    :root {
+      --bg-void: #08080a;
+      --bg-deep: #0d0d10;
+      --bg-surface: #141418;
+      --bg-elevated: #1a1a20;
+      --bg-hover: #222228;
+      --bg-active: #2a2a32;
+      
+      --text-primary: #f5f4f1;
+      --text-secondary: #a8a5a0;
+      --text-muted: #6b6860;
+      --text-faint: #3d3b38;
+      
+      --accent-primary: #e8a84c;
+      --accent-bright: #f4c171;
+      --accent-dim: #b8863d;
+      --accent-glow: rgba(232, 168, 76, 0.15);
+      
+      --success: #5cb97b;
+      --error: #e85c5c;
+      --info: #5c9ee8;
+      
+      --border-subtle: rgba(255, 255, 255, 0.06);
+      --border-default: rgba(255, 255, 255, 0.1);
+      --border-strong: rgba(255, 255, 255, 0.15);
+      
+      --font-display: 'Instrument Serif', Georgia, serif;
+      --font-body: 'DM Sans', -apple-system, sans-serif;
+      --font-mono: 'JetBrains Mono', monospace;
+      
+      --radius-sm: 6px;
+      --radius-md: 10px;
+      --radius-lg: 14px;
+      --radius-xl: 20px;
+    }
+    
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+    
+    body {
+      font-family: var(--font-body);
+      background: var(--bg-void);
+      color: var(--text-primary);
+      line-height: 1.5;
+      font-size: 14px;
+      min-height: 100vh;
+      padding: 40px;
+    }
+    
+    .demo-section {
+      margin-bottom: 80px;
+    }
+    
+    .demo-title {
+      font-family: var(--font-display);
+      font-size: 20px;
+      color: var(--text-muted);
+      margin-bottom: 24px;
+      padding-bottom: 12px;
+      border-bottom: 1px solid var(--border-subtle);
+    }
+    
+    /* ==================== COMMAND PALETTE ==================== */
+    
+    .command-palette-container {
+      position: relative;
+      height: 500px;
+      background: 
+        radial-gradient(ellipse at center, rgba(0,0,0,0.8) 0%, var(--bg-void) 100%);
+      border-radius: var(--radius-lg);
+      display: flex;
+      align-items: flex-start;
+      justify-content: center;
+      padding-top: 80px;
+    }
+    
+    .command-palette {
+      width: 560px;
+      background: var(--bg-deep);
+      border: 1px solid var(--border-default);
+      border-radius: var(--radius-xl);
+      box-shadow: 
+        0 0 0 1px rgba(255,255,255,0.05),
+        0 20px 60px rgba(0,0,0,0.5),
+        0 0 100px rgba(232, 168, 76, 0.05);
+      overflow: hidden;
+      animation: paletteIn 0.2s ease;
+    }
+    
+    @keyframes paletteIn {
+      from {
+        opacity: 0;
+        transform: scale(0.96) translateY(-10px);
+      }
+      to {
+        opacity: 1;
+        transform: scale(1) translateY(0);
+      }
+    }
+    
+    .palette-search {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 16px 20px;
+      border-bottom: 1px solid var(--border-subtle);
+    }
+    
+    .palette-search-icon {
+      color: var(--text-muted);
+      flex-shrink: 0;
+    }
+    
+    .palette-search-input {
+      flex: 1;
+      background: transparent;
+      border: none;
+      outline: none;
+      font-family: var(--font-body);
+      font-size: 16px;
+      color: var(--text-primary);
+    }
+    
+    .palette-search-input::placeholder {
+      color: var(--text-muted);
+    }
+    
+    .palette-hint {
+      font-size: 12px;
+      color: var(--text-faint);
+      padding: 2px 6px;
+      background: var(--bg-surface);
+      border-radius: 4px;
+    }
+    
+    .palette-results {
+      max-height: 360px;
+      overflow-y: auto;
+      padding: 8px;
+    }
+    
+    .palette-group {
+      margin-bottom: 8px;
+    }
+    
+    .palette-group:last-child {
+      margin-bottom: 0;
+    }
+    
+    .palette-group-title {
+      font-size: 11px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--text-faint);
+      padding: 8px 12px 6px;
+    }
+    
+    .palette-item {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 10px 12px;
+      border-radius: var(--radius-sm);
+      cursor: pointer;
+      transition: all 0.1s ease;
+    }
+    
+    .palette-item:hover,
+    .palette-item.selected {
+      background: var(--bg-surface);
+    }
+    
+    .palette-item.selected {
+      background: var(--accent-glow);
+    }
+    
+    .palette-item-icon {
+      width: 32px;
+      height: 32px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: var(--bg-surface);
+      border-radius: var(--radius-sm);
+      color: var(--text-secondary);
+      font-size: 14px;
+      flex-shrink: 0;
+    }
+    
+    .palette-item.selected .palette-item-icon {
+      background: var(--bg-elevated);
+      color: var(--accent-primary);
+    }
+    
+    .palette-item-content {
+      flex: 1;
+      min-width: 0;
+    }
+    
+    .palette-item-name {
+      font-size: 14px;
+      color: var(--text-primary);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    
+    .palette-item-desc {
+      font-size: 12px;
+      color: var(--text-muted);
+    }
+    
+    .palette-item-shortcut {
+      font-family: var(--font-mono);
+      font-size: 11px;
+      color: var(--text-faint);
+      padding: 3px 6px;
+      background: var(--bg-surface);
+      border-radius: 4px;
+      flex-shrink: 0;
+    }
+    
+    .palette-item.selected .palette-item-shortcut {
+      background: var(--bg-elevated);
+      color: var(--text-muted);
+    }
+    
+    /* ==================== SPAWN AGENT DIALOG ==================== */
+    
+    .dialog-container {
+      position: relative;
+      min-height: 600px;
+      background: 
+        radial-gradient(ellipse at center, rgba(0,0,0,0.6) 0%, var(--bg-void) 100%);
+      border-radius: var(--radius-lg);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    
+    .dialog {
+      width: 480px;
+      background: var(--bg-deep);
+      border: 1px solid var(--border-default);
+      border-radius: var(--radius-xl);
+      box-shadow: 
+        0 0 0 1px rgba(255,255,255,0.05),
+        0 20px 60px rgba(0,0,0,0.5);
+      overflow: hidden;
+      animation: dialogIn 0.25s ease;
+    }
+    
+    @keyframes dialogIn {
+      from {
+        opacity: 0;
+        transform: scale(0.95);
+      }
+      to {
+        opacity: 1;
+        transform: scale(1);
+      }
+    }
+    
+    .dialog-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 20px 24px;
+      border-bottom: 1px solid var(--border-subtle);
+    }
+    
+    .dialog-title {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-size: 16px;
+      font-weight: 600;
+    }
+    
+    .dialog-title-icon {
+      width: 28px;
+      height: 28px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: var(--accent-glow);
+      border-radius: var(--radius-sm);
+      color: var(--accent-primary);
+    }
+    
+    .dialog-close {
+      width: 28px;
+      height: 28px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: transparent;
+      border: none;
+      border-radius: var(--radius-sm);
+      color: var(--text-muted);
+      cursor: pointer;
+      transition: all 0.15s ease;
+    }
+    
+    .dialog-close:hover {
+      background: var(--bg-surface);
+      color: var(--text-primary);
+    }
+    
+    .dialog-body {
+      padding: 24px;
+    }
+    
+    .form-group {
+      margin-bottom: 20px;
+    }
+    
+    .form-label {
+      display: block;
+      font-size: 13px;
+      font-weight: 500;
+      color: var(--text-primary);
+      margin-bottom: 8px;
+    }
+    
+    .form-label-optional {
+      color: var(--text-muted);
+      font-weight: 400;
+    }
+    
+    .form-input {
+      width: 100%;
+      padding: 10px 14px;
+      background: var(--bg-surface);
+      border: 1px solid var(--border-default);
+      border-radius: var(--radius-sm);
+      color: var(--text-primary);
+      font-family: var(--font-body);
+      font-size: 14px;
+      transition: all 0.15s ease;
+    }
+    
+    .form-input:focus {
+      outline: none;
+      border-color: var(--accent-dim);
+      box-shadow: 0 0 0 3px var(--accent-glow);
+    }
+    
+    .form-input::placeholder {
+      color: var(--text-muted);
+    }
+    
+    .form-textarea {
+      resize: none;
+      min-height: 80px;
+    }
+    
+    /* Skills Selector */
+    .skills-grid {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+    
+    .skill-chip {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      padding: 6px 12px;
+      background: var(--bg-surface);
+      border: 1px solid var(--border-default);
+      border-radius: 20px;
+      font-size: 13px;
+      color: var(--text-secondary);
+      cursor: pointer;
+      transition: all 0.15s ease;
+    }
+    
+    .skill-chip:hover {
+      background: var(--bg-hover);
+      color: var(--text-primary);
+    }
+    
+    .skill-chip.selected {
+      background: var(--accent-glow);
+      border-color: var(--accent-dim);
+      color: var(--accent-bright);
+    }
+    
+    .skill-chip-icon {
+      font-size: 14px;
+    }
+    
+    /* Options */
+    .options-group {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+    
+    .option-row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    
+    .checkbox {
+      width: 18px;
+      height: 18px;
+      background: var(--bg-surface);
+      border: 1px solid var(--border-default);
+      border-radius: 4px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      transition: all 0.15s ease;
+      flex-shrink: 0;
+    }
+    
+    .checkbox.checked {
+      background: var(--accent-primary);
+      border-color: var(--accent-primary);
+    }
+    
+    .checkbox.checked::after {
+      content: '✓';
+      font-size: 11px;
+      color: var(--bg-void);
+      font-weight: 600;
+    }
+    
+    .option-label {
+      font-size: 13px;
+      color: var(--text-secondary);
+      cursor: pointer;
+    }
+    
+    .option-icon {
+      color: var(--text-muted);
+    }
+    
+    .dialog-footer {
+      display: flex;
+      justify-content: flex-end;
+      gap: 12px;
+      padding: 16px 24px;
+      border-top: 1px solid var(--border-subtle);
+      background: var(--bg-surface);
+    }
+    
+    .btn {
+      padding: 10px 20px;
+      border-radius: var(--radius-sm);
+      font-family: var(--font-body);
+      font-size: 14px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: all 0.15s ease;
+    }
+    
+    .btn-ghost {
+      background: transparent;
+      border: none;
+      color: var(--text-muted);
+    }
+    
+    .btn-ghost:hover {
+      color: var(--text-primary);
+    }
+    
+    .btn-primary {
+      background: var(--accent-primary);
+      border: none;
+      color: var(--bg-void);
+    }
+    
+    .btn-primary:hover {
+      background: var(--accent-bright);
+      box-shadow: 0 4px 16px rgba(232, 168, 76, 0.3);
+    }
+    
+    .btn-primary:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+    
+    /* ==================== AGENT DETAIL PANEL ==================== */
+    
+    .agent-panel-container {
+      display: grid;
+      grid-template-columns: 280px 1fr;
+      gap: 24px;
+      min-height: 500px;
+    }
+    
+    .agent-sidebar {
+      background: var(--bg-deep);
+      border: 1px solid var(--border-subtle);
+      border-radius: var(--radius-lg);
+      padding: 16px;
+    }
+    
+    .agent-sidebar-title {
+      font-size: 11px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--text-muted);
+      margin-bottom: 12px;
+    }
+    
+    .agent-card {
+      background: var(--bg-surface);
+      border: 1px solid var(--border-default);
+      border-radius: var(--radius-md);
+      padding: 14px;
+      margin-bottom: 10px;
+      cursor: pointer;
+      transition: all 0.15s ease;
+    }
+    
+    .agent-card:hover {
+      background: var(--bg-hover);
+    }
+    
+    .agent-card.selected {
+      border-color: var(--accent-dim);
+      background: var(--accent-glow);
+    }
+    
+    .agent-card-header {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 10px;
+    }
+    
+    .agent-status {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      flex-shrink: 0;
+    }
+    
+    .agent-status.running {
+      background: var(--success);
+      box-shadow: 0 0 8px var(--success);
+      animation: pulse 2s infinite;
+    }
+    
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.5; }
+    }
+    
+    .agent-status.completed {
+      background: var(--info);
+    }
+    
+    .agent-status.waiting {
+      background: var(--accent-primary);
+    }
+    
+    .agent-name {
+      font-size: 13px;
+      font-weight: 500;
+      color: var(--text-primary);
+      flex: 1;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    
+    .agent-progress {
+      height: 3px;
+      background: var(--bg-hover);
+      border-radius: 2px;
+      overflow: hidden;
+      margin-bottom: 8px;
+    }
+    
+    .agent-progress-bar {
+      height: 100%;
+      background: var(--accent-primary);
+      border-radius: 2px;
+      transition: width 0.3s ease;
+    }
+    
+    .agent-task-preview {
+      font-size: 11px;
+      color: var(--text-muted);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    
+    .agent-detail {
+      background: var(--bg-deep);
+      border: 1px solid var(--border-subtle);
+      border-radius: var(--radius-lg);
+      overflow: hidden;
+    }
+    
+    .agent-detail-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 20px 24px;
+      border-bottom: 1px solid var(--border-subtle);
+    }
+    
+    .agent-detail-title {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    
+    .agent-detail-icon {
+      width: 36px;
+      height: 36px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: var(--accent-glow);
+      border-radius: var(--radius-sm);
+      font-size: 18px;
+    }
+    
+    .agent-detail-name {
+      font-size: 18px;
+      font-weight: 600;
+    }
+    
+    .agent-detail-status {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 13px;
+      color: var(--success);
+    }
+    
+    .agent-detail-body {
+      padding: 24px;
+    }
+    
+    .detail-section {
+      margin-bottom: 24px;
+    }
+    
+    .detail-section:last-child {
+      margin-bottom: 0;
+    }
+    
+    .detail-section-title {
+      font-size: 11px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--text-muted);
+      margin-bottom: 10px;
+    }
+    
+    .detail-task {
+      background: var(--bg-surface);
+      border: 1px solid var(--border-subtle);
+      border-radius: var(--radius-sm);
+      padding: 14px;
+      font-size: 14px;
+      color: var(--text-secondary);
+      line-height: 1.6;
+    }
+    
+    .detail-progress {
+      background: var(--bg-surface);
+      border: 1px solid var(--border-subtle);
+      border-radius: var(--radius-sm);
+      padding: 16px;
+    }
+    
+    .progress-bar-container {
+      margin-bottom: 16px;
+    }
+    
+    .progress-bar-header {
+      display: flex;
+      justify-content: space-between;
+      margin-bottom: 8px;
+    }
+    
+    .progress-bar-label {
+      font-size: 13px;
+      color: var(--text-secondary);
+    }
+    
+    .progress-bar-value {
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--accent-bright);
+    }
+    
+    .progress-bar-track {
+      height: 6px;
+      background: var(--bg-hover);
+      border-radius: 3px;
+      overflow: hidden;
+    }
+    
+    .progress-bar-fill {
+      height: 100%;
+      background: linear-gradient(90deg, var(--accent-dim) 0%, var(--accent-primary) 100%);
+      border-radius: 3px;
+      transition: width 0.3s ease;
+    }
+    
+    .progress-steps {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    
+    .progress-step {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-size: 13px;
+    }
+    
+    .progress-step-icon {
+      width: 18px;
+      height: 18px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border-radius: 50%;
+      font-size: 10px;
+      flex-shrink: 0;
+    }
+    
+    .progress-step-icon.done {
+      background: var(--success);
+      color: white;
+    }
+    
+    .progress-step-icon.active {
+      background: var(--accent-primary);
+      color: var(--bg-void);
+      animation: pulse 1.5s infinite;
+    }
+    
+    .progress-step-icon.pending {
+      background: var(--bg-hover);
+      color: var(--text-muted);
+    }
+    
+    .progress-step-text {
+      color: var(--text-secondary);
+    }
+    
+    .progress-step-text.active {
+      color: var(--text-primary);
+      font-weight: 500;
+    }
+    
+    .detail-stats {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 12px;
+    }
+    
+    .stat-card {
+      background: var(--bg-surface);
+      border: 1px solid var(--border-subtle);
+      border-radius: var(--radius-sm);
+      padding: 14px;
+      text-align: center;
+    }
+    
+    .stat-value {
+      font-size: 20px;
+      font-weight: 600;
+      color: var(--text-primary);
+      font-family: var(--font-mono);
+    }
+    
+    .stat-label {
+      font-size: 11px;
+      color: var(--text-muted);
+      margin-top: 4px;
+    }
+    
+    .detail-activity {
+      background: var(--bg-void);
+      border: 1px solid var(--border-subtle);
+      border-radius: var(--radius-sm);
+      padding: 14px;
+      font-family: var(--font-mono);
+      font-size: 12px;
+      max-height: 140px;
+      overflow-y: auto;
+    }
+    
+    .activity-line {
+      display: flex;
+      gap: 10px;
+      margin-bottom: 6px;
+      line-height: 1.5;
+    }
+    
+    .activity-line:last-child {
+      margin-bottom: 0;
+    }
+    
+    .activity-prefix {
+      color: var(--text-faint);
+      flex-shrink: 0;
+    }
+    
+    .activity-text {
+      color: var(--text-secondary);
+    }
+    
+    .activity-text.highlight {
+      color: var(--accent-bright);
+    }
+    
+    .agent-detail-footer {
+      display: flex;
+      gap: 12px;
+      padding: 16px 24px;
+      border-top: 1px solid var(--border-subtle);
+      background: var(--bg-surface);
+    }
+    
+    .btn-secondary {
+      background: var(--bg-elevated);
+      border: 1px solid var(--border-default);
+      color: var(--text-secondary);
+    }
+    
+    .btn-secondary:hover {
+      background: var(--bg-hover);
+      color: var(--text-primary);
+    }
+  </style>
+</head>
+<body>
+  
+  <!-- Command Palette -->
+  <div class="demo-section">
+    <h2 class="demo-title">Command Palette (⌘K)</h2>
+    <div class="command-palette-container">
+      <div class="command-palette">
+        <div class="palette-search">
+          <svg class="palette-search-icon" width="18" height="18" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
+          </svg>
+          <input type="text" class="palette-search-input" placeholder="Type a command..." value="agent">
+          <span class="palette-hint">esc</span>
+        </div>
+        
+        <div class="palette-results">
+          <div class="palette-group">
+            <div class="palette-group-title">Agents</div>
+            <div class="palette-item selected">
+              <div class="palette-item-icon">🤖</div>
+              <div class="palette-item-content">
+                <div class="palette-item-name">Spawn sub-agent</div>
+                <div class="palette-item-desc">Create a new agent for a task</div>
+              </div>
+              <span class="palette-item-shortcut">⌘⇧A</span>
+            </div>
+            <div class="palette-item">
+              <div class="palette-item-icon">👁</div>
+              <div class="palette-item-content">
+                <div class="palette-item-name">View active agents</div>
+                <div class="palette-item-desc">See all running agents</div>
+              </div>
+              <span class="palette-item-shortcut">⌘⇧G</span>
+            </div>
+            <div class="palette-item">
+              <div class="palette-item-icon">⏹</div>
+              <div class="palette-item-content">
+                <div class="palette-item-name">Stop all agents</div>
+                <div class="palette-item-desc">Cancel all running agents</div>
+              </div>
+            </div>
+          </div>
+          
+          <div class="palette-group">
+            <div class="palette-group-title">Modes</div>
+            <div class="palette-item">
+              <div class="palette-item-icon">⚡</div>
+              <div class="palette-item-content">
+                <div class="palette-item-name">Switch to Execute mode</div>
+              </div>
+              <span class="palette-item-shortcut">⌘3</span>
+            </div>
+            <div class="palette-item">
+              <div class="palette-item-icon">📋</div>
+              <div class="palette-item-content">
+                <div class="palette-item-name">Switch to Plan mode</div>
+              </div>
+              <span class="palette-item-shortcut">⌘4</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+  
+  <!-- Spawn Agent Dialog -->
+  <div class="demo-section">
+    <h2 class="demo-title">Spawn Agent Dialog</h2>
+    <div class="dialog-container">
+      <div class="dialog">
+        <div class="dialog-header">
+          <div class="dialog-title">
+            <div class="dialog-title-icon">🤖</div>
+            Spawn Sub-Agent
+          </div>
+          <button class="dialog-close">
+            <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+            </svg>
+          </button>
+        </div>
+        
+        <div class="dialog-body">
+          <div class="form-group">
+            <label class="form-label">
+              Name <span class="form-label-optional">(optional)</span>
+            </label>
+            <input type="text" class="form-input" placeholder="Research Assistant" value="Research Assistant">
+          </div>
+          
+          <div class="form-group">
+            <label class="form-label">Task</label>
+            <textarea class="form-input form-textarea" placeholder="What should this agent do?">Research the latest developments in AI safety, focusing on constitutional AI, RLHF alternatives, and interpretability. Create a summary with key papers and findings.</textarea>
+          </div>
+          
+          <div class="form-group">
+            <label class="form-label">Skills</label>
+            <div class="skills-grid">
+              <div class="skill-chip selected">
+                <span class="skill-chip-icon">🔍</span>
+                Researcher
+              </div>
+              <div class="skill-chip selected">
+                <span class="skill-chip-icon">✍️</span>
+                Writer
+              </div>
+              <div class="skill-chip">
+                <span class="skill-chip-icon">💻</span>
+                Coder
+              </div>
+              <div class="skill-chip">
+                <span class="skill-chip-icon">📊</span>
+                Analyst
+              </div>
+              <div class="skill-chip">
+                <span class="skill-chip-icon">📋</span>
+                Planner
+              </div>
+            </div>
+          </div>
+          
+          <div class="form-group">
+            <label class="form-label">Options</label>
+            <div class="options-group">
+              <div class="option-row">
+                <div class="checkbox checked"></div>
+                <label class="option-label">Run in background</label>
+              </div>
+              <div class="option-row">
+                <div class="checkbox"></div>
+                <svg class="option-icon" width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/>
+                </svg>
+                <label class="option-label">Use separate worktree (for code changes)</label>
+              </div>
+              <div class="option-row">
+                <div class="checkbox"></div>
+                <label class="option-label">Require approval before actions</label>
+              </div>
+            </div>
+          </div>
+        </div>
+        
+        <div class="dialog-footer">
+          <button class="btn btn-ghost">Cancel</button>
+          <button class="btn btn-primary">Spawn Agent</button>
+        </div>
+      </div>
+    </div>
+  </div>
+  
+  <!-- Agent Detail Panel -->
+  <div class="demo-section">
+    <h2 class="demo-title">Agent Detail View</h2>
+    <div class="agent-panel-container">
+      <div class="agent-sidebar">
+        <div class="agent-sidebar-title">Active Agents</div>
+        
+        <div class="agent-card selected">
+          <div class="agent-card-header">
+            <span class="agent-status running"></span>
+            <span class="agent-name">Research Assistant</span>
+          </div>
+          <div class="agent-progress">
+            <div class="agent-progress-bar" style="width: 65%"></div>
+          </div>
+          <div class="agent-task-preview">Analyzing competitor pricing...</div>
+        </div>
+        
+        <div class="agent-card">
+          <div class="agent-card-header">
+            <span class="agent-status completed"></span>
+            <span class="agent-name">Code Reviewer</span>
+          </div>
+          <div class="agent-progress">
+            <div class="agent-progress-bar" style="width: 100%"></div>
+          </div>
+          <div class="agent-task-preview">✓ Completed - 3 issues found</div>
+        </div>
+        
+        <div class="agent-card">
+          <div class="agent-card-header">
+            <span class="agent-status waiting"></span>
+            <span class="agent-name">Data Analyst</span>
+          </div>
+          <div class="agent-progress">
+            <div class="agent-progress-bar" style="width: 30%"></div>
+          </div>
+          <div class="agent-task-preview">Waiting for input...</div>
+        </div>
+      </div>
+      
+      <div class="agent-detail">
+        <div class="agent-detail-header">
+          <div class="agent-detail-title">
+            <div class="agent-detail-icon">🤖</div>
+            <span class="agent-detail-name">Research Assistant</span>
+          </div>
+          <div class="agent-detail-status">
+            <span class="agent-status running"></span>
+            Running
+          </div>
+        </div>
+        
+        <div class="agent-detail-body">
+          <div class="detail-section">
+            <div class="detail-section-title">Task</div>
+            <div class="detail-task">
+              Research the latest developments in AI safety, focusing on constitutional AI, RLHF alternatives, and interpretability. Create a summary with key papers and findings.
+            </div>
+          </div>
+          
+          <div class="detail-section">
+            <div class="detail-section-title">Progress</div>
+            <div class="detail-progress">
+              <div class="progress-bar-container">
+                <div class="progress-bar-header">
+                  <span class="progress-bar-label">Overall progress</span>
+                  <span class="progress-bar-value">65%</span>
+                </div>
+                <div class="progress-bar-track">
+                  <div class="progress-bar-fill" style="width: 65%"></div>
+                </div>
+              </div>
+              
+              <div class="progress-steps">
+                <div class="progress-step">
+                  <span class="progress-step-icon done">✓</span>
+                  <span class="progress-step-text">Searched academic databases</span>
+                </div>
+                <div class="progress-step">
+                  <span class="progress-step-icon done">✓</span>
+                  <span class="progress-step-text">Found 12 relevant papers</span>
+                </div>
+                <div class="progress-step">
+                  <span class="progress-step-icon active">●</span>
+                  <span class="progress-step-text active">Reading and summarizing (7/12)</span>
+                </div>
+                <div class="progress-step">
+                  <span class="progress-step-icon pending">○</span>
+                  <span class="progress-step-text">Cross-referencing findings</span>
+                </div>
+                <div class="progress-step">
+                  <span class="progress-step-icon pending">○</span>
+                  <span class="progress-step-text">Creating summary report</span>
+                </div>
+              </div>
+            </div>
+          </div>
+          
+          <div class="detail-section">
+            <div class="detail-section-title">Stats</div>
+            <div class="detail-stats">
+              <div class="stat-card">
+                <div class="stat-value">2,341</div>
+                <div class="stat-label">Input tokens</div>
+              </div>
+              <div class="stat-card">
+                <div class="stat-value">892</div>
+                <div class="stat-label">Output tokens</div>
+              </div>
+              <div class="stat-card">
+                <div class="stat-value">2:34</div>
+                <div class="stat-label">Runtime</div>
+              </div>
+            </div>
+          </div>
+          
+          <div class="detail-section">
+            <div class="detail-section-title">Live Activity</div>
+            <div class="detail-activity">
+              <div class="activity-line">
+                <span class="activity-prefix">&gt;</span>
+                <span class="activity-text">Reading: <span class="highlight">"Constitutional AI: Harmlessness from AI Feedback"</span></span>
+              </div>
+              <div class="activity-line">
+                <span class="activity-prefix">&gt;</span>
+                <span class="activity-text">Extracting key findings...</span>
+              </div>
+              <div class="activity-line">
+                <span class="activity-prefix">&gt;</span>
+                <span class="activity-text">Note: Paper introduces <span class="highlight">RLAIF methodology</span></span>
+              </div>
+              <div class="activity-line">
+                <span class="activity-prefix">&gt;</span>
+                <span class="activity-text">Moving to next paper...</span>
+              </div>
+            </div>
+          </div>
+        </div>
+        
+        <div class="agent-detail-footer">
+          <button class="btn btn-secondary">Pause</button>
+          <button class="btn btn-secondary">Stop</button>
+          <button class="btn btn-secondary">View Full Log</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</body>
+</html>

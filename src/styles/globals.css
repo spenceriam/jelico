@@ -1,0 +1,71 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html, body, #root {
+    height: 100%;
+    margin: 0;
+    padding: 0;
+  }
+
+  body {
+    @apply bg-bg-void text-text-primary;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  /* Custom scrollbar */
+  ::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  ::-webkit-scrollbar-thumb {
+    @apply bg-border rounded;
+  }
+
+  ::-webkit-scrollbar-thumb:hover {
+    @apply bg-text-muted;
+  }
+
+  /* Focus styles */
+  *:focus {
+    outline: none;
+  }
+
+  *:focus-visible {
+    @apply ring-2 ring-accent ring-offset-2 ring-offset-bg-void;
+  }
+}
+
+@layer components {
+  .btn {
+    @apply px-4 py-2 rounded-md font-medium transition-colors duration-150;
+  }
+
+  .btn-primary {
+    @apply bg-accent text-black hover:bg-accent-bright;
+  }
+
+  .btn-secondary {
+    @apply bg-bg-elevated text-text-primary hover:bg-bg-hover border border-border;
+  }
+
+  .btn-ghost {
+    @apply text-text-secondary hover:text-text-primary hover:bg-bg-hover;
+  }
+
+  .input {
+    @apply w-full px-3 py-2 bg-bg-surface border border-border rounded-md text-text-primary placeholder:text-text-muted focus:border-accent focus:ring-1 focus:ring-accent;
+  }
+
+  .label {
+    @apply block text-sm text-text-secondary mb-1.5;
+  }
+}

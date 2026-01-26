@@ -1,0 +1,974 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Jelico - MCP Configuration</title>
+  
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&family=JetBrains+Mono:wght@400;500&family=Instrument+Serif:ital@0;1&display=swap" rel="stylesheet">
+  
+  <style>
+    :root {
+      --bg-void: #08080a;
+      --bg-deep: #0d0d10;
+      --bg-surface: #141418;
+      --bg-elevated: #1a1a20;
+      --bg-hover: #222228;
+      --bg-active: #2a2a32;
+      
+      --text-primary: #f5f4f1;
+      --text-secondary: #a8a5a0;
+      --text-muted: #6b6860;
+      --text-faint: #3d3b38;
+      
+      --accent-primary: #e8a84c;
+      --accent-bright: #f4c171;
+      --accent-dim: #b8863d;
+      --accent-glow: rgba(232, 168, 76, 0.15);
+      
+      --success: #5cb97b;
+      --error: #e85c5c;
+      --info: #5c9ee8;
+      
+      --border-subtle: rgba(255, 255, 255, 0.06);
+      --border-default: rgba(255, 255, 255, 0.1);
+      --border-strong: rgba(255, 255, 255, 0.15);
+      
+      --font-display: 'Instrument Serif', Georgia, serif;
+      --font-body: 'DM Sans', -apple-system, sans-serif;
+      --font-mono: 'JetBrains Mono', monospace;
+      
+      --radius-sm: 6px;
+      --radius-md: 10px;
+      --radius-lg: 14px;
+      --radius-xl: 20px;
+    }
+    
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+    
+    body {
+      font-family: var(--font-body);
+      background: var(--bg-void);
+      color: var(--text-primary);
+      line-height: 1.5;
+      font-size: 14px;
+      min-height: 100vh;
+    }
+    
+    /* Settings Layout */
+    .settings-layout {
+      display: flex;
+      min-height: 100vh;
+    }
+    
+    .settings-nav {
+      width: 220px;
+      background: var(--bg-deep);
+      border-right: 1px solid var(--border-subtle);
+      padding: 24px 16px;
+      flex-shrink: 0;
+    }
+    
+    .settings-nav-header {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 0 8px;
+      margin-bottom: 24px;
+    }
+    
+    .settings-nav-back {
+      width: 32px;
+      height: 32px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: var(--bg-surface);
+      border: 1px solid var(--border-default);
+      border-radius: var(--radius-sm);
+      color: var(--text-secondary);
+      cursor: pointer;
+      transition: all 0.15s ease;
+    }
+    
+    .settings-nav-back:hover {
+      background: var(--bg-hover);
+      color: var(--text-primary);
+    }
+    
+    .settings-nav-title {
+      font-family: var(--font-display);
+      font-size: 20px;
+    }
+    
+    .settings-nav-item {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 10px 12px;
+      border-radius: var(--radius-sm);
+      color: var(--text-secondary);
+      cursor: pointer;
+      transition: all 0.15s ease;
+      margin-bottom: 4px;
+    }
+    
+    .settings-nav-item:hover {
+      background: var(--bg-surface);
+      color: var(--text-primary);
+    }
+    
+    .settings-nav-item.active {
+      background: var(--accent-glow);
+      color: var(--accent-bright);
+    }
+    
+    .settings-nav-item svg {
+      width: 18px;
+      height: 18px;
+      opacity: 0.7;
+    }
+    
+    .settings-nav-item.active svg {
+      opacity: 1;
+    }
+    
+    .settings-content {
+      flex: 1;
+      padding: 32px 48px;
+      max-width: 800px;
+    }
+    
+    .settings-page-title {
+      font-family: var(--font-display);
+      font-size: 28px;
+      margin-bottom: 8px;
+    }
+    
+    .settings-page-desc {
+      color: var(--text-secondary);
+      margin-bottom: 32px;
+    }
+    
+    /* MCP Servers List */
+    .section {
+      margin-bottom: 40px;
+    }
+    
+    .section-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 16px;
+    }
+    
+    .section-title {
+      font-size: 13px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--text-muted);
+    }
+    
+    .btn-add {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      padding: 6px 12px;
+      background: var(--bg-surface);
+      border: 1px solid var(--border-default);
+      border-radius: var(--radius-sm);
+      color: var(--text-secondary);
+      font-size: 13px;
+      cursor: pointer;
+      transition: all 0.15s ease;
+    }
+    
+    .btn-add:hover {
+      background: var(--bg-hover);
+      color: var(--text-primary);
+    }
+    
+    .server-list {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+    
+    .server-card {
+      background: var(--bg-surface);
+      border: 1px solid var(--border-default);
+      border-radius: var(--radius-lg);
+      overflow: hidden;
+      transition: all 0.15s ease;
+    }
+    
+    .server-card:hover {
+      border-color: var(--border-strong);
+    }
+    
+    .server-card-main {
+      display: flex;
+      align-items: center;
+      padding: 16px 20px;
+      cursor: pointer;
+    }
+    
+    .server-toggle {
+      width: 40px;
+      height: 22px;
+      background: var(--bg-hover);
+      border-radius: 11px;
+      padding: 2px;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      flex-shrink: 0;
+      margin-right: 16px;
+    }
+    
+    .server-toggle.on {
+      background: var(--success);
+    }
+    
+    .server-toggle-knob {
+      width: 18px;
+      height: 18px;
+      background: white;
+      border-radius: 50%;
+      transition: transform 0.2s ease;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.2);
+    }
+    
+    .server-toggle.on .server-toggle-knob {
+      transform: translateX(18px);
+    }
+    
+    .server-info {
+      flex: 1;
+      min-width: 0;
+    }
+    
+    .server-name {
+      font-size: 15px;
+      font-weight: 500;
+      color: var(--text-primary);
+      margin-bottom: 2px;
+    }
+    
+    .server-desc {
+      font-size: 13px;
+      color: var(--text-muted);
+    }
+    
+    .server-status {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      padding: 4px 10px;
+      border-radius: 12px;
+      font-size: 12px;
+      margin-right: 12px;
+    }
+    
+    .server-status.running {
+      background: rgba(92, 185, 123, 0.15);
+      color: var(--success);
+    }
+    
+    .server-status.stopped {
+      background: var(--bg-hover);
+      color: var(--text-muted);
+    }
+    
+    .server-status-dot {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: currentColor;
+    }
+    
+    .server-status.running .server-status-dot {
+      box-shadow: 0 0 6px var(--success);
+    }
+    
+    .server-actions {
+      display: flex;
+      gap: 4px;
+    }
+    
+    .server-action {
+      width: 32px;
+      height: 32px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: transparent;
+      border: none;
+      border-radius: var(--radius-sm);
+      color: var(--text-muted);
+      cursor: pointer;
+      transition: all 0.15s ease;
+    }
+    
+    .server-action:hover {
+      background: var(--bg-hover);
+      color: var(--text-primary);
+    }
+    
+    .server-tools {
+      padding: 0 20px 16px;
+      border-top: 1px solid var(--border-subtle);
+      margin-top: -1px;
+    }
+    
+    .server-tools-label {
+      font-size: 11px;
+      color: var(--text-faint);
+      margin-top: 12px;
+      margin-bottom: 8px;
+    }
+    
+    .tool-tags {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+    }
+    
+    .tool-tag {
+      padding: 4px 10px;
+      background: var(--bg-deep);
+      border-radius: 4px;
+      font-family: var(--font-mono);
+      font-size: 11px;
+      color: var(--text-secondary);
+    }
+    
+    /* Server requiring config */
+    .server-card.needs-config {
+      opacity: 0.7;
+    }
+    
+    .server-config-btn {
+      padding: 6px 12px;
+      background: var(--accent-glow);
+      border: 1px solid var(--accent-dim);
+      border-radius: var(--radius-sm);
+      color: var(--accent-bright);
+      font-size: 12px;
+      cursor: pointer;
+      transition: all 0.15s ease;
+      margin-right: 12px;
+    }
+    
+    .server-config-btn:hover {
+      background: var(--accent-primary);
+      color: var(--bg-void);
+    }
+    
+    /* Add Server Form */
+    .add-server-form {
+      background: var(--bg-surface);
+      border: 1px solid var(--border-default);
+      border-radius: var(--radius-lg);
+      padding: 24px;
+    }
+    
+    .form-row {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 16px;
+    }
+    
+    .form-group {
+      margin-bottom: 20px;
+    }
+    
+    .form-group.full {
+      grid-column: 1 / -1;
+    }
+    
+    .form-label {
+      display: block;
+      font-size: 13px;
+      font-weight: 500;
+      color: var(--text-primary);
+      margin-bottom: 8px;
+    }
+    
+    .form-input {
+      width: 100%;
+      padding: 10px 14px;
+      background: var(--bg-deep);
+      border: 1px solid var(--border-default);
+      border-radius: var(--radius-sm);
+      color: var(--text-primary);
+      font-family: var(--font-body);
+      font-size: 14px;
+      transition: all 0.15s ease;
+    }
+    
+    .form-input:focus {
+      outline: none;
+      border-color: var(--accent-dim);
+      box-shadow: 0 0 0 3px var(--accent-glow);
+    }
+    
+    .form-input.mono {
+      font-family: var(--font-mono);
+      font-size: 13px;
+    }
+    
+    /* Env vars */
+    .env-vars {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    
+    .env-var-row {
+      display: flex;
+      gap: 8px;
+    }
+    
+    .env-var-key {
+      width: 160px;
+      flex-shrink: 0;
+    }
+    
+    .env-var-value {
+      flex: 1;
+    }
+    
+    .env-var-remove {
+      width: 36px;
+      height: 36px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: transparent;
+      border: 1px solid var(--border-subtle);
+      border-radius: var(--radius-sm);
+      color: var(--text-muted);
+      cursor: pointer;
+      flex-shrink: 0;
+    }
+    
+    .env-var-remove:hover {
+      background: rgba(232, 92, 92, 0.1);
+      border-color: var(--error);
+      color: var(--error);
+    }
+    
+    .btn-add-env {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      padding: 8px 12px;
+      background: transparent;
+      border: 1px dashed var(--border-default);
+      border-radius: var(--radius-sm);
+      color: var(--text-muted);
+      font-size: 13px;
+      cursor: pointer;
+      transition: all 0.15s ease;
+      margin-top: 8px;
+    }
+    
+    .btn-add-env:hover {
+      border-color: var(--border-strong);
+      color: var(--text-secondary);
+    }
+    
+    .form-actions {
+      display: flex;
+      justify-content: flex-end;
+      gap: 12px;
+      margin-top: 24px;
+      padding-top: 20px;
+      border-top: 1px solid var(--border-subtle);
+    }
+    
+    .btn {
+      padding: 10px 20px;
+      border-radius: var(--radius-sm);
+      font-family: var(--font-body);
+      font-size: 14px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: all 0.15s ease;
+    }
+    
+    .btn-secondary {
+      background: var(--bg-elevated);
+      border: 1px solid var(--border-default);
+      color: var(--text-secondary);
+    }
+    
+    .btn-secondary:hover {
+      background: var(--bg-hover);
+      color: var(--text-primary);
+    }
+    
+    .btn-primary {
+      background: var(--accent-primary);
+      border: 1px solid var(--accent-primary);
+      color: var(--bg-void);
+    }
+    
+    .btn-primary:hover {
+      background: var(--accent-bright);
+      border-color: var(--accent-bright);
+      box-shadow: 0 4px 16px rgba(232, 168, 76, 0.3);
+    }
+    
+    /* Server Detail View */
+    .server-detail {
+      background: var(--bg-surface);
+      border: 1px solid var(--border-default);
+      border-radius: var(--radius-lg);
+      margin-top: 24px;
+    }
+    
+    .server-detail-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 20px 24px;
+      border-bottom: 1px solid var(--border-subtle);
+    }
+    
+    .server-detail-title {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    
+    .server-detail-icon {
+      width: 40px;
+      height: 40px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: var(--bg-deep);
+      border-radius: var(--radius-sm);
+      font-size: 20px;
+    }
+    
+    .server-detail-name {
+      font-size: 18px;
+      font-weight: 600;
+    }
+    
+    .server-detail-body {
+      padding: 24px;
+    }
+    
+    .detail-section {
+      margin-bottom: 24px;
+    }
+    
+    .detail-section:last-child {
+      margin-bottom: 0;
+    }
+    
+    .detail-section-title {
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--text-muted);
+      margin-bottom: 12px;
+    }
+    
+    .tools-list {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    
+    .tool-item {
+      background: var(--bg-deep);
+      border: 1px solid var(--border-subtle);
+      border-radius: var(--radius-sm);
+      padding: 14px 16px;
+    }
+    
+    .tool-item-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 6px;
+    }
+    
+    .tool-item-name {
+      font-family: var(--font-mono);
+      font-size: 13px;
+      font-weight: 500;
+      color: var(--accent-bright);
+    }
+    
+    .tool-item-desc {
+      font-size: 13px;
+      color: var(--text-secondary);
+      margin-bottom: 8px;
+    }
+    
+    .tool-item-params {
+      font-size: 12px;
+      color: var(--text-muted);
+    }
+    
+    .tool-item-params code {
+      font-family: var(--font-mono);
+      padding: 1px 4px;
+      background: var(--bg-surface);
+      border-radius: 3px;
+      color: var(--text-secondary);
+    }
+    
+    .config-info {
+      background: var(--bg-deep);
+      border-radius: var(--radius-sm);
+      padding: 14px 16px;
+    }
+    
+    .config-info-row {
+      display: flex;
+      margin-bottom: 8px;
+    }
+    
+    .config-info-row:last-child {
+      margin-bottom: 0;
+    }
+    
+    .config-info-label {
+      width: 140px;
+      font-size: 13px;
+      color: var(--text-muted);
+      flex-shrink: 0;
+    }
+    
+    .config-info-value {
+      font-family: var(--font-mono);
+      font-size: 13px;
+      color: var(--text-secondary);
+    }
+    
+    .server-detail-footer {
+      display: flex;
+      gap: 12px;
+      padding: 16px 24px;
+      border-top: 1px solid var(--border-subtle);
+      background: var(--bg-deep);
+      border-radius: 0 0 var(--radius-lg) var(--radius-lg);
+    }
+    
+    .btn-danger {
+      background: transparent;
+      border: 1px solid var(--error);
+      color: var(--error);
+    }
+    
+    .btn-danger:hover {
+      background: rgba(232, 92, 92, 0.1);
+    }
+  </style>
+</head>
+<body>
+  <div class="settings-layout">
+    <nav class="settings-nav">
+      <div class="settings-nav-header">
+        <button class="settings-nav-back">
+          <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/>
+          </svg>
+        </button>
+        <span class="settings-nav-title">Settings</span>
+      </div>
+      
+      <div class="settings-nav-item">
+        <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/>
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>
+        </svg>
+        General
+      </div>
+      
+      <div class="settings-nav-item">
+        <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"/>
+        </svg>
+        Providers
+      </div>
+      
+      <div class="settings-nav-item active">
+        <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 4a2 2 0 114 0v1a1 1 0 001 1h3a1 1 0 011 1v3a1 1 0 01-1 1h-1a2 2 0 100 4h1a1 1 0 011 1v3a1 1 0 01-1 1h-3a1 1 0 01-1-1v-1a2 2 0 10-4 0v1a1 1 0 01-1 1H7a1 1 0 01-1-1v-3a1 1 0 00-1-1H4a2 2 0 110-4h1a1 1 0 001-1V7a1 1 0 011-1h3a1 1 0 001-1V4z"/>
+        </svg>
+        MCP Servers
+      </div>
+      
+      <div class="settings-nav-item">
+        <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8"/>
+        </svg>
+        Keyboard
+      </div>
+      
+      <div class="settings-nav-item">
+        <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/>
+        </svg>
+        Privacy
+      </div>
+    </nav>
+    
+    <div class="settings-content">
+      <h1 class="settings-page-title">MCP Servers</h1>
+      <p class="settings-page-desc">Model Context Protocol servers extend Jelico with external tools and capabilities.</p>
+      
+      <!-- Built-in Servers -->
+      <div class="section">
+        <div class="section-header">
+          <span class="section-title">Built-in Servers</span>
+        </div>
+        
+        <div class="server-list">
+          <div class="server-card">
+            <div class="server-card-main">
+              <div class="server-toggle on">
+                <div class="server-toggle-knob"></div>
+              </div>
+              <div class="server-info">
+                <div class="server-name">Filesystem</div>
+                <div class="server-desc">Read and write files in your workspace</div>
+              </div>
+              <div class="server-status running">
+                <span class="server-status-dot"></span>
+                Running
+              </div>
+              <div class="server-actions">
+                <button class="server-action">
+                  <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"/>
+                  </svg>
+                </button>
+                <button class="server-action">
+                  <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 5v.01M12 12v.01M12 19v.01M12 6a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2z"/>
+                  </svg>
+                </button>
+              </div>
+            </div>
+            <div class="server-tools">
+              <div class="server-tools-label">Tools</div>
+              <div class="tool-tags">
+                <span class="tool-tag">read_file</span>
+                <span class="tool-tag">write_file</span>
+                <span class="tool-tag">list_directory</span>
+                <span class="tool-tag">search_files</span>
+              </div>
+            </div>
+          </div>
+          
+          <div class="server-card">
+            <div class="server-card-main">
+              <div class="server-toggle on">
+                <div class="server-toggle-knob"></div>
+              </div>
+              <div class="server-info">
+                <div class="server-name">Git</div>
+                <div class="server-desc">Git operations and history</div>
+              </div>
+              <div class="server-status running">
+                <span class="server-status-dot"></span>
+                Running
+              </div>
+              <div class="server-actions">
+                <button class="server-action">
+                  <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"/>
+                  </svg>
+                </button>
+                <button class="server-action">
+                  <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 5v.01M12 12v.01M12 19v.01M12 6a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2z"/>
+                  </svg>
+                </button>
+              </div>
+            </div>
+            <div class="server-tools">
+              <div class="server-tools-label">Tools</div>
+              <div class="tool-tags">
+                <span class="tool-tag">git_status</span>
+                <span class="tool-tag">git_diff</span>
+                <span class="tool-tag">git_log</span>
+                <span class="tool-tag">git_commit</span>
+              </div>
+            </div>
+          </div>
+          
+          <div class="server-card needs-config">
+            <div class="server-card-main">
+              <div class="server-toggle">
+                <div class="server-toggle-knob"></div>
+              </div>
+              <div class="server-info">
+                <div class="server-name">Web Search</div>
+                <div class="server-desc">Search the web with Brave</div>
+              </div>
+              <button class="server-config-btn">Configure</button>
+              <div class="server-status stopped">
+                <span class="server-status-dot"></span>
+                Stopped
+              </div>
+              <div class="server-actions">
+                <button class="server-action">
+                  <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 5v.01M12 12v.01M12 19v.01M12 6a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2z"/>
+                  </svg>
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      
+      <!-- Custom Servers -->
+      <div class="section">
+        <div class="section-header">
+          <span class="section-title">Custom Servers</span>
+          <button class="btn-add">
+            <svg width="14" height="14" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6"/>
+            </svg>
+            Add Server
+          </button>
+        </div>
+        
+        <div class="add-server-form">
+          <div class="form-row">
+            <div class="form-group">
+              <label class="form-label">Name</label>
+              <input type="text" class="form-input" placeholder="Server name" value="Notion">
+            </div>
+            <div class="form-group">
+              <label class="form-label">Description</label>
+              <input type="text" class="form-input" placeholder="What does this server do?" value="Access Notion pages and databases">
+            </div>
+          </div>
+          
+          <div class="form-row">
+            <div class="form-group">
+              <label class="form-label">Command</label>
+              <input type="text" class="form-input mono" placeholder="npx" value="npx">
+            </div>
+            <div class="form-group">
+              <label class="form-label">Arguments</label>
+              <input type="text" class="form-input mono" placeholder="-y @package/server" value="-y @anthropic/mcp-server-notion">
+            </div>
+          </div>
+          
+          <div class="form-group full">
+            <label class="form-label">Environment Variables</label>
+            <div class="env-vars">
+              <div class="env-var-row">
+                <input type="text" class="form-input mono env-var-key" placeholder="KEY" value="NOTION_TOKEN">
+                <input type="password" class="form-input mono env-var-value" placeholder="value" value="secret_abc123...">
+                <button class="env-var-remove">
+                  <svg width="14" height="14" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+                  </svg>
+                </button>
+              </div>
+            </div>
+            <button class="btn-add-env">
+              <svg width="12" height="12" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6"/>
+              </svg>
+              Add variable
+            </button>
+          </div>
+          
+          <div class="form-actions">
+            <button class="btn btn-secondary">Cancel</button>
+            <button class="btn btn-primary">Add Server</button>
+          </div>
+        </div>
+      </div>
+      
+      <!-- Server Detail -->
+      <div class="server-detail">
+        <div class="server-detail-header">
+          <div class="server-detail-title">
+            <div class="server-detail-icon">📁</div>
+            <span class="server-detail-name">Filesystem</span>
+          </div>
+          <div class="server-status running">
+            <span class="server-status-dot"></span>
+            Running
+          </div>
+        </div>
+        
+        <div class="server-detail-body">
+          <div class="detail-section">
+            <div class="detail-section-title">Available Tools</div>
+            <div class="tools-list">
+              <div class="tool-item">
+                <div class="tool-item-header">
+                  <span class="tool-item-name">read_file</span>
+                </div>
+                <div class="tool-item-desc">Read the contents of a file</div>
+                <div class="tool-item-params">Parameters: <code>path</code> (string, required)</div>
+              </div>
+              <div class="tool-item">
+                <div class="tool-item-header">
+                  <span class="tool-item-name">write_file</span>
+                </div>
+                <div class="tool-item-desc">Write content to a file</div>
+                <div class="tool-item-params">Parameters: <code>path</code> (string), <code>content</code> (string)</div>
+              </div>
+              <div class="tool-item">
+                <div class="tool-item-header">
+                  <span class="tool-item-name">list_directory</span>
+                </div>
+                <div class="tool-item-desc">List files and directories</div>
+                <div class="tool-item-params">Parameters: <code>path</code> (string), <code>recursive</code> (boolean)</div>
+              </div>
+            </div>
+          </div>
+          
+          <div class="detail-section">
+            <div class="detail-section-title">Configuration</div>
+            <div class="config-info">
+              <div class="config-info-row">
+                <span class="config-info-label">Command</span>
+                <span class="config-info-value">npx -y @modelcontextprotocol/server-filesystem</span>
+              </div>
+              <div class="config-info-row">
+                <span class="config-info-label">Arguments</span>
+                <span class="config-info-value">.</span>
+              </div>
+              <div class="config-info-row">
+                <span class="config-info-label">Working Directory</span>
+                <span class="config-info-value">(current workspace)</span>
+              </div>
+            </div>
+          </div>
+        </div>
+        
+        <div class="server-detail-footer">
+          <button class="btn btn-secondary">Restart</button>
+          <button class="btn btn-secondary">Stop</button>
+          <button class="btn btn-secondary">Edit</button>
+          <button class="btn btn-danger" style="margin-left: auto;">Remove</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</body>
+</html>

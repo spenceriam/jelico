@@ -1,0 +1,1253 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Jelico - Main Interface</title>
+  
+  <!-- Distinctive typography choices -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&family=JetBrains+Mono:wght@400;500&family=Instrument+Serif:ital@0;1&display=swap" rel="stylesheet">
+  
+  <style>
+    /* 
+     * JELICO DESIGN SYSTEM
+     * Aesthetic: Soft Industrial - warm, productive, premium
+     * Dark base with amber/copper accents
+     */
+    
+    :root {
+      /* Core palette - warm darks, not cold grays */
+      --bg-void: #08080a;
+      --bg-deep: #0d0d10;
+      --bg-surface: #141418;
+      --bg-elevated: #1a1a20;
+      --bg-hover: #222228;
+      --bg-active: #2a2a32;
+      
+      /* Warm neutrals */
+      --text-primary: #f5f4f1;
+      --text-secondary: #a8a5a0;
+      --text-muted: #6b6860;
+      --text-faint: #3d3b38;
+      
+      /* Accent - amber/copper warmth */
+      --accent-primary: #e8a84c;
+      --accent-bright: #f4c171;
+      --accent-dim: #b8863d;
+      --accent-glow: rgba(232, 168, 76, 0.15);
+      
+      /* Semantic */
+      --success: #5cb97b;
+      --warning: #e8a84c;
+      --error: #e85c5c;
+      --info: #5c9ee8;
+      
+      /* Borders */
+      --border-subtle: rgba(255, 255, 255, 0.06);
+      --border-default: rgba(255, 255, 255, 0.1);
+      --border-strong: rgba(255, 255, 255, 0.15);
+      
+      /* Typography */
+      --font-display: 'Instrument Serif', Georgia, serif;
+      --font-body: 'DM Sans', -apple-system, sans-serif;
+      --font-mono: 'JetBrains Mono', monospace;
+      
+      /* Spacing scale */
+      --space-1: 4px;
+      --space-2: 8px;
+      --space-3: 12px;
+      --space-4: 16px;
+      --space-5: 20px;
+      --space-6: 24px;
+      --space-8: 32px;
+      --space-10: 40px;
+      --space-12: 48px;
+      
+      /* Radii */
+      --radius-sm: 6px;
+      --radius-md: 10px;
+      --radius-lg: 14px;
+      --radius-xl: 20px;
+      
+      /* Shadows */
+      --shadow-sm: 0 1px 2px rgba(0,0,0,0.3);
+      --shadow-md: 0 4px 12px rgba(0,0,0,0.4);
+      --shadow-lg: 0 8px 32px rgba(0,0,0,0.5);
+      --shadow-glow: 0 0 20px var(--accent-glow);
+    }
+    
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+    
+    body {
+      font-family: var(--font-body);
+      background: var(--bg-void);
+      color: var(--text-primary);
+      line-height: 1.5;
+      font-size: 14px;
+      overflow: hidden;
+      height: 100vh;
+    }
+    
+    /* ==================== LAYOUT ==================== */
+    
+    .app {
+      display: flex;
+      height: 100vh;
+      background: 
+        radial-gradient(ellipse at 0% 0%, rgba(232, 168, 76, 0.03) 0%, transparent 50%),
+        radial-gradient(ellipse at 100% 100%, rgba(92, 158, 232, 0.02) 0%, transparent 50%),
+        var(--bg-void);
+    }
+    
+    /* ==================== SIDEBAR ==================== */
+    
+    .sidebar {
+      width: 260px;
+      background: var(--bg-deep);
+      border-right: 1px solid var(--border-subtle);
+      display: flex;
+      flex-direction: column;
+      flex-shrink: 0;
+    }
+    
+    .sidebar-header {
+      padding: var(--space-5);
+      border-bottom: 1px solid var(--border-subtle);
+    }
+    
+    .logo {
+      display: flex;
+      align-items: center;
+      gap: var(--space-3);
+    }
+    
+    .logo-mark {
+      width: 32px;
+      height: 32px;
+      background: linear-gradient(135deg, var(--accent-primary) 0%, var(--accent-dim) 100%);
+      border-radius: var(--radius-sm);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-family: var(--font-display);
+      font-size: 18px;
+      color: var(--bg-void);
+      font-weight: 400;
+    }
+    
+    .logo-text {
+      font-family: var(--font-display);
+      font-size: 22px;
+      font-weight: 400;
+      letter-spacing: -0.02em;
+      color: var(--text-primary);
+    }
+    
+    .sidebar-section {
+      padding: var(--space-4);
+    }
+    
+    .sidebar-section-title {
+      font-size: 11px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--text-muted);
+      margin-bottom: var(--space-3);
+      padding: 0 var(--space-2);
+    }
+    
+    .sidebar-item {
+      display: flex;
+      align-items: center;
+      gap: var(--space-3);
+      padding: var(--space-2) var(--space-3);
+      border-radius: var(--radius-sm);
+      color: var(--text-secondary);
+      cursor: pointer;
+      transition: all 0.15s ease;
+      font-size: 13px;
+    }
+    
+    .sidebar-item:hover {
+      background: var(--bg-hover);
+      color: var(--text-primary);
+    }
+    
+    .sidebar-item.active {
+      background: var(--accent-glow);
+      color: var(--accent-bright);
+    }
+    
+    .sidebar-item-icon {
+      width: 18px;
+      height: 18px;
+      opacity: 0.7;
+    }
+    
+    .sidebar-item.active .sidebar-item-icon {
+      opacity: 1;
+    }
+    
+    .chat-item {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+      padding: var(--space-3);
+      border-radius: var(--radius-sm);
+      cursor: pointer;
+      transition: all 0.15s ease;
+      border-left: 2px solid transparent;
+    }
+    
+    .chat-item:hover {
+      background: var(--bg-hover);
+    }
+    
+    .chat-item.active {
+      background: var(--bg-elevated);
+      border-left-color: var(--accent-primary);
+    }
+    
+    .chat-item-title {
+      font-size: 13px;
+      font-weight: 500;
+      color: var(--text-primary);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    
+    .chat-item-preview {
+      font-size: 12px;
+      color: var(--text-muted);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    
+    .sidebar-footer {
+      margin-top: auto;
+      padding: var(--space-4);
+      border-top: 1px solid var(--border-subtle);
+    }
+    
+    /* ==================== MAIN AREA ==================== */
+    
+    .main {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      min-width: 0;
+    }
+    
+    /* ==================== HEADER ==================== */
+    
+    .header {
+      height: 56px;
+      padding: 0 var(--space-5);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      border-bottom: 1px solid var(--border-subtle);
+      background: var(--bg-deep);
+      flex-shrink: 0;
+    }
+    
+    .workspace-selector {
+      display: flex;
+      align-items: center;
+      gap: var(--space-3);
+    }
+    
+    .workspace-btn {
+      display: flex;
+      align-items: center;
+      gap: var(--space-2);
+      padding: var(--space-2) var(--space-3);
+      background: var(--bg-surface);
+      border: 1px solid var(--border-default);
+      border-radius: var(--radius-sm);
+      color: var(--text-primary);
+      font-size: 13px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: all 0.15s ease;
+    }
+    
+    .workspace-btn:hover {
+      background: var(--bg-hover);
+      border-color: var(--border-strong);
+    }
+    
+    .worktree-tabs {
+      display: flex;
+      gap: var(--space-1);
+      margin-left: var(--space-3);
+    }
+    
+    .worktree-tab {
+      display: flex;
+      align-items: center;
+      gap: var(--space-2);
+      padding: var(--space-1) var(--space-3);
+      background: transparent;
+      border: 1px solid transparent;
+      border-radius: var(--radius-sm);
+      color: var(--text-muted);
+      font-size: 12px;
+      cursor: pointer;
+      transition: all 0.15s ease;
+    }
+    
+    .worktree-tab:hover {
+      color: var(--text-secondary);
+      background: var(--bg-surface);
+    }
+    
+    .worktree-tab.active {
+      color: var(--text-primary);
+      background: var(--bg-surface);
+      border-color: var(--border-default);
+    }
+    
+    .worktree-tab .indicator {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: var(--success);
+      animation: pulse 2s infinite;
+    }
+    
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.5; }
+    }
+    
+    /* Mode Selector */
+    .mode-selector {
+      display: flex;
+      align-items: center;
+      background: var(--bg-surface);
+      border-radius: var(--radius-md);
+      padding: 3px;
+      gap: 2px;
+    }
+    
+    .mode-btn {
+      padding: var(--space-2) var(--space-4);
+      background: transparent;
+      border: none;
+      border-radius: var(--radius-sm);
+      color: var(--text-muted);
+      font-family: var(--font-body);
+      font-size: 13px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: all 0.15s ease;
+      position: relative;
+    }
+    
+    .mode-btn:hover {
+      color: var(--text-secondary);
+    }
+    
+    .mode-btn.active {
+      background: var(--bg-elevated);
+      color: var(--text-primary);
+      box-shadow: var(--shadow-sm);
+    }
+    
+    .mode-btn .shortcut {
+      font-size: 10px;
+      color: var(--text-faint);
+      margin-left: var(--space-1);
+    }
+    
+    .mode-btn.active .shortcut {
+      color: var(--text-muted);
+    }
+    
+    /* Model Selector */
+    .model-selector {
+      display: flex;
+      align-items: center;
+      gap: var(--space-3);
+    }
+    
+    .model-btn {
+      display: flex;
+      align-items: center;
+      gap: var(--space-2);
+      padding: var(--space-2) var(--space-3);
+      background: transparent;
+      border: 1px solid var(--border-subtle);
+      border-radius: var(--radius-sm);
+      color: var(--text-secondary);
+      font-size: 13px;
+      cursor: pointer;
+      transition: all 0.15s ease;
+    }
+    
+    .model-btn:hover {
+      background: var(--bg-surface);
+      border-color: var(--border-default);
+      color: var(--text-primary);
+    }
+    
+    .model-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--accent-primary);
+    }
+    
+    .settings-btn {
+      width: 36px;
+      height: 36px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: transparent;
+      border: none;
+      border-radius: var(--radius-sm);
+      color: var(--text-muted);
+      cursor: pointer;
+      transition: all 0.15s ease;
+    }
+    
+    .settings-btn:hover {
+      background: var(--bg-surface);
+      color: var(--text-primary);
+    }
+    
+    /* ==================== CHAT AREA ==================== */
+    
+    .chat-container {
+      flex: 1;
+      display: flex;
+      overflow: hidden;
+    }
+    
+    .chat-panel {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      min-width: 0;
+    }
+    
+    .chat-messages {
+      flex: 1;
+      overflow-y: auto;
+      padding: var(--space-6);
+      display: flex;
+      flex-direction: column;
+      gap: var(--space-6);
+    }
+    
+    .message {
+      max-width: 720px;
+      margin: 0 auto;
+      width: 100%;
+    }
+    
+    .message-user {
+      display: flex;
+      justify-content: flex-end;
+    }
+    
+    .message-user .message-content {
+      background: var(--bg-elevated);
+      border: 1px solid var(--border-default);
+      border-radius: var(--radius-lg) var(--radius-lg) var(--radius-sm) var(--radius-lg);
+      padding: var(--space-4) var(--space-5);
+      max-width: 80%;
+    }
+    
+    .message-assistant {
+      display: flex;
+      gap: var(--space-4);
+    }
+    
+    .message-avatar {
+      width: 32px;
+      height: 32px;
+      background: linear-gradient(135deg, var(--accent-primary) 0%, var(--accent-dim) 100%);
+      border-radius: var(--radius-sm);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+      font-family: var(--font-display);
+      font-size: 16px;
+      color: var(--bg-void);
+    }
+    
+    .message-assistant .message-content {
+      flex: 1;
+      min-width: 0;
+    }
+    
+    .message-text {
+      color: var(--text-primary);
+      line-height: 1.6;
+    }
+    
+    .message-text p {
+      margin-bottom: var(--space-3);
+    }
+    
+    .message-text p:last-child {
+      margin-bottom: 0;
+    }
+    
+    /* Skill Badge */
+    .skill-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: var(--space-2);
+      padding: var(--space-1) var(--space-3);
+      background: var(--accent-glow);
+      border: 1px solid rgba(232, 168, 76, 0.2);
+      border-radius: var(--radius-sm);
+      font-size: 12px;
+      color: var(--accent-bright);
+      margin-bottom: var(--space-3);
+    }
+    
+    /* Tool Call */
+    .tool-call {
+      background: var(--bg-surface);
+      border: 1px solid var(--border-subtle);
+      border-radius: var(--radius-sm);
+      padding: var(--space-3);
+      margin: var(--space-3) 0;
+      font-family: var(--font-mono);
+      font-size: 12px;
+    }
+    
+    .tool-call-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: var(--space-2);
+    }
+    
+    .tool-call-name {
+      color: var(--text-secondary);
+    }
+    
+    .tool-call-status {
+      display: flex;
+      align-items: center;
+      gap: var(--space-1);
+      color: var(--success);
+      font-size: 11px;
+    }
+    
+    .tool-call-status::before {
+      content: '';
+      width: 6px;
+      height: 6px;
+      background: var(--success);
+      border-radius: 50%;
+    }
+    
+    /* Code Block (collapsed in chat) */
+    .code-collapsed {
+      display: flex;
+      align-items: center;
+      gap: var(--space-3);
+      padding: var(--space-3) var(--space-4);
+      background: var(--bg-surface);
+      border: 1px solid var(--border-default);
+      border-radius: var(--radius-sm);
+      margin: var(--space-3) 0;
+      cursor: pointer;
+      transition: all 0.15s ease;
+    }
+    
+    .code-collapsed:hover {
+      background: var(--bg-hover);
+      border-color: var(--border-strong);
+    }
+    
+    .code-collapsed-icon {
+      width: 32px;
+      height: 32px;
+      background: var(--bg-elevated);
+      border-radius: var(--radius-sm);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: var(--accent-primary);
+    }
+    
+    .code-collapsed-info {
+      flex: 1;
+    }
+    
+    .code-collapsed-name {
+      font-size: 13px;
+      font-weight: 500;
+      color: var(--text-primary);
+    }
+    
+    .code-collapsed-meta {
+      font-size: 12px;
+      color: var(--text-muted);
+    }
+    
+    .code-collapsed-arrow {
+      color: var(--text-muted);
+    }
+    
+    /* ==================== INPUT AREA ==================== */
+    
+    .input-area {
+      padding: var(--space-5);
+      border-top: 1px solid var(--border-subtle);
+      background: var(--bg-deep);
+    }
+    
+    .input-container {
+      max-width: 720px;
+      margin: 0 auto;
+    }
+    
+    .input-box {
+      display: flex;
+      align-items: flex-end;
+      gap: var(--space-3);
+      background: var(--bg-surface);
+      border: 1px solid var(--border-default);
+      border-radius: var(--radius-lg);
+      padding: var(--space-3);
+      transition: all 0.15s ease;
+    }
+    
+    .input-box:focus-within {
+      border-color: var(--accent-dim);
+      box-shadow: 0 0 0 3px var(--accent-glow);
+    }
+    
+    .input-btn {
+      width: 36px;
+      height: 36px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: transparent;
+      border: none;
+      border-radius: var(--radius-sm);
+      color: var(--text-muted);
+      cursor: pointer;
+      transition: all 0.15s ease;
+      flex-shrink: 0;
+    }
+    
+    .input-btn:hover {
+      background: var(--bg-hover);
+      color: var(--text-primary);
+    }
+    
+    .input-field {
+      flex: 1;
+      background: transparent;
+      border: none;
+      outline: none;
+      color: var(--text-primary);
+      font-family: var(--font-body);
+      font-size: 14px;
+      line-height: 1.5;
+      resize: none;
+      min-height: 24px;
+      max-height: 200px;
+    }
+    
+    .input-field::placeholder {
+      color: var(--text-muted);
+    }
+    
+    .send-btn {
+      width: 36px;
+      height: 36px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: var(--accent-primary);
+      border: none;
+      border-radius: var(--radius-sm);
+      color: var(--bg-void);
+      cursor: pointer;
+      transition: all 0.15s ease;
+      flex-shrink: 0;
+    }
+    
+    .send-btn:hover {
+      background: var(--accent-bright);
+      transform: translateY(-1px);
+      box-shadow: var(--shadow-glow);
+    }
+    
+    .send-btn:active {
+      transform: translateY(0);
+    }
+    
+    .input-hints {
+      display: flex;
+      justify-content: space-between;
+      margin-top: var(--space-2);
+      padding: 0 var(--space-2);
+    }
+    
+    .input-hint {
+      font-size: 11px;
+      color: var(--text-muted);
+    }
+    
+    .input-hint kbd {
+      display: inline-block;
+      padding: 1px 4px;
+      background: var(--bg-surface);
+      border: 1px solid var(--border-subtle);
+      border-radius: 3px;
+      font-family: var(--font-mono);
+      font-size: 10px;
+    }
+    
+    /* ==================== ARTIFACTS PANEL ==================== */
+    
+    .artifacts-panel {
+      width: 50%;
+      border-left: 1px solid var(--border-subtle);
+      background: var(--bg-deep);
+      display: flex;
+      flex-direction: column;
+    }
+    
+    .artifacts-header {
+      padding: var(--space-3) var(--space-4);
+      border-bottom: 1px solid var(--border-subtle);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    
+    .file-tabs {
+      display: flex;
+      gap: 2px;
+    }
+    
+    .file-tab {
+      padding: var(--space-2) var(--space-3);
+      background: transparent;
+      border: none;
+      border-radius: var(--radius-sm);
+      color: var(--text-muted);
+      font-family: var(--font-mono);
+      font-size: 12px;
+      cursor: pointer;
+      transition: all 0.15s ease;
+    }
+    
+    .file-tab:hover {
+      background: var(--bg-surface);
+      color: var(--text-secondary);
+    }
+    
+    .file-tab.active {
+      background: var(--bg-surface);
+      color: var(--accent-bright);
+    }
+    
+    .view-toggle {
+      display: flex;
+      gap: 2px;
+      background: var(--bg-surface);
+      padding: 2px;
+      border-radius: var(--radius-sm);
+    }
+    
+    .view-btn {
+      padding: var(--space-1) var(--space-3);
+      background: transparent;
+      border: none;
+      border-radius: var(--radius-sm);
+      color: var(--text-muted);
+      font-size: 12px;
+      cursor: pointer;
+      transition: all 0.15s ease;
+    }
+    
+    .view-btn:hover {
+      color: var(--text-secondary);
+    }
+    
+    .view-btn.active {
+      background: var(--bg-elevated);
+      color: var(--text-primary);
+    }
+    
+    .artifacts-content {
+      flex: 1;
+      overflow: hidden;
+      display: flex;
+    }
+    
+    /* Code Editor */
+    .code-editor {
+      flex: 1;
+      background: var(--bg-void);
+      overflow: auto;
+      font-family: var(--font-mono);
+      font-size: 13px;
+      line-height: 1.6;
+    }
+    
+    .code-line {
+      display: flex;
+      padding: 0 var(--space-4);
+    }
+    
+    .code-line:hover {
+      background: rgba(255, 255, 255, 0.02);
+    }
+    
+    .line-number {
+      width: 40px;
+      text-align: right;
+      padding-right: var(--space-4);
+      color: var(--text-faint);
+      user-select: none;
+      flex-shrink: 0;
+    }
+    
+    .line-content {
+      flex: 1;
+      color: var(--text-secondary);
+    }
+    
+    /* Syntax highlighting */
+    .syn-keyword { color: #c792ea; }
+    .syn-string { color: #c3e88d; }
+    .syn-function { color: #82aaff; }
+    .syn-tag { color: #f07178; }
+    .syn-attr { color: #ffcb6b; }
+    .syn-comment { color: var(--text-faint); font-style: italic; }
+    
+    /* Artifacts footer */
+    .artifacts-footer {
+      padding: var(--space-3) var(--space-4);
+      border-top: 1px solid var(--border-subtle);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    
+    .version-selector {
+      display: flex;
+      align-items: center;
+      gap: var(--space-2);
+    }
+    
+    .version-btn {
+      padding: var(--space-1) var(--space-2);
+      background: var(--bg-surface);
+      border: 1px solid var(--border-subtle);
+      border-radius: var(--radius-sm);
+      color: var(--text-secondary);
+      font-size: 11px;
+      cursor: pointer;
+      transition: all 0.15s ease;
+    }
+    
+    .version-btn:hover {
+      border-color: var(--border-default);
+      color: var(--text-primary);
+    }
+    
+    .version-btn.active {
+      background: var(--accent-glow);
+      border-color: var(--accent-dim);
+      color: var(--accent-bright);
+    }
+    
+    .diff-toggle {
+      padding: var(--space-1) var(--space-3);
+      background: transparent;
+      border: 1px solid var(--border-subtle);
+      border-radius: var(--radius-sm);
+      color: var(--text-muted);
+      font-size: 12px;
+      cursor: pointer;
+      transition: all 0.15s ease;
+    }
+    
+    .diff-toggle:hover {
+      background: var(--bg-surface);
+      color: var(--text-primary);
+    }
+    
+    /* ==================== AGENTS SIDEBAR SECTION ==================== */
+    
+    .agent-card {
+      background: var(--bg-surface);
+      border: 1px solid var(--border-subtle);
+      border-radius: var(--radius-sm);
+      padding: var(--space-3);
+      margin-bottom: var(--space-2);
+    }
+    
+    .agent-card-header {
+      display: flex;
+      align-items: center;
+      gap: var(--space-2);
+      margin-bottom: var(--space-2);
+    }
+    
+    .agent-status {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--success);
+      animation: pulse 2s infinite;
+    }
+    
+    .agent-status.completed {
+      background: var(--info);
+      animation: none;
+    }
+    
+    .agent-name {
+      font-size: 12px;
+      font-weight: 500;
+      color: var(--text-primary);
+      flex: 1;
+    }
+    
+    .agent-progress {
+      height: 3px;
+      background: var(--bg-hover);
+      border-radius: 2px;
+      overflow: hidden;
+      margin-bottom: var(--space-2);
+    }
+    
+    .agent-progress-bar {
+      height: 100%;
+      background: var(--accent-primary);
+      border-radius: 2px;
+      transition: width 0.3s ease;
+    }
+    
+    .agent-task {
+      font-size: 11px;
+      color: var(--text-muted);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    
+    /* ==================== SCROLLBAR ==================== */
+    
+    ::-webkit-scrollbar {
+      width: 8px;
+      height: 8px;
+    }
+    
+    ::-webkit-scrollbar-track {
+      background: transparent;
+    }
+    
+    ::-webkit-scrollbar-thumb {
+      background: var(--bg-active);
+      border-radius: 4px;
+    }
+    
+    ::-webkit-scrollbar-thumb:hover {
+      background: var(--text-faint);
+    }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <!-- Sidebar -->
+    <aside class="sidebar">
+      <div class="sidebar-header">
+        <div class="logo">
+          <div class="logo-mark">J</div>
+          <span class="logo-text">Jelico</span>
+        </div>
+      </div>
+      
+      <div class="sidebar-section">
+        <div class="sidebar-section-title">Workspace</div>
+        <div class="sidebar-item active">
+          <svg class="sidebar-item-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z"/>
+          </svg>
+          jelico-app
+        </div>
+        <div class="sidebar-item">
+          <svg class="sidebar-item-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6"/>
+          </svg>
+          Open workspace
+        </div>
+      </div>
+      
+      <div class="sidebar-section">
+        <div class="sidebar-section-title">Recent Chats</div>
+        <div class="chat-item active">
+          <span class="chat-item-title">Landing page design</span>
+          <span class="chat-item-preview">Creating a modern SaaS landing...</span>
+        </div>
+        <div class="chat-item">
+          <span class="chat-item-title">API documentation</span>
+          <span class="chat-item-preview">Write comprehensive docs for...</span>
+        </div>
+        <div class="chat-item">
+          <span class="chat-item-title">Data analysis</span>
+          <span class="chat-item-preview">Analyze Q4 sales metrics and...</span>
+        </div>
+      </div>
+      
+      <div class="sidebar-section">
+        <div class="sidebar-section-title">Active Agents</div>
+        <div class="agent-card">
+          <div class="agent-card-header">
+            <span class="agent-status"></span>
+            <span class="agent-name">Research Assistant</span>
+          </div>
+          <div class="agent-progress">
+            <div class="agent-progress-bar" style="width: 65%"></div>
+          </div>
+          <div class="agent-task">Analyzing competitor pricing...</div>
+        </div>
+        <div class="agent-card">
+          <div class="agent-card-header">
+            <span class="agent-status completed"></span>
+            <span class="agent-name">Code Reviewer</span>
+          </div>
+          <div class="agent-progress">
+            <div class="agent-progress-bar" style="width: 100%"></div>
+          </div>
+          <div class="agent-task">✓ Completed - 3 issues found</div>
+        </div>
+      </div>
+      
+      <div class="sidebar-footer">
+        <div class="sidebar-item">
+          <svg class="sidebar-item-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/>
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>
+          </svg>
+          Settings
+        </div>
+      </div>
+    </aside>
+    
+    <!-- Main -->
+    <main class="main">
+      <!-- Header -->
+      <header class="header">
+        <div class="workspace-selector">
+          <button class="workspace-btn">
+            <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z"/>
+            </svg>
+            jelico-app
+            <svg width="12" height="12" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
+            </svg>
+          </button>
+          
+          <div class="worktree-tabs">
+            <button class="worktree-tab active">
+              <svg width="12" height="12" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/>
+              </svg>
+              main
+            </button>
+            <button class="worktree-tab">
+              feature/auth
+            </button>
+            <button class="worktree-tab">
+              <span class="indicator"></span>
+              agent/research
+            </button>
+          </div>
+        </div>
+        
+        <div class="mode-selector">
+          <button class="mode-btn">Auto<span class="shortcut">A</span></button>
+          <button class="mode-btn">Explore<span class="shortcut">E</span></button>
+          <button class="mode-btn active">Execute<span class="shortcut">X</span></button>
+          <button class="mode-btn">Plan<span class="shortcut">P</span></button>
+          <button class="mode-btn">Review<span class="shortcut">R</span></button>
+        </div>
+        
+        <div class="model-selector">
+          <button class="model-btn">
+            <span class="model-dot"></span>
+            Claude Sonnet 4
+            <svg width="12" height="12" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
+            </svg>
+          </button>
+          <button class="settings-btn">
+            <svg width="18" height="18" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/>
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>
+            </svg>
+          </button>
+        </div>
+      </header>
+      
+      <!-- Chat Container -->
+      <div class="chat-container">
+        <!-- Chat Panel -->
+        <div class="chat-panel">
+          <div class="chat-messages">
+            <!-- User Message -->
+            <div class="message message-user">
+              <div class="message-content">
+                <div class="message-text">Create a landing page for my SaaS product called "Flowboard" - it's a project management tool with AI features</div>
+              </div>
+            </div>
+            
+            <!-- Assistant Message -->
+            <div class="message message-assistant">
+              <div class="message-avatar">J</div>
+              <div class="message-content">
+                <div class="skill-badge">
+                  <svg width="14" height="14" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"/>
+                  </svg>
+                  Writer skill activated
+                </div>
+                
+                <div class="message-text">
+                  <p>I'll create a modern, conversion-focused landing page for Flowboard. The design will emphasize the AI-powered features while maintaining a clean, professional aesthetic.</p>
+                </div>
+                
+                <div class="tool-call">
+                  <div class="tool-call-header">
+                    <span class="tool-call-name">filesystem.write_file</span>
+                    <span class="tool-call-status">complete</span>
+                  </div>
+                </div>
+                
+                <div class="code-collapsed">
+                  <div class="code-collapsed-icon">
+                    <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4"/>
+                    </svg>
+                  </div>
+                  <div class="code-collapsed-info">
+                    <div class="code-collapsed-name">index.html</div>
+                    <div class="code-collapsed-meta">HTML • 142 lines</div>
+                  </div>
+                  <div class="code-collapsed-arrow">→</div>
+                </div>
+                
+                <div class="message-text">
+                  <p>The landing page includes:</p>
+                  <p>• Hero section with animated gradient background<br>
+                  • Feature cards highlighting AI capabilities<br>
+                  • Social proof with testimonials<br>
+                  • Pricing comparison table<br>
+                  • Call-to-action with email capture</p>
+                </div>
+              </div>
+            </div>
+          </div>
+          
+          <!-- Input Area -->
+          <div class="input-area">
+            <div class="input-container">
+              <div class="input-box">
+                <button class="input-btn">
+                  <svg width="18" height="18" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13"/>
+                  </svg>
+                </button>
+                <textarea class="input-field" placeholder="What do you want to do?" rows="1"></textarea>
+                <button class="input-btn">
+                  <svg width="18" height="18" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z"/>
+                  </svg>
+                </button>
+                <button class="send-btn">
+                  <svg width="18" height="18" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8"/>
+                  </svg>
+                </button>
+              </div>
+              <div class="input-hints">
+                <span class="input-hint"><kbd>Enter</kbd> to send · <kbd>Tab</kbd> to cycle modes</span>
+                <span class="input-hint"><kbd>⌘K</kbd> commands</span>
+              </div>
+            </div>
+          </div>
+        </div>
+        
+        <!-- Artifacts Panel -->
+        <div class="artifacts-panel">
+          <div class="artifacts-header">
+            <div class="file-tabs">
+              <button class="file-tab active">index.html</button>
+              <button class="file-tab">styles.css</button>
+            </div>
+            <div class="view-toggle">
+              <button class="view-btn active">Code</button>
+              <button class="view-btn">Split</button>
+              <button class="view-btn">Preview</button>
+            </div>
+          </div>
+          
+          <div class="artifacts-content">
+            <div class="code-editor">
+              <div class="code-line"><span class="line-number">1</span><span class="line-content"><span class="syn-tag">&lt;!DOCTYPE</span> <span class="syn-attr">html</span><span class="syn-tag">&gt;</span></span></div>
+              <div class="code-line"><span class="line-number">2</span><span class="line-content"><span class="syn-tag">&lt;html</span> <span class="syn-attr">lang</span>=<span class="syn-string">"en"</span><span class="syn-tag">&gt;</span></span></div>
+              <div class="code-line"><span class="line-number">3</span><span class="line-content"><span class="syn-tag">&lt;head&gt;</span></span></div>
+              <div class="code-line"><span class="line-number">4</span><span class="line-content">  <span class="syn-tag">&lt;meta</span> <span class="syn-attr">charset</span>=<span class="syn-string">"UTF-8"</span><span class="syn-tag">&gt;</span></span></div>
+              <div class="code-line"><span class="line-number">5</span><span class="line-content">  <span class="syn-tag">&lt;title&gt;</span>Flowboard - AI Project Management<span class="syn-tag">&lt;/title&gt;</span></span></div>
+              <div class="code-line"><span class="line-number">6</span><span class="line-content">  <span class="syn-tag">&lt;script</span> <span class="syn-attr">src</span>=<span class="syn-string">"https://cdn.tailwindcss.com"</span><span class="syn-tag">&gt;&lt;/script&gt;</span></span></div>
+              <div class="code-line"><span class="line-number">7</span><span class="line-content"><span class="syn-tag">&lt;/head&gt;</span></span></div>
+              <div class="code-line"><span class="line-number">8</span><span class="line-content"><span class="syn-tag">&lt;body</span> <span class="syn-attr">class</span>=<span class="syn-string">"bg-slate-950 text-white"</span><span class="syn-tag">&gt;</span></span></div>
+              <div class="code-line"><span class="line-number">9</span><span class="line-content"></span></div>
+              <div class="code-line"><span class="line-number">10</span><span class="line-content">  <span class="syn-comment">&lt;!-- Hero Section --&gt;</span></span></div>
+              <div class="code-line"><span class="line-number">11</span><span class="line-content">  <span class="syn-tag">&lt;section</span> <span class="syn-attr">class</span>=<span class="syn-string">"relative min-h-screen"</span><span class="syn-tag">&gt;</span></span></div>
+              <div class="code-line"><span class="line-number">12</span><span class="line-content">    <span class="syn-tag">&lt;div</span> <span class="syn-attr">class</span>=<span class="syn-string">"absolute inset-0 bg-gradient-to-br</span></span></div>
+              <div class="code-line"><span class="line-number">13</span><span class="line-content"><span class="syn-string">         from-indigo-900/20 via-slate-950 to-emerald-900/20"</span><span class="syn-tag">&gt;</span></span></div>
+              <div class="code-line"><span class="line-number">14</span><span class="line-content">    <span class="syn-tag">&lt;/div&gt;</span></span></div>
+              <div class="code-line"><span class="line-number">15</span><span class="line-content"></span></div>
+              <div class="code-line"><span class="line-number">16</span><span class="line-content">    <span class="syn-tag">&lt;nav</span> <span class="syn-attr">class</span>=<span class="syn-string">"relative z-10 flex items-center</span></span></div>
+              <div class="code-line"><span class="line-number">17</span><span class="line-content"><span class="syn-string">         justify-between px-8 py-6"</span><span class="syn-tag">&gt;</span></span></div>
+              <div class="code-line"><span class="line-number">18</span><span class="line-content">      <span class="syn-tag">&lt;div</span> <span class="syn-attr">class</span>=<span class="syn-string">"text-2xl font-bold"</span><span class="syn-tag">&gt;</span></span></div>
+              <div class="code-line"><span class="line-number">19</span><span class="line-content">        Flowboard</span></div>
+              <div class="code-line"><span class="line-number">20</span><span class="line-content">      <span class="syn-tag">&lt;/div&gt;</span></span></div>
+            </div>
+          </div>
+          
+          <div class="artifacts-footer">
+            <div class="version-selector">
+              <button class="version-btn">v1</button>
+              <button class="version-btn active">v2</button>
+            </div>
+            <button class="diff-toggle">Show Diff</button>
+          </div>
+        </div>
+      </div>
+    </main>
+  </div>
+</body>
+</html>

@@ -1,0 +1,688 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Jelico - Provider Setup</title>
+  
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&family=JetBrains+Mono:wght@400;500&family=Instrument+Serif:ital@0;1&display=swap" rel="stylesheet">
+  
+  <style>
+    :root {
+      --bg-void: #08080a;
+      --bg-deep: #0d0d10;
+      --bg-surface: #141418;
+      --bg-elevated: #1a1a20;
+      --bg-hover: #222228;
+      --bg-active: #2a2a32;
+      
+      --text-primary: #f5f4f1;
+      --text-secondary: #a8a5a0;
+      --text-muted: #6b6860;
+      --text-faint: #3d3b38;
+      
+      --accent-primary: #e8a84c;
+      --accent-bright: #f4c171;
+      --accent-dim: #b8863d;
+      --accent-glow: rgba(232, 168, 76, 0.15);
+      
+      --success: #5cb97b;
+      --error: #e85c5c;
+      
+      --border-subtle: rgba(255, 255, 255, 0.06);
+      --border-default: rgba(255, 255, 255, 0.1);
+      --border-strong: rgba(255, 255, 255, 0.15);
+      
+      --font-display: 'Instrument Serif', Georgia, serif;
+      --font-body: 'DM Sans', -apple-system, sans-serif;
+      --font-mono: 'JetBrains Mono', monospace;
+      
+      --radius-sm: 6px;
+      --radius-md: 10px;
+      --radius-lg: 14px;
+      --radius-xl: 20px;
+    }
+    
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+    
+    body {
+      font-family: var(--font-body);
+      background: var(--bg-void);
+      color: var(--text-primary);
+      line-height: 1.5;
+      font-size: 14px;
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    
+    .setup-container {
+      width: 100%;
+      max-width: 560px;
+      padding: 40px;
+    }
+    
+    /* Welcome Screen */
+    .welcome-screen {
+      text-align: center;
+      animation: fadeIn 0.5s ease;
+    }
+    
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(10px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+    
+    .welcome-logo {
+      width: 72px;
+      height: 72px;
+      background: linear-gradient(135deg, var(--accent-primary) 0%, var(--accent-dim) 100%);
+      border-radius: 16px;
+      margin: 0 auto 24px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-family: var(--font-display);
+      font-size: 36px;
+      color: var(--bg-void);
+      box-shadow: 0 8px 32px rgba(232, 168, 76, 0.2);
+    }
+    
+    .welcome-title {
+      font-family: var(--font-display);
+      font-size: 32px;
+      font-weight: 400;
+      margin-bottom: 8px;
+      letter-spacing: -0.02em;
+    }
+    
+    .welcome-subtitle {
+      color: var(--text-secondary);
+      font-size: 16px;
+      margin-bottom: 48px;
+    }
+    
+    .provider-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 12px;
+      margin-bottom: 32px;
+    }
+    
+    .provider-card {
+      background: var(--bg-surface);
+      border: 1px solid var(--border-default);
+      border-radius: var(--radius-lg);
+      padding: 20px 16px;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      text-align: center;
+    }
+    
+    .provider-card:hover {
+      background: var(--bg-elevated);
+      border-color: var(--border-strong);
+      transform: translateY(-2px);
+    }
+    
+    .provider-card.selected {
+      border-color: var(--accent-primary);
+      background: var(--accent-glow);
+      box-shadow: 0 0 0 3px var(--accent-glow);
+    }
+    
+    .provider-icon {
+      width: 40px;
+      height: 40px;
+      margin: 0 auto 12px;
+      border-radius: var(--radius-sm);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 20px;
+      font-weight: 600;
+    }
+    
+    .provider-icon.anthropic {
+      background: linear-gradient(135deg, #d4a574 0%, #b8956a 100%);
+      color: #1a1510;
+    }
+    
+    .provider-icon.openai {
+      background: linear-gradient(135deg, #10a37f 0%, #0d8a6a 100%);
+      color: white;
+    }
+    
+    .provider-icon.google {
+      background: linear-gradient(135deg, #4285f4 0%, #3367d6 100%);
+      color: white;
+    }
+    
+    .provider-icon.ollama {
+      background: linear-gradient(135deg, #ffffff 0%, #e0e0e0 100%);
+      color: #1a1a1a;
+    }
+    
+    .provider-icon.openrouter {
+      background: linear-gradient(135deg, #6366f1 0%, #4f46e5 100%);
+      color: white;
+    }
+    
+    .provider-icon.custom {
+      background: var(--bg-elevated);
+      color: var(--text-secondary);
+      border: 1px dashed var(--border-default);
+    }
+    
+    .provider-name {
+      font-size: 13px;
+      font-weight: 500;
+      color: var(--text-primary);
+      margin-bottom: 2px;
+    }
+    
+    .provider-desc {
+      font-size: 11px;
+      color: var(--text-muted);
+    }
+    
+    .skip-link {
+      color: var(--text-muted);
+      font-size: 13px;
+      text-decoration: none;
+      transition: color 0.15s ease;
+    }
+    
+    .skip-link:hover {
+      color: var(--text-secondary);
+    }
+    
+    /* Configuration Screen */
+    .config-screen {
+      animation: slideIn 0.3s ease;
+    }
+    
+    @keyframes slideIn {
+      from { opacity: 0; transform: translateX(20px); }
+      to { opacity: 1; transform: translateX(0); }
+    }
+    
+    .config-header {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      margin-bottom: 32px;
+    }
+    
+    .back-btn {
+      width: 36px;
+      height: 36px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: var(--bg-surface);
+      border: 1px solid var(--border-default);
+      border-radius: var(--radius-sm);
+      color: var(--text-secondary);
+      cursor: pointer;
+      transition: all 0.15s ease;
+    }
+    
+    .back-btn:hover {
+      background: var(--bg-hover);
+      color: var(--text-primary);
+    }
+    
+    .config-title {
+      font-family: var(--font-display);
+      font-size: 24px;
+      font-weight: 400;
+    }
+    
+    .config-form {
+      background: var(--bg-surface);
+      border: 1px solid var(--border-subtle);
+      border-radius: var(--radius-lg);
+      padding: 24px;
+    }
+    
+    .form-group {
+      margin-bottom: 20px;
+    }
+    
+    .form-group:last-of-type {
+      margin-bottom: 0;
+    }
+    
+    .form-label {
+      display: block;
+      font-size: 13px;
+      font-weight: 500;
+      color: var(--text-primary);
+      margin-bottom: 8px;
+    }
+    
+    .form-input {
+      width: 100%;
+      padding: 12px 14px;
+      background: var(--bg-deep);
+      border: 1px solid var(--border-default);
+      border-radius: var(--radius-sm);
+      color: var(--text-primary);
+      font-family: var(--font-body);
+      font-size: 14px;
+      transition: all 0.15s ease;
+    }
+    
+    .form-input:focus {
+      outline: none;
+      border-color: var(--accent-dim);
+      box-shadow: 0 0 0 3px var(--accent-glow);
+    }
+    
+    .form-input::placeholder {
+      color: var(--text-muted);
+    }
+    
+    .form-input.mono {
+      font-family: var(--font-mono);
+      font-size: 13px;
+    }
+    
+    .form-hint {
+      margin-top: 8px;
+      font-size: 12px;
+      color: var(--text-muted);
+    }
+    
+    .form-hint a {
+      color: var(--accent-primary);
+      text-decoration: none;
+    }
+    
+    .form-hint a:hover {
+      text-decoration: underline;
+    }
+    
+    .form-select {
+      width: 100%;
+      padding: 12px 14px;
+      background: var(--bg-deep);
+      border: 1px solid var(--border-default);
+      border-radius: var(--radius-sm);
+      color: var(--text-primary);
+      font-family: var(--font-body);
+      font-size: 14px;
+      cursor: pointer;
+      appearance: none;
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' fill='%236b6860' viewBox='0 0 24 24'%3E%3Cpath d='M7 10l5 5 5-5z'/%3E%3C/svg%3E");
+      background-repeat: no-repeat;
+      background-position: right 12px center;
+    }
+    
+    .form-select:focus {
+      outline: none;
+      border-color: var(--accent-dim);
+      box-shadow: 0 0 0 3px var(--accent-glow);
+    }
+    
+    .form-actions {
+      display: flex;
+      justify-content: flex-end;
+      gap: 12px;
+      margin-top: 24px;
+    }
+    
+    .btn {
+      padding: 10px 20px;
+      border-radius: var(--radius-sm);
+      font-family: var(--font-body);
+      font-size: 14px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: all 0.15s ease;
+    }
+    
+    .btn-secondary {
+      background: var(--bg-elevated);
+      border: 1px solid var(--border-default);
+      color: var(--text-secondary);
+    }
+    
+    .btn-secondary:hover {
+      background: var(--bg-hover);
+      color: var(--text-primary);
+    }
+    
+    .btn-primary {
+      background: var(--accent-primary);
+      border: 1px solid var(--accent-primary);
+      color: var(--bg-void);
+    }
+    
+    .btn-primary:hover {
+      background: var(--accent-bright);
+      border-color: var(--accent-bright);
+      box-shadow: 0 4px 16px rgba(232, 168, 76, 0.3);
+    }
+    
+    .security-note {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-top: 16px;
+      padding: 12px;
+      background: rgba(92, 185, 123, 0.1);
+      border-radius: var(--radius-sm);
+      font-size: 12px;
+      color: var(--success);
+    }
+    
+    .security-note svg {
+      flex-shrink: 0;
+    }
+    
+    /* Ollama Config */
+    .status-indicator {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 12px 16px;
+      background: var(--bg-deep);
+      border-radius: var(--radius-sm);
+      margin-bottom: 20px;
+    }
+    
+    .status-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+    }
+    
+    .status-dot.online {
+      background: var(--success);
+      box-shadow: 0 0 8px var(--success);
+    }
+    
+    .status-dot.offline {
+      background: var(--error);
+    }
+    
+    .status-text {
+      font-size: 13px;
+      color: var(--text-secondary);
+    }
+    
+    .model-list {
+      background: var(--bg-deep);
+      border: 1px solid var(--border-subtle);
+      border-radius: var(--radius-sm);
+      max-height: 200px;
+      overflow-y: auto;
+    }
+    
+    .model-item {
+      display: flex;
+      align-items: center;
+      padding: 12px 14px;
+      border-bottom: 1px solid var(--border-subtle);
+      cursor: pointer;
+      transition: background 0.15s ease;
+    }
+    
+    .model-item:last-child {
+      border-bottom: none;
+    }
+    
+    .model-item:hover {
+      background: var(--bg-surface);
+    }
+    
+    .model-checkbox {
+      width: 16px;
+      height: 16px;
+      border: 1px solid var(--border-default);
+      border-radius: 3px;
+      margin-right: 12px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: all 0.15s ease;
+    }
+    
+    .model-item.selected .model-checkbox {
+      background: var(--accent-primary);
+      border-color: var(--accent-primary);
+    }
+    
+    .model-item.selected .model-checkbox::after {
+      content: '✓';
+      font-size: 10px;
+      color: var(--bg-void);
+    }
+    
+    .model-info {
+      flex: 1;
+    }
+    
+    .model-name {
+      font-size: 13px;
+      font-weight: 500;
+      color: var(--text-primary);
+      font-family: var(--font-mono);
+    }
+    
+    .model-meta {
+      font-size: 11px;
+      color: var(--text-muted);
+      margin-top: 2px;
+    }
+    
+    .model-action {
+      padding: 4px 10px;
+      background: var(--bg-surface);
+      border: 1px solid var(--border-default);
+      border-radius: var(--radius-sm);
+      color: var(--text-muted);
+      font-size: 11px;
+      cursor: pointer;
+      transition: all 0.15s ease;
+    }
+    
+    .model-action:hover {
+      background: var(--bg-hover);
+      color: var(--text-primary);
+    }
+  </style>
+</head>
+<body>
+  <div class="setup-container">
+    
+    <!-- Welcome Screen (shown first) -->
+    <div class="welcome-screen" style="display: none;">
+      <div class="welcome-logo">J</div>
+      <h1 class="welcome-title">Welcome to Jelico</h1>
+      <p class="welcome-subtitle">Your AI productivity partner</p>
+      
+      <p style="color: var(--text-secondary); margin-bottom: 24px; font-size: 15px;">
+        To get started, add an AI provider:
+      </p>
+      
+      <div class="provider-grid">
+        <div class="provider-card">
+          <div class="provider-icon anthropic">A</div>
+          <div class="provider-name">Anthropic</div>
+          <div class="provider-desc">Claude</div>
+        </div>
+        <div class="provider-card">
+          <div class="provider-icon openai">⬡</div>
+          <div class="provider-name">OpenAI</div>
+          <div class="provider-desc">GPT-4o</div>
+        </div>
+        <div class="provider-card">
+          <div class="provider-icon google">G</div>
+          <div class="provider-name">Google</div>
+          <div class="provider-desc">Gemini</div>
+        </div>
+        <div class="provider-card">
+          <div class="provider-icon ollama">🦙</div>
+          <div class="provider-name">Ollama</div>
+          <div class="provider-desc">Local</div>
+        </div>
+        <div class="provider-card">
+          <div class="provider-icon openrouter">◈</div>
+          <div class="provider-name">OpenRouter</div>
+          <div class="provider-desc">Any Model</div>
+        </div>
+        <div class="provider-card">
+          <div class="provider-icon custom">+</div>
+          <div class="provider-name">Custom</div>
+          <div class="provider-desc">OpenAI API</div>
+        </div>
+      </div>
+      
+      <a href="#" class="skip-link">Skip — I'll do this later</a>
+    </div>
+    
+    <!-- Anthropic Config Screen -->
+    <div class="config-screen" style="display: none;">
+      <div class="config-header">
+        <button class="back-btn">
+          <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/>
+          </svg>
+        </button>
+        <h2 class="config-title">Anthropic Setup</h2>
+      </div>
+      
+      <div class="config-form">
+        <div class="form-group">
+          <label class="form-label">API Key</label>
+          <input type="password" class="form-input mono" placeholder="sk-ant-api03-..." value="sk-ant-api03-••••••••••••••••••••••••">
+          <p class="form-hint">Get your API key at <a href="#">console.anthropic.com →</a></p>
+        </div>
+        
+        <div class="form-group">
+          <label class="form-label">Display Name <span style="color: var(--text-muted)">(optional)</span></label>
+          <input type="text" class="form-input" placeholder="Personal, Work, etc." value="Personal">
+        </div>
+        
+        <div class="form-group">
+          <label class="form-label">Default Model</label>
+          <select class="form-select">
+            <option>Claude Sonnet 4 (claude-sonnet-4-20250514)</option>
+            <option>Claude Opus 4 (claude-opus-4-20250514)</option>
+            <option>Claude Haiku 3.5 (claude-3-5-haiku-20241022)</option>
+          </select>
+        </div>
+        
+        <div class="form-actions">
+          <button class="btn btn-secondary">Test Connection</button>
+          <button class="btn btn-primary">Save & Continue</button>
+        </div>
+      </div>
+      
+      <div class="security-note">
+        <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/>
+        </svg>
+        Key stored securely in system keychain
+      </div>
+    </div>
+    
+    <!-- Ollama Config Screen (shown) -->
+    <div class="config-screen">
+      <div class="config-header">
+        <button class="back-btn">
+          <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/>
+          </svg>
+        </button>
+        <h2 class="config-title">Configure Ollama</h2>
+      </div>
+      
+      <div class="config-form">
+        <p style="color: var(--text-secondary); margin-bottom: 20px; font-size: 14px;">
+          Ollama runs AI models locally on your machine.
+        </p>
+        
+        <div class="status-indicator">
+          <span class="status-dot online"></span>
+          <span class="status-text">Running at localhost:11434</span>
+        </div>
+        
+        <div class="form-group">
+          <label class="form-label">Server URL</label>
+          <input type="text" class="form-input mono" value="http://localhost:11434">
+        </div>
+        
+        <div class="form-group">
+          <label class="form-label" style="display: flex; justify-content: space-between; align-items: center;">
+            Available Models
+            <button class="model-action">Refresh</button>
+          </label>
+          <div class="model-list">
+            <div class="model-item selected">
+              <div class="model-checkbox"></div>
+              <div class="model-info">
+                <div class="model-name">llama3.1:70b</div>
+                <div class="model-meta">70B params · 39 GB</div>
+              </div>
+            </div>
+            <div class="model-item selected">
+              <div class="model-checkbox"></div>
+              <div class="model-info">
+                <div class="model-name">codestral:latest</div>
+                <div class="model-meta">22B params · 12 GB</div>
+              </div>
+            </div>
+            <div class="model-item selected">
+              <div class="model-checkbox"></div>
+              <div class="model-info">
+                <div class="model-name">mistral:latest</div>
+                <div class="model-meta">7B params · 4 GB</div>
+              </div>
+            </div>
+            <div class="model-item">
+              <div class="model-checkbox"></div>
+              <div class="model-info">
+                <div class="model-name">llama3.1:8b</div>
+                <div class="model-meta">8B params · 5 GB</div>
+              </div>
+              <button class="model-action">Pull</button>
+            </div>
+          </div>
+        </div>
+        
+        <div class="form-group">
+          <label class="form-label">Default Model</label>
+          <select class="form-select">
+            <option>llama3.1:70b</option>
+            <option>codestral:latest</option>
+            <option>mistral:latest</option>
+          </select>
+        </div>
+        
+        <div class="form-actions">
+          <button class="btn btn-secondary">Cancel</button>
+          <button class="btn btn-primary">Save</button>
+        </div>
+      </div>
+      
+      <p style="text-align: center; margin-top: 16px;">
+        <a href="#" class="skip-link" style="font-size: 13px;">
+          Don't have Ollama? Install it at ollama.ai →
+        </a>
+      </p>
+    </div>
+    
+  </div>
+</body>
+</html>
