@@ -27,10 +27,9 @@ npm-debug.log*
 # Electron
 release/
 
-# SQLite database (user data)
+# User data
 *.db
-
-# Keys (encrypted, but still exclude)
+jelico-data.json
 keys.json
 
 # Windows Zone.Identifier files

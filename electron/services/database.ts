@@ -1,99 +1,64 @@
-import initSqlJs, { Database as SqlJsDatabase } from 'sql.js'
 import { app } from 'electron'
 import path from 'path'
 import fs from 'fs'
 import { v4 as uuid } from 'uuid'
 
-let db: SqlJsDatabase
-let dbPath: string
+// Simple JSON file-based storage for Phase 1
+// More reliable than sql.js with Electron bundling
 
-export async function initDatabase() {
-  const SQL = await initSqlJs()
-  dbPath = path.join(app.getPath('userData'), 'jelico.db')
+interface DbSchema {
+  providers: ProviderRow[]
+  conversations: ConversationRow[]
+  messages: MessageRow[]
+}
 
-  // Load existing database or create new one
-  if (fs.existsSync(dbPath)) {
-    const fileBuffer = fs.readFileSync(dbPath)
-    db = new SQL.Database(fileBuffer)
-  } else {
-    db = new SQL.Database()
-  }
+let db: DbSchema = {
+  providers: [],
+  conversations: [],
+  messages: [],
+}
 
-  // Create tables
-  db.run(`
-    -- Providers (metadata only, keys stored separately)
-    CREATE TABLE IF NOT EXISTS providers (
-      id TEXT PRIMARY KEY,
-      type TEXT NOT NULL,
-      name TEXT NOT NULL,
-      base_url TEXT,
-      default_model TEXT NOT NULL,
-      is_default INTEGER DEFAULT 0,
-      created_at INTEGER NOT NULL,
-      updated_at INTEGER NOT NULL
-    );
+function getDbPath() {
+  return path.join(app.getPath('userData'), 'jelico-data.json')
+}
 
-    -- Conversations
-    CREATE TABLE IF NOT EXISTS conversations (
-      id TEXT PRIMARY KEY,
-      title TEXT NOT NULL,
-      workspace_id TEXT,
-      model TEXT NOT NULL,
-      provider_id TEXT NOT NULL,
-      created_at INTEGER NOT NULL,
-      updated_at INTEGER NOT NULL
-    );
-
-    -- Messages
-    CREATE TABLE IF NOT EXISTS messages (
-      id TEXT PRIMARY KEY,
-      conversation_id TEXT NOT NULL,
-      role TEXT NOT NULL,
-      content TEXT NOT NULL,
-      created_at INTEGER NOT NULL,
-      FOREIGN KEY (conversation_id) REFERENCES conversations(id) ON DELETE CASCADE
-    );
-  `)
-
-  // Create indexes
+function loadDb(): void {
   try {
-    db.run('CREATE INDEX IF NOT EXISTS idx_messages_conversation ON messages(conversation_id)')
-    db.run('CREATE INDEX IF NOT EXISTS idx_conversations_updated ON conversations(updated_at DESC)')
-  } catch {
-    // Indexes may already exist
+    const dbPath = getDbPath()
+    if (fs.existsSync(dbPath)) {
+      const content = fs.readFileSync(dbPath, 'utf-8')
+      db = JSON.parse(content)
+    }
+  } catch (err) {
+    console.error('Failed to load database:', err)
+    db = { providers: [], conversations: [], messages: [] }
   }
-
-  saveDatabase()
 }
 
-function saveDatabase() {
-  const data = db.export()
-  const buffer = Buffer.from(data)
-  fs.writeFileSync(dbPath, buffer)
+function saveDb(): void {
+  try {
+    fs.writeFileSync(getDbPath(), JSON.stringify(db, null, 2))
+  } catch (err) {
+    console.error('Failed to save database:', err)
+  }
 }
 
-export function getDatabase() {
-  return db
-}
-
-// Helper to run queries and save
-function runAndSave(sql: string, params: any[] = []) {
-  db.run(sql, params)
-  saveDatabase()
+export async function initDatabase(): Promise<void> {
+  loadDb()
+  console.log('Database initialized at:', getDbPath())
 }
 
 // Provider operations
 export const providerDb = {
   list(): ProviderRow[] {
-    const result = db.exec('SELECT * FROM providers ORDER BY is_default DESC, name ASC')
-    if (!result.length) return []
-    return resultToObjects(result[0]) as ProviderRow[]
+    return [...db.providers].sort((a, b) => {
+      if (a.is_default !== b.is_default) return b.is_default - a.is_default
+      return a.name.localeCompare(b.name)
+    })
   },
 
   get(id: string): ProviderRow | null {
-    const result = db.exec('SELECT * FROM providers WHERE id = ?', [id])
-    if (!result.length || !result[0].values.length) return null
-    return resultToObjects(result[0])[0] as ProviderRow
+    return db.providers.find(p => p.id === id) || null
   },
 
   create(provider: ProviderInput): ProviderRow {
@@ -102,91 +67,88 @@ export const providerDb = {
 
     // If this is marked as default, clear other defaults
     if (provider.isDefault) {
-      runAndSave('UPDATE providers SET is_default = 0')
+      db.providers.forEach(p => p.is_default = 0)
     }
 
     // If no providers exist, make this one default
-    const countResult = db.exec('SELECT COUNT(*) as count FROM providers')
-    const count = countResult.length ? (countResult[0].values[0][0] as number) : 0
-    const isDefault = provider.isDefault || count === 0
+    const isDefault = provider.isDefault || db.providers.length === 0
 
-    runAndSave(`
-      INSERT INTO providers (id, type, name, base_url, default_model, is_default, created_at, updated_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-    `, [id, provider.type, provider.name, provider.baseUrl || null, provider.defaultModel, isDefault ? 1 : 0, now, now])
+    const record: ProviderRow = {
+      id,
+      type: provider.type,
+      name: provider.name,
+      base_url: provider.baseUrl || null,
+      default_model: provider.defaultModel,
+      is_default: isDefault ? 1 : 0,
+      created_at: now,
+      updated_at: now,
+    }
 
-    return this.get(id)!
+    db.providers.push(record)
+    saveDb()
+    return record
   },
 
   update(id: string, updates: Partial<ProviderInput>): ProviderRow | null {
-    const provider = this.get(id)
-    if (!provider) return null
+    const index = db.providers.findIndex(p => p.id === id)
+    if (index === -1) return null
 
     const now = Date.now()
 
     if (updates.isDefault) {
-      runAndSave('UPDATE providers SET is_default = 0')
+      db.providers.forEach(p => p.is_default = 0)
     }
 
-    const fields: string[] = []
-    const values: any[] = []
+    const provider = db.providers[index]
+    if (updates.type !== undefined) provider.type = updates.type
+    if (updates.name !== undefined) provider.name = updates.name
+    if (updates.baseUrl !== undefined) provider.base_url = updates.baseUrl || null
+    if (updates.defaultModel !== undefined) provider.default_model = updates.defaultModel
+    if (updates.isDefault !== undefined) provider.is_default = updates.isDefault ? 1 : 0
+    provider.updated_at = now
 
-    if (updates.type !== undefined) { fields.push('type = ?'); values.push(updates.type) }
-    if (updates.name !== undefined) { fields.push('name = ?'); values.push(updates.name) }
-    if (updates.baseUrl !== undefined) { fields.push('base_url = ?'); values.push(updates.baseUrl || null) }
-    if (updates.defaultModel !== undefined) { fields.push('default_model = ?'); values.push(updates.defaultModel) }
-    if (updates.isDefault !== undefined) { fields.push('is_default = ?'); values.push(updates.isDefault ? 1 : 0) }
-
-    fields.push('updated_at = ?')
-    values.push(now)
-    values.push(id)
-
-    runAndSave(`UPDATE providers SET ${fields.join(', ')} WHERE id = ?`, values)
-
-    return this.get(id)
+    saveDb()
+    return provider
   },
 
   delete(id: string): void {
-    const provider = this.get(id)
-    runAndSave('DELETE FROM providers WHERE id = ?', [id])
+    const index = db.providers.findIndex(p => p.id === id)
+    if (index === -1) return
+
+    const wasDefault = db.providers[index].is_default === 1
+    db.providers.splice(index, 1)
 
     // If deleted provider was default, make another one default
-    if (provider?.is_default) {
-      const firstResult = db.exec('SELECT id FROM providers LIMIT 1')
-      if (firstResult.length && firstResult[0].values.length) {
-        const firstId = firstResult[0].values[0][0] as string
-        runAndSave('UPDATE providers SET is_default = 1 WHERE id = ?', [firstId])
-      }
+    if (wasDefault && db.providers.length > 0) {
+      db.providers[0].is_default = 1
     }
+
+    saveDb()
   },
 
   getDefault(): ProviderRow | null {
-    const result = db.exec('SELECT * FROM providers WHERE is_default = 1')
-    if (!result.length || !result[0].values.length) return null
-    return resultToObjects(result[0])[0] as ProviderRow
+    return db.providers.find(p => p.is_default === 1) || null
   },
 }
 
 // Conversation operations
 export const conversationDb = {
   list(): ConversationRow[] {
-    const result = db.exec('SELECT * FROM conversations ORDER BY updated_at DESC')
-    if (!result.length) return []
-    return resultToObjects(result[0]) as ConversationRow[]
+    return [...db.conversations].sort((a, b) => b.updated_at - a.updated_at)
   },
 
   get(id: string): ConversationRow | null {
-    const result = db.exec('SELECT * FROM conversations WHERE id = ?', [id])
-    if (!result.length || !result[0].values.length) return null
-    return resultToObjects(result[0])[0] as ConversationRow
+    return db.conversations.find(c => c.id === id) || null
   },
 
   getWithMessages(id: string): (ConversationRow & { messages: MessageRow[] }) | null {
     const conversation = this.get(id)
     if (!conversation) return null
 
-    const messagesResult = db.exec('SELECT * FROM messages WHERE conversation_id = ? ORDER BY created_at ASC', [id])
-    const messages = messagesResult.length ? resultToObjects(messagesResult[0]) as MessageRow[] : []
+    const messages = db.messages
+      .filter(m => m.conversation_id === id)
+      .sort((a, b) => a.created_at - b.created_at)
+
     return { ...conversation, messages }
   },
 
@@ -194,27 +156,44 @@ export const conversationDb = {
     const now = Date.now()
     const id = uuid()
 
-    runAndSave(`
-      INSERT INTO conversations (id, title, workspace_id, model, provider_id, created_at, updated_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?)
-    `, [id, conv.title, conv.workspaceId || null, conv.model, conv.providerId, now, now])
+    const record: ConversationRow = {
+      id,
+      title: conv.title,
+      workspace_id: conv.workspaceId || null,
+      model: conv.model,
+      provider_id: conv.providerId,
+      created_at: now,
+      updated_at: now,
+    }
 
-    return this.get(id)!
+    db.conversations.push(record)
+    saveDb()
+    return record
   },
 
   updateTitle(id: string, title: string): void {
-    const now = Date.now()
-    runAndSave('UPDATE conversations SET title = ?, updated_at = ? WHERE id = ?', [title, now, id])
+    const conv = db.conversations.find(c => c.id === id)
+    if (conv) {
+      conv.title = title
+      conv.updated_at = Date.now()
+      saveDb()
+    }
   },
 
   touch(id: string): void {
-    const now = Date.now()
-    runAndSave('UPDATE conversations SET updated_at = ? WHERE id = ?', [now, id])
+    const conv = db.conversations.find(c => c.id === id)
+    if (conv) {
+      conv.updated_at = Date.now()
+      saveDb()
+    }
   },
 
   delete(id: string): void {
-    runAndSave('DELETE FROM messages WHERE conversation_id = ?', [id])
-    runAndSave('DELETE FROM conversations WHERE id = ?', [id])
+    // Delete messages first
+    db.messages = db.messages.filter(m => m.conversation_id !== id)
+    // Delete conversation
+    db.conversations = db.conversations.filter(c => c.id !== id)
+    saveDb()
   },
 }
 
@@ -224,34 +203,28 @@ export const messageDb = {
     const now = Date.now()
     const id = uuid()
 
-    runAndSave(`
-      INSERT INTO messages (id, conversation_id, role, content, created_at)
-      VALUES (?, ?, ?, ?, ?)
-    `, [id, conversationId, message.role, message.content, now])
+    const record: MessageRow = {
+      id,
+      conversation_id: conversationId,
+      role: message.role,
+      content: message.content,
+      created_at: now,
+    }
+
+    db.messages.push(record)
 
     // Update conversation timestamp
     conversationDb.touch(conversationId)
 
-    const result = db.exec('SELECT * FROM messages WHERE id = ?', [id])
-    return resultToObjects(result[0])[0] as MessageRow
+    saveDb()
+    return record
   },
 
   getByConversation(conversationId: string): MessageRow[] {
-    const result = db.exec('SELECT * FROM messages WHERE conversation_id = ? ORDER BY created_at ASC', [conversationId])
-    if (!result.length) return []
-    return resultToObjects(result[0]) as MessageRow[]
+    return db.messages
+      .filter(m => m.conversation_id === conversationId)
+      .sort((a, b) => a.created_at - b.created_at)
   },
-}
-
-// Helper to convert sql.js result to array of objects
-function resultToObjects(result: { columns: string[], values: any[][] }): Record<string, any>[] {
-  return result.values.map(row => {
-    const obj: Record<string, any> = {}
-    result.columns.forEach((col, i) => {
-      obj[col] = row[i]
-    })
-    return obj
-  })
 }
 
 // Types
