@@ -112,31 +112,150 @@ export function ChatArea() {
   )
 }
 
-// Greetings based on time of day
-function getTimeBasedGreeting(): string {
-  const hour = new Date().getHours()
-  if (hour < 12) return 'Good morning'
-  if (hour < 17) return 'Good afternoon'
-  if (hour < 21) return 'Good evening'
-  return 'Working late?'
-}
+// ============================================
+// Soulful Greeting System
+// ============================================
 
-// Variety of casual greetings/prompts
-const CASUAL_GREETINGS = [
-  "What's on your mind?",
-  "What are we working on?",
-  "Ready when you are",
-  "How can I help today?",
-  "Let's get something done",
+// Time-aware greetings (gentle, non-judgmental)
+const MORNING_GREETINGS = [
+  "Fresh start. What's the plan?",
+  "New day. What are we building?",
+  "Morning. What's on the agenda?",
+  "Good morning. What shall we tackle?",
+  "Morning. What's calling for attention?",
+  "A new day. What matters most?",
+  "Morning. Ready when you are.",
+  "Rise and create. What's first?",
 ]
 
+const AFTERNOON_GREETINGS = [
+  "How's it going so far?",
+  "Afternoon. How can I help?",
+  "How's the day shaping up?",
+  "Afternoon. What are we working through?",
+  "What's on your mind this afternoon?",
+  "Midday check-in. What's next?",
+  "Afternoon. What needs attention?",
+  "How can I help move things forward?",
+]
+
+const EVENING_GREETINGS = [
+  "Evening. What's on your mind?",
+  "Evening. What shall we work on?",
+  "How can I help this evening?",
+  "What's worth finishing today?",
+  "Evening. What are you thinking about?",
+  "Settling in. What can we tackle?",
+  "Evening. Ready to help.",
+  "What's calling for your attention?",
+]
+
+// Generic soulful greetings (used late night 9pm-5am, or mixed in anytime)
+const SOULFUL_GREETINGS = [
+  // Warm/Present
+  "Good to have you here.",
+  "Glad you're back.",
+  "Here whenever you're ready.",
+  "Ready to think alongside you.",
+  // Thoughtful/Reflective
+  "What's on your mind?",
+  "What's calling for your attention?",
+  "What are you thinking about?",
+  "What's worth exploring?",
+  "What shall we create?",
+  // Curious/Engaged
+  "Curious what you're working on.",
+  "What's caught your interest?",
+  "What's the challenge today?",
+  "What problem are we solving?",
+  // Encouraging/Grounded
+  "Let's make something happen.",
+  "Let's see what we can build.",
+  "What matters to you right now?",
+  "Alright, what are we working on?",
+  "Let's get into it.",
+  "Let's figure this out together.",
+]
+
+// Follow-up prompts (subtitle text)
 const FOLLOW_UP_PROMPTS = [
-  "Ask me anything or start a task.",
   "I'm here to help with whatever you need.",
   "Let's tackle something together.",
   "What would you like to explore?",
   "Ready to dive in whenever you are.",
+  "Let's see what we can figure out.",
+  "Take your time. I'm not going anywhere.",
+  "What can we build together?",
+  "I'm listening.",
 ]
+
+// Get time period
+type TimePeriod = 'morning' | 'afternoon' | 'evening' | 'night'
+
+function getTimePeriod(): TimePeriod {
+  const hour = new Date().getHours()
+  if (hour >= 5 && hour < 12) return 'morning'
+  if (hour >= 12 && hour < 17) return 'afternoon'
+  if (hour >= 17 && hour < 21) return 'evening'
+  return 'night' // 9pm - 5am
+}
+
+// Get greeting pool based on time
+function getGreetingPool(period: TimePeriod): string[] {
+  switch (period) {
+    case 'morning':
+      return [...MORNING_GREETINGS, ...SOULFUL_GREETINGS.slice(0, 5)]
+    case 'afternoon':
+      return [...AFTERNOON_GREETINGS, ...SOULFUL_GREETINGS.slice(0, 5)]
+    case 'evening':
+      return [...EVENING_GREETINGS, ...SOULFUL_GREETINGS.slice(0, 5)]
+    case 'night':
+      // Late night: only use generic soulful greetings, no time references
+      return SOULFUL_GREETINGS
+  }
+}
+
+// Random selection helper
+function randomFrom<T>(arr: T[]): T {
+  return arr[Math.floor(Math.random() * arr.length)]
+}
+
+// Build the greeting with optional name
+function buildGreeting(baseGreeting: string, userName: string | null): string {
+  // If greeting already feels complete (ends with punctuation and isn't a question to personalize)
+  const endsWithPunctuation = /[.!?]$/.test(baseGreeting)
+
+  if (userName) {
+    // Personalize based on greeting structure
+    if (baseGreeting.startsWith("Good morning") ||
+        baseGreeting.startsWith("Morning") ||
+        baseGreeting.startsWith("Afternoon") ||
+        baseGreeting.startsWith("Evening")) {
+      // "Morning. What's on the agenda?" -> "Morning, Spencer. What's on the agenda?"
+      return baseGreeting.replace(/^(Good morning|Morning|Afternoon|Evening)(\.|\,)?/, `$1, ${userName}.`)
+    }
+    if (baseGreeting.startsWith("Good to have you") ||
+        baseGreeting.startsWith("Glad you're back")) {
+      // "Good to have you here." -> "Good to have you here, Spencer."
+      return baseGreeting.replace(/\.$/, `, ${userName}.`)
+    }
+    if (baseGreeting === "Here whenever you're ready." ||
+        baseGreeting === "Ready to think alongside you.") {
+      return `Hey ${userName}. ${baseGreeting}`
+    }
+    // For questions or action statements, prepend name
+    if (!endsWithPunctuation || baseGreeting.endsWith('?')) {
+      return `${userName}, ${baseGreeting.toLowerCase()}`
+    }
+    return `Hey ${userName}. ${baseGreeting}`
+  }
+
+  // No name - use greeting as-is, but ensure warmth
+  if (baseGreeting === "Curious what you're working on.") {
+    return "I'm curious what you're working on."
+  }
+  return baseGreeting
+}
 
 interface NewChatViewProps {
   disabled?: boolean
@@ -147,13 +266,12 @@ function NewChatView({ disabled, isStreaming }: NewChatViewProps) {
   const [userName, setUserName] = useState<string | null>(null)
 
   // Get random greeting and prompt (stable per component mount)
-  const { greeting, prompt, useTimeGreeting } = useMemo(() => {
-    const greetingIndex = Math.floor(Math.random() * CASUAL_GREETINGS.length)
-    const promptIndex = Math.floor(Math.random() * FOLLOW_UP_PROMPTS.length)
+  const { greeting, followUp } = useMemo(() => {
+    const period = getTimePeriod()
+    const pool = getGreetingPool(period)
     return {
-      greeting: CASUAL_GREETINGS[greetingIndex],
-      prompt: FOLLOW_UP_PROMPTS[promptIndex],
-      useTimeGreeting: Math.random() > 0.5,
+      greeting: randomFrom(pool),
+      followUp: randomFrom(FOLLOW_UP_PROMPTS),
     }
   }, [])
 
@@ -168,7 +286,7 @@ function NewChatView({ disabled, isStreaming }: NewChatViewProps) {
     })
   }, [])
 
-  const timeGreeting = getTimeBasedGreeting()
+  const displayGreeting = buildGreeting(greeting, userName)
 
   return (
     <div className="text-center animate-fade-in space-y-8">
@@ -178,14 +296,10 @@ function NewChatView({ disabled, isStreaming }: NewChatViewProps) {
       {/* Dynamic greeting */}
       <div>
         <h1 className="font-display text-[32px] font-normal text-text-primary mb-3 tracking-tight">
-          {useTimeGreeting ? (
-            userName ? `${timeGreeting}, ${userName}` : timeGreeting
-          ) : (
-            userName ? `Hey ${userName}, ${greeting.toLowerCase()}` : greeting
-          )}
+          {displayGreeting}
         </h1>
         <p className="text-text-secondary text-lg">
-          {prompt}
+          {followUp}
         </p>
       </div>
 
