@@ -43,6 +43,31 @@ contextBridge.exposeInMainWorld('jelico', {
     removeWorktree: (mainWorkspaceId: string, worktreePath: string) =>
       ipcRenderer.invoke('workspaces:removeWorktree', mainWorkspaceId, worktreePath),
   },
+  artifacts: {
+    list: () => ipcRenderer.invoke('artifacts:list'),
+    get: (id: string) => ipcRenderer.invoke('artifacts:get', id),
+    getByConversation: (conversationId: string) => ipcRenderer.invoke('artifacts:getByConversation', conversationId),
+    create: (artifact: any) => ipcRenderer.invoke('artifacts:create', artifact),
+    update: (id: string, updates: any) => ipcRenderer.invoke('artifacts:update', id, updates),
+    delete: (id: string) => ipcRenderer.invoke('artifacts:delete', id),
+    deleteByConversation: (conversationId: string) => ipcRenderer.invoke('artifacts:deleteByConversation', conversationId),
+  },
+  sandbox: {
+    getPath: () => ipcRenderer.invoke('sandbox:getPath'),
+    getConversationPath: (conversationId: string) => ipcRenderer.invoke('sandbox:getConversationPath', conversationId),
+    listFiles: (conversationId: string) => ipcRenderer.invoke('sandbox:listFiles', conversationId),
+    getStructure: (conversationId: string) => ipcRenderer.invoke('sandbox:getStructure', conversationId),
+    writeFile: (conversationId: string, relativePath: string, content: string) =>
+      ipcRenderer.invoke('sandbox:writeFile', conversationId, relativePath, content),
+    readFile: (conversationId: string, relativePath: string) =>
+      ipcRenderer.invoke('sandbox:readFile', conversationId, relativePath),
+    deleteFile: (conversationId: string, relativePath: string) =>
+      ipcRenderer.invoke('sandbox:deleteFile', conversationId, relativePath),
+    clear: (conversationId: string) => ipcRenderer.invoke('sandbox:clear', conversationId),
+    export: (conversationId: string) => ipcRenderer.invoke('sandbox:export', conversationId),
+    exportToPath: (conversationId: string, destinationPath: string) =>
+      ipcRenderer.invoke('sandbox:exportToPath', conversationId, destinationPath),
+  },
   ai: {
     stream: (params: any) => {
       const channelId = crypto.randomUUID()

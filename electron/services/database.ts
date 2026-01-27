@@ -11,6 +11,7 @@ interface DbSchema {
   conversations: ConversationRow[]
   messages: MessageRow[]
   workspaces: WorkspaceRow[]
+  artifacts: ArtifactRow[]
 }
 
 let db: DbSchema = {
@@ -18,6 +19,7 @@ let db: DbSchema = {
   conversations: [],
   messages: [],
   workspaces: [],
+  artifacts: [],
 }
 
 function getDbPath() {
@@ -30,14 +32,17 @@ function loadDb(): void {
     if (fs.existsSync(dbPath)) {
       const content = fs.readFileSync(dbPath, 'utf-8')
       db = JSON.parse(content)
-      // Ensure workspaces array exists for migration
+      // Ensure arrays exist for migration
       if (!db.workspaces) {
         db.workspaces = []
+      }
+      if (!db.artifacts) {
+        db.artifacts = []
       }
     }
   } catch (err) {
     console.error('Failed to load database:', err)
-    db = { providers: [], conversations: [], messages: [], workspaces: [] }
+    db = { providers: [], conversations: [], messages: [], workspaces: [], artifacts: [] }
   }
 }
 
@@ -373,4 +378,90 @@ interface WorkspaceInput {
   path: string
   isGit?: boolean
   gitBranch?: string
+}
+
+interface ArtifactRow {
+  id: string
+  conversation_id: string | null
+  type: string
+  title: string
+  content: string
+  language: string | null
+  file_path: string | null
+  created_at: number
+  updated_at: number
+}
+
+interface ArtifactInput {
+  conversationId?: string
+  type: string
+  title: string
+  content: string
+  language?: string
+  filePath?: string
+}
+
+// Artifact operations
+export const artifactDb = {
+  list(): ArtifactRow[] {
+    return [...db.artifacts].sort((a, b) => b.updated_at - a.updated_at)
+  },
+
+  get(id: string): ArtifactRow | null {
+    return db.artifacts.find(a => a.id === id) || null
+  },
+
+  getByConversation(conversationId: string): ArtifactRow[] {
+    return db.artifacts
+      .filter(a => a.conversation_id === conversationId)
+      .sort((a, b) => b.updated_at - a.updated_at)
+  },
+
+  create(artifact: ArtifactInput): ArtifactRow {
+    const now = Date.now()
+    const id = uuid()
+
+    const record: ArtifactRow = {
+      id,
+      conversation_id: artifact.conversationId || null,
+      type: artifact.type,
+      title: artifact.title,
+      content: artifact.content,
+      language: artifact.language || null,
+      file_path: artifact.filePath || null,
+      created_at: now,
+      updated_at: now,
+    }
+
+    db.artifacts.push(record)
+    saveDb()
+    return record
+  },
+
+  update(id: string, updates: Partial<ArtifactInput>): ArtifactRow | null {
+    const index = db.artifacts.findIndex(a => a.id === id)
+    if (index === -1) return null
+
+    const artifact = db.artifacts[index]
+    if (updates.conversationId !== undefined) artifact.conversation_id = updates.conversationId || null
+    if (updates.type !== undefined) artifact.type = updates.type
+    if (updates.title !== undefined) artifact.title = updates.title
+    if (updates.content !== undefined) artifact.content = updates.content
+    if (updates.language !== undefined) artifact.language = updates.language || null
+    if (updates.filePath !== undefined) artifact.file_path = updates.filePath || null
+    artifact.updated_at = Date.now()
+
+    saveDb()
+    return artifact
+  },
+
+  delete(id: string): void {
+    db.artifacts = db.artifacts.filter(a => a.id !== id)
+    saveDb()
+  },
+
+  deleteByConversation(conversationId: string): void {
+    db.artifacts = db.artifacts.filter(a => a.conversation_id !== conversationId)
+    saveDb()
+  },
 }

@@ -52,6 +52,27 @@ interface Window {
       stopStream: (channelId: string) => void
       removeListeners: (channelId: string) => void
     }
+    artifacts: {
+      list: () => Promise<ArtifactRow[]>
+      get: (id: string) => Promise<ArtifactRow | null>
+      getByConversation: (conversationId: string) => Promise<ArtifactRow[]>
+      create: (artifact: ArtifactInput) => Promise<ArtifactRow>
+      update: (id: string, updates: Partial<ArtifactInput>) => Promise<ArtifactRow | null>
+      delete: (id: string) => Promise<{ success: boolean }>
+      deleteByConversation: (conversationId: string) => Promise<{ success: boolean }>
+    }
+    sandbox: {
+      getPath: () => Promise<string>
+      getConversationPath: (conversationId: string) => Promise<string>
+      listFiles: (conversationId: string) => Promise<string[]>
+      getStructure: (conversationId: string) => Promise<SandboxDirectoryEntry[]>
+      writeFile: (conversationId: string, relativePath: string, content: string) => Promise<string>
+      readFile: (conversationId: string, relativePath: string) => Promise<string | null>
+      deleteFile: (conversationId: string, relativePath: string) => Promise<boolean>
+      clear: (conversationId: string) => Promise<{ success: boolean }>
+      export: (conversationId: string) => Promise<SandboxExportResult>
+      exportToPath: (conversationId: string, destinationPath: string) => Promise<SandboxExportResult>
+    }
   }
 }
 
@@ -183,4 +204,40 @@ interface GitBranch {
   name: string
   isRemote: boolean
   isCurrent: boolean
+}
+
+interface ArtifactRow {
+  id: string
+  conversation_id: string | null
+  type: string
+  title: string
+  content: string
+  language: string | null
+  file_path: string | null
+  created_at: number
+  updated_at: number
+}
+
+interface ArtifactInput {
+  conversationId?: string
+  type: string
+  title: string
+  content: string
+  language?: string
+  filePath?: string
+}
+
+interface SandboxDirectoryEntry {
+  name: string
+  type: 'file' | 'directory'
+  path: string
+  relativePath: string
+  children?: SandboxDirectoryEntry[]
+}
+
+interface SandboxExportResult {
+  success: boolean
+  filesCopied?: number
+  cancelled?: boolean
+  error?: string
 }

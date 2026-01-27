@@ -142,6 +142,8 @@ export const useChatStore = create<ChatStore>((set, get) => ({
         messages: conversation?.messages || [],
         isLoading: false,
       })
+      // Load artifacts for this conversation
+      useArtifactStore.getState().loadArtifactsForConversation(id)
     } catch (error: any) {
       set({ error: error.message, isLoading: false })
     }
@@ -354,6 +356,8 @@ export const useChatStore = create<ChatStore>((set, get) => ({
 
   deleteConversation: async (id) => {
     try {
+      // Delete artifacts for this conversation
+      await useArtifactStore.getState().clearConversationArtifacts(id)
       await window.jelico.conversations.delete(id)
       const conversations = await window.jelico.conversations.list()
       const { activeConversationId } = get()

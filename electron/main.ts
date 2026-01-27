@@ -5,6 +5,8 @@ import { registerProviderHandlers } from './ipc/providers'
 import { registerConversationHandlers } from './ipc/conversations'
 import { registerAIHandlers } from './ipc/ai'
 import { registerWorkspaceHandlers } from './ipc/workspaces'
+import { registerArtifactHandlers } from './ipc/artifacts'
+import { registerSandboxHandlers } from './ipc/sandbox'
 
 // The built directory structure
 const DIST = path.join(__dirname, '../dist')
@@ -52,6 +54,8 @@ app.whenReady().then(async () => {
   registerConversationHandlers()
   registerAIHandlers()
   registerWorkspaceHandlers()
+  registerArtifactHandlers()
+  registerSandboxHandlers()
 
   // Create window
   createWindow()

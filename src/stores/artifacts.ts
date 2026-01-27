@@ -8,69 +8,162 @@ export interface Artifact {
   type: ArtifactType
   title: string
   content: string
-  language?: string // For code artifacts
+  language?: string
+  filePath?: string
   createdAt: number
   updatedAt: number
+}
+
+// Database row format
+interface ArtifactRow {
+  id: string
+  conversation_id: string | null
+  type: string
+  title: string
+  content: string
+  language: string | null
+  file_path: string | null
+  created_at: number
+  updated_at: number
+}
+
+// Convert database row to store format
+function rowToArtifact(row: ArtifactRow): Artifact {
+  return {
+    id: row.id,
+    conversationId: row.conversation_id || undefined,
+    type: row.type as ArtifactType,
+    title: row.title,
+    content: row.content,
+    language: row.language || undefined,
+    filePath: row.file_path || undefined,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  }
 }
 
 interface ArtifactStore {
   artifacts: Artifact[]
   selectedArtifactId: string | null
   canvasOpen: boolean
+  isLoading: boolean
 
   // Actions
-  addArtifact: (artifact: Omit<Artifact, 'id' | 'createdAt' | 'updatedAt'>) => Artifact
-  updateArtifact: (id: string, updates: Partial<Omit<Artifact, 'id' | 'createdAt'>>) => void
-  removeArtifact: (id: string) => void
+  loadArtifacts: () => Promise<void>
+  loadArtifactsForConversation: (conversationId: string) => Promise<void>
+  addArtifact: (artifact: Omit<Artifact, 'id' | 'createdAt' | 'updatedAt'>) => Promise<Artifact>
+  updateArtifact: (id: string, updates: Partial<Omit<Artifact, 'id' | 'createdAt'>>) => Promise<void>
+  removeArtifact: (id: string) => Promise<void>
   selectArtifact: (id: string | null) => void
   openCanvas: () => void
   closeCanvas: () => void
   toggleCanvas: () => void
   getArtifactsByConversation: (conversationId: string) => Artifact[]
-  clearConversationArtifacts: (conversationId: string) => void
+  clearConversationArtifacts: (conversationId: string) => Promise<void>
 }
 
 export const useArtifactStore = create<ArtifactStore>((set, get) => ({
   artifacts: [],
   selectedArtifactId: null,
   canvasOpen: false,
+  isLoading: false,
 
-  addArtifact: (artifact) => {
-    const newArtifact: Artifact = {
-      ...artifact,
-      id: crypto.randomUUID(),
-      createdAt: Date.now(),
-      updatedAt: Date.now(),
+  loadArtifacts: async () => {
+    set({ isLoading: true })
+    try {
+      const rows: ArtifactRow[] = await window.jelico.artifacts.list()
+      set({ artifacts: rows.map(rowToArtifact), isLoading: false })
+    } catch (error) {
+      console.error('Failed to load artifacts:', error)
+      set({ isLoading: false })
     }
-
-    set((state) => ({
-      artifacts: [...state.artifacts, newArtifact],
-      selectedArtifactId: newArtifact.id,
-      canvasOpen: true,
-    }))
-
-    return newArtifact
   },
 
-  updateArtifact: (id, updates) => {
-    set((state) => ({
-      artifacts: state.artifacts.map((a) =>
-        a.id === id ? { ...a, ...updates, updatedAt: Date.now() } : a
-      ),
-    }))
+  loadArtifactsForConversation: async (conversationId) => {
+    try {
+      const rows: ArtifactRow[] = await window.jelico.artifacts.getByConversation(conversationId)
+      const newArtifacts = rows.map(rowToArtifact)
+
+      // Merge with existing artifacts, replacing any with same id
+      set((state) => {
+        const existingIds = new Set(newArtifacts.map(a => a.id))
+        const otherArtifacts = state.artifacts.filter(a => !existingIds.has(a.id) && a.conversationId !== conversationId)
+        return { artifacts: [...otherArtifacts, ...newArtifacts] }
+      })
+    } catch (error) {
+      console.error('Failed to load artifacts for conversation:', error)
+    }
   },
 
-  removeArtifact: (id) => {
-    set((state) => {
-      const newArtifacts = state.artifacts.filter((a) => a.id !== id)
-      return {
-        artifacts: newArtifacts,
-        selectedArtifactId:
-          state.selectedArtifactId === id
-            ? newArtifacts[newArtifacts.length - 1]?.id || null
-            : state.selectedArtifactId,
+  addArtifact: async (artifact) => {
+    try {
+      const row: ArtifactRow = await window.jelico.artifacts.create({
+        conversationId: artifact.conversationId,
+        type: artifact.type,
+        title: artifact.title,
+        content: artifact.content,
+        language: artifact.language,
+        filePath: artifact.filePath,
+      })
+
+      const newArtifact = rowToArtifact(row)
+
+      set((state) => ({
+        artifacts: [...state.artifacts, newArtifact],
+        selectedArtifactId: newArtifact.id,
+        canvasOpen: true,
+      }))
+
+      return newArtifact
+    } catch (error) {
+      console.error('Failed to create artifact:', error)
+      throw error
+    }
+  },
+
+  updateArtifact: async (id, updates) => {
+    try {
+      const row: ArtifactRow | null = await window.jelico.artifacts.update(id, {
+        conversationId: updates.conversationId,
+        type: updates.type,
+        title: updates.title,
+        content: updates.content,
+        language: updates.language,
+        filePath: updates.filePath,
+      })
+
+      if (row) {
+        const updatedArtifact = rowToArtifact(row)
+        set((state) => ({
+          artifacts: state.artifacts.map((a) =>
+            a.id === id ? updatedArtifact : a
+          ),
+        }))
       }
-    })
+    } catch (error) {
+      console.error('Failed to update artifact:', error)
+      throw error
+    }
+  },
+
+  removeArtifact: async (id) => {
+    try {
+      await window.jelico.artifacts.delete(id)
+
+      set((state) => {
+        const newArtifacts = state.artifacts.filter((a) => a.id !== id)
+        return {
+          artifacts: newArtifacts,
+          selectedArtifactId:
+            state.selectedArtifactId === id
+              ? newArtifacts[newArtifacts.length - 1]?.id || null
+              : state.selectedArtifactId,
+        }
+      })
+    } catch (error) {
+      console.error('Failed to delete artifact:', error)
+      throw error
+    }
   },
 
   selectArtifact: (id) => {
@@ -88,9 +181,16 @@ export const useArtifactStore = create<ArtifactStore>((set, get) => ({
     return get().artifacts.filter((a) => a.conversationId === conversationId)
   },
 
-  clearConversationArtifacts: (conversationId) => {
-    set((state) => ({
-      artifacts: state.artifacts.filter((a) => a.conversationId !== conversationId),
-    }))
+  clearConversationArtifacts: async (conversationId) => {
+    try {
+      await window.jelico.artifacts.deleteByConversation(conversationId)
+
+      set((state) => ({
+        artifacts: state.artifacts.filter((a) => a.conversationId !== conversationId),
+      }))
+    } catch (error) {
+      console.error('Failed to clear conversation artifacts:', error)
+      throw error
+    }
   },
 }))

@@ -1,6 +1,8 @@
 import { useState, useRef, useEffect } from 'react'
-import { FolderOpen, ChevronDown, Plus, GitBranch, Folder, X, RefreshCw, GitFork } from 'lucide-react'
+import { FolderOpen, ChevronDown, Plus, GitBranch, Folder, X, RefreshCw, GitFork, Box, Download } from 'lucide-react'
 import { useWorkspaceStore, type Workspace } from '../../stores/workspaces'
+import { useSandboxStore } from '../../stores/sandbox'
+import { useChatStore } from '../../stores/chat'
 
 interface GitBranchInfo {
   name: string
@@ -18,6 +20,8 @@ export function WorkspaceSelector() {
     refreshGit,
     loadWorkspaces,
   } = useWorkspaceStore()
+  const { files, loadFiles, exportSandbox } = useSandboxStore()
+  const { activeConversationId } = useChatStore()
   const [dropdownOpen, setDropdownOpen] = useState(false)
   const [branchPickerOpen, setBranchPickerOpen] = useState<string | null>(null)
   const [branches, setBranches] = useState<GitBranchInfo[]>([])
@@ -25,6 +29,8 @@ export function WorkspaceSelector() {
   const dropdownRef = useRef<HTMLDivElement>(null)
 
   const activeWorkspace = workspaces.find(w => w.id === activeWorkspaceId)
+  const sandboxFiles = activeConversationId ? files[activeConversationId] : []
+  const hasSandboxFiles = sandboxFiles && sandboxFiles.length > 0
 
   // Close dropdown on outside click
   useEffect(() => {
@@ -41,6 +47,13 @@ export function WorkspaceSelector() {
   useEffect(() => {
     loadWorkspaces()
   }, [])
+
+  // Load sandbox files when dropdown opens and no workspace is selected
+  useEffect(() => {
+    if (dropdownOpen && !activeWorkspaceId && activeConversationId) {
+      loadFiles(activeConversationId)
+    }
+  }, [dropdownOpen, activeWorkspaceId, activeConversationId])
 
   const handleSelectFolder = async () => {
     await selectFolder()
@@ -117,8 +130,13 @@ export function WorkspaceSelector() {
           </>
         ) : (
           <>
-            <FolderOpen className="w-4 h-4 text-text-muted flex-shrink-0" />
-            <span className="text-text-muted">No workspace</span>
+            <Box className="w-4 h-4 text-accent flex-shrink-0" />
+            <span className="text-text-secondary">Sandbox</span>
+            {hasSandboxFiles && (
+              <span className="text-xs text-text-muted">
+                ({sandboxFiles.length})
+              </span>
+            )}
           </>
         )}
         <ChevronDown className="w-3 h-3 text-text-muted flex-shrink-0" />
@@ -126,7 +144,7 @@ export function WorkspaceSelector() {
 
       {dropdownOpen && (
         <div className="absolute top-full left-0 mt-1 w-72 bg-bg-elevated border border-border rounded-lg shadow-lg overflow-hidden z-50">
-          {/* Current workspace option */}
+          {/* Sandbox option (when no workspace) */}
           <button
             onClick={() => handleSelectWorkspace(null)}
             className={`
@@ -134,9 +152,30 @@ export function WorkspaceSelector() {
               ${!activeWorkspaceId ? 'text-accent' : 'text-text-primary'}
             `}
           >
-            <FolderOpen className="w-4 h-4 text-text-muted" />
-            <span>No workspace (general)</span>
+            <Box className="w-4 h-4 text-accent" />
+            <div className="flex-1">
+              <span>Sandbox</span>
+              {hasSandboxFiles && (
+                <span className="ml-2 text-xs text-text-muted">
+                  ({sandboxFiles.length} file{sandboxFiles.length !== 1 ? 's' : ''})
+                </span>
+              )}
+            </div>
             {!activeWorkspaceId && <span className="ml-auto">✓</span>}
+            {hasSandboxFiles && !activeWorkspaceId && (
+              <button
+                onClick={async (e) => {
+                  e.stopPropagation()
+                  if (activeConversationId) {
+                    await exportSandbox(activeConversationId)
+                  }
+                }}
+                className="p-1 text-text-muted hover:text-accent rounded"
+                title="Export sandbox files"
+              >
+                <Download className="w-3 h-3" />
+              </button>
+            )}
           </button>
 
           {/* Workspace list */}
@@ -265,7 +304,6 @@ function BranchPicker({
   branches,
   isLoading,
   onSelect,
-  onClose,
 }: {
   branches: GitBranchInfo[]
   isLoading: boolean
