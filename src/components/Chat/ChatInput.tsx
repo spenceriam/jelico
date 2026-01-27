@@ -1,7 +1,12 @@
-import { useState, useRef, useCallback, KeyboardEvent } from 'react'
+import { useState, useRef, useCallback, KeyboardEvent, useMemo } from 'react'
 import { Send, Square, Clock } from 'lucide-react'
 import { useChatStore } from '../../stores/chat'
 import { useProviderStore } from '../../stores/providers'
+
+// Detect if user is on macOS
+function isMac(): boolean {
+  return navigator.platform.toUpperCase().indexOf('MAC') >= 0
+}
 
 interface ChatInputProps {
   disabled?: boolean
@@ -13,6 +18,9 @@ export function ChatInput({ disabled, isStreaming }: ChatInputProps) {
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const { sendMessage, stopStreaming, messageQueue } = useChatStore()
   const { activeProviderId, activeModel } = useProviderStore()
+
+  // OS-aware modifier key
+  const modKey = useMemo(() => isMac() ? '⌘' : 'Ctrl', [])
 
   const handleSubmit = useCallback(() => {
     if (!input.trim() || !activeProviderId || !activeModel) return
@@ -94,7 +102,7 @@ export function ChatInput({ disabled, isStreaming }: ChatInputProps) {
 
       <div className="flex items-center justify-between text-xs text-text-muted px-1">
         <span>Enter to send · Shift+Enter for new line · Tab to cycle modes</span>
-        <span>Cmd+K for commands</span>
+        <span>{modKey}+K for commands</span>
       </div>
     </div>
   )
