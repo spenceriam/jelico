@@ -1,152 +1,338 @@
 import { useState } from 'react'
-import { ArrowRight, FolderOpen, Upload, Sparkles } from 'lucide-react'
+import { ArrowRight, ArrowLeft, FolderOpen, Sparkles } from 'lucide-react'
 import { ModeSelector } from '../ModeSelector/ModeSelector'
 import { WorkspaceSelector } from '../Workspace/WorkspaceSelector'
 
 interface WelcomeScreenProps {
-  onComplete: () => void
+  onComplete: (profile: OnboardingProfile) => void
 }
 
-export function WelcomeScreen({ onComplete }: WelcomeScreenProps) {
-  const [step, setStep] = useState<'welcome' | 'setup'>('welcome')
-  const [name, setName] = useState('')
+export interface OnboardingProfile {
+  name: string
+  intentions: string
+  preferences: string
+  additionalInfo: string
+}
 
-  const handleContinue = () => {
-    if (step === 'welcome') {
-      setStep('setup')
-    } else {
-      onComplete()
+type OnboardingStep = 'name' | 'intentions' | 'preferences' | 'additional' | 'setup'
+
+const STEP_ORDER: OnboardingStep[] = ['name', 'intentions', 'preferences', 'additional', 'setup']
+
+export function WelcomeScreen({ onComplete }: WelcomeScreenProps) {
+  const [step, setStep] = useState<OnboardingStep>('name')
+  const [profile, setProfile] = useState<OnboardingProfile>({
+    name: '',
+    intentions: '',
+    preferences: '',
+    additionalInfo: '',
+  })
+
+  const currentStepIndex = STEP_ORDER.indexOf(step)
+  const isLastStep = step === 'setup'
+
+  const canContinue = () => {
+    switch (step) {
+      case 'name':
+        return profile.name.trim().length > 0
+      case 'intentions':
+      case 'preferences':
+      case 'additional':
+      case 'setup':
+        return true
+      default:
+        return false
     }
   }
 
-  if (step === 'welcome') {
+  const handleNext = () => {
+    if (isLastStep) {
+      onComplete(profile)
+    } else {
+      const nextIndex = currentStepIndex + 1
+      if (nextIndex < STEP_ORDER.length) {
+        setStep(STEP_ORDER[nextIndex])
+      }
+    }
+  }
+
+  const handleBack = () => {
+    const prevIndex = currentStepIndex - 1
+    if (prevIndex >= 0) {
+      setStep(STEP_ORDER[prevIndex])
+    }
+  }
+
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter' && !e.shiftKey && canContinue()) {
+      e.preventDefault()
+      handleNext()
+    }
+  }
+
+  // Step 1: Name
+  if (step === 'name') {
     return (
       <div className="min-h-screen bg-bg-void flex items-center justify-center p-10">
-        <div className="w-full max-w-[600px] text-center animate-fade-in">
-          {/* Logo */}
-          <div className="welcome-logo mb-6">J</div>
-
-          {/* Welcome text */}
-          <h1 className="font-display text-[36px] font-normal text-text-primary mb-3 tracking-tight">
-            Welcome to Jelico
-          </h1>
-          <p className="text-text-secondary text-lg mb-12">
-            Your AI productivity partner
-          </p>
-
-          {/* Quick intro */}
-          <div className="space-y-4 text-left max-w-md mx-auto mb-12">
-            <div className="flex items-start gap-4 p-4 bg-bg-elevated rounded-lg border border-border">
-              <div className="p-2 bg-accent/10 rounded-lg">
-                <Sparkles className="w-5 h-5 text-accent" />
-              </div>
-              <div>
-                <h3 className="font-medium text-text-primary mb-1">Multiple Modes</h3>
-                <p className="text-sm text-text-muted">
-                  Switch between Auto, Explore, Execute, Plan, and Review modes to match your workflow.
-                </p>
-              </div>
-            </div>
-
-            <div className="flex items-start gap-4 p-4 bg-bg-elevated rounded-lg border border-border">
-              <div className="p-2 bg-accent/10 rounded-lg">
-                <FolderOpen className="w-5 h-5 text-accent" />
-              </div>
-              <div>
-                <h3 className="font-medium text-text-primary mb-1">Workspace Aware</h3>
-                <p className="text-sm text-text-muted">
-                  Connect to your projects for context-aware assistance with code and files.
-                </p>
-              </div>
-            </div>
-
-            <div className="flex items-start gap-4 p-4 bg-bg-elevated rounded-lg border border-border">
-              <div className="p-2 bg-accent/10 rounded-lg">
-                <Upload className="w-5 h-5 text-accent" />
-              </div>
-              <div>
-                <h3 className="font-medium text-text-primary mb-1">Artifacts & Sandbox</h3>
-                <p className="text-sm text-text-muted">
-                  Generate code, documents, and files in a safe sandbox environment.
-                </p>
-              </div>
-            </div>
+        <div className="w-full max-w-[500px] animate-fade-in">
+          <div className="text-center mb-10">
+            <div className="welcome-logo mb-6">J</div>
+            <h1 className="font-display text-[32px] font-normal text-text-primary mb-3 tracking-tight">
+              Hello! I'm Jelico.
+            </h1>
+            <p className="text-text-secondary text-lg">
+              I'm excited to work with you. Let's get to know each other.
+            </p>
           </div>
 
-          {/* Name input (optional) */}
-          <div className="max-w-sm mx-auto mb-8">
-            <label className="block text-sm text-text-secondary mb-2 text-left">
-              What should Jelico call you? (optional)
-            </label>
-            <input
-              type="text"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              placeholder="Your name"
-              className="w-full px-4 py-3 bg-bg-elevated border border-border rounded-lg text-text-primary placeholder:text-text-muted focus:outline-none focus:border-accent"
-            />
-          </div>
+          <div className="space-y-6">
+            <div>
+              <label className="block text-base font-medium text-text-primary mb-3">
+                What should I call you?
+              </label>
+              <input
+                type="text"
+                value={profile.name}
+                onChange={(e) => setProfile({ ...profile, name: e.target.value })}
+                onKeyDown={handleKeyDown}
+                placeholder="Your name"
+                autoFocus
+                className="w-full px-4 py-3 bg-bg-elevated border border-border rounded-lg text-text-primary text-lg placeholder:text-text-muted focus:outline-none focus:border-accent"
+              />
+            </div>
 
-          {/* Continue button */}
-          <button
-            onClick={handleContinue}
-            className="inline-flex items-center gap-2 px-6 py-3 bg-accent text-black font-medium rounded-lg hover:bg-accent-bright transition-colors"
-          >
-            Get Started
-            <ArrowRight className="w-4 h-4" />
-          </button>
+            <div className="flex justify-end">
+              <button
+                onClick={handleNext}
+                disabled={!canContinue()}
+                className="inline-flex items-center gap-2 px-6 py-3 bg-accent text-black font-medium rounded-lg hover:bg-accent-bright transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                Continue
+                <ArrowRight className="w-4 h-4" />
+              </button>
+            </div>
+          </div>
         </div>
       </div>
     )
   }
 
-  // Setup step
+  // Step 2: Intentions
+  if (step === 'intentions') {
+    return (
+      <div className="min-h-screen bg-bg-void flex items-center justify-center p-10">
+        <div className="w-full max-w-[550px] animate-slide-in">
+          <div className="text-center mb-10">
+            <h1 className="font-display text-[28px] font-normal text-text-primary mb-3 tracking-tight">
+              Nice to meet you, {profile.name}!
+            </h1>
+            <p className="text-text-secondary text-base">
+              I'd love to understand what brings you here.
+            </p>
+          </div>
+
+          <div className="space-y-6">
+            <div>
+              <label className="block text-base font-medium text-text-primary mb-3">
+                What are you hoping to accomplish with me?
+              </label>
+              <p className="text-sm text-text-muted mb-3">
+                Are you building software, writing content, learning something new, or something else entirely?
+              </p>
+              <textarea
+                value={profile.intentions}
+                onChange={(e) => setProfile({ ...profile, intentions: e.target.value })}
+                onKeyDown={handleKeyDown}
+                placeholder="I'm working on... / I want to... / I need help with..."
+                rows={4}
+                autoFocus
+                className="w-full px-4 py-3 bg-bg-elevated border border-border rounded-lg text-text-primary placeholder:text-text-muted focus:outline-none focus:border-accent resize-none"
+              />
+            </div>
+
+            <div className="flex justify-between">
+              <button
+                onClick={handleBack}
+                className="inline-flex items-center gap-2 px-4 py-2 text-text-secondary hover:text-text-primary transition-colors"
+              >
+                <ArrowLeft className="w-4 h-4" />
+                Back
+              </button>
+              <button
+                onClick={handleNext}
+                className="inline-flex items-center gap-2 px-6 py-3 bg-accent text-black font-medium rounded-lg hover:bg-accent-bright transition-colors"
+              >
+                {profile.intentions.trim() ? 'Continue' : 'Skip for now'}
+                <ArrowRight className="w-4 h-4" />
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  // Step 3: Preferences
+  if (step === 'preferences') {
+    return (
+      <div className="min-h-screen bg-bg-void flex items-center justify-center p-10">
+        <div className="w-full max-w-[550px] animate-slide-in">
+          <div className="text-center mb-10">
+            <h1 className="font-display text-[28px] font-normal text-text-primary mb-3 tracking-tight">
+              How do you like to work?
+            </h1>
+            <p className="text-text-secondary text-base">
+              This helps me tailor my responses to your style.
+            </p>
+          </div>
+
+          <div className="space-y-6">
+            <div>
+              <label className="block text-base font-medium text-text-primary mb-3">
+                Any preferences for how I should communicate?
+              </label>
+              <p className="text-sm text-text-muted mb-3">
+                Do you prefer detailed explanations or concise answers? Technical depth or high-level overviews? Formal or casual tone?
+              </p>
+              <textarea
+                value={profile.preferences}
+                onChange={(e) => setProfile({ ...profile, preferences: e.target.value })}
+                onKeyDown={handleKeyDown}
+                placeholder="I prefer... / Please always... / I like when..."
+                rows={4}
+                autoFocus
+                className="w-full px-4 py-3 bg-bg-elevated border border-border rounded-lg text-text-primary placeholder:text-text-muted focus:outline-none focus:border-accent resize-none"
+              />
+            </div>
+
+            <div className="flex justify-between">
+              <button
+                onClick={handleBack}
+                className="inline-flex items-center gap-2 px-4 py-2 text-text-secondary hover:text-text-primary transition-colors"
+              >
+                <ArrowLeft className="w-4 h-4" />
+                Back
+              </button>
+              <button
+                onClick={handleNext}
+                className="inline-flex items-center gap-2 px-6 py-3 bg-accent text-black font-medium rounded-lg hover:bg-accent-bright transition-colors"
+              >
+                {profile.preferences.trim() ? 'Continue' : 'Skip for now'}
+                <ArrowRight className="w-4 h-4" />
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  // Step 4: Additional info
+  if (step === 'additional') {
+    return (
+      <div className="min-h-screen bg-bg-void flex items-center justify-center p-10">
+        <div className="w-full max-w-[550px] animate-slide-in">
+          <div className="text-center mb-10">
+            <h1 className="font-display text-[28px] font-normal text-text-primary mb-3 tracking-tight">
+              Anything else I should know?
+            </h1>
+            <p className="text-text-secondary text-base">
+              Share anything that might help me assist you better.
+            </p>
+          </div>
+
+          <div className="space-y-6">
+            <div>
+              <label className="block text-base font-medium text-text-primary mb-3">
+                Is there anything else you'd like to tell me upfront?
+              </label>
+              <p className="text-sm text-text-muted mb-3">
+                Your background, specific tools you use, things to avoid, or anything that would help me understand you better.
+              </p>
+              <textarea
+                value={profile.additionalInfo}
+                onChange={(e) => setProfile({ ...profile, additionalInfo: e.target.value })}
+                onKeyDown={handleKeyDown}
+                placeholder="You should know that... / I often work with... / Please remember..."
+                rows={4}
+                autoFocus
+                className="w-full px-4 py-3 bg-bg-elevated border border-border rounded-lg text-text-primary placeholder:text-text-muted focus:outline-none focus:border-accent resize-none"
+              />
+            </div>
+
+            <div className="flex justify-between">
+              <button
+                onClick={handleBack}
+                className="inline-flex items-center gap-2 px-4 py-2 text-text-secondary hover:text-text-primary transition-colors"
+              >
+                <ArrowLeft className="w-4 h-4" />
+                Back
+              </button>
+              <button
+                onClick={handleNext}
+                className="inline-flex items-center gap-2 px-6 py-3 bg-accent text-black font-medium rounded-lg hover:bg-accent-bright transition-colors"
+              >
+                {profile.additionalInfo.trim() ? 'Continue' : 'Skip for now'}
+                <ArrowRight className="w-4 h-4" />
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  // Step 5: Setup (workspace & mode)
   return (
     <div className="min-h-screen bg-bg-void flex items-center justify-center p-10">
-      <div className="w-full max-w-[700px] animate-slide-in">
+      <div className="w-full max-w-[650px] animate-slide-in">
         <div className="text-center mb-10">
-          <h1 className="font-display text-[28px] font-normal text-text-primary mb-2">
-            {name ? `Hello, ${name}!` : 'Almost ready!'}
+          <h1 className="font-display text-[28px] font-normal text-text-primary mb-3 tracking-tight">
+            Great, {profile.name}! One last thing.
           </h1>
-          <p className="text-text-secondary">
-            Choose your starting configuration. You can change these anytime.
+          <p className="text-text-secondary text-base">
+            Let's set up your workspace. You can always change these later.
           </p>
         </div>
 
-        {/* Setup options */}
-        <div className="space-y-8">
+        <div className="space-y-6">
           {/* Workspace selection */}
-          <div className="p-6 bg-bg-surface rounded-xl border border-border">
+          <div className="p-5 bg-bg-surface rounded-xl border border-border">
             <h3 className="font-medium text-text-primary mb-2 flex items-center gap-2">
               <FolderOpen className="w-4 h-4 text-accent" />
               Select a Workspace
             </h3>
             <p className="text-sm text-text-muted mb-4">
-              Connect a folder to give Jelico context about your project. You can also use the sandbox for quick experiments.
+              Connect a folder so I can help with your project files, or use the sandbox for quick experiments.
             </p>
             <WorkspaceSelector />
           </div>
 
           {/* Mode selection */}
-          <div className="p-6 bg-bg-surface rounded-xl border border-border">
+          <div className="p-5 bg-bg-surface rounded-xl border border-border">
             <h3 className="font-medium text-text-primary mb-2 flex items-center gap-2">
               <Sparkles className="w-4 h-4 text-accent" />
               Choose a Mode
             </h3>
             <p className="text-sm text-text-muted mb-4">
-              Auto mode intelligently switches between modes. Or pick a specific mode for focused work.
+              Auto mode adapts to what you need. Or pick a specific mode for focused work.
             </p>
             <ModeSelector />
           </div>
         </div>
 
-        {/* Complete button */}
-        <div className="text-center mt-10">
+        <div className="flex justify-between mt-8">
           <button
-            onClick={handleContinue}
+            onClick={handleBack}
+            className="inline-flex items-center gap-2 px-4 py-2 text-text-secondary hover:text-text-primary transition-colors"
+          >
+            <ArrowLeft className="w-4 h-4" />
+            Back
+          </button>
+          <button
+            onClick={handleNext}
             className="inline-flex items-center gap-2 px-8 py-3 bg-accent text-black font-medium rounded-lg hover:bg-accent-bright transition-colors"
           >
-            Start Chatting
+            Let's Begin
             <ArrowRight className="w-4 h-4" />
           </button>
         </div>

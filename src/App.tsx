@@ -1,4 +1,4 @@
-import { useEffect } from 'react'
+import { useEffect, useCallback } from 'react'
 import { PanelLeftClose, PanelLeftOpen } from 'lucide-react'
 import { useProviderStore } from './stores/providers'
 import { useChatStore } from './stores/chat'
@@ -15,7 +15,7 @@ import { CommandPalette, useCommandPalette } from './components/CommandPalette/C
 import { ProviderSetup } from './components/Setup/ProviderSetup'
 import { Settings } from './components/Settings/Settings'
 import { PermissionDialog } from './components/Permissions/PermissionDialog'
-import { WelcomeScreen } from './components/Onboarding/WelcomeScreen'
+import { WelcomeScreen, type OnboardingProfile } from './components/Onboarding/WelcomeScreen'
 
 export default function App() {
   const { providers, loadProviders, isLoading } = useProviderStore()
@@ -37,6 +37,63 @@ export default function App() {
     loadPermissions()
   }, [])
 
+  // Handle onboarding completion - save profile to soul system
+  const handleOnboardingComplete = useCallback(async (profile: OnboardingProfile) => {
+    try {
+      // Save user name
+      if (profile.name.trim()) {
+        await window.jelico.soul.setPreference('userName', profile.name.trim(), 1.0)
+      }
+
+      // Save intentions as a pattern
+      if (profile.intentions.trim()) {
+        await window.jelico.soul.addPattern({
+          category: 'preference',
+          pattern: `User's primary intentions: ${profile.intentions.trim()}`,
+          evidence: ['Stated during onboarding'],
+          confidence: 1.0,
+          frequency: 1,
+          lastObserved: Date.now(),
+          decay: 0.01,
+          source: 'explicit',
+        })
+      }
+
+      // Save communication preferences
+      if (profile.preferences.trim()) {
+        await window.jelico.soul.addPattern({
+          category: 'communication',
+          pattern: `User's communication preferences: ${profile.preferences.trim()}`,
+          evidence: ['Stated during onboarding'],
+          confidence: 1.0,
+          frequency: 1,
+          lastObserved: Date.now(),
+          decay: 0.01,
+          source: 'explicit',
+        })
+      }
+
+      // Save additional info
+      if (profile.additionalInfo.trim()) {
+        await window.jelico.soul.addPattern({
+          category: 'preference',
+          pattern: `Additional context about user: ${profile.additionalInfo.trim()}`,
+          evidence: ['Stated during onboarding'],
+          confidence: 1.0,
+          frequency: 1,
+          lastObserved: Date.now(),
+          decay: 0.01,
+          source: 'explicit',
+        })
+      }
+    } catch (error) {
+      console.error('Failed to save onboarding profile:', error)
+    }
+
+    // Complete onboarding regardless of save success
+    completeOnboarding()
+  }, [completeOnboarding])
+
   // Show loading state
   if (isLoading && providers.length === 0) {
     return (
@@ -53,7 +110,7 @@ export default function App() {
 
   // Show onboarding welcome screen if not completed
   if (!onboardingComplete) {
-    return <WelcomeScreen onComplete={completeOnboarding} />
+    return <WelcomeScreen onComplete={handleOnboardingComplete} />
   }
 
   return (
