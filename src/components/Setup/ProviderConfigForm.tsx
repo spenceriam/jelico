@@ -1,5 +1,5 @@
-import { useState } from 'react'
-import { Eye, EyeOff, Lock } from 'lucide-react'
+import { useState, useEffect, useMemo } from 'react'
+import { Eye, EyeOff, Lock, Search, Loader2 } from 'lucide-react'
 
 const API_KEY_URLS: Record<string, string> = {
   anthropic: 'console.anthropic.com',
@@ -23,13 +23,16 @@ const MODEL_OPTIONS: Record<string, Array<{ id: string; name: string }>> = {
     { id: 'gemini-1.5-pro', name: 'Gemini 1.5 Pro' },
     { id: 'gemini-1.5-flash', name: 'Gemini 1.5 Flash' },
   ],
-  openrouter: [
-    { id: 'anthropic/claude-3.5-sonnet', name: 'Claude 3.5 Sonnet' },
-    { id: 'openai/gpt-4o', name: 'GPT-4o' },
-    { id: 'google/gemini-pro-1.5', name: 'Gemini Pro 1.5' },
-  ],
+  openrouter: [], // Fetched dynamically
   ollama: [],
   custom: [],
+}
+
+interface OpenRouterModel {
+  id: string
+  name: string
+  contextLength?: number
+  pricing?: { prompt: string; completion: string }
 }
 
 interface ProviderConfigFormProps {
@@ -51,10 +54,54 @@ export function ProviderConfigForm({ type, defaultModel, onSave, isLoading }: Pr
   const [baseUrl, setBaseUrl] = useState(type === 'ollama' ? 'http://localhost:11434' : '')
   const [showKey, setShowKey] = useState(false)
 
+  // OpenRouter specific state
+  const [openRouterModels, setOpenRouterModels] = useState<OpenRouterModel[]>([])
+  const [isLoadingModels, setIsLoadingModels] = useState(false)
+  const [modelSearch, setModelSearch] = useState('')
+
   const needsApiKey = type !== 'ollama'
-  const needsBaseUrl = type === 'ollama' || type === 'custom' || type === 'openrouter'
-  const models = MODEL_OPTIONS[type] || []
+  const needsBaseUrl = type === 'ollama' || type === 'custom'
+  const isOpenRouter = type === 'openrouter'
+  const staticModels = MODEL_OPTIONS[type] || []
   const apiKeyUrl = API_KEY_URLS[type]
+
+  // Fetch OpenRouter models when API key changes
+  useEffect(() => {
+    if (!isOpenRouter || !apiKey || apiKey.length < 10) {
+      setOpenRouterModels([])
+      return
+    }
+
+    const fetchModels = async () => {
+      setIsLoadingModels(true)
+      try {
+        const models = await window.jelico.providers.fetchOpenRouterModels(apiKey)
+        setOpenRouterModels(models)
+        // Auto-select first model if none selected
+        if (models.length > 0 && !model) {
+          setModel(models[0].id)
+        }
+      } catch (err) {
+        console.error('Failed to fetch OpenRouter models:', err)
+        setOpenRouterModels([])
+      } finally {
+        setIsLoadingModels(false)
+      }
+    }
+
+    // Debounce the fetch
+    const timeout = setTimeout(fetchModels, 500)
+    return () => clearTimeout(timeout)
+  }, [isOpenRouter, apiKey])
+
+  // Filter OpenRouter models by search
+  const filteredOpenRouterModels = useMemo(() => {
+    if (!modelSearch.trim()) return openRouterModels
+    const search = modelSearch.toLowerCase()
+    return openRouterModels.filter(
+      m => m.id.toLowerCase().includes(search) || m.name.toLowerCase().includes(search)
+    )
+  }, [openRouterModels, modelSearch])
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
@@ -131,7 +178,67 @@ export function ProviderConfigForm({ type, defaultModel, onSave, isLoading }: Pr
         </div>
       )}
 
-      {models.length > 0 && (
+      {/* OpenRouter model selector with search */}
+      {isOpenRouter && (
+        <div>
+          <label className="label">Default model</label>
+
+          {!apiKey ? (
+            <p className="text-sm text-text-muted">Enter API key to load available models</p>
+          ) : isLoadingModels ? (
+            <div className="flex items-center gap-2 text-text-muted">
+              <Loader2 className="w-4 h-4 animate-spin" />
+              <span>Loading models...</span>
+            </div>
+          ) : openRouterModels.length === 0 ? (
+            <p className="text-sm text-text-muted">No models found. Check your API key.</p>
+          ) : (
+            <>
+              {/* Search input */}
+              <div className="relative mb-2">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-text-muted" />
+                <input
+                  type="text"
+                  value={modelSearch}
+                  onChange={(e) => setModelSearch(e.target.value)}
+                  className="input pl-9"
+                  placeholder="Search models..."
+                />
+              </div>
+
+              {/* Model list */}
+              <div className="max-h-48 overflow-y-auto border border-border rounded-lg bg-bg-elevated">
+                {filteredOpenRouterModels.length === 0 ? (
+                  <div className="p-3 text-sm text-text-muted">No models match "{modelSearch}"</div>
+                ) : (
+                  filteredOpenRouterModels.map((m) => (
+                    <button
+                      key={m.id}
+                      type="button"
+                      onClick={() => setModel(m.id)}
+                      className={`w-full px-3 py-2 text-left text-sm hover:bg-bg-hover transition-colors ${
+                        model === m.id ? 'bg-accent/10 text-accent' : 'text-text-primary'
+                      }`}
+                    >
+                      <div className="font-medium">{m.name}</div>
+                      <div className="text-xs text-text-muted">{m.id}</div>
+                    </button>
+                  ))
+                )}
+              </div>
+
+              {model && (
+                <p className="mt-2 text-xs text-text-secondary">
+                  Selected: {model}
+                </p>
+              )}
+            </>
+          )}
+        </div>
+      )}
+
+      {/* Static model dropdown for other providers */}
+      {!isOpenRouter && staticModels.length > 0 && (
         <div>
           <label className="label">Default model</label>
           <select
@@ -139,7 +246,7 @@ export function ProviderConfigForm({ type, defaultModel, onSave, isLoading }: Pr
             onChange={(e) => setModel(e.target.value)}
             className="input"
           >
-            {models.map((m) => (
+            {staticModels.map((m) => (
               <option key={m.id} value={m.id}>
                 {m.name}
               </option>
@@ -148,7 +255,8 @@ export function ProviderConfigForm({ type, defaultModel, onSave, isLoading }: Pr
         </div>
       )}
 
-      {models.length === 0 && (
+      {/* Manual model input for ollama/custom */}
+      {!isOpenRouter && staticModels.length === 0 && (
         <div>
           <label className="label">Model ID</label>
           <input
@@ -165,12 +273,12 @@ export function ProviderConfigForm({ type, defaultModel, onSave, isLoading }: Pr
       <div className="flex items-center justify-between pt-4">
         <div className="flex items-center gap-2 text-xs text-text-muted">
           <Lock className="w-3 h-3" />
-          Stored in system keychain
+          Stored securely
         </div>
 
         <button
           type="submit"
-          disabled={isLoading || (needsApiKey && !apiKey)}
+          disabled={isLoading || (needsApiKey && !apiKey) || (isOpenRouter && !model)}
           className="btn btn-primary disabled:opacity-50 disabled:cursor-not-allowed"
         >
           {isLoading ? 'Saving...' : 'Save'}

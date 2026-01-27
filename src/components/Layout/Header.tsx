@@ -3,7 +3,8 @@ import { useState, useRef, useEffect } from 'react'
 import { useProviderStore } from '../../stores/providers'
 import { useUIStore } from '../../stores/ui'
 
-// Model lists for display
+// Model lists for display (static providers only)
+// OpenRouter, Ollama, and Custom use dynamic model selection
 const PROVIDER_MODELS: Record<string, Array<{ id: string; name: string }>> = {
   anthropic: [
     { id: 'claude-sonnet-4-20250514', name: 'Claude Sonnet 4' },
@@ -19,10 +20,8 @@ const PROVIDER_MODELS: Record<string, Array<{ id: string; name: string }>> = {
     { id: 'gemini-1.5-pro', name: 'Gemini 1.5 Pro' },
     { id: 'gemini-1.5-flash', name: 'Gemini 1.5 Flash' },
   ],
-  openrouter: [
-    { id: 'anthropic/claude-3.5-sonnet', name: 'Claude 3.5 Sonnet' },
-    { id: 'openai/gpt-4o', name: 'GPT-4o' },
-  ],
+  // Dynamic providers - show provider's default model
+  openrouter: [],
   ollama: [],
   custom: [],
 }

@@ -31,7 +31,7 @@ function createWindow() {
   // Load the app
   if (VITE_DEV_SERVER_URL) {
     mainWindow.loadURL(VITE_DEV_SERVER_URL)
-    mainWindow.webContents.openDevTools()
+    // DevTools can be opened manually with Ctrl+Shift+I
   } else {
     mainWindow.loadFile(path.join(DIST, 'index.html'))
   }

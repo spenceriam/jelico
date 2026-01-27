@@ -18,12 +18,7 @@ const PROVIDER_MODELS: Record<string, Array<{ id: string; name: string }>> = {
     { id: 'gemini-1.5-pro', name: 'Gemini 1.5 Pro' },
     { id: 'gemini-1.5-flash', name: 'Gemini 1.5 Flash' },
   ],
-  openrouter: [
-    { id: 'anthropic/claude-3.5-sonnet', name: 'Claude 3.5 Sonnet' },
-    { id: 'openai/gpt-4o', name: 'GPT-4o' },
-    { id: 'google/gemini-pro-1.5', name: 'Gemini Pro 1.5' },
-    { id: 'meta-llama/llama-3.1-70b-instruct', name: 'Llama 3.1 70B' },
-  ],
+  openrouter: [], // Fetched dynamically from OpenRouter API
   ollama: [], // Will be fetched dynamically
   custom: [],
 }
@@ -141,6 +136,36 @@ export function registerProviderHandlers() {
       }
     }
     return PROVIDER_MODELS[type] || []
+  })
+
+  // Fetch OpenRouter models using API key
+  ipcMain.handle('providers:fetchOpenRouterModels', async (_, apiKey: string) => {
+    try {
+      const response = await fetch('https://openrouter.ai/api/v1/models', {
+        headers: {
+          'Authorization': `Bearer ${apiKey}`,
+        },
+      })
+
+      if (!response.ok) {
+        throw new Error(`Failed to fetch models: ${response.status}`)
+      }
+
+      const data = await response.json()
+
+      // Sort by name and return formatted list
+      return (data.data || [])
+        .map((m: any) => ({
+          id: m.id,
+          name: m.name || m.id,
+          contextLength: m.context_length,
+          pricing: m.pricing,
+        }))
+        .sort((a: any, b: any) => a.name.localeCompare(b.name))
+    } catch (err: any) {
+      console.error('Failed to fetch OpenRouter models:', err)
+      return []
+    }
   })
 
   // Keychain handlers

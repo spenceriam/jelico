@@ -9,6 +9,7 @@ interface Window {
       update: (id: string, updates: Partial<ProviderInput>) => Promise<ProviderConfig>
       delete: (id: string) => Promise<void>
       test: (id: string) => Promise<boolean>
+      fetchOpenRouterModels: (apiKey: string) => Promise<OpenRouterModel[]>
     }
     keychain: {
       setApiKey: (providerId: string, key: string) => Promise<void>
@@ -87,4 +88,11 @@ interface StreamParams {
   providerId: string
   model?: string
   messages: Array<{ role: string; content: string }>
+}
+
+interface OpenRouterModel {
+  id: string
+  name: string
+  contextLength?: number
+  pricing?: { prompt: string; completion: string }
 }

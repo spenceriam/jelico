@@ -119,15 +119,6 @@ export function ProviderSetup({ isModal, onComplete, onCancel }: ProviderSetupPr
               </button>
             ))}
           </div>
-
-          {!isModal && (
-            <button
-              onClick={onComplete}
-              className="mt-6 w-full text-center text-sm text-text-muted hover:text-text-secondary"
-            >
-              Skip for now
-            </button>
-          )}
         </div>
       </div>
     )

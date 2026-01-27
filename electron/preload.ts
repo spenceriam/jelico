@@ -10,6 +10,7 @@ contextBridge.exposeInMainWorld('jelico', {
     update: (id: string, updates: any) => ipcRenderer.invoke('providers:update', id, updates),
     delete: (id: string) => ipcRenderer.invoke('providers:delete', id),
     test: (id: string) => ipcRenderer.invoke('providers:test', id),
+    fetchOpenRouterModels: (apiKey: string) => ipcRenderer.invoke('providers:fetchOpenRouterModels', apiKey),
   },
   keychain: {
     setApiKey: (providerId: string, key: string) => ipcRenderer.invoke('keychain:set', providerId, key),
