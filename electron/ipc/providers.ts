@@ -2,12 +2,12 @@ import { ipcMain } from 'electron'
 import { providerDb } from '../services/database'
 import { keychainService } from '../services/keychain'
 
-// Model lists for each provider type
-const PROVIDER_MODELS: Record<string, Array<{ id: string; name: string }>> = {
+// Fallback models only used when API fetch fails
+const FALLBACK_MODELS: Record<string, Array<{ id: string; name: string }>> = {
   anthropic: [
     { id: 'claude-sonnet-4-20250514', name: 'Claude Sonnet 4' },
     { id: 'claude-opus-4-20250514', name: 'Claude Opus 4' },
-    { id: 'claude-3-5-haiku-20241022', name: 'Claude Haiku 3.5' },
+    { id: 'claude-3-5-haiku-20241022', name: 'Claude 3.5 Haiku' },
   ],
   openai: [
     { id: 'gpt-4o', name: 'GPT-4o' },
@@ -18,9 +18,123 @@ const PROVIDER_MODELS: Record<string, Array<{ id: string; name: string }>> = {
     { id: 'gemini-1.5-pro', name: 'Gemini 1.5 Pro' },
     { id: 'gemini-1.5-flash', name: 'Gemini 1.5 Flash' },
   ],
-  openrouter: [], // Fetched dynamically from OpenRouter API
-  ollama: [], // Will be fetched dynamically
+  openrouter: [],
+  ollama: [],
   custom: [],
+}
+
+// Fetch models from Anthropic API
+async function fetchAnthropicModels(apiKey: string): Promise<Array<{ id: string; name: string }>> {
+  try {
+    const response = await fetch('https://api.anthropic.com/v1/models', {
+      headers: {
+        'x-api-key': apiKey,
+        'anthropic-version': '2023-06-01',
+      },
+    })
+
+    if (!response.ok) {
+      console.error('Anthropic API error:', response.status)
+      return FALLBACK_MODELS.anthropic
+    }
+
+    const data = await response.json()
+
+    // Filter to only chat models and format nicely
+    const models = (data.data || [])
+      .filter((m: any) => m.type === 'model')
+      .map((m: any) => {
+        // Create friendly name from model ID
+        let name = m.display_name || m.id
+        return { id: m.id, name }
+      })
+      .sort((a: any, b: any) => a.name.localeCompare(b.name))
+
+    return models.length > 0 ? models : FALLBACK_MODELS.anthropic
+  } catch (err) {
+    console.error('Failed to fetch Anthropic models:', err)
+    return FALLBACK_MODELS.anthropic
+  }
+}
+
+// Fetch models from OpenAI API
+async function fetchOpenAIModels(apiKey: string, baseUrl?: string): Promise<Array<{ id: string; name: string }>> {
+  try {
+    const url = baseUrl ? `${baseUrl}/models` : 'https://api.openai.com/v1/models'
+    const response = await fetch(url, {
+      headers: {
+        'Authorization': `Bearer ${apiKey}`,
+      },
+    })
+
+    if (!response.ok) {
+      console.error('OpenAI API error:', response.status)
+      return FALLBACK_MODELS.openai
+    }
+
+    const data = await response.json()
+
+    // Filter to GPT models and format
+    const models = (data.data || [])
+      .filter((m: any) => {
+        const id = m.id.toLowerCase()
+        // Include GPT models, O1/O3 models, and exclude embeddings/whisper/etc
+        return (id.includes('gpt') || id.startsWith('o1') || id.startsWith('o3')) &&
+               !id.includes('instruct') && !id.includes('realtime')
+      })
+      .map((m: any) => ({
+        id: m.id,
+        name: m.id, // OpenAI uses readable IDs
+      }))
+      .sort((a: any, b: any) => {
+        // Sort GPT-4 models first, then GPT-3.5
+        if (a.id.includes('gpt-4') && !b.id.includes('gpt-4')) return -1
+        if (!a.id.includes('gpt-4') && b.id.includes('gpt-4')) return 1
+        return a.id.localeCompare(b.id)
+      })
+
+    return models.length > 0 ? models : FALLBACK_MODELS.openai
+  } catch (err) {
+    console.error('Failed to fetch OpenAI models:', err)
+    return FALLBACK_MODELS.openai
+  }
+}
+
+// Fetch models from Google Gemini API
+async function fetchGoogleModels(apiKey: string): Promise<Array<{ id: string; name: string }>> {
+  try {
+    const response = await fetch(`https://generativelanguage.googleapis.com/v1/models?key=${apiKey}`)
+
+    if (!response.ok) {
+      console.error('Google API error:', response.status)
+      return FALLBACK_MODELS.google
+    }
+
+    const data = await response.json()
+
+    // Filter to generative models
+    const models = (data.models || [])
+      .filter((m: any) => {
+        const name = m.name || ''
+        // Include gemini models that support generateContent
+        return name.includes('gemini') &&
+               m.supportedGenerationMethods?.includes('generateContent')
+      })
+      .map((m: any) => {
+        // Extract model ID from name (e.g., "models/gemini-1.5-pro" -> "gemini-1.5-pro")
+        const id = m.name.replace('models/', '')
+        return {
+          id,
+          name: m.displayName || id,
+        }
+      })
+      .sort((a: any, b: any) => a.name.localeCompare(b.name))
+
+    return models.length > 0 ? models : FALLBACK_MODELS.google
+  } catch (err) {
+    console.error('Failed to fetch Google models:', err)
+    return FALLBACK_MODELS.google
+  }
 }
 
 // Convert database row to API format
@@ -121,21 +235,57 @@ export function registerProviderHandlers() {
     }
   })
 
-  // Get available models for a provider type
-  ipcMain.handle('providers:models', async (_, type: string, baseUrl?: string) => {
-    if (type === 'ollama') {
-      try {
-        const url = baseUrl || 'http://localhost:11434'
-        const response = await fetch(`${url}/api/tags`)
-        if (response.ok) {
-          const data = await response.json()
-          return data.models?.map((m: any) => ({ id: m.name, name: m.name })) || []
-        }
-      } catch {
-        return []
-      }
+  // Get available models for a provider type (fetches from API when possible)
+  ipcMain.handle('providers:models', async (_, type: string, providerId?: string) => {
+    // Get API key if providerId is given
+    let apiKey: string | null = null
+    let baseUrl: string | undefined
+
+    if (providerId) {
+      apiKey = await keychainService.getApiKey(providerId)
+      const provider = providerDb.get(providerId)
+      baseUrl = provider?.base_url
     }
-    return PROVIDER_MODELS[type] || []
+
+    switch (type) {
+      case 'anthropic':
+        if (apiKey) {
+          return await fetchAnthropicModels(apiKey)
+        }
+        return FALLBACK_MODELS.anthropic
+
+      case 'openai':
+        if (apiKey) {
+          return await fetchOpenAIModels(apiKey, baseUrl)
+        }
+        return FALLBACK_MODELS.openai
+
+      case 'google':
+        if (apiKey) {
+          return await fetchGoogleModels(apiKey)
+        }
+        return FALLBACK_MODELS.google
+
+      case 'ollama':
+        try {
+          const url = baseUrl || 'http://localhost:11434'
+          const response = await fetch(`${url}/api/tags`)
+          if (response.ok) {
+            const data = await response.json()
+            return data.models?.map((m: any) => ({ id: m.name, name: m.name })) || []
+          }
+        } catch {
+          return []
+        }
+        return []
+
+      case 'openrouter':
+        // OpenRouter still uses the dedicated handler with API key
+        return []
+
+      default:
+        return FALLBACK_MODELS[type] || []
+    }
   })
 
   // Fetch OpenRouter models using API key

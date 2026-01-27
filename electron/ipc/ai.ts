@@ -423,9 +423,20 @@ Use this as the base path for file operations. When reading, writing, or searchi
         event.sender.send(`ai:chunk:${channelId}`, chunk)
       }
 
-      // Signal completion
+      // Get usage stats
+      const usage = await result.usage
+      const finishReason = await result.finishReason
+
+      // Signal completion with stats
       if (!abortController.signal.aborted) {
-        event.sender.send(`ai:end:${channelId}`)
+        event.sender.send(`ai:end:${channelId}`, {
+          usage: {
+            promptTokens: usage?.promptTokens || 0,
+            completionTokens: usage?.completionTokens || 0,
+            totalTokens: (usage?.promptTokens || 0) + (usage?.completionTokens || 0),
+          },
+          finishReason,
+        })
       }
     } catch (error: any) {
       if (error.name !== 'AbortError') {

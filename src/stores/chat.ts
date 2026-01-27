@@ -5,6 +5,14 @@ import { useWorkspaceStore } from './workspaces'
 import { useAgentStore } from './agents'
 import { useSkillStore } from './skills'
 
+export interface MessageUsage {
+  promptTokens: number
+  completionTokens: number
+  totalTokens: number
+  tokensPerSecond?: number
+  durationMs?: number
+}
+
 export interface Message {
   id: string
   conversationId: string
@@ -13,6 +21,7 @@ export interface Message {
   createdAt: number
   toolCalls?: ToolCall[]
   toolResults?: ToolResult[]
+  usage?: MessageUsage
 }
 
 export interface ToolCall {
@@ -72,6 +81,7 @@ interface ChatStore {
   setMode: (mode: AgentMode) => void
   setModeTransitioning: (transitioning: boolean) => void
   clearError: () => void
+  regenerateLastResponse: (providerId: string, model: string) => Promise<void>
 }
 
 let currentStreamChannelId: string | null = null
@@ -228,6 +238,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
     currentStreamChannelId = channelId
 
     let fullContent = ''
+    const streamStartTime = Date.now()
 
     // Handle stream chunks
     window.jelico.ai.onStreamChunk(channelId, (chunk) => {
@@ -279,11 +290,27 @@ export const useChatStore = create<ChatStore>((set, get) => ({
     })
 
     // Handle stream end
-    window.jelico.ai.onStreamEnd(channelId, async () => {
+    window.jelico.ai.onStreamEnd(channelId, async (stats) => {
       window.jelico.ai.removeListeners(channelId)
       currentStreamChannelId = null
 
       const { streamingToolCalls, streamingToolResults } = get()
+      const durationMs = Date.now() - streamStartTime
+
+      // Calculate tokens per second
+      let usage: Message['usage'] = undefined
+      if (stats?.usage) {
+        const tokensPerSecond = durationMs > 0
+          ? Math.round((stats.usage.completionTokens / durationMs) * 1000)
+          : 0
+        usage = {
+          promptTokens: stats.usage.promptTokens,
+          completionTokens: stats.usage.completionTokens,
+          totalTokens: stats.usage.totalTokens,
+          tokensPerSecond,
+          durationMs,
+        }
+      }
 
       // Save assistant message
       const assistantMessage = await window.jelico.conversations.addMessage(conversationId!, {
@@ -291,11 +318,12 @@ export const useChatStore = create<ChatStore>((set, get) => ({
         content: fullContent,
       })
 
-      // Attach tool calls/results to the message object for display
+      // Attach tool calls/results and usage to the message object for display
       const messageWithTools: Message = {
         ...assistantMessage,
         toolCalls: streamingToolCalls.length > 0 ? streamingToolCalls : undefined,
         toolResults: streamingToolResults.length > 0 ? streamingToolResults : undefined,
+        usage,
       }
 
       set((state) => ({
@@ -387,4 +415,50 @@ export const useChatStore = create<ChatStore>((set, get) => ({
   setModeTransitioning: (transitioning) => set({ modeTransitioning: transitioning }),
 
   clearError: () => set({ error: null }),
+
+  regenerateLastResponse: async (providerId, model) => {
+    const { messages, activeConversationId, isStreaming } = get()
+
+    if (isStreaming || !activeConversationId || messages.length < 2) return
+
+    // Find the last assistant message
+    let lastAssistantIndex = -1
+    for (let i = messages.length - 1; i >= 0; i--) {
+      if (messages[i].role === 'assistant') {
+        lastAssistantIndex = i
+        break
+      }
+    }
+
+    if (lastAssistantIndex === -1) return
+
+    // Find the user message before the assistant message
+    let lastUserMessage: Message | null = null
+    for (let i = lastAssistantIndex - 1; i >= 0; i--) {
+      if (messages[i].role === 'user') {
+        lastUserMessage = messages[i]
+        break
+      }
+    }
+
+    if (!lastUserMessage) return
+
+    // Remove artifacts created during this turn
+    // We identify them by looking at artifacts created after the user message
+    const artifactStore = useArtifactStore.getState()
+    const artifacts = artifactStore.artifacts.filter(
+      a => a.conversationId === activeConversationId &&
+           a.createdAt > lastUserMessage!.createdAt
+    )
+    for (const artifact of artifacts) {
+      await artifactStore.removeArtifact(artifact.id)
+    }
+
+    // Remove the assistant message from state
+    const messagesWithoutLast = messages.slice(0, lastAssistantIndex)
+    set({ messages: messagesWithoutLast })
+
+    // Re-send the user's message to regenerate
+    await get().sendMessage(lastUserMessage.content, providerId, model)
+  },
 }))

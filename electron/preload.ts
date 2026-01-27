@@ -127,8 +127,8 @@ contextBridge.exposeInMainWorld('jelico', {
       const handler = (_: any, chunk: string) => callback(chunk)
       ipcRenderer.on(`ai:chunk:${channelId}`, handler)
     },
-    onStreamEnd: (channelId: string, callback: () => void) => {
-      const handler = () => callback()
+    onStreamEnd: (channelId: string, callback: (stats?: { usage: { promptTokens: number; completionTokens: number; totalTokens: number }; finishReason: string }) => void) => {
+      const handler = (_: any, stats: any) => callback(stats)
       ipcRenderer.on(`ai:end:${channelId}`, handler)
     },
     onStreamError: (channelId: string, callback: (error: string) => void) => {

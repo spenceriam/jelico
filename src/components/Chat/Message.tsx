@@ -2,7 +2,8 @@ import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { User, Bot } from 'lucide-react'
 import { ToolCallDisplay } from './ToolCallDisplay'
-import type { ToolCall, ToolResult } from '../../stores/chat'
+import { MessageActions } from './MessageActions'
+import type { ToolCall, ToolResult, MessageUsage } from '../../stores/chat'
 
 interface MessageProps {
   message: {
@@ -12,14 +13,27 @@ interface MessageProps {
     createdAt: number
     toolCalls?: ToolCall[]
     toolResults?: ToolResult[]
+    usage?: MessageUsage
   }
   isStreaming?: boolean
   streamingToolCalls?: ToolCall[]
   streamingToolResults?: ToolResult[]
+  isLastAssistantMessage?: boolean
+  onRegenerate?: () => void
+  isRegenerating?: boolean
 }
 
-export function Message({ message, isStreaming, streamingToolCalls, streamingToolResults }: MessageProps) {
+export function Message({
+  message,
+  isStreaming,
+  streamingToolCalls,
+  streamingToolResults,
+  isLastAssistantMessage,
+  onRegenerate,
+  isRegenerating,
+}: MessageProps) {
   const isUser = message.role === 'user'
+  const isAssistant = message.role === 'assistant'
 
   // Use streaming tool calls if currently streaming, otherwise use saved tool calls
   const toolCalls = isStreaming ? streamingToolCalls : message.toolCalls
@@ -136,6 +150,16 @@ export function Message({ message, isStreaming, streamingToolCalls, streamingToo
             >
               {message.content || (isStreaming ? '▊' : '')}
             </ReactMarkdown>
+
+            {/* Message actions for assistant messages (not while streaming) */}
+            {isAssistant && !isStreaming && isLastAssistantMessage && (
+              <MessageActions
+                content={message.content}
+                usage={message.usage}
+                onRegenerate={onRegenerate}
+                isRegenerating={isRegenerating}
+              />
+            )}
           </div>
         )}
       </div>

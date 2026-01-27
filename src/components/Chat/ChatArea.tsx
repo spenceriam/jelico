@@ -1,4 +1,4 @@
-import { useRef, useEffect, useState, useMemo } from 'react'
+import { useRef, useEffect, useState, useMemo, useCallback } from 'react'
 import { useChatStore } from '../../stores/chat'
 import { useProviderStore } from '../../stores/providers'
 import { useUIStore } from '../../stores/ui'
@@ -10,7 +10,7 @@ import { WorkspaceSelector } from '../Workspace/WorkspaceSelector'
 import { ShimmerText } from '../StatusIndicators/ShimmerText'
 
 export function ChatArea() {
-  const { messages, isStreaming, streamingContent, streamingToolCalls, streamingToolResults, activeConversationId } = useChatStore()
+  const { messages, isStreaming, streamingContent, streamingToolCalls, streamingToolResults, activeConversationId, regenerateLastResponse } = useChatStore()
   const { activeProviderId, activeModel } = useProviderStore()
   const { isCompacting, isProcessing, processingMessage } = useUIStore()
   const { getContextUsage } = useContextStore()
@@ -23,6 +23,12 @@ export function ChatArea() {
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages, streamingContent])
+
+  // Handler for regenerating the last response
+  const handleRegenerate = useCallback(async () => {
+    if (!activeProviderId || !activeModel) return
+    await regenerateLastResponse(activeProviderId, activeModel)
+  }, [activeProviderId, activeModel, regenerateLastResponse])
 
   // Show new chat UI when no conversation selected OR empty conversation
   const showNewChatUI = !activeConversationId || (messages.length === 0 && !isStreaming)
@@ -54,6 +60,7 @@ export function ChatArea() {
             streamingContent={isStreaming ? streamingContent : undefined}
             streamingToolCalls={isStreaming ? streamingToolCalls : undefined}
             streamingToolResults={isStreaming ? streamingToolResults : undefined}
+            onRegenerate={handleRegenerate}
           />
           <div ref={messagesEndRef} />
         </div>

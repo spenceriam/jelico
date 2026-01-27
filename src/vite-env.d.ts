@@ -43,7 +43,7 @@ interface Window {
     ai: {
       stream: (params: StreamParams) => string
       onStreamChunk: (channelId: string, callback: (chunk: string) => void) => void
-      onStreamEnd: (channelId: string, callback: () => void) => void
+      onStreamEnd: (channelId: string, callback: (stats?: StreamEndStats) => void) => void
       onStreamError: (channelId: string, callback: (error: string) => void) => void
       onToolCalls: (channelId: string, callback: (toolCalls: ToolCallEvent[]) => void) => void
       onToolResults: (channelId: string, callback: (toolResults: ToolResultEvent[]) => void) => void
@@ -211,6 +211,15 @@ interface SpawnAgentEvent {
   name: string
   task: string
   mode: 'auto' | 'explore' | 'execute' | 'plan' | 'review'
+}
+
+interface StreamEndStats {
+  usage: {
+    promptTokens: number
+    completionTokens: number
+    totalTokens: number
+  }
+  finishReason: string
 }
 
 interface OpenRouterModel {
