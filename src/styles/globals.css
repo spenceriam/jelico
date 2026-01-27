@@ -82,6 +82,20 @@
     outline: none;
     box-shadow: 0 0 0 3px var(--accent-glow);
   }
+
+  /* Shimmer animation for processing indicators */
+  @keyframes shimmer {
+    0% {
+      background-position: 200% 0;
+    }
+    100% {
+      background-position: -200% 0;
+    }
+  }
+
+  .animate-shimmer {
+    animation: shimmer 2s linear infinite;
+  }
 }
 
 @layer components {

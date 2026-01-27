@@ -1,15 +1,23 @@
 import { useRef, useEffect } from 'react'
 import { useChatStore } from '../../stores/chat'
 import { useProviderStore } from '../../stores/providers'
+import { useUIStore } from '../../stores/ui'
+import { useContextStore } from '../../stores/context'
 import { MessageList } from './MessageList'
 import { ChatInput } from './ChatInput'
 import { ModeSelector } from '../ModeSelector/ModeSelector'
+import { ShimmerText } from '../StatusIndicators/ShimmerText'
 import { Sparkles } from 'lucide-react'
 
 export function ChatArea() {
   const { messages, isStreaming, streamingContent, streamingToolCalls, streamingToolResults, activeConversationId } = useChatStore()
   const { activeProviderId, activeModel } = useProviderStore()
+  const { isCompacting, isProcessing, processingMessage } = useUIStore()
+  const { getContextUsage } = useContextStore()
   const messagesEndRef = useRef<HTMLDivElement>(null)
+
+  // Get context usage for current conversation
+  const contextUsage = activeConversationId ? getContextUsage(activeConversationId) : null
 
   // Auto-scroll to bottom when new messages arrive
   useEffect(() => {
@@ -40,6 +48,42 @@ export function ChatArea() {
       {/* Input area */}
       <div className="border-t border-border bg-bg-surface">
         <div className="max-w-3xl mx-auto p-4">
+          {/* Processing indicator */}
+          {(isCompacting || isProcessing) && processingMessage && (
+            <div className="flex justify-center mb-3">
+              <ShimmerText className="text-sm">
+                {processingMessage}
+              </ShimmerText>
+            </div>
+          )}
+
+          {/* Context usage indicator */}
+          {contextUsage && contextUsage.percentage > 0.5 && (
+            <div className="mb-3">
+              <div className="flex items-center justify-between text-xs text-text-muted mb-1">
+                <span>Context usage</span>
+                <span>{Math.round(contextUsage.percentage * 100)}%</span>
+              </div>
+              <div className="h-1 bg-bg-deep rounded-full overflow-hidden">
+                <div
+                  className={`h-full transition-all duration-300 ${
+                    contextUsage.percentage >= 0.75
+                      ? 'bg-error'
+                      : contextUsage.percentage >= 0.5
+                      ? 'bg-accent'
+                      : 'bg-success'
+                  }`}
+                  style={{ width: `${Math.min(contextUsage.percentage * 100, 100)}%` }}
+                />
+              </div>
+              {contextUsage.shouldCompact && (
+                <p className="text-xs text-text-muted mt-1">
+                  Context is filling up. Auto-compaction will occur soon.
+                </p>
+              )}
+            </div>
+          )}
+
           {/* Mode selector above input */}
           <div className="flex justify-center mb-3">
             <ModeSelector />

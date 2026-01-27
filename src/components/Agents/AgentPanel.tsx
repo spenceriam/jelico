@@ -1,6 +1,7 @@
-import { Bot, X, Play, Pause, CheckCircle, XCircle, Loader2, ChevronDown, ChevronRight } from 'lucide-react'
+import { Bot, X, Pause, CheckCircle, XCircle, Loader2, ChevronDown, ChevronRight, Sparkles } from 'lucide-react'
 import { useState } from 'react'
 import { useAgentStore, type SubAgent, type AgentStatus } from '../../stores/agents'
+import { ShimmerText } from '../StatusIndicators/ShimmerText'
 
 const STATUS_ICONS: Record<AgentStatus, React.ComponentType<{ className?: string }>> = {
   pending: Pause,
@@ -31,14 +32,27 @@ export function AgentPanel() {
 
   return (
     <div className="border-t border-border bg-bg-surface">
-      {/* Header */}
+      {/* Orchestrator Header */}
       <div className="flex items-center justify-between px-4 py-2 border-b border-border">
-        <div className="flex items-center gap-2 text-sm">
-          <Bot className="w-4 h-4 text-accent" />
-          <span className="font-medium text-text-primary">Sub-Agents</span>
-          {runningCount > 0 && (
-            <span className="text-xs text-accent">({runningCount} running)</span>
-          )}
+        <div className="flex items-center gap-3 text-sm">
+          {/* Orchestrator (main AI) */}
+          <div className="flex items-center gap-2">
+            <Sparkles className="w-4 h-4 text-accent" />
+            <span className="font-medium text-text-primary">Jelico</span>
+            {runningCount > 0 && (
+              <ShimmerText className="text-xs">
+                Orchestrating...
+              </ShimmerText>
+            )}
+          </div>
+          {/* Sub-agent count */}
+          <div className="flex items-center gap-1 text-text-muted">
+            <Bot className="w-3 h-3" />
+            <span className="text-xs">{agents.length} agent{agents.length !== 1 ? 's' : ''}</span>
+            {runningCount > 0 && (
+              <span className="text-xs text-accent">({runningCount} active)</span>
+            )}
+          </div>
         </div>
         {completedCount > 0 && (
           <button
@@ -119,10 +133,14 @@ function AgentItem({
         {/* Agent info */}
         <div className="flex-1 min-w-0">
           <div className="text-sm font-medium text-text-primary truncate">{agent.name}</div>
-          <div className="text-xs text-text-muted truncate">
-            {agent.status === 'running'
-              ? agent.progress?.slice(-50) || 'Working...'
-              : agent.task.slice(0, 50)}
+          <div className="text-xs truncate">
+            {agent.status === 'running' ? (
+              <ShimmerText className="text-xs">
+                {agent.progress?.slice(-50) || 'Working...'}
+              </ShimmerText>
+            ) : (
+              <span className="text-text-muted">{agent.task.slice(0, 50)}</span>
+            )}
           </div>
         </div>
 
