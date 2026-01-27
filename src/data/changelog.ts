@@ -21,6 +21,15 @@ export interface ChangelogEntry {
 
 export const changelog: ChangelogEntry[] = [
   {
+    version: '0.2.1',
+    date: '2026-01-27',
+    changes: {
+      changed: [
+        'Moved settings icon next to model selector in new chat view',
+      ],
+    },
+  },
+  {
     version: '0.2.0',
     date: '2026-01-27',
     changes: {

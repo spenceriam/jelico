@@ -299,16 +299,7 @@ function NewChatView({ disabled, isStreaming }: NewChatViewProps) {
   const displayGreeting = buildGreeting(greeting, userName)
 
   return (
-    <div className="relative text-center animate-fade-in space-y-8">
-      {/* Settings button - top right */}
-      <button
-        onClick={() => openSettings()}
-        className="absolute top-0 right-0 p-2 text-text-muted hover:text-text-primary hover:bg-bg-surface rounded-md transition-colors"
-        title="Settings"
-      >
-        <Settings className="w-5 h-5" />
-      </button>
-
+    <div className="text-center animate-fade-in space-y-8">
       {/* Logo matching onboarding style */}
       <div className="welcome-logo mx-auto">J</div>
 
@@ -327,10 +318,17 @@ function NewChatView({ disabled, isStreaming }: NewChatViewProps) {
         <ModeSelector />
       </div>
 
-      {/* Workspace and Model selector */}
+      {/* Workspace, Model selector, and Settings */}
       <div className="flex justify-center items-center gap-3">
         <WorkspaceSelector />
         <ModelSelector compact />
+        <button
+          onClick={() => openSettings()}
+          className="p-2 text-text-muted hover:text-text-primary hover:bg-bg-surface rounded-md transition-colors"
+          title="Settings"
+        >
+          <Settings className="w-5 h-5" />
+        </button>
       </div>
 
       {/* Chat input */}
