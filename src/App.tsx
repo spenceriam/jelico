@@ -1,4 +1,5 @@
 import { useEffect } from 'react'
+import { PanelLeftClose, PanelLeftOpen } from 'lucide-react'
 import { useProviderStore } from './stores/providers'
 import { useChatStore } from './stores/chat'
 import { useUIStore } from './stores/ui'
@@ -16,7 +17,7 @@ import { Settings } from './components/Settings/Settings'
 export default function App() {
   const { providers, loadProviders, isLoading } = useProviderStore()
   const { loadConversations } = useChatStore()
-  const { settingsOpen, closeSettings, providerSetupOpen, closeProviderSetup } = useUIStore()
+  const { settingsOpen, closeSettings, providerSetupOpen, closeProviderSetup, sidebarCollapsed, toggleSidebar } = useUIStore()
   const { canvasOpen } = useArtifactStore()
   const { loadWorkspaces } = useWorkspaceStore()
   const commandPalette = useCommandPalette()
@@ -43,7 +44,26 @@ export default function App() {
   }
 
   return (
-    <div className="h-screen flex bg-bg-void text-text-primary overflow-hidden">
+    <div className="h-screen flex bg-bg-void text-text-primary overflow-hidden relative">
+      {/* Floating sidebar toggle button at left edge */}
+      <button
+        onClick={toggleSidebar}
+        className={`
+          fixed left-0 top-1/2 -translate-y-1/2 z-40
+          p-1.5 bg-bg-elevated border border-border rounded-r-lg
+          text-text-muted hover:text-text-primary hover:bg-bg-hover
+          transition-all duration-200
+          ${sidebarCollapsed ? 'translate-x-0' : 'translate-x-[256px]'}
+        `}
+        title={sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+      >
+        {sidebarCollapsed ? (
+          <PanelLeftOpen className="w-4 h-4" />
+        ) : (
+          <PanelLeftClose className="w-4 h-4" />
+        )}
+      </button>
+
       <Sidebar />
 
       <main className="flex-1 flex flex-col min-w-0">

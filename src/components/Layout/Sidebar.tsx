@@ -1,12 +1,10 @@
-import { MessageSquare, Plus, Settings, Trash2 } from 'lucide-react'
+import { Plus, Settings, Trash2 } from 'lucide-react'
 import { useChatStore } from '../../stores/chat'
-import { useProviderStore } from '../../stores/providers'
 import { useUIStore } from '../../stores/ui'
 
 export function Sidebar() {
   const { conversations, activeConversationId, setActiveConversation, deleteConversation } = useChatStore()
-  const { activeProviderId, activeModel } = useProviderStore()
-  const { sidebarCollapsed, toggleSidebar, openSettings } = useUIStore()
+  const { sidebarCollapsed, openSettings } = useUIStore()
 
   const handleNewChat = () => {
     setActiveConversation(null)
@@ -22,17 +20,9 @@ export function Sidebar() {
   // Group conversations by date
   const groupedConversations = groupByDate(conversations)
 
+  // When collapsed, render nothing - the floating toggle in App.tsx handles expand
   if (sidebarCollapsed) {
-    return (
-      <div className="w-12 bg-bg-deep border-r border-border flex flex-col items-center py-4">
-        <button
-          onClick={toggleSidebar}
-          className="p-2 hover:bg-bg-hover rounded-lg text-text-secondary hover:text-text-primary"
-        >
-          <MessageSquare className="w-5 h-5" />
-        </button>
-      </div>
-    )
+    return null
   }
 
   return (

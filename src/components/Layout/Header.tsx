@@ -1,4 +1,4 @@
-import { ChevronDown, Settings, PanelRight, Edit2, Check, X, Loader2 } from 'lucide-react'
+import { ChevronDown, Settings, Presentation, Edit2, Check, X, Loader2 } from 'lucide-react'
 import { useState, useRef, useEffect } from 'react'
 import { useProviderStore } from '../../stores/providers'
 import { useUIStore } from '../../stores/ui'
@@ -324,7 +324,7 @@ export function Header() {
           `}
           title={canvasOpen ? 'Hide Canvas' : 'Show Canvas'}
         >
-          <PanelRight className="w-5 h-5" />
+          <Presentation className="w-5 h-5" />
           {artifacts.length > 0 && !canvasOpen && (
             <span className="absolute -top-0.5 -right-0.5 w-2 h-2 bg-accent rounded-full" />
           )}

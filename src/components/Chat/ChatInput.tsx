@@ -60,7 +60,7 @@ export function ChatInput({ disabled, isStreaming }: ChatInputProps) {
         </div>
       )}
 
-      <div className="flex items-end gap-3 bg-bg-elevated rounded-xl p-3 border border-border focus-within:border-accent/50 transition-colors">
+      <div className="flex items-end gap-3 bg-bg-elevated rounded-xl p-3 border border-border hover:border-border-subtle transition-colors">
         <textarea
           ref={textareaRef}
           value={input}
@@ -69,7 +69,7 @@ export function ChatInput({ disabled, isStreaming }: ChatInputProps) {
           placeholder={disabled ? 'Select a provider to start...' : isStreaming ? 'Message will be queued...' : 'Message Jelico...'}
           disabled={disabled}
           rows={1}
-          className="flex-1 bg-transparent text-text-primary placeholder:text-text-muted outline-none resize-none min-h-[24px] max-h-[200px] disabled:cursor-not-allowed"
+          className="flex-1 bg-transparent text-text-primary placeholder:text-text-muted outline-none resize-none min-h-[24px] max-h-[200px] disabled:cursor-not-allowed focus:outline-none focus:ring-0 border-none"
         />
 
         {isStreaming ? (
