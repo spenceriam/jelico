@@ -1,9 +1,21 @@
-import { useEffect, useCallback } from 'react'
+import { useEffect, useState, useRef } from 'react'
 import { modes, cycleMode, type AgentMode } from '../../lib/modes'
 import { useChatStore } from '../../stores/chat'
 
 export function ModeSelector() {
-  const { mode, setMode } = useChatStore()
+  const { mode, setMode, modeTransitioning } = useChatStore()
+  const [animatingMode, setAnimatingMode] = useState<AgentMode | null>(null)
+  const prevModeRef = useRef(mode)
+
+  // Animate when mode changes
+  useEffect(() => {
+    if (mode !== prevModeRef.current) {
+      setAnimatingMode(mode)
+      const timer = setTimeout(() => setAnimatingMode(null), 500)
+      prevModeRef.current = mode
+      return () => clearTimeout(timer)
+    }
+  }, [mode])
 
   // Handle Tab key to cycle modes
   useEffect(() => {
@@ -59,18 +71,25 @@ export function ModeSelector() {
 
   return (
     <div className="flex items-center">
-      <div className="flex bg-bg-surface rounded-lg p-1 gap-0.5">
+      <div className={`
+        flex bg-bg-surface rounded-lg p-1 gap-0.5 transition-all duration-300
+        ${modeTransitioning ? 'ring-2 ring-accent/50 ring-offset-2 ring-offset-bg-surface' : ''}
+      `}>
         {Object.values(modes).map((m) => (
           <button
             key={m.id}
             onClick={() => setMode(m.id)}
+            disabled={modeTransitioning}
             className={`
               relative px-3 py-1.5 text-sm font-medium rounded-md
-              transition-all duration-150
+              transition-all duration-200
               ${m.id === mode
                 ? 'bg-bg-elevated text-text-primary shadow-sm'
                 : 'text-text-muted hover:text-text-secondary'
               }
+              ${animatingMode === m.id ? 'animate-pulse ring-2 ring-accent' : ''}
+              ${modeTransitioning && m.id === mode ? 'animate-pulse' : ''}
+              ${modeTransitioning ? 'cursor-wait' : ''}
             `}
             title={`${m.description} (${m.shortcut})`}
           >
@@ -81,6 +100,11 @@ export function ModeSelector() {
           </button>
         ))}
       </div>
+      {modeTransitioning && (
+        <span className="ml-2 text-xs text-text-muted animate-pulse">
+          Deciding mode...
+        </span>
+      )}
     </div>
   )
 }

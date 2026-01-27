@@ -57,6 +57,7 @@ interface ChatStore {
   isLoading: boolean
   error: string | null
   mode: AgentMode
+  modeTransitioning: boolean
   messageQueue: QueuedMessage[]
 
   // Actions
@@ -69,6 +70,7 @@ interface ChatStore {
   stopStreaming: () => void
   deleteConversation: (id: string) => Promise<void>
   setMode: (mode: AgentMode) => void
+  setModeTransitioning: (transitioning: boolean) => void
   clearError: () => void
 }
 
@@ -78,6 +80,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
   conversations: [],
   activeConversationId: null,
   messages: [],
+  modeTransitioning: false,
   isStreaming: false,
   streamingContent: '',
   streamingToolCalls: [],
@@ -376,6 +379,8 @@ export const useChatStore = create<ChatStore>((set, get) => ({
   },
 
   setMode: (mode) => set({ mode }),
+
+  setModeTransitioning: (transitioning) => set({ modeTransitioning: transitioning }),
 
   clearError: () => set({ error: null }),
 }))

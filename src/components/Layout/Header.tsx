@@ -3,7 +3,6 @@ import { useState, useRef, useEffect } from 'react'
 import { useProviderStore } from '../../stores/providers'
 import { useUIStore } from '../../stores/ui'
 import { useArtifactStore } from '../../stores/artifacts'
-import { ModeSelector } from '../ModeSelector/ModeSelector'
 import { WorkspaceSelector } from '../Workspace/WorkspaceSelector'
 
 // Model lists for display (static providers only)
@@ -123,11 +122,8 @@ export function Header() {
         <WorkspaceSelector />
       </div>
 
-      {/* Center - Mode selector */}
-      <ModeSelector />
-
       {/* Right - Model & Settings */}
-      <div className="flex-1 flex items-center justify-end gap-2">
+      <div className="flex items-center gap-2">
         {/* Model selector */}
         <div className="relative" ref={dropdownRef}>
           <button
