@@ -6,6 +6,7 @@ import { useContextStore } from '../../stores/context'
 import { MessageList } from './MessageList'
 import { ChatInput } from './ChatInput'
 import { ModeSelector } from '../ModeSelector/ModeSelector'
+import { WorkspaceSelector } from '../Workspace/WorkspaceSelector'
 import { ShimmerText } from '../StatusIndicators/ShimmerText'
 
 export function ChatArea() {
@@ -23,25 +24,39 @@ export function ChatArea() {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages, streamingContent])
 
-  const isEmpty = messages.length === 0 && !isStreaming
+  // Show new chat UI when no conversation selected OR empty conversation
+  const showNewChatUI = !activeConversationId || (messages.length === 0 && !isStreaming)
 
+  // New chat / Welcome UI - centered stack
+  if (showNewChatUI) {
+    return (
+      <div className="flex-1 flex flex-col min-h-0">
+        <div className="flex-1 flex items-center justify-center p-6">
+          <div className="w-full max-w-xl">
+            <NewChatView
+              disabled={!activeProviderId || !activeModel}
+              isStreaming={isStreaming}
+            />
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  // Active conversation UI - normal chat layout
   return (
     <div className="flex-1 flex flex-col min-h-0">
       {/* Messages area */}
       <div className="flex-1 overflow-y-auto">
-        {isEmpty ? (
-          <EmptyState />
-        ) : (
-          <div className="max-w-3xl mx-auto py-6 px-4">
-            <MessageList
-              messages={messages}
-              streamingContent={isStreaming ? streamingContent : undefined}
-              streamingToolCalls={isStreaming ? streamingToolCalls : undefined}
-              streamingToolResults={isStreaming ? streamingToolResults : undefined}
-            />
-            <div ref={messagesEndRef} />
-          </div>
-        )}
+        <div className="max-w-3xl mx-auto py-6 px-4">
+          <MessageList
+            messages={messages}
+            streamingContent={isStreaming ? streamingContent : undefined}
+            streamingToolCalls={isStreaming ? streamingToolCalls : undefined}
+            streamingToolResults={isStreaming ? streamingToolResults : undefined}
+          />
+          <div ref={messagesEndRef} />
+        </div>
       </div>
 
       {/* Input area */}
@@ -123,16 +138,22 @@ const FOLLOW_UP_PROMPTS = [
   "Ready to dive in whenever you are.",
 ]
 
-function EmptyState() {
+interface NewChatViewProps {
+  disabled?: boolean
+  isStreaming?: boolean
+}
+
+function NewChatView({ disabled, isStreaming }: NewChatViewProps) {
   const [userName, setUserName] = useState<string | null>(null)
 
-  // Get random greeting and prompt (stable per session)
-  const { greeting, prompt } = useMemo(() => {
+  // Get random greeting and prompt (stable per component mount)
+  const { greeting, prompt, useTimeGreeting } = useMemo(() => {
     const greetingIndex = Math.floor(Math.random() * CASUAL_GREETINGS.length)
     const promptIndex = Math.floor(Math.random() * FOLLOW_UP_PROMPTS.length)
     return {
       greeting: CASUAL_GREETINGS[greetingIndex],
       prompt: FOLLOW_UP_PROMPTS[promptIndex],
+      useTimeGreeting: Math.random() > 0.5,
     }
   }, [])
 
@@ -149,16 +170,13 @@ function EmptyState() {
 
   const timeGreeting = getTimeBasedGreeting()
 
-  // Decide which greeting style to use (time-based vs casual)
-  const useTimeGreeting = Math.random() > 0.5
-
   return (
-    <div className="h-full flex items-center justify-center p-10">
-      <div className="text-center max-w-lg animate-fade-in">
-        {/* Logo matching onboarding style */}
-        <div className="welcome-logo mb-6">J</div>
+    <div className="text-center animate-fade-in space-y-8">
+      {/* Logo matching onboarding style */}
+      <div className="welcome-logo mx-auto">J</div>
 
-        {/* Dynamic greeting */}
+      {/* Dynamic greeting */}
+      <div>
         <h1 className="font-display text-[32px] font-normal text-text-primary mb-3 tracking-tight">
           {useTimeGreeting ? (
             userName ? `${timeGreeting}, ${userName}` : timeGreeting
@@ -166,11 +184,28 @@ function EmptyState() {
             userName ? `Hey ${userName}, ${greeting.toLowerCase()}` : greeting
           )}
         </h1>
-
-        {/* Follow-up prompt */}
         <p className="text-text-secondary text-lg">
           {prompt}
         </p>
+      </div>
+
+      {/* Mode selector */}
+      <div className="flex justify-center">
+        <ModeSelector />
+      </div>
+
+      {/* Workspace selector */}
+      <div className="flex justify-center">
+        <WorkspaceSelector />
+      </div>
+
+      {/* Chat input */}
+      <div className="pt-4">
+        <ChatInput
+          disabled={disabled}
+          isStreaming={isStreaming}
+          centered
+        />
       </div>
     </div>
   )

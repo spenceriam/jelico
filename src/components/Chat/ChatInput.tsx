@@ -11,9 +11,10 @@ function isMac(): boolean {
 interface ChatInputProps {
   disabled?: boolean
   isStreaming?: boolean
+  centered?: boolean // For new chat view - hides hints below
 }
 
-export function ChatInput({ disabled, isStreaming }: ChatInputProps) {
+export function ChatInput({ disabled, isStreaming, centered }: ChatInputProps) {
   const [input, setInput] = useState('')
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const { sendMessage, stopStreaming, messageQueue } = useChatStore()
@@ -44,11 +45,13 @@ export function ChatInput({ disabled, isStreaming }: ChatInputProps) {
   const handleInput = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
     setInput(e.target.value)
 
-    // Auto-resize textarea
+    // Auto-resize textarea (only grow beyond min height)
     const textarea = textareaRef.current
     if (textarea) {
       textarea.style.height = 'auto'
-      textarea.style.height = `${Math.min(textarea.scrollHeight, 200)}px`
+      const minHeight = 96 // 4 lines approx
+      const newHeight = Math.max(textarea.scrollHeight, minHeight)
+      textarea.style.height = `${Math.min(newHeight, 200)}px`
     }
   }
 
@@ -68,7 +71,7 @@ export function ChatInput({ disabled, isStreaming }: ChatInputProps) {
         </div>
       )}
 
-      <div className="flex items-end gap-3 bg-bg-elevated rounded-xl p-3 border border-border hover:border-border-subtle transition-colors">
+      <div className="flex items-end gap-3 bg-bg-elevated rounded-xl p-3 border border-border hover:border-border-strong focus-within:border-accent transition-colors">
         <textarea
           ref={textareaRef}
           value={input}
@@ -76,14 +79,14 @@ export function ChatInput({ disabled, isStreaming }: ChatInputProps) {
           onKeyDown={handleKeyDown}
           placeholder={disabled ? 'Select a provider to start...' : isStreaming ? 'Message will be queued...' : 'Message Jelico...'}
           disabled={disabled}
-          rows={1}
-          className="flex-1 bg-transparent text-text-primary placeholder:text-text-muted outline-none resize-none min-h-[24px] max-h-[200px] disabled:cursor-not-allowed focus:outline-none focus:ring-0 border-none"
+          rows={4}
+          className="flex-1 bg-transparent text-text-primary placeholder:text-text-muted outline-none resize-none min-h-[96px] max-h-[200px] disabled:cursor-not-allowed focus:outline-none focus:ring-0 border-none leading-6 py-1"
         />
 
         {isStreaming ? (
           <button
             onClick={handleStop}
-            className="p-2 bg-error text-white rounded-lg hover:bg-error/90 transition-colors"
+            className="p-2 bg-error text-white rounded-lg hover:bg-error/90 transition-colors self-end mb-1"
             title="Stop generating"
           >
             <Square className="w-5 h-5" />
@@ -92,7 +95,7 @@ export function ChatInput({ disabled, isStreaming }: ChatInputProps) {
           <button
             onClick={handleSubmit}
             disabled={disabled || !input.trim()}
-            className="p-2 bg-accent text-black rounded-lg hover:bg-accent-bright disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+            className="p-2 bg-accent text-black rounded-lg hover:bg-accent-bright disabled:opacity-50 disabled:cursor-not-allowed transition-colors self-end mb-1"
             title="Send message"
           >
             <Send className="w-5 h-5" />
@@ -100,10 +103,13 @@ export function ChatInput({ disabled, isStreaming }: ChatInputProps) {
         )}
       </div>
 
-      <div className="flex items-center justify-between text-xs text-text-muted px-1">
-        <span>Enter to send · Shift+Enter for new line · Tab to cycle modes</span>
-        <span>{modKey}+K for commands</span>
-      </div>
+      {/* Hints - hidden when centered (new chat view) */}
+      {!centered && (
+        <div className="flex items-center justify-between text-xs text-text-muted px-1">
+          <span>Enter to send · Shift+Enter for new line · Tab to cycle modes</span>
+          <span>{modKey}+K for commands</span>
+        </div>
+      )}
     </div>
   )
 }
