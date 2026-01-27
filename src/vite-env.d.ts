@@ -73,6 +73,30 @@ interface Window {
       export: (conversationId: string) => Promise<SandboxExportResult>
       exportToPath: (conversationId: string, destinationPath: string) => Promise<SandboxExportResult>
     }
+    memory: {
+      list: (scope?: MemoryScope, scopeId?: string) => Promise<MemoryRecord[]>
+      get: (id: string) => Promise<MemoryRecord | null>
+      getForContext: (workspaceId?: string, conversationId?: string) => Promise<MemoryRecord[]>
+      getGlobal: () => Promise<MemoryRecord[]>
+      getByWorkspace: (workspaceId: string) => Promise<MemoryRecord[]>
+      getByConversation: (conversationId: string) => Promise<MemoryRecord[]>
+      create: (memory: MemoryInput) => Promise<MemoryRecord>
+      update: (id: string, updates: Partial<MemoryInput>) => Promise<MemoryRecord | null>
+      delete: (id: string) => Promise<{ success: boolean }>
+      deleteByScope: (scope: MemoryScope, scopeId?: string) => Promise<{ success: boolean }>
+      decayConfidence: (decayRate?: number) => Promise<{ success: boolean }>
+    }
+    permissions: {
+      list: (workspaceId?: string) => Promise<PermissionRecord[]>
+      get: (id: string) => Promise<PermissionRecord | null>
+      check: (toolName: string, action: string, workspaceId?: string) => Promise<PermissionAction | null>
+      create: (permission: PermissionInput) => Promise<PermissionRecord>
+      update: (id: string, updates: Partial<PermissionInput>) => Promise<PermissionRecord | null>
+      delete: (id: string) => Promise<{ success: boolean }>
+      deleteByWorkspace: (workspaceId: string) => Promise<{ success: boolean }>
+      clearOnce: () => Promise<{ success: boolean }>
+      request: (request: PermissionRequest) => Promise<PermissionRequestResult>
+    }
   }
 }
 
@@ -240,4 +264,67 @@ interface SandboxExportResult {
   filesCopied?: number
   cancelled?: boolean
   error?: string
+}
+
+// Memory types
+type MemoryScope = 'global' | 'workspace' | 'conversation'
+type MemoryCategory = 'preference' | 'fact' | 'style' | 'correction' | 'workflow' | 'custom'
+type MemorySource = 'explicit' | 'inferred'
+type MemoryPrivacy = 'private' | 'shared'
+
+interface MemoryRecord {
+  id: string
+  scope: MemoryScope
+  scope_id: string | null
+  category: MemoryCategory
+  key: string
+  value: string // JSON stringified
+  confidence: number
+  source: MemorySource
+  privacy: MemoryPrivacy
+  created_at: number
+  updated_at: number
+}
+
+interface MemoryInput {
+  scope: MemoryScope
+  scopeId?: string
+  category: MemoryCategory
+  key: string
+  value: unknown
+  confidence?: number
+  source?: MemorySource
+  privacy?: MemoryPrivacy
+}
+
+// Permission types
+type PermissionAction = 'allow_always' | 'allow_once' | 'deny'
+
+interface PermissionRecord {
+  id: string
+  tool_name: string
+  action_pattern: string
+  permission: PermissionAction
+  workspace_id: string | null
+  created_at: number
+  updated_at: number
+}
+
+interface PermissionInput {
+  toolName: string
+  actionPattern: string
+  permission: PermissionAction
+  workspaceId?: string
+}
+
+interface PermissionRequest {
+  toolName: string
+  action: string
+  description: string
+  workspaceId?: string
+}
+
+interface PermissionRequestResult {
+  permission: PermissionAction
+  cancelled: boolean
 }

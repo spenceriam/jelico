@@ -68,6 +68,32 @@ contextBridge.exposeInMainWorld('jelico', {
     exportToPath: (conversationId: string, destinationPath: string) =>
       ipcRenderer.invoke('sandbox:exportToPath', conversationId, destinationPath),
   },
+  memory: {
+    list: (scope?: string, scopeId?: string) => ipcRenderer.invoke('memory:list', scope, scopeId),
+    get: (id: string) => ipcRenderer.invoke('memory:get', id),
+    getForContext: (workspaceId?: string, conversationId?: string) =>
+      ipcRenderer.invoke('memory:getForContext', workspaceId, conversationId),
+    getGlobal: () => ipcRenderer.invoke('memory:getGlobal'),
+    getByWorkspace: (workspaceId: string) => ipcRenderer.invoke('memory:getByWorkspace', workspaceId),
+    getByConversation: (conversationId: string) => ipcRenderer.invoke('memory:getByConversation', conversationId),
+    create: (memory: any) => ipcRenderer.invoke('memory:create', memory),
+    update: (id: string, updates: any) => ipcRenderer.invoke('memory:update', id, updates),
+    delete: (id: string) => ipcRenderer.invoke('memory:delete', id),
+    deleteByScope: (scope: string, scopeId?: string) => ipcRenderer.invoke('memory:deleteByScope', scope, scopeId),
+    decayConfidence: (decayRate?: number) => ipcRenderer.invoke('memory:decayConfidence', decayRate),
+  },
+  permissions: {
+    list: (workspaceId?: string) => ipcRenderer.invoke('permissions:list', workspaceId),
+    get: (id: string) => ipcRenderer.invoke('permissions:get', id),
+    check: (toolName: string, action: string, workspaceId?: string) =>
+      ipcRenderer.invoke('permissions:check', toolName, action, workspaceId),
+    create: (permission: any) => ipcRenderer.invoke('permissions:create', permission),
+    update: (id: string, updates: any) => ipcRenderer.invoke('permissions:update', id, updates),
+    delete: (id: string) => ipcRenderer.invoke('permissions:delete', id),
+    deleteByWorkspace: (workspaceId: string) => ipcRenderer.invoke('permissions:deleteByWorkspace', workspaceId),
+    clearOnce: () => ipcRenderer.invoke('permissions:clearOnce'),
+    request: (request: any) => ipcRenderer.invoke('permissions:request', request),
+  },
   ai: {
     stream: (params: any) => {
       const channelId = crypto.randomUUID()

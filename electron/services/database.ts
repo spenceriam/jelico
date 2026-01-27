@@ -12,6 +12,8 @@ interface DbSchema {
   messages: MessageRow[]
   workspaces: WorkspaceRow[]
   artifacts: ArtifactRow[]
+  memories: MemoryRow[]
+  permissions: PermissionRow[]
 }
 
 let db: DbSchema = {
@@ -20,6 +22,8 @@ let db: DbSchema = {
   messages: [],
   workspaces: [],
   artifacts: [],
+  memories: [],
+  permissions: [],
 }
 
 function getDbPath() {
@@ -39,10 +43,16 @@ function loadDb(): void {
       if (!db.artifacts) {
         db.artifacts = []
       }
+      if (!db.memories) {
+        db.memories = []
+      }
+      if (!db.permissions) {
+        db.permissions = []
+      }
     }
   } catch (err) {
     console.error('Failed to load database:', err)
-    db = { providers: [], conversations: [], messages: [], workspaces: [], artifacts: [] }
+    db = { providers: [], conversations: [], messages: [], workspaces: [], artifacts: [], memories: [], permissions: [] }
   }
 }
 
@@ -462,6 +472,344 @@ export const artifactDb = {
 
   deleteByConversation(conversationId: string): void {
     db.artifacts = db.artifacts.filter(a => a.conversation_id !== conversationId)
+    saveDb()
+  },
+}
+
+// Memory types and operations
+type MemoryScope = 'global' | 'workspace' | 'conversation'
+type MemoryCategory = 'preference' | 'fact' | 'style' | 'correction' | 'workflow' | 'custom'
+type MemorySource = 'explicit' | 'inferred'
+type MemoryPrivacy = 'private' | 'shared'
+
+interface MemoryRow {
+  id: string
+  scope: MemoryScope
+  scope_id: string | null // null for global, workspace_id or conversation_id
+  category: MemoryCategory
+  key: string
+  value: string // JSON stringified
+  confidence: number // 0-1
+  source: MemorySource
+  privacy: MemoryPrivacy
+  created_at: number
+  updated_at: number
+}
+
+interface MemoryInput {
+  scope: MemoryScope
+  scopeId?: string
+  category: MemoryCategory
+  key: string
+  value: unknown
+  confidence?: number
+  source?: MemorySource
+  privacy?: MemoryPrivacy
+}
+
+export const memoryDb = {
+  list(scope?: MemoryScope, scopeId?: string): MemoryRow[] {
+    let memories = [...db.memories]
+
+    if (scope) {
+      memories = memories.filter(m => m.scope === scope)
+    }
+    if (scopeId) {
+      memories = memories.filter(m => m.scope_id === scopeId)
+    }
+
+    return memories.sort((a, b) => b.updated_at - a.updated_at)
+  },
+
+  get(id: string): MemoryRow | null {
+    return db.memories.find(m => m.id === id) || null
+  },
+
+  getByKey(scope: MemoryScope, scopeId: string | null, key: string): MemoryRow | null {
+    return db.memories.find(
+      m => m.scope === scope && m.scope_id === scopeId && m.key === key
+    ) || null
+  },
+
+  getGlobal(): MemoryRow[] {
+    return db.memories.filter(m => m.scope === 'global')
+  },
+
+  getByWorkspace(workspaceId: string): MemoryRow[] {
+    return db.memories.filter(m => m.scope === 'workspace' && m.scope_id === workspaceId)
+  },
+
+  getByConversation(conversationId: string): MemoryRow[] {
+    return db.memories.filter(m => m.scope === 'conversation' && m.scope_id === conversationId)
+  },
+
+  // Get all memories relevant to a context (includes global + workspace + conversation)
+  getForContext(workspaceId?: string, conversationId?: string): MemoryRow[] {
+    const memories: MemoryRow[] = []
+
+    // Always include global memories
+    memories.push(...this.getGlobal())
+
+    // Include workspace memories if provided
+    if (workspaceId) {
+      memories.push(...this.getByWorkspace(workspaceId))
+    }
+
+    // Include conversation memories if provided
+    if (conversationId) {
+      memories.push(...this.getByConversation(conversationId))
+    }
+
+    return memories.sort((a, b) => b.confidence - a.confidence)
+  },
+
+  create(memory: MemoryInput): MemoryRow {
+    const now = Date.now()
+    const id = uuid()
+
+    // Check for existing memory with same key in same scope
+    const existing = this.getByKey(
+      memory.scope,
+      memory.scopeId || null,
+      memory.key
+    )
+
+    if (existing) {
+      // Update existing memory instead of creating duplicate
+      return this.update(existing.id, {
+        value: memory.value,
+        confidence: memory.confidence,
+        source: memory.source,
+      })!
+    }
+
+    const record: MemoryRow = {
+      id,
+      scope: memory.scope,
+      scope_id: memory.scopeId || null,
+      category: memory.category,
+      key: memory.key,
+      value: JSON.stringify(memory.value),
+      confidence: memory.confidence ?? 0.8,
+      source: memory.source || 'explicit',
+      privacy: memory.privacy || 'shared',
+      created_at: now,
+      updated_at: now,
+    }
+
+    db.memories.push(record)
+    saveDb()
+    return record
+  },
+
+  update(id: string, updates: Partial<MemoryInput>): MemoryRow | null {
+    const index = db.memories.findIndex(m => m.id === id)
+    if (index === -1) return null
+
+    const memory = db.memories[index]
+    if (updates.scope !== undefined) memory.scope = updates.scope
+    if (updates.scopeId !== undefined) memory.scope_id = updates.scopeId || null
+    if (updates.category !== undefined) memory.category = updates.category
+    if (updates.key !== undefined) memory.key = updates.key
+    if (updates.value !== undefined) memory.value = JSON.stringify(updates.value)
+    if (updates.confidence !== undefined) memory.confidence = updates.confidence
+    if (updates.source !== undefined) memory.source = updates.source
+    if (updates.privacy !== undefined) memory.privacy = updates.privacy
+    memory.updated_at = Date.now()
+
+    saveDb()
+    return memory
+  },
+
+  delete(id: string): void {
+    db.memories = db.memories.filter(m => m.id !== id)
+    saveDb()
+  },
+
+  deleteByScope(scope: MemoryScope, scopeId?: string): void {
+    db.memories = db.memories.filter(m => {
+      if (m.scope !== scope) return true
+      if (scopeId && m.scope_id !== scopeId) return true
+      return false
+    })
+    saveDb()
+  },
+
+  // Decay confidence over time (call periodically)
+  decayConfidence(decayRate: number = 0.01): void {
+    const now = Date.now()
+    const dayMs = 24 * 60 * 60 * 1000
+
+    db.memories.forEach(m => {
+      const daysSinceUpdate = (now - m.updated_at) / dayMs
+      const decay = decayRate * daysSinceUpdate
+      m.confidence = Math.max(0, m.confidence - decay)
+    })
+
+    // Remove memories with very low confidence
+    db.memories = db.memories.filter(m => m.confidence > 0.1)
+    saveDb()
+  },
+}
+
+// Permission types and operations
+type PermissionAction = 'allow_always' | 'allow_once' | 'deny'
+
+interface PermissionRow {
+  id: string
+  tool_name: string
+  action_pattern: string // e.g., "read:*", "write:/home/user/*"
+  permission: PermissionAction
+  workspace_id: string | null // null for global
+  created_at: number
+  updated_at: number
+}
+
+interface PermissionInput {
+  toolName: string
+  actionPattern: string
+  permission: PermissionAction
+  workspaceId?: string
+}
+
+export const permissionDb = {
+  list(workspaceId?: string): PermissionRow[] {
+    let permissions = [...db.permissions]
+
+    if (workspaceId !== undefined) {
+      // Include both workspace-specific and global permissions
+      permissions = permissions.filter(
+        p => p.workspace_id === workspaceId || p.workspace_id === null
+      )
+    }
+
+    return permissions.sort((a, b) => b.updated_at - a.updated_at)
+  },
+
+  get(id: string): PermissionRow | null {
+    return db.permissions.find(p => p.id === id) || null
+  },
+
+  getByToolAndPattern(
+    toolName: string,
+    actionPattern: string,
+    workspaceId?: string
+  ): PermissionRow | null {
+    // First check workspace-specific permission
+    if (workspaceId) {
+      const workspacePermission = db.permissions.find(
+        p => p.tool_name === toolName &&
+          p.action_pattern === actionPattern &&
+          p.workspace_id === workspaceId
+      )
+      if (workspacePermission) return workspacePermission
+    }
+
+    // Fall back to global permission
+    return db.permissions.find(
+      p => p.tool_name === toolName &&
+        p.action_pattern === actionPattern &&
+        p.workspace_id === null
+    ) || null
+  },
+
+  // Check if an action is permitted
+  checkPermission(
+    toolName: string,
+    action: string,
+    workspaceId?: string
+  ): PermissionAction | null {
+    // Look for exact match first
+    let permission = this.getByToolAndPattern(toolName, action, workspaceId)
+    if (permission) return permission.permission
+
+    // Look for wildcard patterns (e.g., "read:*" matches "read:/path/to/file")
+    const permissions = this.list(workspaceId)
+    for (const p of permissions) {
+      if (p.tool_name !== toolName) continue
+
+      // Check if pattern matches
+      if (this.matchesPattern(p.action_pattern, action)) {
+        return p.permission
+      }
+    }
+
+    return null // No permission found, should prompt user
+  },
+
+  matchesPattern(pattern: string, action: string): boolean {
+    // Simple glob matching
+    if (pattern === '*') return true
+    if (pattern === action) return true
+
+    // Handle trailing wildcard
+    if (pattern.endsWith('*')) {
+      const prefix = pattern.slice(0, -1)
+      return action.startsWith(prefix)
+    }
+
+    return false
+  },
+
+  create(permission: PermissionInput): PermissionRow {
+    const now = Date.now()
+    const id = uuid()
+
+    // Check for existing permission with same tool/pattern/workspace
+    const existing = this.getByToolAndPattern(
+      permission.toolName,
+      permission.actionPattern,
+      permission.workspaceId
+    )
+
+    if (existing) {
+      // Update existing permission
+      return this.update(existing.id, { permission: permission.permission })!
+    }
+
+    const record: PermissionRow = {
+      id,
+      tool_name: permission.toolName,
+      action_pattern: permission.actionPattern,
+      permission: permission.permission,
+      workspace_id: permission.workspaceId || null,
+      created_at: now,
+      updated_at: now,
+    }
+
+    db.permissions.push(record)
+    saveDb()
+    return record
+  },
+
+  update(id: string, updates: Partial<PermissionInput>): PermissionRow | null {
+    const index = db.permissions.findIndex(p => p.id === id)
+    if (index === -1) return null
+
+    const permission = db.permissions[index]
+    if (updates.toolName !== undefined) permission.tool_name = updates.toolName
+    if (updates.actionPattern !== undefined) permission.action_pattern = updates.actionPattern
+    if (updates.permission !== undefined) permission.permission = updates.permission
+    if (updates.workspaceId !== undefined) permission.workspace_id = updates.workspaceId || null
+    permission.updated_at = Date.now()
+
+    saveDb()
+    return permission
+  },
+
+  delete(id: string): void {
+    db.permissions = db.permissions.filter(p => p.id !== id)
+    saveDb()
+  },
+
+  deleteByWorkspace(workspaceId: string): void {
+    db.permissions = db.permissions.filter(p => p.workspace_id !== workspaceId)
+    saveDb()
+  },
+
+  // Clear all "allow_once" permissions (call at session start)
+  clearOncePermissions(): void {
+    db.permissions = db.permissions.filter(p => p.permission !== 'allow_once')
     saveDb()
   },
 }

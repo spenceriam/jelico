@@ -5,6 +5,7 @@ import { useChatStore } from './stores/chat'
 import { useUIStore } from './stores/ui'
 import { useArtifactStore } from './stores/artifacts'
 import { useWorkspaceStore, initWorkspaceStore } from './stores/workspaces'
+import { usePermissionStore } from './stores/permissions'
 import { Sidebar } from './components/Layout/Sidebar'
 import { Header } from './components/Layout/Header'
 import { ChatArea } from './components/Chat/ChatArea'
@@ -13,6 +14,7 @@ import { AgentPanel } from './components/Agents/AgentPanel'
 import { CommandPalette, useCommandPalette } from './components/CommandPalette/CommandPalette'
 import { ProviderSetup } from './components/Setup/ProviderSetup'
 import { Settings } from './components/Settings/Settings'
+import { PermissionDialog } from './components/Permissions/PermissionDialog'
 
 export default function App() {
   const { providers, loadProviders, isLoading } = useProviderStore()
@@ -20,6 +22,7 @@ export default function App() {
   const { settingsOpen, closeSettings, providerSetupOpen, closeProviderSetup, sidebarCollapsed, toggleSidebar } = useUIStore()
   const { canvasOpen } = useArtifactStore()
   const { loadWorkspaces } = useWorkspaceStore()
+  const { clearOncePermissions, loadPermissions } = usePermissionStore()
   const commandPalette = useCommandPalette()
 
   useEffect(() => {
@@ -27,6 +30,10 @@ export default function App() {
     loadConversations()
     loadWorkspaces()
     initWorkspaceStore() // Restore active workspace from localStorage
+
+    // Clear "allow once" permissions from previous session
+    clearOncePermissions()
+    loadPermissions()
   }, [])
 
   // Show loading state
@@ -100,6 +107,9 @@ export default function App() {
 
       {/* Command palette */}
       <CommandPalette isOpen={commandPalette.isOpen} onClose={commandPalette.close} />
+
+      {/* Permission dialog */}
+      <PermissionDialog />
     </div>
   )
 }
