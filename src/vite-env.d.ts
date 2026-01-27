@@ -21,6 +21,7 @@ interface Window {
       get: (id: string) => Promise<Conversation | null>
       create: (conversation: ConversationInput) => Promise<Conversation>
       addMessage: (convId: string, message: MessageInput) => Promise<Message>
+      updateTitle: (id: string, title: string) => Promise<void>
       delete: (id: string) => Promise<void>
     }
     workspaces: {

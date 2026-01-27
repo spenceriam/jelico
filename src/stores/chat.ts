@@ -119,7 +119,15 @@ export const useChatStore = create<ChatStore>((set, get) => ({
 
   setActiveConversation: async (id) => {
     if (!id) {
-      set({ activeConversationId: null, messages: [] })
+      set({
+        activeConversationId: null,
+        messages: [],
+        isStreaming: false,
+        streamingContent: '',
+        streamingToolCalls: [],
+        streamingToolResults: [],
+        error: null,
+      })
       return
     }
 
@@ -175,7 +183,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
     // Update title if this is the first message
     if (messages.length === 0) {
       const title = content.slice(0, 50) + (content.length > 50 ? '...' : '')
-      await (window.jelico.conversations as any).updateTitle?.(conversationId, title)
+      await window.jelico.conversations.updateTitle(conversationId, title)
       // Reload conversations to get updated title
       const conversations = await window.jelico.conversations.list()
       set({ conversations })

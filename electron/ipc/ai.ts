@@ -157,6 +157,129 @@ Types:
     },
   })
 
+  // Web search tool - always available
+  tools.web_search = tool({
+    description: `Search the web for information using DuckDuckGo.
+Returns instant answers, related topics, and web results.
+Use this to find current information, documentation, or answers to questions.`,
+    parameters: z.object({
+      query: z.string().describe('The search query'),
+    }),
+    execute: async ({ query }) => {
+      try {
+        // Use DuckDuckGo's instant answer API
+        const encodedQuery = encodeURIComponent(query)
+        const response = await fetch(
+          `https://api.duckduckgo.com/?q=${encodedQuery}&format=json&no_html=1&skip_disambig=1`
+        )
+
+        if (!response.ok) {
+          throw new Error(`Search failed: ${response.statusText}`)
+        }
+
+        const data = await response.json()
+
+        const results: any = {
+          query,
+          abstract: data.Abstract || null,
+          abstractSource: data.AbstractSource || null,
+          abstractURL: data.AbstractURL || null,
+          answer: data.Answer || null,
+          definition: data.Definition || null,
+          definitionSource: data.DefinitionSource || null,
+          relatedTopics: (data.RelatedTopics || []).slice(0, 5).map((topic: any) => ({
+            text: topic.Text,
+            url: topic.FirstURL,
+          })).filter((t: any) => t.text),
+        }
+
+        // If we got good results
+        if (results.abstract || results.answer || results.definition || results.relatedTopics.length > 0) {
+          return { success: true, results }
+        }
+
+        // Fallback message
+        return {
+          success: true,
+          results: {
+            query,
+            message: 'No instant answer found. Try using web_fetch with specific URLs for more detailed information.',
+          },
+        }
+      } catch (error: any) {
+        return { success: false, error: error.message }
+      }
+    },
+  })
+
+  // Web fetch tool - always available
+  tools.web_fetch = tool({
+    description: `Fetch content from a URL.
+Returns the text content of the page (HTML stripped to plain text for readability).
+Use this to read documentation, articles, or any web page content.`,
+    parameters: z.object({
+      url: z.string().describe('The URL to fetch'),
+      selector: z.string().optional().describe('Optional CSS selector to extract specific content (e.g., "main", "article", ".content")'),
+    }),
+    execute: async ({ url, selector }) => {
+      try {
+        const response = await fetch(url, {
+          headers: {
+            'User-Agent': 'Mozilla/5.0 (compatible; Jelico/1.0; +https://github.com/jelico)',
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+          },
+        })
+
+        if (!response.ok) {
+          throw new Error(`Fetch failed: ${response.status} ${response.statusText}`)
+        }
+
+        const html = await response.text()
+
+        // Simple HTML to text conversion
+        // Remove script and style tags
+        let text = html
+          .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, '')
+          .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '')
+          .replace(/<noscript[^>]*>[\s\S]*?<\/noscript>/gi, '')
+          // Convert common elements to readable format
+          .replace(/<br\s*\/?>/gi, '\n')
+          .replace(/<\/p>/gi, '\n\n')
+          .replace(/<\/div>/gi, '\n')
+          .replace(/<\/h[1-6]>/gi, '\n\n')
+          .replace(/<li>/gi, '• ')
+          .replace(/<\/li>/gi, '\n')
+          // Remove remaining tags
+          .replace(/<[^>]+>/g, '')
+          // Decode HTML entities
+          .replace(/&nbsp;/g, ' ')
+          .replace(/&amp;/g, '&')
+          .replace(/&lt;/g, '<')
+          .replace(/&gt;/g, '>')
+          .replace(/&quot;/g, '"')
+          .replace(/&#039;/g, "'")
+          // Clean up whitespace
+          .replace(/\n\s*\n\s*\n/g, '\n\n')
+          .trim()
+
+        // Truncate if too long
+        const maxLength = 15000
+        if (text.length > maxLength) {
+          text = text.substring(0, maxLength) + '\n\n[Content truncated...]'
+        }
+
+        return {
+          success: true,
+          url,
+          content: text,
+          contentLength: text.length,
+        }
+      } catch (error: any) {
+        return { success: false, error: error.message }
+      }
+    },
+  })
+
   // Write file tool - only if canWrite
   if (canWrite) {
     tools.write_file = tool({
