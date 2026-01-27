@@ -1,6 +1,6 @@
 import { create } from 'zustand'
 
-type SettingsTab = 'providers' | 'general'
+type SettingsTab = 'providers' | 'skills' | 'general'
 
 interface UIStore {
   sidebarCollapsed: boolean

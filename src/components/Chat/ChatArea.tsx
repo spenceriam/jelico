@@ -6,7 +6,7 @@ import { ChatInput } from './ChatInput'
 import { Sparkles } from 'lucide-react'
 
 export function ChatArea() {
-  const { messages, isStreaming, streamingContent, activeConversationId } = useChatStore()
+  const { messages, isStreaming, streamingContent, streamingToolCalls, streamingToolResults, activeConversationId } = useChatStore()
   const { activeProviderId, activeModel } = useProviderStore()
   const messagesEndRef = useRef<HTMLDivElement>(null)
 
@@ -28,6 +28,8 @@ export function ChatArea() {
             <MessageList
               messages={messages}
               streamingContent={isStreaming ? streamingContent : undefined}
+              streamingToolCalls={isStreaming ? streamingToolCalls : undefined}
+              streamingToolResults={isStreaming ? streamingToolResults : undefined}
             />
             <div ref={messagesEndRef} />
           </div>

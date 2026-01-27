@@ -1,7 +1,11 @@
-import { useState } from 'react'
-import { X, Plus, Trash2, Check, AlertCircle } from 'lucide-react'
+import { useState, useEffect } from 'react'
+import { X, Plus, Trash2, Check, AlertCircle, Settings as SettingsIcon, Zap, Database } from 'lucide-react'
 import { useProviderStore } from '../../stores/providers'
 import { useUIStore } from '../../stores/ui'
+import { SkillManager } from '../Skills/SkillManager'
+import { useSkillStore } from '../../stores/skills'
+
+type SettingsTab = 'providers' | 'skills' | 'general'
 
 interface SettingsProps {
   onClose: () => void
@@ -9,9 +13,15 @@ interface SettingsProps {
 
 export function Settings({ onClose }: SettingsProps) {
   const { providers, deleteProvider, testConnection } = useProviderStore()
-  const { openProviderSetup } = useUIStore()
+  const { openProviderSetup, settingsTab } = useUIStore()
+  const { loadSkills } = useSkillStore()
+  const [activeTab, setActiveTab] = useState<SettingsTab>(settingsTab || 'providers')
   const [testingId, setTestingId] = useState<string | null>(null)
   const [testResults, setTestResults] = useState<Record<string, boolean>>({})
+
+  useEffect(() => {
+    loadSkills()
+  }, [])
 
   const handleTest = async (id: string) => {
     setTestingId(id)
@@ -40,22 +50,58 @@ export function Settings({ onClose }: SettingsProps) {
           </button>
         </div>
 
+        {/* Tabs */}
+        <div className="flex border-b border-border px-6">
+          <button
+            onClick={() => setActiveTab('providers')}
+            className={`px-4 py-3 text-sm flex items-center gap-2 border-b-2 -mb-px transition-colors ${
+              activeTab === 'providers'
+                ? 'border-accent text-accent'
+                : 'border-transparent text-text-muted hover:text-text-primary'
+            }`}
+          >
+            <Database className="w-4 h-4" />
+            Providers
+          </button>
+          <button
+            onClick={() => setActiveTab('skills')}
+            className={`px-4 py-3 text-sm flex items-center gap-2 border-b-2 -mb-px transition-colors ${
+              activeTab === 'skills'
+                ? 'border-accent text-accent'
+                : 'border-transparent text-text-muted hover:text-text-primary'
+            }`}
+          >
+            <Zap className="w-4 h-4" />
+            Skills
+          </button>
+          <button
+            onClick={() => setActiveTab('general')}
+            className={`px-4 py-3 text-sm flex items-center gap-2 border-b-2 -mb-px transition-colors ${
+              activeTab === 'general'
+                ? 'border-accent text-accent'
+                : 'border-transparent text-text-muted hover:text-text-primary'
+            }`}
+          >
+            <SettingsIcon className="w-4 h-4" />
+            General
+          </button>
+        </div>
+
         {/* Content */}
         <div className="flex-1 overflow-y-auto p-6">
-          <div className="space-y-6">
-            {/* Providers section */}
-            <div>
-              <div className="flex items-center justify-between mb-4">
-                <h3 className="text-sm font-medium text-text-primary">Providers</h3>
+          {activeTab === 'providers' && (
+            <div className="space-y-6">
+              <div className="flex items-center justify-between">
+                <h3 className="text-lg font-medium text-text-primary">Providers</h3>
                 <button
                   onClick={() => {
                     onClose()
                     openProviderSetup()
                   }}
-                  className="flex items-center gap-1 text-sm text-accent hover:text-accent-bright"
+                  className="flex items-center gap-2 px-3 py-1.5 text-sm bg-accent text-black rounded-lg hover:bg-accent-bright transition-colors"
                 >
                   <Plus className="w-4 h-4" />
-                  Add provider
+                  Add Provider
                 </button>
               </div>
 
@@ -87,7 +133,6 @@ export function Settings({ onClose }: SettingsProps) {
                       </div>
 
                       <div className="flex items-center gap-2">
-                        {/* Test result indicator */}
                         {testResults[provider.id] !== undefined && (
                           testResults[provider.id] ? (
                             <Check className="w-4 h-4 text-success" />
@@ -116,15 +161,18 @@ export function Settings({ onClose }: SettingsProps) {
                 </div>
               )}
             </div>
+          )}
 
-            {/* General section placeholder */}
-            <div className="pt-4 border-t border-border">
-              <h3 className="text-sm font-medium text-text-primary mb-4">General</h3>
-              <div className="text-sm text-text-muted">
+          {activeTab === 'skills' && <SkillManager />}
+
+          {activeTab === 'general' && (
+            <div className="space-y-6">
+              <h3 className="text-lg font-medium text-text-primary">General</h3>
+              <p className="text-sm text-text-muted">
                 More settings coming in future updates.
-              </div>
+              </p>
             </div>
-          </div>
+          )}
         </div>
       </div>
     </div>

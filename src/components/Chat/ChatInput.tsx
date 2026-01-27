@@ -1,5 +1,5 @@
 import { useState, useRef, useCallback, KeyboardEvent } from 'react'
-import { Send, Square } from 'lucide-react'
+import { Send, Square, Clock } from 'lucide-react'
 import { useChatStore } from '../../stores/chat'
 import { useProviderStore } from '../../stores/providers'
 
@@ -11,11 +11,11 @@ interface ChatInputProps {
 export function ChatInput({ disabled, isStreaming }: ChatInputProps) {
   const [input, setInput] = useState('')
   const textareaRef = useRef<HTMLTextAreaElement>(null)
-  const { sendMessage, stopStreaming } = useChatStore()
+  const { sendMessage, stopStreaming, messageQueue } = useChatStore()
   const { activeProviderId, activeModel } = useProviderStore()
 
   const handleSubmit = useCallback(() => {
-    if (!input.trim() || !activeProviderId || !activeModel || isStreaming) return
+    if (!input.trim() || !activeProviderId || !activeModel) return
 
     sendMessage(input.trim(), activeProviderId, activeModel)
     setInput('')
@@ -24,7 +24,7 @@ export function ChatInput({ disabled, isStreaming }: ChatInputProps) {
     if (textareaRef.current) {
       textareaRef.current.style.height = 'auto'
     }
-  }, [input, activeProviderId, activeModel, isStreaming, sendMessage])
+  }, [input, activeProviderId, activeModel, sendMessage])
 
   const handleKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === 'Enter' && !e.shiftKey) {
@@ -48,15 +48,25 @@ export function ChatInput({ disabled, isStreaming }: ChatInputProps) {
     stopStreaming()
   }
 
+  const queuedCount = messageQueue.length
+
   return (
     <div className="space-y-2">
+      {/* Queued messages indicator */}
+      {queuedCount > 0 && (
+        <div className="flex items-center gap-2 text-xs text-text-muted px-1">
+          <Clock className="w-3 h-3" />
+          <span>{queuedCount} message{queuedCount > 1 ? 's' : ''} queued</span>
+        </div>
+      )}
+
       <div className="flex items-end gap-3 bg-bg-elevated rounded-xl p-3 border border-border focus-within:border-accent/50 transition-colors">
         <textarea
           ref={textareaRef}
           value={input}
           onChange={handleInput}
           onKeyDown={handleKeyDown}
-          placeholder={disabled ? 'Select a provider to start...' : 'Message Jelico...'}
+          placeholder={disabled ? 'Select a provider to start...' : isStreaming ? 'Message will be queued...' : 'Message Jelico...'}
           disabled={disabled}
           rows={1}
           className="flex-1 bg-transparent text-text-primary placeholder:text-text-muted outline-none resize-none min-h-[24px] max-h-[200px] disabled:cursor-not-allowed"
@@ -83,7 +93,8 @@ export function ChatInput({ disabled, isStreaming }: ChatInputProps) {
       </div>
 
       <div className="flex items-center justify-between text-xs text-text-muted px-1">
-        <span>Enter to send · Shift+Enter for new line</span>
+        <span>Enter to send · Shift+Enter for new line · Tab to cycle modes</span>
+        <span>Cmd+K for commands</span>
       </div>
     </div>
   )

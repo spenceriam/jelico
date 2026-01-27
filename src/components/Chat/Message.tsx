@@ -1,6 +1,8 @@
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { User, Bot } from 'lucide-react'
+import { ToolCallDisplay } from './ToolCallDisplay'
+import type { ToolCall, ToolResult } from '../../stores/chat'
 
 interface MessageProps {
   message: {
@@ -8,12 +10,20 @@ interface MessageProps {
     role: 'user' | 'assistant' | 'system'
     content: string
     createdAt: number
+    toolCalls?: ToolCall[]
+    toolResults?: ToolResult[]
   }
   isStreaming?: boolean
+  streamingToolCalls?: ToolCall[]
+  streamingToolResults?: ToolResult[]
 }
 
-export function Message({ message, isStreaming }: MessageProps) {
+export function Message({ message, isStreaming, streamingToolCalls, streamingToolResults }: MessageProps) {
   const isUser = message.role === 'user'
+
+  // Use streaming tool calls if currently streaming, otherwise use saved tool calls
+  const toolCalls = isStreaming ? streamingToolCalls : message.toolCalls
+  const toolResults = isStreaming ? streamingToolResults : message.toolResults
 
   return (
     <div className={`flex gap-4 ${isUser ? 'justify-end' : ''}`}>
@@ -35,6 +45,14 @@ export function Message({ message, isStreaming }: MessageProps) {
           <p className="whitespace-pre-wrap">{message.content}</p>
         ) : (
           <div className="prose prose-invert prose-sm max-w-none">
+            {/* Show tool calls before the text response */}
+            {toolCalls && toolCalls.length > 0 && (
+              <ToolCallDisplay
+                toolCalls={toolCalls}
+                toolResults={toolResults}
+                isStreaming={isStreaming}
+              />
+            )}
             <ReactMarkdown
               remarkPlugins={[remarkGfm]}
               components={{

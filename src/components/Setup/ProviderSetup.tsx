@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { ArrowLeft, X } from 'lucide-react'
+import { ArrowLeft, X, Lock } from 'lucide-react'
 import { useProviderStore } from '../../stores/providers'
 import { ProviderConfigForm } from './ProviderConfigForm'
 
@@ -7,37 +7,43 @@ const PROVIDER_TYPES = [
   {
     type: 'anthropic' as const,
     name: 'Anthropic',
-    description: 'Claude models',
+    description: 'Claude',
+    icon: 'A',
     defaultModel: 'claude-sonnet-4-20250514',
   },
   {
     type: 'openai' as const,
     name: 'OpenAI',
-    description: 'GPT models',
+    description: 'GPT-4o',
+    icon: '\u2B21', // hexagon
     defaultModel: 'gpt-4o',
   },
   {
     type: 'google' as const,
     name: 'Google',
-    description: 'Gemini models',
+    description: 'Gemini',
+    icon: 'G',
     defaultModel: 'gemini-1.5-pro',
   },
   {
     type: 'ollama' as const,
     name: 'Ollama',
-    description: 'Local models',
+    description: 'Local',
+    icon: '\uD83E\uDD99', // llama emoji
     defaultModel: 'llama3.1',
   },
   {
     type: 'openrouter' as const,
     name: 'OpenRouter',
-    description: 'Multiple providers',
+    description: 'Any Model',
+    icon: '\u25C8', // diamond
     defaultModel: 'anthropic/claude-3.5-sonnet',
   },
   {
     type: 'custom' as const,
     name: 'Custom',
-    description: 'OpenAI-compatible API',
+    description: 'OpenAI API',
+    icon: '+',
     defaultModel: 'gpt-4',
   },
 ]
@@ -85,37 +91,51 @@ export function ProviderSetup({ isModal, onComplete, onCancel }: ProviderSetupPr
   // Provider selection view
   if (!selectedType) {
     return (
-      <div className={`${isModal ? '' : 'min-h-screen'} bg-bg-void flex items-center justify-center p-8`}>
-        <div className="max-w-lg w-full">
+      <div className={`${isModal ? '' : 'min-h-screen'} bg-bg-void flex items-center justify-center p-10`}>
+        <div className="w-full max-w-[560px] animate-fade-in">
           {isModal && onCancel && (
             <button
               onClick={onCancel}
-              className="absolute top-4 right-4 p-2 text-text-muted hover:text-text-primary"
+              className="absolute top-4 right-4 p-2 text-text-muted hover:text-text-primary transition-colors"
             >
               <X className="w-5 h-5" />
             </button>
           )}
 
-          <div className="text-center mb-8">
-            <h1 className="text-2xl font-semibold text-text-primary mb-2">
+          <div className="text-center">
+            {!isModal && (
+              <div className="welcome-logo">J</div>
+            )}
+            <h1 className="font-display text-[32px] font-normal text-text-primary mb-2 tracking-tight">
               {isModal ? 'Add a provider' : 'Welcome to Jelico'}
             </h1>
-            <p className="text-text-secondary">
-              {isModal
-                ? 'Connect another AI service.'
-                : 'Connect an AI service to start using Jelico.'}
+            <p className="text-text-secondary text-base mb-12">
+              {isModal ? 'Connect another AI service.' : 'Your AI productivity partner'}
             </p>
+
+            {!isModal && (
+              <p className="text-text-secondary text-[15px] mb-6">
+                To get started, add an AI provider:
+              </p>
+            )}
           </div>
 
-          <div className="space-y-2">
+          <div className="grid grid-cols-3 gap-3 mb-8">
             {PROVIDER_TYPES.map((provider) => (
               <button
                 key={provider.type}
                 onClick={() => setSelectedType(provider)}
-                className="w-full p-4 text-left bg-bg-surface hover:bg-bg-elevated border border-border rounded-lg transition-colors"
+                className="provider-card"
               >
-                <div className="font-medium text-text-primary">{provider.name}</div>
-                <div className="text-sm text-text-secondary">{provider.description}</div>
+                <div className={`provider-icon provider-icon-${provider.type} mx-auto mb-3`}>
+                  {provider.icon}
+                </div>
+                <div className="text-[13px] font-medium text-text-primary mb-0.5">
+                  {provider.name}
+                </div>
+                <div className="text-[11px] text-text-muted">
+                  {provider.description}
+                </div>
               </button>
             ))}
           </div>
@@ -126,32 +146,39 @@ export function ProviderSetup({ isModal, onComplete, onCancel }: ProviderSetupPr
 
   // Provider configuration view
   return (
-    <div className={`${isModal ? '' : 'min-h-screen'} bg-bg-void flex items-center justify-center p-8`}>
-      <div className="max-w-lg w-full">
-        <button
-          onClick={() => setSelectedType(null)}
-          className="flex items-center gap-2 text-text-secondary hover:text-text-primary mb-6"
-        >
-          <ArrowLeft className="w-4 h-4" />
-          Back
-        </button>
+    <div className={`${isModal ? '' : 'min-h-screen'} bg-bg-void flex items-center justify-center p-10`}>
+      <div className="w-full max-w-[560px] animate-slide-in">
+        <div className="flex items-center gap-4 mb-8">
+          <button
+            onClick={() => setSelectedType(null)}
+            className="back-btn"
+          >
+            <ArrowLeft className="w-4 h-4" />
+          </button>
+          <h2 className="font-display text-2xl font-normal text-text-primary">
+            {selectedType.name} Setup
+          </h2>
+        </div>
 
-        <h1 className="text-2xl font-semibold text-text-primary mb-8">
-          {selectedType.name}
-        </h1>
+        <div className="config-form">
+          {error && (
+            <div className="mb-5 p-3 bg-error/10 border border-error/20 rounded-md text-error text-sm">
+              {error}
+            </div>
+          )}
 
-        {error && (
-          <div className="mb-4 p-3 bg-error/10 border border-error/20 rounded-lg text-error text-sm">
-            {error}
-          </div>
-        )}
+          <ProviderConfigForm
+            type={selectedType.type}
+            defaultModel={selectedType.defaultModel}
+            onSave={handleProviderSave}
+            isLoading={isLoading}
+          />
+        </div>
 
-        <ProviderConfigForm
-          type={selectedType.type}
-          defaultModel={selectedType.defaultModel}
-          onSave={handleProviderSave}
-          isLoading={isLoading}
-        />
+        <div className="security-note">
+          <Lock className="w-4 h-4 flex-shrink-0" />
+          Key stored securely in system keychain
+        </div>
       </div>
     </div>
   )

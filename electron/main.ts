@@ -4,6 +4,7 @@ import { initDatabase } from './services/database'
 import { registerProviderHandlers } from './ipc/providers'
 import { registerConversationHandlers } from './ipc/conversations'
 import { registerAIHandlers } from './ipc/ai'
+import { registerWorkspaceHandlers } from './ipc/workspaces'
 
 // The built directory structure
 const DIST = path.join(__dirname, '../dist')
@@ -50,6 +51,7 @@ app.whenReady().then(async () => {
   registerProviderHandlers()
   registerConversationHandlers()
   registerAIHandlers()
+  registerWorkspaceHandlers()
 
   // Create window
   createWindow()

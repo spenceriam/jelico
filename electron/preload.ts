@@ -24,6 +24,24 @@ contextBridge.exposeInMainWorld('jelico', {
     addMessage: (convId: string, message: any) => ipcRenderer.invoke('conversations:addMessage', convId, message),
     delete: (id: string) => ipcRenderer.invoke('conversations:delete', id),
   },
+  workspaces: {
+    list: () => ipcRenderer.invoke('workspaces:list'),
+    get: (id: string) => ipcRenderer.invoke('workspaces:get', id),
+    selectFolder: () => ipcRenderer.invoke('workspaces:selectFolder'),
+    create: (input: any) => ipcRenderer.invoke('workspaces:create', input),
+    update: (id: string, updates: any) => ipcRenderer.invoke('workspaces:update', id, updates),
+    delete: (id: string) => ipcRenderer.invoke('workspaces:delete', id),
+    refreshGit: (id: string) => ipcRenderer.invoke('workspaces:refreshGit', id),
+    getConversations: (workspaceId: string) => ipcRenderer.invoke('workspaces:getConversations', workspaceId),
+    getStructure: (workspaceId: string, maxDepth?: number) => ipcRenderer.invoke('workspaces:getStructure', workspaceId, maxDepth),
+    // Git worktree operations
+    listWorktrees: (workspaceId: string) => ipcRenderer.invoke('workspaces:listWorktrees', workspaceId),
+    listBranches: (workspaceId: string) => ipcRenderer.invoke('workspaces:listBranches', workspaceId),
+    createWorktree: (workspaceId: string, branch: string, targetPath?: string) =>
+      ipcRenderer.invoke('workspaces:createWorktree', workspaceId, branch, targetPath),
+    removeWorktree: (mainWorkspaceId: string, worktreePath: string) =>
+      ipcRenderer.invoke('workspaces:removeWorktree', mainWorkspaceId, worktreePath),
+  },
   ai: {
     stream: (params: any) => {
       const channelId = crypto.randomUUID()
@@ -42,6 +60,22 @@ contextBridge.exposeInMainWorld('jelico', {
       const handler = (_: any, error: string) => callback(error)
       ipcRenderer.on(`ai:error:${channelId}`, handler)
     },
+    onToolCalls: (channelId: string, callback: (toolCalls: any[]) => void) => {
+      const handler = (_: any, toolCalls: any[]) => callback(toolCalls)
+      ipcRenderer.on(`ai:toolCalls:${channelId}`, handler)
+    },
+    onToolResults: (channelId: string, callback: (toolResults: any[]) => void) => {
+      const handler = (_: any, toolResults: any[]) => callback(toolResults)
+      ipcRenderer.on(`ai:toolResults:${channelId}`, handler)
+    },
+    onArtifact: (channelId: string, callback: (artifact: any) => void) => {
+      const handler = (_: any, artifact: any) => callback(artifact)
+      ipcRenderer.on(`ai:artifact:${channelId}`, handler)
+    },
+    onSpawnAgent: (channelId: string, callback: (agent: any) => void) => {
+      const handler = (_: any, agent: any) => callback(agent)
+      ipcRenderer.on(`ai:spawnAgent:${channelId}`, handler)
+    },
     stopStream: (channelId: string) => {
       ipcRenderer.send('ai:stop', channelId)
     },
@@ -49,6 +83,10 @@ contextBridge.exposeInMainWorld('jelico', {
       ipcRenderer.removeAllListeners(`ai:chunk:${channelId}`)
       ipcRenderer.removeAllListeners(`ai:end:${channelId}`)
       ipcRenderer.removeAllListeners(`ai:error:${channelId}`)
+      ipcRenderer.removeAllListeners(`ai:toolCalls:${channelId}`)
+      ipcRenderer.removeAllListeners(`ai:toolResults:${channelId}`)
+      ipcRenderer.removeAllListeners(`ai:artifact:${channelId}`)
+      ipcRenderer.removeAllListeners(`ai:spawnAgent:${channelId}`)
     },
   },
 })

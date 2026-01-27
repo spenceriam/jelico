@@ -2,9 +2,14 @@ import { useEffect } from 'react'
 import { useProviderStore } from './stores/providers'
 import { useChatStore } from './stores/chat'
 import { useUIStore } from './stores/ui'
+import { useArtifactStore } from './stores/artifacts'
+import { useWorkspaceStore, initWorkspaceStore } from './stores/workspaces'
 import { Sidebar } from './components/Layout/Sidebar'
 import { Header } from './components/Layout/Header'
 import { ChatArea } from './components/Chat/ChatArea'
+import { CanvasPanel } from './components/Canvas'
+import { AgentPanel } from './components/Agents/AgentPanel'
+import { CommandPalette, useCommandPalette } from './components/CommandPalette/CommandPalette'
 import { ProviderSetup } from './components/Setup/ProviderSetup'
 import { Settings } from './components/Settings/Settings'
 
@@ -12,10 +17,15 @@ export default function App() {
   const { providers, loadProviders, isLoading } = useProviderStore()
   const { loadConversations } = useChatStore()
   const { settingsOpen, closeSettings, providerSetupOpen, closeProviderSetup } = useUIStore()
+  const { canvasOpen } = useArtifactStore()
+  const { loadWorkspaces } = useWorkspaceStore()
+  const commandPalette = useCommandPalette()
 
   useEffect(() => {
     loadProviders()
     loadConversations()
+    loadWorkspaces()
+    initWorkspaceStore() // Restore active workspace from localStorage
   }, [])
 
   // Show loading state
@@ -38,7 +48,13 @@ export default function App() {
 
       <main className="flex-1 flex flex-col min-w-0">
         <Header />
-        <ChatArea />
+        <div className="flex-1 flex min-h-0">
+          <div className="flex-1 flex flex-col min-w-0">
+            <ChatArea />
+            <AgentPanel />
+          </div>
+          {canvasOpen && <CanvasPanel />}
+        </div>
       </main>
 
       {/* Settings modal */}
@@ -61,6 +77,9 @@ export default function App() {
           </div>
         </div>
       )}
+
+      {/* Command palette */}
+      <CommandPalette isOpen={commandPalette.isOpen} onClose={commandPalette.close} />
     </div>
   )
 }

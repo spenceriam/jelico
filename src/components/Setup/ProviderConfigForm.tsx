@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from 'react'
-import { Eye, EyeOff, Lock, Search, Loader2 } from 'lucide-react'
+import { Eye, EyeOff, Search, Loader2 } from 'lucide-react'
 
 const API_KEY_URLS: Record<string, string> = {
   anthropic: 'console.anthropic.com',
@@ -114,7 +114,7 @@ export function ProviderConfigForm({ type, defaultModel, onSave, isLoading }: Pr
   }
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-6">
+    <form onSubmit={handleSubmit} className="space-y-5">
       {needsApiKey && (
         <div>
           <label className="label">API Key</label>
@@ -123,28 +123,27 @@ export function ProviderConfigForm({ type, defaultModel, onSave, isLoading }: Pr
               type={showKey ? 'text' : 'password'}
               value={apiKey}
               onChange={(e) => setApiKey(e.target.value)}
-              className="input pr-10"
+              className="input input-mono pr-10"
               placeholder={`${type === 'anthropic' ? 'sk-ant-' : 'sk-'}...`}
               required
             />
             <button
               type="button"
               onClick={() => setShowKey(!showKey)}
-              className="absolute right-3 top-1/2 -translate-y-1/2 text-text-muted hover:text-text-secondary"
+              className="absolute right-3 top-1/2 -translate-y-1/2 text-text-muted hover:text-text-secondary transition-colors"
             >
               {showKey ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
             </button>
           </div>
           {apiKeyUrl && (
-            <p className="mt-1 text-xs text-text-muted">
+            <p className="form-hint">
               Get your key at{' '}
               <a
                 href={`https://${apiKeyUrl}`}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="text-accent hover:underline"
               >
-                {apiKeyUrl}
+                {apiKeyUrl} &rarr;
               </a>
             </p>
           )}
@@ -152,7 +151,9 @@ export function ProviderConfigForm({ type, defaultModel, onSave, isLoading }: Pr
       )}
 
       <div>
-        <label className="label">Name (optional)</label>
+        <label className="label">
+          Display Name <span className="text-text-muted font-normal">(optional)</span>
+        </label>
         <input
           type="text"
           value={name}
@@ -171,7 +172,7 @@ export function ProviderConfigForm({ type, defaultModel, onSave, isLoading }: Pr
             type="url"
             value={baseUrl}
             onChange={(e) => setBaseUrl(e.target.value)}
-            className="input"
+            className="input input-mono"
             placeholder={type === 'ollama' ? 'http://localhost:11434' : 'https://api.example.com/v1'}
             required={type === 'custom'}
           />
@@ -181,12 +182,12 @@ export function ProviderConfigForm({ type, defaultModel, onSave, isLoading }: Pr
       {/* OpenRouter model selector with search */}
       {isOpenRouter && (
         <div>
-          <label className="label">Default model</label>
+          <label className="label">Default Model</label>
 
           {!apiKey ? (
             <p className="text-sm text-text-muted">Enter API key to load available models</p>
           ) : isLoadingModels ? (
-            <div className="flex items-center gap-2 text-text-muted">
+            <div className="flex items-center gap-2 text-text-muted py-2">
               <Loader2 className="w-4 h-4 animate-spin" />
               <span>Loading models...</span>
             </div>
@@ -207,7 +208,7 @@ export function ProviderConfigForm({ type, defaultModel, onSave, isLoading }: Pr
               </div>
 
               {/* Model list */}
-              <div className="max-h-48 overflow-y-auto border border-border rounded-lg bg-bg-elevated">
+              <div className="max-h-48 overflow-y-auto border border-border-subtle rounded-md bg-bg-deep">
                 {filteredOpenRouterModels.length === 0 ? (
                   <div className="p-3 text-sm text-text-muted">No models match "{modelSearch}"</div>
                 ) : (
@@ -216,12 +217,12 @@ export function ProviderConfigForm({ type, defaultModel, onSave, isLoading }: Pr
                       key={m.id}
                       type="button"
                       onClick={() => setModel(m.id)}
-                      className={`w-full px-3 py-2 text-left text-sm hover:bg-bg-hover transition-colors ${
-                        model === m.id ? 'bg-accent/10 text-accent' : 'text-text-primary'
+                      className={`w-full px-3 py-2 text-left text-sm hover:bg-bg-surface transition-colors border-b border-border-subtle last:border-b-0 ${
+                        model === m.id ? 'bg-accent-glow text-accent' : 'text-text-primary'
                       }`}
                     >
                       <div className="font-medium">{m.name}</div>
-                      <div className="text-xs text-text-muted">{m.id}</div>
+                      <div className="text-xs text-text-muted font-mono">{m.id}</div>
                     </button>
                   ))
                 )}
@@ -229,7 +230,7 @@ export function ProviderConfigForm({ type, defaultModel, onSave, isLoading }: Pr
 
               {model && (
                 <p className="mt-2 text-xs text-text-secondary">
-                  Selected: {model}
+                  Selected: <span className="font-mono">{model}</span>
                 </p>
               )}
             </>
@@ -240,7 +241,7 @@ export function ProviderConfigForm({ type, defaultModel, onSave, isLoading }: Pr
       {/* Static model dropdown for other providers */}
       {!isOpenRouter && staticModels.length > 0 && (
         <div>
-          <label className="label">Default model</label>
+          <label className="label">Default Model</label>
           <select
             value={model}
             onChange={(e) => setModel(e.target.value)}
@@ -248,7 +249,7 @@ export function ProviderConfigForm({ type, defaultModel, onSave, isLoading }: Pr
           >
             {staticModels.map((m) => (
               <option key={m.id} value={m.id}>
-                {m.name}
+                {m.name} ({m.id})
               </option>
             ))}
           </select>
@@ -263,25 +264,20 @@ export function ProviderConfigForm({ type, defaultModel, onSave, isLoading }: Pr
             type="text"
             value={model}
             onChange={(e) => setModel(e.target.value)}
-            className="input"
+            className="input input-mono"
             placeholder="llama3.1"
             required
           />
         </div>
       )}
 
-      <div className="flex items-center justify-between pt-4">
-        <div className="flex items-center gap-2 text-xs text-text-muted">
-          <Lock className="w-3 h-3" />
-          Stored securely
-        </div>
-
+      <div className="flex items-center justify-end gap-3 pt-4">
         <button
           type="submit"
           disabled={isLoading || (needsApiKey && !apiKey) || (isOpenRouter && !model)}
           className="btn btn-primary disabled:opacity-50 disabled:cursor-not-allowed"
         >
-          {isLoading ? 'Saving...' : 'Save'}
+          {isLoading ? 'Saving...' : 'Save & Continue'}
         </button>
       </div>
     </form>

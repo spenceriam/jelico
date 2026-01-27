@@ -1,11 +1,30 @@
 import { create } from 'zustand'
+import type { AgentMode } from '../lib/modes'
+import { useArtifactStore } from './artifacts'
+import { useWorkspaceStore } from './workspaces'
+import { useAgentStore } from './agents'
+import { useSkillStore } from './skills'
 
-interface Message {
+export interface Message {
   id: string
   conversationId: string
-  role: 'user' | 'assistant' | 'system'
+  role: 'user' | 'assistant' | 'system' | 'tool'
   content: string
   createdAt: number
+  toolCalls?: ToolCall[]
+  toolResults?: ToolResult[]
+}
+
+export interface ToolCall {
+  id: string
+  name: string
+  args: Record<string, unknown>
+}
+
+export interface ToolResult {
+  toolCallId: string
+  result: unknown
+  error?: string
 }
 
 interface Conversation {
@@ -14,9 +33,17 @@ interface Conversation {
   workspaceId?: string
   model: string
   providerId: string
+  mode?: AgentMode
   createdAt: number
   updatedAt: number
   messages?: Message[]
+}
+
+// Message queue for queuing messages while streaming
+interface QueuedMessage {
+  content: string
+  providerId: string
+  model: string
 }
 
 interface ChatStore {
@@ -25,16 +52,23 @@ interface ChatStore {
   messages: Message[]
   isStreaming: boolean
   streamingContent: string
+  streamingToolCalls: ToolCall[]
+  streamingToolResults: ToolResult[]
   isLoading: boolean
   error: string | null
+  mode: AgentMode
+  messageQueue: QueuedMessage[]
 
   // Actions
   loadConversations: () => Promise<void>
   createConversation: (providerId: string, model: string) => Promise<string>
   setActiveConversation: (id: string | null) => Promise<void>
   sendMessage: (content: string, providerId: string, model: string) => Promise<void>
+  queueMessage: (content: string, providerId: string, model: string) => void
+  processQueue: () => Promise<void>
   stopStreaming: () => void
   deleteConversation: (id: string) => Promise<void>
+  setMode: (mode: AgentMode) => void
   clearError: () => void
 }
 
@@ -46,8 +80,12 @@ export const useChatStore = create<ChatStore>((set, get) => ({
   messages: [],
   isStreaming: false,
   streamingContent: '',
+  streamingToolCalls: [],
+  streamingToolResults: [],
   isLoading: false,
   error: null,
+  mode: 'auto' as AgentMode,
+  messageQueue: [],
 
   loadConversations: async () => {
     set({ isLoading: true })
@@ -99,7 +137,28 @@ export const useChatStore = create<ChatStore>((set, get) => ({
   },
 
   sendMessage: async (content, providerId, model) => {
-    const { activeConversationId, messages } = get()
+    const { activeConversationId, messages, mode, isStreaming } = get()
+
+    // If already streaming, queue the message
+    if (isStreaming) {
+      get().queueMessage(content, providerId, model)
+      return
+    }
+
+    // Check for skill shortcuts
+    const skillMatch = useSkillStore.getState().findSkillByShortcut(content)
+    let finalContent = content
+    let finalMode = mode
+
+    if (skillMatch) {
+      finalContent = skillMatch.skill.prompt.replace('{{context}}', skillMatch.context)
+      if (skillMatch.skill.mode) {
+        finalMode = skillMatch.skill.mode
+        // Temporarily set mode for this message
+        set({ mode: finalMode })
+      }
+    }
+
     let conversationId = activeConversationId
 
     // Create conversation if needed
@@ -107,10 +166,10 @@ export const useChatStore = create<ChatStore>((set, get) => ({
       conversationId = await get().createConversation(providerId, model)
     }
 
-    // Add user message
+    // Add user message (show original content, not expanded skill)
     const userMessage = await window.jelico.conversations.addMessage(conversationId, {
       role: 'user',
-      content,
+      content: content, // Original content for display
     })
 
     // Update title if this is the first message
@@ -127,13 +186,31 @@ export const useChatStore = create<ChatStore>((set, get) => ({
       messages: updatedMessages,
       isStreaming: true,
       streamingContent: '',
+      streamingToolCalls: [],
+      streamingToolResults: [],
     })
 
-    // Start streaming
+    // Get workspace path for context
+    const workspaceState = useWorkspaceStore.getState()
+    const activeWorkspace = workspaceState.workspaces.find(
+      w => w.id === workspaceState.activeWorkspaceId
+    )
+
+    // Build messages for AI - use expanded content for last user message if skill was used
+    const aiMessages = updatedMessages.map((m, i) => {
+      if (i === updatedMessages.length - 1 && m.role === 'user') {
+        return { role: m.role, content: finalContent }
+      }
+      return { role: m.role, content: m.content }
+    })
+
+    // Start streaming with mode and workspace context
     const channelId = window.jelico.ai.stream({
       providerId,
       model,
-      messages: updatedMessages.map(m => ({ role: m.role, content: m.content })),
+      mode: finalMode,
+      messages: aiMessages,
+      workspacePath: activeWorkspace?.path,
     })
     currentStreamChannelId = channelId
 
@@ -145,10 +222,55 @@ export const useChatStore = create<ChatStore>((set, get) => ({
       set({ streamingContent: fullContent })
     })
 
+    // Handle tool calls
+    window.jelico.ai.onToolCalls(channelId, (toolCalls) => {
+      const mapped = toolCalls.map(tc => ({
+        id: tc.toolCallId,
+        name: tc.toolName,
+        args: tc.args,
+      }))
+      set((state) => ({
+        streamingToolCalls: [...state.streamingToolCalls, ...mapped],
+      }))
+    })
+
+    // Handle tool results
+    window.jelico.ai.onToolResults(channelId, (toolResults) => {
+      const mapped = toolResults.map(tr => ({
+        toolCallId: tr.toolCallId,
+        result: tr.result,
+      }))
+      set((state) => ({
+        streamingToolResults: [...state.streamingToolResults, ...mapped],
+      }))
+    })
+
+    // Handle artifacts
+    window.jelico.ai.onArtifact(channelId, (artifact) => {
+      useArtifactStore.getState().addArtifact({
+        conversationId: conversationId!,
+        type: artifact.type,
+        title: artifact.title,
+        content: artifact.content,
+        language: artifact.language,
+      })
+    })
+
+    // Handle spawn agent requests
+    window.jelico.ai.onSpawnAgent(channelId, (agent) => {
+      useAgentStore.getState().spawnAgent({
+        name: agent.name,
+        task: agent.task,
+        mode: agent.mode,
+      })
+    })
+
     // Handle stream end
     window.jelico.ai.onStreamEnd(channelId, async () => {
       window.jelico.ai.removeListeners(channelId)
       currentStreamChannelId = null
+
+      const { streamingToolCalls, streamingToolResults } = get()
 
       // Save assistant message
       const assistantMessage = await window.jelico.conversations.addMessage(conversationId!, {
@@ -156,11 +278,23 @@ export const useChatStore = create<ChatStore>((set, get) => ({
         content: fullContent,
       })
 
+      // Attach tool calls/results to the message object for display
+      const messageWithTools: Message = {
+        ...assistantMessage,
+        toolCalls: streamingToolCalls.length > 0 ? streamingToolCalls : undefined,
+        toolResults: streamingToolResults.length > 0 ? streamingToolResults : undefined,
+      }
+
       set((state) => ({
-        messages: [...state.messages, assistantMessage],
+        messages: [...state.messages, messageWithTools],
         isStreaming: false,
         streamingContent: '',
+        streamingToolCalls: [],
+        streamingToolResults: [],
       }))
+
+      // Process any queued messages
+      get().processQueue()
     })
 
     // Handle stream error
@@ -170,9 +304,32 @@ export const useChatStore = create<ChatStore>((set, get) => ({
       set({
         isStreaming: false,
         streamingContent: '',
+        streamingToolCalls: [],
+        streamingToolResults: [],
         error: error,
       })
+
+      // Still try to process queue on error
+      get().processQueue()
     })
+  },
+
+  queueMessage: (content, providerId, model) => {
+    set((state) => ({
+      messageQueue: [...state.messageQueue, { content, providerId, model }],
+    }))
+  },
+
+  processQueue: async () => {
+    const { messageQueue } = get()
+    if (messageQueue.length === 0) return
+
+    // Take the first message from the queue
+    const [nextMessage, ...remaining] = messageQueue
+    set({ messageQueue: remaining })
+
+    // Send the queued message
+    await get().sendMessage(nextMessage.content, nextMessage.providerId, nextMessage.model)
   },
 
   stopStreaming: () => {
@@ -199,6 +356,8 @@ export const useChatStore = create<ChatStore>((set, get) => ({
       set({ error: error.message })
     }
   },
+
+  setMode: (mode) => set({ mode }),
 
   clearError: () => set({ error: null }),
 }))

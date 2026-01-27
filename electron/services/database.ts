@@ -10,12 +10,14 @@ interface DbSchema {
   providers: ProviderRow[]
   conversations: ConversationRow[]
   messages: MessageRow[]
+  workspaces: WorkspaceRow[]
 }
 
 let db: DbSchema = {
   providers: [],
   conversations: [],
   messages: [],
+  workspaces: [],
 }
 
 function getDbPath() {
@@ -28,10 +30,14 @@ function loadDb(): void {
     if (fs.existsSync(dbPath)) {
       const content = fs.readFileSync(dbPath, 'utf-8')
       db = JSON.parse(content)
+      // Ensure workspaces array exists for migration
+      if (!db.workspaces) {
+        db.workspaces = []
+      }
     }
   } catch (err) {
     console.error('Failed to load database:', err)
-    db = { providers: [], conversations: [], messages: [] }
+    db = { providers: [], conversations: [], messages: [], workspaces: [] }
   }
 }
 
@@ -197,6 +203,81 @@ export const conversationDb = {
   },
 }
 
+// Workspace operations
+export const workspaceDb = {
+  list(): WorkspaceRow[] {
+    return [...db.workspaces].sort((a, b) => b.updated_at - a.updated_at)
+  },
+
+  get(id: string): WorkspaceRow | null {
+    return db.workspaces.find(w => w.id === id) || null
+  },
+
+  getByPath(path: string): WorkspaceRow | null {
+    return db.workspaces.find(w => w.path === path) || null
+  },
+
+  create(workspace: WorkspaceInput): WorkspaceRow {
+    const now = Date.now()
+    const id = uuid()
+
+    // Check if workspace with same path already exists
+    const existing = this.getByPath(workspace.path)
+    if (existing) {
+      return existing
+    }
+
+    const record: WorkspaceRow = {
+      id,
+      name: workspace.name,
+      path: workspace.path,
+      is_git: workspace.isGit ? 1 : 0,
+      git_branch: workspace.gitBranch || null,
+      created_at: now,
+      updated_at: now,
+    }
+
+    db.workspaces.push(record)
+    saveDb()
+    return record
+  },
+
+  update(id: string, updates: Partial<WorkspaceInput>): WorkspaceRow | null {
+    const index = db.workspaces.findIndex(w => w.id === id)
+    if (index === -1) return null
+
+    const workspace = db.workspaces[index]
+    if (updates.name !== undefined) workspace.name = updates.name
+    if (updates.path !== undefined) workspace.path = updates.path
+    if (updates.isGit !== undefined) workspace.is_git = updates.isGit ? 1 : 0
+    if (updates.gitBranch !== undefined) workspace.git_branch = updates.gitBranch || null
+    workspace.updated_at = Date.now()
+
+    saveDb()
+    return workspace
+  },
+
+  delete(id: string): void {
+    // Update conversations to remove workspace reference
+    db.conversations.forEach(c => {
+      if (c.workspace_id === id) {
+        c.workspace_id = null
+      }
+    })
+    // Delete workspace
+    db.workspaces = db.workspaces.filter(w => w.id !== id)
+    saveDb()
+  },
+
+  touch(id: string): void {
+    const workspace = db.workspaces.find(w => w.id === id)
+    if (workspace) {
+      workspace.updated_at = Date.now()
+      saveDb()
+    }
+  },
+}
+
 // Message operations
 export const messageDb = {
   add(conversationId: string, message: MessageInput): MessageRow {
@@ -275,4 +356,21 @@ interface MessageRow {
 interface MessageInput {
   role: string
   content: string
+}
+
+interface WorkspaceRow {
+  id: string
+  name: string
+  path: string
+  is_git: number
+  git_branch: string | null
+  created_at: number
+  updated_at: number
+}
+
+interface WorkspaceInput {
+  name: string
+  path: string
+  isGit?: boolean
+  gitBranch?: string
 }
