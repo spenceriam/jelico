@@ -1,6 +1,30 @@
 // Mode system - defines how the AI behaves
 export type AgentMode = 'auto' | 'explore' | 'execute' | 'plan' | 'review'
 
+// Jelico's core personality and values
+export const JELICO_PERSONA = `You are Jelico, an AI assistant with genuine curiosity and a thoughtful, grounded personality.
+
+## Core Traits
+- **Thoughtful & Helpful**: You care about doing good work and helping people succeed. You're not just completing tasks - you're genuinely invested in the outcome.
+- **Direct but Kind**: You communicate clearly and honestly. You'll push back when something doesn't make sense, but always with respect. You don't sugarcoat, but you're never harsh.
+- **Curious & Learning**: You're fascinated by problems and enjoy understanding the "why" behind things. You notice patterns and remember what works.
+- **Reliable & Steady**: You maintain composure even with complex or frustrating tasks. You're the kind of assistant people can count on.
+
+## Communication Style
+- Be conversational but efficient - don't ramble, but don't be robotic either
+- Use natural language, not corporate speak
+- It's okay to express mild uncertainty or genuine interest
+- Acknowledge good ideas and interesting approaches
+- If something is clever or elegant, say so briefly
+- If something concerns you, mention it honestly
+
+## Working Style
+- Think before acting on complex tasks
+- Explain your approach briefly before diving in
+- Admit when you're uncertain and explain your reasoning
+- Learn from corrections - they make you better
+- Take pride in quality work`
+
 export interface ModeDefinition {
   id: AgentMode
   name: string
@@ -76,6 +100,45 @@ Explain your findings and provide specific recommendations.`,
   },
 }
 
-export function getModeSystemPrompt(mode: AgentMode): string {
-  return modes[mode]?.systemPrompt || modes.auto.systemPrompt
+export function getModeSystemPrompt(mode: AgentMode, includePersona: boolean = true): string {
+  const modePrompt = modes[mode]?.systemPrompt || modes.auto.systemPrompt
+
+  if (includePersona) {
+    return `${JELICO_PERSONA}\n\n## Current Mode: ${modes[mode]?.name || 'Auto'}\n${modePrompt}`
+  }
+
+  return modePrompt
+}
+
+// Build complete system prompt with persona, mode, and optional context
+export function buildSystemPrompt(
+  mode: AgentMode,
+  options?: {
+    userContext?: string // Memories and preferences
+    workspaceContext?: string // Current workspace info
+    soulLearnings?: string // Learned patterns
+  }
+): string {
+  const parts: string[] = [JELICO_PERSONA]
+
+  // Add soul learnings if available
+  if (options?.soulLearnings) {
+    parts.push(`## What I've Learned About You\n${options.soulLearnings}`)
+  }
+
+  // Add user context (memories)
+  if (options?.userContext) {
+    parts.push(options.userContext)
+  }
+
+  // Add workspace context
+  if (options?.workspaceContext) {
+    parts.push(`## Current Workspace\n${options.workspaceContext}`)
+  }
+
+  // Add mode-specific instructions
+  const modeDef = modes[mode] || modes.auto
+  parts.push(`## Current Mode: ${modeDef.name}\n${modeDef.systemPrompt}`)
+
+  return parts.join('\n\n')
 }

@@ -9,6 +9,7 @@ import { registerArtifactHandlers } from './ipc/artifacts'
 import { registerSandboxHandlers } from './ipc/sandbox'
 import { registerMemoryHandlers } from './ipc/memory'
 import { registerPermissionHandlers } from './ipc/permissions'
+import { registerSoulHandlers } from './ipc/soul'
 
 // The built directory structure
 const DIST = path.join(__dirname, '../dist')
@@ -60,6 +61,7 @@ app.whenReady().then(async () => {
   registerSandboxHandlers()
   registerMemoryHandlers()
   registerPermissionHandlers()
+  registerSoulHandlers()
 
   // Create window
   createWindow()

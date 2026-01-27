@@ -94,6 +94,23 @@ contextBridge.exposeInMainWorld('jelico', {
     clearOnce: () => ipcRenderer.invoke('permissions:clearOnce'),
     request: (request: any) => ipcRenderer.invoke('permissions:request', request),
   },
+  soul: {
+    get: () => ipcRenderer.invoke('soul:get'),
+    getPatterns: (category?: string) => ipcRenderer.invoke('soul:getPatterns', category),
+    addPattern: (pattern: any) => ipcRenderer.invoke('soul:addPattern', pattern),
+    updatePattern: (id: string, updates: any) => ipcRenderer.invoke('soul:updatePattern', id, updates),
+    removePattern: (id: string) => ipcRenderer.invoke('soul:removePattern', id),
+    getCorrections: () => ipcRenderer.invoke('soul:getCorrections'),
+    addCorrection: (correction: any) => ipcRenderer.invoke('soul:addCorrection', correction),
+    setPreference: (key: string, value: any, confidence?: number) =>
+      ipcRenderer.invoke('soul:setPreference', key, value, confidence),
+    getPreference: (key: string) => ipcRenderer.invoke('soul:getPreference', key),
+    getAllPreferences: () => ipcRenderer.invoke('soul:getAllPreferences'),
+    decayConfidence: () => ipcRenderer.invoke('soul:decayConfidence'),
+    getContext: () => ipcRenderer.invoke('soul:getContext'),
+    analyzeConversation: (messages: any[], metadata?: any) =>
+      ipcRenderer.invoke('soul:analyzeConversation', messages, metadata),
+  },
   ai: {
     stream: (params: any) => {
       const channelId = crypto.randomUUID()

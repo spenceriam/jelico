@@ -97,6 +97,24 @@ interface Window {
       clearOnce: () => Promise<{ success: boolean }>
       request: (request: PermissionRequest) => Promise<PermissionRequestResult>
     }
+    soul: {
+      get: () => Promise<Soul>
+      getPatterns: (category?: SoulPatternCategory) => Promise<SoulPattern[]>
+      addPattern: (pattern: Omit<SoulPattern, 'id'>) => Promise<SoulPattern>
+      updatePattern: (id: string, updates: Partial<SoulPattern>) => Promise<SoulPattern | null>
+      removePattern: (id: string) => Promise<{ success: boolean }>
+      getCorrections: () => Promise<SoulCorrection[]>
+      addCorrection: (correction: Omit<SoulCorrection, 'id' | 'timestamp'>) => Promise<SoulCorrection>
+      setPreference: (key: string, value: unknown, confidence?: number) => Promise<{ success: boolean }>
+      getPreference: (key: string) => Promise<{ value: unknown; confidence: number } | null>
+      getAllPreferences: () => Promise<Record<string, { value: unknown; confidence: number }>>
+      decayConfidence: () => Promise<{ success: boolean }>
+      getContext: () => Promise<string>
+      analyzeConversation: (messages: Array<{ role: string; content: string }>, metadata?: {
+        wasSuccessful?: boolean
+        userFeedback?: string
+      }) => Promise<SoulAnalysisResult>
+    }
   }
 }
 
@@ -327,4 +345,51 @@ interface PermissionRequest {
 interface PermissionRequestResult {
   permission: PermissionAction
   cancelled: boolean
+}
+
+// Soul types
+type SoulPatternCategory =
+  | 'coding_style'
+  | 'communication'
+  | 'mistake'
+  | 'preference'
+  | 'workflow'
+  | 'personality'
+
+interface SoulPattern {
+  id: string
+  category: SoulPatternCategory
+  pattern: string
+  evidence: string[]
+  confidence: number
+  frequency: number
+  lastObserved: number
+  decay: number
+  source: 'explicit' | 'inferred'
+}
+
+interface SoulCorrection {
+  id: string
+  original: string
+  corrected: string
+  context: string
+  category: string
+  timestamp: number
+}
+
+interface Soul {
+  patterns: SoulPattern[]
+  corrections: SoulCorrection[]
+  preferences: Record<string, {
+    value: unknown
+    confidence: number
+    updatedAt: number
+  }>
+  lastAnalyzedAt: number
+  version: number
+}
+
+interface SoulAnalysisResult {
+  newPatterns: SoulPattern[]
+  updates: string[]
 }
