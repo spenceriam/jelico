@@ -4,6 +4,7 @@
 
 @layer base {
   :root {
+    /* Background colors - dark mode defaults */
     --bg-void: #08080a;
     --bg-deep: #0d0d10;
     --bg-surface: #141418;
@@ -11,31 +12,58 @@
     --bg-hover: #222228;
     --bg-active: #2a2a32;
 
-    --text-primary: #f5f4f1;
-    --text-secondary: #a8a5a0;
-    --text-muted: #6b6860;
-    --text-faint: #3d3b38;
+    /* Text colors */
+    --text-primary: #e8e6e3;
+    --text-secondary: #a09a92;
+    --text-muted: #6b6660;
+    --text-faint: #4a4540;
 
-    --accent-primary: #e8a84c;
-    --accent-bright: #f4c171;
+    /* Accent colors - Gold theme defaults */
+    --accent: #d4a574;
+    --accent-bright: #e8c49a;
     --accent-dim: #b8863d;
-    --accent-glow: rgba(232, 168, 76, 0.15);
+    --accent-glow: rgba(212, 165, 116, 0.15);
 
+    /* Status colors */
     --success: #5cb97b;
     --error: #e85c5c;
+    --warning: #e8a84c;
+    --info: #5c9ee8;
 
-    --border-subtle: rgba(255, 255, 255, 0.06);
-    --border-default: rgba(255, 255, 255, 0.1);
+    /* Border colors */
+    --border: #2a2926;
+    --border-subtle: #1f1e1c;
     --border-strong: rgba(255, 255, 255, 0.15);
 
+    /* Fonts */
     --font-display: 'Instrument Serif', Georgia, serif;
     --font-body: 'DM Sans', -apple-system, sans-serif;
     --font-mono: 'JetBrains Mono', monospace;
 
+    /* Border radius */
     --radius-sm: 6px;
     --radius-md: 10px;
     --radius-lg: 14px;
     --radius-xl: 20px;
+  }
+
+  /* Light mode overrides */
+  :root.light {
+    --bg-void: #f5f5f5;
+    --bg-deep: #ebebeb;
+    --bg-surface: #ffffff;
+    --bg-elevated: #fafafa;
+    --bg-hover: #f0f0f0;
+    --bg-active: #e5e5e5;
+
+    --text-primary: #1a1a1a;
+    --text-secondary: #4a4a4a;
+    --text-muted: #6a6a6a;
+    --text-faint: #9a9a9a;
+
+    --border: #e0e0e0;
+    --border-subtle: #f0f0f0;
+    --border-strong: #d0d0d0;
   }
 
   html, body, #root {
@@ -110,20 +138,20 @@
   }
 
   .btn-primary {
-    background: var(--accent-primary);
-    border: 1px solid var(--accent-primary);
+    background: var(--accent);
+    border: 1px solid var(--accent);
     color: var(--bg-void);
   }
 
   .btn-primary:hover {
     background: var(--accent-bright);
     border-color: var(--accent-bright);
-    box-shadow: 0 4px 16px rgba(232, 168, 76, 0.3);
+    box-shadow: 0 4px 16px var(--accent-glow);
   }
 
   .btn-secondary {
     background: var(--bg-elevated);
-    border: 1px solid var(--border-default);
+    border: 1px solid var(--border);
     color: var(--text-secondary);
   }
 
@@ -148,7 +176,7 @@
     width: 100%;
     padding: 12px 14px;
     background: var(--bg-deep);
-    border: 1px solid var(--border-default);
+    border: 1px solid var(--border);
     border-radius: var(--radius-sm);
     color: var(--text-primary);
     font-family: var(--font-body);
@@ -186,7 +214,7 @@
   }
 
   .form-hint a {
-    color: var(--accent-primary);
+    color: var(--accent);
     text-decoration: none;
   }
 
@@ -234,7 +262,7 @@
   .provider-icon-custom {
     background: var(--bg-elevated);
     color: var(--text-secondary);
-    border: 1px dashed var(--border-default);
+    border: 1px dashed var(--border);
   }
 
   /* Security note */
@@ -254,7 +282,7 @@
   .welcome-logo {
     width: 72px;
     height: 72px;
-    background: linear-gradient(135deg, var(--accent-primary) 0%, var(--accent-dim) 100%);
+    background: linear-gradient(135deg, var(--accent) 0%, var(--accent-dim) 100%);
     border-radius: 16px;
     display: flex;
     align-items: center;
@@ -262,7 +290,7 @@
     font-family: var(--font-display);
     font-size: 36px;
     color: var(--bg-void);
-    box-shadow: 0 8px 32px rgba(232, 168, 76, 0.2);
+    box-shadow: 0 8px 32px var(--accent-glow);
     margin: 0 auto 24px;
   }
 
@@ -277,7 +305,7 @@
   /* Provider card */
   .provider-card {
     background: var(--bg-surface);
-    border: 1px solid var(--border-default);
+    border: 1px solid var(--border);
     border-radius: var(--radius-lg);
     padding: 20px 16px;
     cursor: pointer;
@@ -292,7 +320,7 @@
   }
 
   .provider-card.selected {
-    border-color: var(--accent-primary);
+    border-color: var(--accent);
     background: var(--accent-glow);
     box-shadow: 0 0 0 3px var(--accent-glow);
   }
@@ -305,7 +333,7 @@
     align-items: center;
     justify-content: center;
     background: var(--bg-surface);
-    border: 1px solid var(--border-default);
+    border: 1px solid var(--border);
     border-radius: var(--radius-sm);
     color: var(--text-secondary);
     cursor: pointer;

@@ -45,52 +45,13 @@ export default function App() {
   // Handle onboarding completion - save profile to soul system
   const handleOnboardingComplete = useCallback(async (profile: OnboardingProfile) => {
     try {
-      // Save user name
-      if (profile.name.trim()) {
-        await window.jelico.soul.setPreference('userName', profile.name.trim(), 1.0)
-      }
-
-      // Save intentions as a pattern
-      if (profile.intentions.trim()) {
-        await window.jelico.soul.addPattern({
-          category: 'preference',
-          pattern: `User's primary intentions: ${profile.intentions.trim()}`,
-          evidence: ['Stated during onboarding'],
-          confidence: 1.0,
-          frequency: 1,
-          lastObserved: Date.now(),
-          decay: 0.01,
-          source: 'explicit',
-        })
-      }
-
-      // Save communication preferences
-      if (profile.preferences.trim()) {
-        await window.jelico.soul.addPattern({
-          category: 'communication',
-          pattern: `User's communication preferences: ${profile.preferences.trim()}`,
-          evidence: ['Stated during onboarding'],
-          confidence: 1.0,
-          frequency: 1,
-          lastObserved: Date.now(),
-          decay: 0.01,
-          source: 'explicit',
-        })
-      }
-
-      // Save additional info
-      if (profile.additionalInfo.trim()) {
-        await window.jelico.soul.addPattern({
-          category: 'preference',
-          pattern: `Additional context about user: ${profile.additionalInfo.trim()}`,
-          evidence: ['Stated during onboarding'],
-          confidence: 1.0,
-          frequency: 1,
-          lastObserved: Date.now(),
-          decay: 0.01,
-          source: 'explicit',
-        })
-      }
+      // Save all profile fields as preferences for easy retrieval and editing
+      await Promise.all([
+        profile.name.trim() && window.jelico.soul.setPreference('userName', profile.name.trim(), 1.0),
+        profile.intentions.trim() && window.jelico.soul.setPreference('userIntentions', profile.intentions.trim(), 1.0),
+        profile.preferences.trim() && window.jelico.soul.setPreference('userPreferences', profile.preferences.trim(), 1.0),
+        profile.additionalInfo.trim() && window.jelico.soul.setPreference('additionalInfo', profile.additionalInfo.trim(), 1.0),
+      ].filter(Boolean))
     } catch (error) {
       console.error('Failed to save onboarding profile:', error)
     }

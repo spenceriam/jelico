@@ -21,6 +21,26 @@ export interface ChangelogEntry {
 
 export const changelog: ChangelogEntry[] = [
   {
+    version: '0.3.0',
+    date: '2026-01-27',
+    changes: {
+      added: [
+        'Working dark/light/system theme modes',
+        'Five color themes with full dark and light variants',
+      ],
+      changed: [
+        'Theme system now uses CSS variables for real-time switching',
+        'Onboarding profile data now saves as preferences for easy editing in Settings',
+        'Removed memory decay - Jelico remembers everything forever',
+        'Simplified Memory & Learning section in General Settings',
+      ],
+      fixed: [
+        'Profile data from onboarding now pre-fills in General Settings',
+        'Color theme changes apply immediately',
+      ],
+    },
+  },
+  {
     version: '0.2.1',
     date: '2026-01-27',
     changes: {

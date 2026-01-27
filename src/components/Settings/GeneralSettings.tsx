@@ -33,20 +33,18 @@ export function GeneralSettings() {
 
   // Memory settings
   const [learningEnabled, setLearningEnabled] = useState(true)
-  const [memoryRetention, setMemoryRetention] = useState<'forever' | 'fade' | 'session'>('fade')
 
   // Load user profile from soul
   useEffect(() => {
     async function loadProfile() {
       setIsLoadingProfile(true)
       try {
-        const [name, intentions, preferences, additional, learning, retention] = await Promise.all([
+        const [name, intentions, preferences, additional, learning] = await Promise.all([
           window.jelico.soul.getPreference('userName'),
           window.jelico.soul.getPreference('userIntentions'),
           window.jelico.soul.getPreference('userPreferences'),
           window.jelico.soul.getPreference('additionalInfo'),
           window.jelico.soul.getPreference('learningEnabled'),
-          window.jelico.soul.getPreference('memoryRetention'),
         ])
 
         if (name?.value) setUserName(name.value as string)
@@ -54,7 +52,6 @@ export function GeneralSettings() {
         if (preferences?.value) setUserPreferences(preferences.value as string)
         if (additional?.value) setAdditionalInfo(additional.value as string)
         if (learning?.value !== undefined) setLearningEnabled(learning.value as boolean)
-        if (retention?.value) setMemoryRetention(retention.value as 'forever' | 'fade' | 'session')
       } catch (err) {
         console.error('Failed to load profile:', err)
       } finally {
@@ -82,23 +79,20 @@ export function GeneralSettings() {
     }
   }
 
-  const handleSaveMemorySettings = async () => {
+  const handleSaveLearningSettings = async () => {
     try {
-      await Promise.all([
-        window.jelico.soul.setPreference('learningEnabled', learningEnabled, 1.0),
-        window.jelico.soul.setPreference('memoryRetention', memoryRetention, 1.0),
-      ])
+      await window.jelico.soul.setPreference('learningEnabled', learningEnabled, 1.0)
     } catch (err) {
-      console.error('Failed to save memory settings:', err)
+      console.error('Failed to save learning settings:', err)
     }
   }
 
-  // Save memory settings when they change
+  // Save learning settings when they change
   useEffect(() => {
     if (!isLoadingProfile) {
-      handleSaveMemorySettings()
+      handleSaveLearningSettings()
     }
-  }, [learningEnabled, memoryRetention])
+  }, [learningEnabled])
 
   return (
     <div className="space-y-8">
@@ -293,7 +287,7 @@ export function GeneralSettings() {
             <div>
               <div className="font-medium text-text-primary">Learn from conversations</div>
               <div className="text-sm text-text-muted">
-                Jelico will remember patterns, preferences, and corrections
+                Jelico will remember patterns, preferences, and corrections forever
               </div>
             </div>
             <button
@@ -310,34 +304,10 @@ export function GeneralSettings() {
             </button>
           </div>
 
-          {/* Memory Retention */}
-          <div>
-            <label className="block text-sm font-medium text-text-secondary mb-2">
-              Memory Retention
-            </label>
-            <div className="grid grid-cols-3 gap-2">
-              {[
-                { id: 'forever', name: 'Remember forever', desc: 'Never forget learned patterns' },
-                { id: 'fade', name: 'Fade over time', desc: 'Patterns decay if not reinforced' },
-                { id: 'session', name: 'Session only', desc: 'Forget everything on restart' },
-              ].map((option) => (
-                <button
-                  key={option.id}
-                  onClick={() => setMemoryRetention(option.id as typeof memoryRetention)}
-                  className={`p-3 rounded-lg border text-left transition-colors ${
-                    memoryRetention === option.id
-                      ? 'border-accent bg-accent/10'
-                      : 'border-border hover:border-border-strong'
-                  }`}
-                >
-                  <div className={`text-sm font-medium ${memoryRetention === option.id ? 'text-accent' : 'text-text-primary'}`}>
-                    {option.name}
-                  </div>
-                  <div className="text-xs text-text-muted mt-1">{option.desc}</div>
-                </button>
-              ))}
-            </div>
-          </div>
+          <p className="text-sm text-text-muted">
+            When enabled, Jelico learns your preferences, coding style, and common corrections over time.
+            You can view and manage what Jelico has learned in the Memory section of the Backup settings.
+          </p>
         </div>
       </section>
     </div>
