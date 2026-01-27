@@ -1,4 +1,4 @@
-import { useRef, useEffect } from 'react'
+import { useRef, useEffect, useState, useMemo } from 'react'
 import { useChatStore } from '../../stores/chat'
 import { useProviderStore } from '../../stores/providers'
 import { useUIStore } from '../../stores/ui'
@@ -7,7 +7,6 @@ import { MessageList } from './MessageList'
 import { ChatInput } from './ChatInput'
 import { ModeSelector } from '../ModeSelector/ModeSelector'
 import { ShimmerText } from '../StatusIndicators/ShimmerText'
-import { Sparkles } from 'lucide-react'
 
 export function ChatArea() {
   const { messages, isStreaming, streamingContent, streamingToolCalls, streamingToolResults, activeConversationId } = useChatStore()
@@ -98,18 +97,79 @@ export function ChatArea() {
   )
 }
 
+// Greetings based on time of day
+function getTimeBasedGreeting(): string {
+  const hour = new Date().getHours()
+  if (hour < 12) return 'Good morning'
+  if (hour < 17) return 'Good afternoon'
+  if (hour < 21) return 'Good evening'
+  return 'Working late?'
+}
+
+// Variety of casual greetings/prompts
+const CASUAL_GREETINGS = [
+  "What's on your mind?",
+  "What are we working on?",
+  "Ready when you are",
+  "How can I help today?",
+  "Let's get something done",
+]
+
+const FOLLOW_UP_PROMPTS = [
+  "Ask me anything or start a task.",
+  "I'm here to help with whatever you need.",
+  "Let's tackle something together.",
+  "What would you like to explore?",
+  "Ready to dive in whenever you are.",
+]
+
 function EmptyState() {
+  const [userName, setUserName] = useState<string | null>(null)
+
+  // Get random greeting and prompt (stable per session)
+  const { greeting, prompt } = useMemo(() => {
+    const greetingIndex = Math.floor(Math.random() * CASUAL_GREETINGS.length)
+    const promptIndex = Math.floor(Math.random() * FOLLOW_UP_PROMPTS.length)
+    return {
+      greeting: CASUAL_GREETINGS[greetingIndex],
+      prompt: FOLLOW_UP_PROMPTS[promptIndex],
+    }
+  }, [])
+
+  // Load user name from soul preferences
+  useEffect(() => {
+    window.jelico.soul.getPreference('userName').then((result) => {
+      if (result?.value) {
+        setUserName(result.value as string)
+      }
+    }).catch(() => {
+      // Ignore errors, just don't show name
+    })
+  }, [])
+
+  const timeGreeting = getTimeBasedGreeting()
+
+  // Decide which greeting style to use (time-based vs casual)
+  const useTimeGreeting = Math.random() > 0.5
+
   return (
-    <div className="h-full flex items-center justify-center">
-      <div className="text-center max-w-md">
-        <div className="w-12 h-12 rounded-full bg-accent/10 flex items-center justify-center mx-auto mb-4">
-          <Sparkles className="w-6 h-6 text-accent" />
-        </div>
-        <h2 className="text-xl font-semibold text-text-primary mb-2">
-          Welcome to Jelico
-        </h2>
-        <p className="text-text-secondary">
-          Your AI productivity partner. Ask me anything or start a task.
+    <div className="h-full flex items-center justify-center p-10">
+      <div className="text-center max-w-lg animate-fade-in">
+        {/* Logo matching onboarding style */}
+        <div className="welcome-logo mb-6">J</div>
+
+        {/* Dynamic greeting */}
+        <h1 className="font-display text-[32px] font-normal text-text-primary mb-3 tracking-tight">
+          {useTimeGreeting ? (
+            userName ? `${timeGreeting}, ${userName}` : timeGreeting
+          ) : (
+            userName ? `Hey ${userName}, ${greeting.toLowerCase()}` : greeting
+          )}
+        </h1>
+
+        {/* Follow-up prompt */}
+        <p className="text-text-secondary text-lg">
+          {prompt}
         </p>
       </div>
     </div>
