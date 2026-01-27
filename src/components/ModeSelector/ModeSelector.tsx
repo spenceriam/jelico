@@ -81,11 +81,6 @@ export function ModeSelector() {
           </button>
         ))}
       </div>
-
-      {/* Current mode description */}
-      <span className="ml-3 text-xs text-text-muted hidden lg:inline">
-        {modes[mode].description}
-      </span>
     </div>
   )
 }

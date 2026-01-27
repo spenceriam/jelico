@@ -355,11 +355,21 @@ export const useChatStore = create<ChatStore>((set, get) => ({
       const conversations = await window.jelico.conversations.list()
       const { activeConversationId } = get()
 
-      set({
-        conversations,
-        activeConversationId: activeConversationId === id ? null : activeConversationId,
-        messages: activeConversationId === id ? [] : get().messages,
-      })
+      if (activeConversationId === id) {
+        // Clear all state when deleting the active conversation
+        set({
+          conversations,
+          activeConversationId: null,
+          messages: [],
+          isStreaming: false,
+          streamingContent: '',
+          streamingToolCalls: [],
+          streamingToolResults: [],
+          error: null,
+        })
+      } else {
+        set({ conversations })
+      }
     } catch (error: any) {
       set({ error: error.message })
     }
