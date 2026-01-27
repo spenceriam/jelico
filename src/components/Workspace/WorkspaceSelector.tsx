@@ -112,7 +112,7 @@ export function WorkspaceSelector() {
     <div className="relative" ref={dropdownRef}>
       <button
         onClick={() => setDropdownOpen(!dropdownOpen)}
-        className="flex items-center gap-2 px-3 py-1.5 text-sm text-text-secondary hover:text-text-primary hover:bg-bg-surface rounded-md transition-colors max-w-48"
+        className="flex items-center gap-2 px-3 py-1.5 text-sm text-text-secondary hover:text-text-primary hover:bg-bg-surface rounded-md transition-colors"
       >
         {activeWorkspace ? (
           <>
@@ -121,22 +121,26 @@ export function WorkspaceSelector() {
             ) : (
               <Folder className="w-4 h-4 text-accent flex-shrink-0" />
             )}
-            <span className="truncate">{activeWorkspace.name}</span>
-            {activeWorkspace.gitBranch && (
-              <span className="text-xs text-text-muted truncate">
-                ({activeWorkspace.gitBranch})
-              </span>
-            )}
+            <div className="flex flex-col items-start leading-tight">
+              <span className="text-text-primary">{activeWorkspace.name}</span>
+              {activeWorkspace.gitBranch && (
+                <span className="text-xs text-text-muted">
+                  {activeWorkspace.gitBranch}
+                </span>
+              )}
+            </div>
           </>
         ) : (
           <>
             <Box className="w-4 h-4 text-accent flex-shrink-0" />
-            <span className="text-text-secondary">Sandbox</span>
-            {hasSandboxFiles && (
-              <span className="text-xs text-text-muted">
-                ({sandboxFiles.length})
-              </span>
-            )}
+            <div className="flex flex-col items-start leading-tight">
+              <span className="text-text-primary">Sandbox</span>
+              {hasSandboxFiles && (
+                <span className="text-xs text-text-muted">
+                  {sandboxFiles.length} file{sandboxFiles.length !== 1 ? 's' : ''}
+                </span>
+              )}
+            </div>
           </>
         )}
         <ChevronDown className="w-3 h-3 text-text-muted flex-shrink-0" />

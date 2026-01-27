@@ -5,8 +5,9 @@ import { useUIStore } from '../../stores/ui'
 import { SkillManager } from '../Skills/SkillManager'
 import { useSkillStore } from '../../stores/skills'
 import { BackupSettings } from './BackupSettings'
+import { GeneralSettings } from './GeneralSettings'
 
-type SettingsTab = 'providers' | 'skills' | 'general' | 'backup'
+type SettingsTab = 'general' | 'providers' | 'skills' | 'backup'
 
 interface SettingsProps {
   onClose: () => void
@@ -21,7 +22,7 @@ export function Settings({ onClose }: SettingsProps) {
   const { providers, deleteProvider, testConnection, updateProvider, setActiveModel, activeProviderId } = useProviderStore()
   const { openProviderSetup, settingsTab } = useUIStore()
   const { loadSkills } = useSkillStore()
-  const [activeTab, setActiveTab] = useState<SettingsTab>(settingsTab || 'providers')
+  const [activeTab, setActiveTab] = useState<SettingsTab>(settingsTab || 'general')
   const [testingId, setTestingId] = useState<string | null>(null)
   const [testResults, setTestResults] = useState<Record<string, boolean>>({})
 
@@ -114,6 +115,17 @@ export function Settings({ onClose }: SettingsProps) {
         {/* Tabs */}
         <div className="flex border-b border-border px-6">
           <button
+            onClick={() => setActiveTab('general')}
+            className={`px-4 py-3 text-sm flex items-center gap-2 border-b-2 -mb-px transition-colors ${
+              activeTab === 'general'
+                ? 'border-accent text-accent'
+                : 'border-transparent text-text-muted hover:text-text-primary'
+            }`}
+          >
+            <SettingsIcon className="w-4 h-4" />
+            General
+          </button>
+          <button
             onClick={() => setActiveTab('providers')}
             className={`px-4 py-3 text-sm flex items-center gap-2 border-b-2 -mb-px transition-colors ${
               activeTab === 'providers'
@@ -134,17 +146,6 @@ export function Settings({ onClose }: SettingsProps) {
           >
             <Zap className="w-4 h-4" />
             Skills
-          </button>
-          <button
-            onClick={() => setActiveTab('general')}
-            className={`px-4 py-3 text-sm flex items-center gap-2 border-b-2 -mb-px transition-colors ${
-              activeTab === 'general'
-                ? 'border-accent text-accent'
-                : 'border-transparent text-text-muted hover:text-text-primary'
-            }`}
-          >
-            <SettingsIcon className="w-4 h-4" />
-            General
           </button>
           <button
             onClick={() => setActiveTab('backup')}
@@ -333,14 +334,7 @@ export function Settings({ onClose }: SettingsProps) {
 
           {activeTab === 'skills' && <SkillManager />}
 
-          {activeTab === 'general' && (
-            <div className="space-y-6">
-              <h3 className="text-lg font-medium text-text-primary">General</h3>
-              <p className="text-sm text-text-muted">
-                More settings coming in future updates.
-              </p>
-            </div>
-          )}
+          {activeTab === 'general' && <GeneralSettings />}
 
           {activeTab === 'backup' && <BackupSettings />}
         </div>

@@ -21,6 +21,25 @@ export interface ChangelogEntry {
 
 export const changelog: ChangelogEntry[] = [
   {
+    version: '0.2.0',
+    date: '2026-01-27',
+    changes: {
+      added: [
+        'General Settings panel with appearance, user profile, default mode, and memory settings',
+        'Theme system with 5 color themes (Gold, Midnight Blue, Forest, Lavender, Rose)',
+        'Dark/Light/System theme mode support',
+        'ModelSelector as reusable component',
+        'Settings button and model selector in new chat view',
+      ],
+      changed: [
+        'Settings tabs reordered: General → Providers → Skills → Backup',
+        'Workspace selector uses stacked layout (name on top, branch below)',
+        'Header hidden in new chat view for cleaner UI',
+        'Model selector moved next to workspace selector in header',
+      ],
+    },
+  },
+  {
     version: '0.1.0',
     date: '2025-01-27',
     changes: {

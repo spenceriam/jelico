@@ -1,6 +1,6 @@
 import { create } from 'zustand'
 
-type SettingsTab = 'providers' | 'skills' | 'general' | 'backup'
+type SettingsTab = 'general' | 'providers' | 'skills' | 'backup'
 
 interface UIStore {
   sidebarCollapsed: boolean
@@ -45,7 +45,7 @@ const getInitialOnboardingState = (): boolean => {
 export const useUIStore = create<UIStore>((set) => ({
   sidebarCollapsed: false,
   settingsOpen: false,
-  settingsTab: 'providers',
+  settingsTab: 'general',
   providerSetupOpen: false,
 
   // Processing indicators
@@ -59,7 +59,7 @@ export const useUIStore = create<UIStore>((set) => ({
 
   toggleSidebar: () => set((state) => ({ sidebarCollapsed: !state.sidebarCollapsed })),
 
-  openSettings: (tab = 'providers') => set({ settingsOpen: true, settingsTab: tab }),
+  openSettings: (tab = 'general') => set({ settingsOpen: true, settingsTab: tab }),
 
   closeSettings: () => set({ settingsOpen: false }),
 

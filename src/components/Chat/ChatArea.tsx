@@ -1,4 +1,5 @@
 import { useRef, useEffect, useState, useMemo, useCallback } from 'react'
+import { Settings } from 'lucide-react'
 import { useChatStore } from '../../stores/chat'
 import { useProviderStore } from '../../stores/providers'
 import { useUIStore } from '../../stores/ui'
@@ -7,6 +8,7 @@ import { MessageList } from './MessageList'
 import { ChatInput } from './ChatInput'
 import { ModeSelector } from '../ModeSelector/ModeSelector'
 import { WorkspaceSelector } from '../Workspace/WorkspaceSelector'
+import { ModelSelector } from '../Model/ModelSelector'
 import { ShimmerText } from '../StatusIndicators/ShimmerText'
 
 export function ChatArea() {
@@ -270,6 +272,7 @@ interface NewChatViewProps {
 }
 
 function NewChatView({ disabled, isStreaming }: NewChatViewProps) {
+  const { openSettings } = useUIStore()
   const [userName, setUserName] = useState<string | null>(null)
 
   // Get random greeting and prompt (stable per component mount)
@@ -296,7 +299,16 @@ function NewChatView({ disabled, isStreaming }: NewChatViewProps) {
   const displayGreeting = buildGreeting(greeting, userName)
 
   return (
-    <div className="text-center animate-fade-in space-y-8">
+    <div className="relative text-center animate-fade-in space-y-8">
+      {/* Settings button - top right */}
+      <button
+        onClick={() => openSettings()}
+        className="absolute top-0 right-0 p-2 text-text-muted hover:text-text-primary hover:bg-bg-surface rounded-md transition-colors"
+        title="Settings"
+      >
+        <Settings className="w-5 h-5" />
+      </button>
+
       {/* Logo matching onboarding style */}
       <div className="welcome-logo mx-auto">J</div>
 
@@ -315,9 +327,10 @@ function NewChatView({ disabled, isStreaming }: NewChatViewProps) {
         <ModeSelector />
       </div>
 
-      {/* Workspace selector */}
-      <div className="flex justify-center">
+      {/* Workspace and Model selector */}
+      <div className="flex justify-center items-center gap-3">
         <WorkspaceSelector />
+        <ModelSelector compact />
       </div>
 
       {/* Chat input */}

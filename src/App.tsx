@@ -6,6 +6,7 @@ import { useUIStore } from './stores/ui'
 import { useArtifactStore } from './stores/artifacts'
 import { useWorkspaceStore, initWorkspaceStore } from './stores/workspaces'
 import { usePermissionStore } from './stores/permissions'
+import { useThemeStore } from './stores/theme'
 import { Sidebar } from './components/Layout/Sidebar'
 import { Header } from './components/Layout/Header'
 import { ChatArea } from './components/Chat/ChatArea'
@@ -19,11 +20,12 @@ import { WelcomeScreen, type OnboardingProfile } from './components/Onboarding/W
 
 export default function App() {
   const { providers, loadProviders, isLoading } = useProviderStore()
-  const { loadConversations } = useChatStore()
+  const { loadConversations, activeConversationId, messages, isStreaming } = useChatStore()
   const { settingsOpen, closeSettings, providerSetupOpen, closeProviderSetup, sidebarCollapsed, toggleSidebar, onboardingComplete, completeOnboarding } = useUIStore()
   const { canvasOpen } = useArtifactStore()
   const { loadWorkspaces } = useWorkspaceStore()
   const { clearOncePermissions, loadPermissions } = usePermissionStore()
+  const { loadFromStorage: loadTheme } = useThemeStore()
   const commandPalette = useCommandPalette()
 
   useEffect(() => {
@@ -35,6 +37,9 @@ export default function App() {
     // Clear "allow once" permissions from previous session
     clearOncePermissions()
     loadPermissions()
+
+    // Load and apply saved theme
+    loadTheme()
   }, [])
 
   // Handle onboarding completion - save profile to soul system
@@ -113,6 +118,9 @@ export default function App() {
     return <WelcomeScreen onComplete={handleOnboardingComplete} />
   }
 
+  // Hide header when in new chat view (no conversation or empty conversation)
+  const showNewChatUI = !activeConversationId || (messages.length === 0 && !isStreaming)
+
   return (
     <div className="h-screen flex bg-bg-void text-text-primary overflow-hidden relative">
       {/* Floating sidebar toggle button at left edge */}
@@ -137,7 +145,7 @@ export default function App() {
       <Sidebar />
 
       <main className="flex-1 flex flex-col min-w-0">
-        <Header />
+        {!showNewChatUI && <Header />}
         <div className="flex-1 flex min-h-0">
           <div className="flex-1 flex flex-col min-w-0">
             <ChatArea />
