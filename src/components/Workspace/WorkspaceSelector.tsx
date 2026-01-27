@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from 'react'
-import { FolderOpen, ChevronDown, Plus, GitBranch, Folder, X, RefreshCw, GitFork, Box, Download } from 'lucide-react'
+import { ChevronDown, Plus, GitBranch, Folder, X, RefreshCw, GitFork, Box, Download } from 'lucide-react'
 import { useWorkspaceStore, type Workspace } from '../../stores/workspaces'
 import { useSandboxStore } from '../../stores/sandbox'
 import { useChatStore } from '../../stores/chat'

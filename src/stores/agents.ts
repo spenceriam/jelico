@@ -156,7 +156,7 @@ async function startAgent(agentId: string, task: string, mode: AgentMode) {
   try {
     // Get active provider from provider store
     const providerStore = await import('./providers')
-    const { activeProviderId, activeModel, providers } = providerStore.useProviderStore.getState()
+    const { activeProviderId, activeModel } = providerStore.useProviderStore.getState()
 
     if (!activeProviderId || !activeModel) {
       throw new Error('No active provider configured')

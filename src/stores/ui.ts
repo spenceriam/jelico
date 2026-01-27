@@ -1,6 +1,6 @@
 import { create } from 'zustand'
 
-type SettingsTab = 'providers' | 'skills' | 'general'
+type SettingsTab = 'providers' | 'skills' | 'general' | 'backup'
 
 interface UIStore {
   sidebarCollapsed: boolean
@@ -12,6 +12,10 @@ interface UIStore {
   isCompacting: boolean
   isProcessing: boolean
   processingMessage: string | null
+
+  // Onboarding
+  onboardingComplete: boolean
+  onboardingStep: number
 
   toggleSidebar: () => void
   openSettings: (tab?: SettingsTab) => void
@@ -25,6 +29,17 @@ interface UIStore {
   stopCompacting: () => void
   startProcessing: (message?: string) => void
   stopProcessing: () => void
+
+  // Onboarding actions
+  completeOnboarding: () => void
+  setOnboardingStep: (step: number) => void
+  resetOnboarding: () => void
+}
+
+// Check localStorage for onboarding status
+const getInitialOnboardingState = (): boolean => {
+  const stored = localStorage.getItem('jelico:onboardingComplete')
+  return stored === 'true'
 }
 
 export const useUIStore = create<UIStore>((set) => ({
@@ -37,6 +52,10 @@ export const useUIStore = create<UIStore>((set) => ({
   isCompacting: false,
   isProcessing: false,
   processingMessage: null,
+
+  // Onboarding
+  onboardingComplete: getInitialOnboardingState(),
+  onboardingStep: 0,
 
   toggleSidebar: () => set((state) => ({ sidebarCollapsed: !state.sidebarCollapsed })),
 
@@ -58,4 +77,17 @@ export const useUIStore = create<UIStore>((set) => ({
   startProcessing: (message = 'Processing...') => set({ isProcessing: true, processingMessage: message }),
 
   stopProcessing: () => set({ isProcessing: false, processingMessage: null }),
+
+  // Onboarding actions
+  completeOnboarding: () => {
+    localStorage.setItem('jelico:onboardingComplete', 'true')
+    set({ onboardingComplete: true })
+  },
+
+  setOnboardingStep: (step) => set({ onboardingStep: step }),
+
+  resetOnboarding: () => {
+    localStorage.removeItem('jelico:onboardingComplete')
+    set({ onboardingComplete: false, onboardingStep: 0 })
+  },
 }))

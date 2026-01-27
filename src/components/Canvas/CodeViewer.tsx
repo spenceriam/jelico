@@ -69,16 +69,16 @@ export function CodeViewer({ code, language, title }: CodeViewerProps) {
               style={{ ...style, background: 'transparent', margin: 0 }}
             >
               {tokens.map((line, i) => {
-                const { key: lineKey, ...lineProps } = getLineProps({ line })
+                const lineProps = getLineProps({ line })
                 return (
-                  <div key={lineKey ?? i} {...lineProps} className="table-row">
+                  <div key={i} {...lineProps} className="table-row">
                     <span className="table-cell text-right pr-4 text-text-faint select-none w-8">
                       {i + 1}
                     </span>
                     <span className="table-cell">
-                      {line.map((token, key) => {
-                        const { key: tokenKey, ...tokenProps } = getTokenProps({ token })
-                        return <span key={tokenKey ?? key} {...tokenProps} />
+                      {line.map((token, j) => {
+                        const tokenProps = getTokenProps({ token })
+                        return <span key={j} {...tokenProps} />
                       })}
                     </span>
                   </div>

@@ -7,7 +7,7 @@ import type { ToolCall, ToolResult } from '../../stores/chat'
 interface MessageProps {
   message: {
     id: string
-    role: 'user' | 'assistant' | 'system'
+    role: 'user' | 'assistant' | 'system' | 'tool'
     content: string
     createdAt: number
     toolCalls?: ToolCall[]

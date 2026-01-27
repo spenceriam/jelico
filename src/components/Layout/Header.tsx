@@ -45,7 +45,6 @@ export function Header() {
   const editInputRef = useRef<HTMLInputElement>(null)
 
   const activeProvider = providers.find(p => p.id === activeProviderId)
-  const isDynamicProvider = activeProvider && DYNAMIC_PROVIDERS.includes(activeProvider.type)
 
   // Close dropdown on outside click
   useEffect(() => {

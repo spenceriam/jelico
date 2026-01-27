@@ -115,6 +115,12 @@ interface Window {
         userFeedback?: string
       }) => Promise<SoulAnalysisResult>
     }
+    backup: {
+      export: () => Promise<BackupExportResult>
+      import: () => Promise<BackupImportResult>
+      getStats: () => Promise<BackupStats>
+      clearAll: () => Promise<{ success: boolean; error?: string }>
+    }
   }
 }
 
@@ -392,4 +398,42 @@ interface Soul {
 interface SoulAnalysisResult {
   newPatterns: SoulPattern[]
   updates: string[]
+}
+
+// Backup types
+interface BackupExportResult {
+  success: boolean
+  filePath?: string
+  cancelled?: boolean
+  error?: string
+}
+
+interface BackupImportResult {
+  success: boolean
+  imported?: {
+    database: boolean
+    soul: boolean
+  }
+  cancelled?: boolean
+  error?: string
+}
+
+interface BackupStats {
+  dataPath: string
+  database?: {
+    providers: number
+    conversations: number
+    messages: number
+    workspaces: number
+    artifacts: number
+    memories: number
+    permissions: number
+  }
+  databaseSize?: number
+  soul?: {
+    patterns: number
+    corrections: number
+    preferences: number
+  }
+  soulSize?: number
 }

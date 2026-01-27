@@ -111,6 +111,12 @@ contextBridge.exposeInMainWorld('jelico', {
     analyzeConversation: (messages: any[], metadata?: any) =>
       ipcRenderer.invoke('soul:analyzeConversation', messages, metadata),
   },
+  backup: {
+    export: () => ipcRenderer.invoke('backup:export'),
+    import: () => ipcRenderer.invoke('backup:import'),
+    getStats: () => ipcRenderer.invoke('backup:getStats'),
+    clearAll: () => ipcRenderer.invoke('backup:clearAll'),
+  },
   ai: {
     stream: (params: any) => {
       const channelId = crypto.randomUUID()

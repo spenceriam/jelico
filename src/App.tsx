@@ -15,11 +15,12 @@ import { CommandPalette, useCommandPalette } from './components/CommandPalette/C
 import { ProviderSetup } from './components/Setup/ProviderSetup'
 import { Settings } from './components/Settings/Settings'
 import { PermissionDialog } from './components/Permissions/PermissionDialog'
+import { WelcomeScreen } from './components/Onboarding/WelcomeScreen'
 
 export default function App() {
   const { providers, loadProviders, isLoading } = useProviderStore()
   const { loadConversations } = useChatStore()
-  const { settingsOpen, closeSettings, providerSetupOpen, closeProviderSetup, sidebarCollapsed, toggleSidebar } = useUIStore()
+  const { settingsOpen, closeSettings, providerSetupOpen, closeProviderSetup, sidebarCollapsed, toggleSidebar, onboardingComplete, completeOnboarding } = useUIStore()
   const { canvasOpen } = useArtifactStore()
   const { loadWorkspaces } = useWorkspaceStore()
   const { clearOncePermissions, loadPermissions } = usePermissionStore()
@@ -48,6 +49,11 @@ export default function App() {
   // Show provider setup if no providers configured
   if (providers.length === 0) {
     return <ProviderSetup onComplete={loadProviders} />
+  }
+
+  // Show onboarding welcome screen if not completed
+  if (!onboardingComplete) {
+    return <WelcomeScreen onComplete={completeOnboarding} />
   }
 
   return (

@@ -9,8 +9,6 @@ import {
   GitBranch,
   PanelRight,
   Plus,
-  Trash2,
-  RefreshCw,
 } from 'lucide-react'
 import { useChatStore } from '../../stores/chat'
 import { useProviderStore } from '../../stores/providers'
@@ -18,7 +16,7 @@ import { useWorkspaceStore } from '../../stores/workspaces'
 import { useArtifactStore } from '../../stores/artifacts'
 import { useSkillStore } from '../../stores/skills'
 import { useUIStore } from '../../stores/ui'
-import { modes, type AgentMode } from '../../lib/modes'
+import { modes } from '../../lib/modes'
 
 interface Command {
   id: string
@@ -40,8 +38,8 @@ export function CommandPalette({ isOpen, onClose }: CommandPaletteProps) {
   const [selectedIndex, setSelectedIndex] = useState(0)
 
   // Stores
-  const { createConversation, setActiveConversation, conversations, deleteConversation, setMode } = useChatStore()
-  const { providers, activeProviderId, activeModel } = useProviderStore()
+  const { createConversation, setActiveConversation, conversations, setMode } = useChatStore()
+  const { activeProviderId, activeModel } = useProviderStore()
   const { workspaces, selectFolder, setActiveWorkspace } = useWorkspaceStore()
   const { toggleCanvas, canvasOpen } = useArtifactStore()
   const { skills } = useSkillStore()

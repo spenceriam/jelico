@@ -1,11 +1,12 @@
 import { useState, useEffect } from 'react'
-import { X, Plus, Trash2, Check, AlertCircle, Settings as SettingsIcon, Zap, Database, Edit2, Loader2, Search } from 'lucide-react'
+import { X, Plus, Trash2, Check, AlertCircle, Settings as SettingsIcon, Zap, Database, Edit2, Loader2, Search, HardDrive } from 'lucide-react'
 import { useProviderStore } from '../../stores/providers'
 import { useUIStore } from '../../stores/ui'
 import { SkillManager } from '../Skills/SkillManager'
 import { useSkillStore } from '../../stores/skills'
+import { BackupSettings } from './BackupSettings'
 
-type SettingsTab = 'providers' | 'skills' | 'general'
+type SettingsTab = 'providers' | 'skills' | 'general' | 'backup'
 
 interface SettingsProps {
   onClose: () => void
@@ -144,6 +145,17 @@ export function Settings({ onClose }: SettingsProps) {
           >
             <SettingsIcon className="w-4 h-4" />
             General
+          </button>
+          <button
+            onClick={() => setActiveTab('backup')}
+            className={`px-4 py-3 text-sm flex items-center gap-2 border-b-2 -mb-px transition-colors ${
+              activeTab === 'backup'
+                ? 'border-accent text-accent'
+                : 'border-transparent text-text-muted hover:text-text-primary'
+            }`}
+          >
+            <HardDrive className="w-4 h-4" />
+            Backup
           </button>
         </div>
 
@@ -329,6 +341,8 @@ export function Settings({ onClose }: SettingsProps) {
               </p>
             </div>
           )}
+
+          {activeTab === 'backup' && <BackupSettings />}
         </div>
       </div>
     </div>
