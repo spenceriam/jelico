@@ -1,4 +1,4 @@
-import { ipcMain } from 'electron'
+import { ipcMain, net } from 'electron'
 import { streamText, tool } from 'ai'
 import { createAnthropic } from '@ai-sdk/anthropic'
 import { createOpenAI } from '@ai-sdk/openai'
@@ -475,68 +475,73 @@ export function registerAIHandlers() {
         ]
 
         // Log everything we're sending
-        const requestBody = {
+        const requestBody = JSON.stringify({
           model: modelId,
           messages,
           stream: true,
-        }
-        const requestHeaders = {
-          'Authorization': `Bearer ${apiKey}`,
-          'Content-Type': 'application/json',
-        }
+        })
 
-        console.log('[AI] OpenRouter request URL: https://openrouter.ai/api/v1/chat/completions')
-        console.log('[AI] OpenRouter request headers:', JSON.stringify(requestHeaders, null, 2))
-        console.log('[AI] OpenRouter request body model:', modelId)
-        console.log('[AI] OpenRouter full API key:', apiKey) // Log full key to check for issues
+        console.log('[AI] OpenRouter request model:', modelId)
+        console.log('[AI] OpenRouter API key length:', apiKey.length)
 
+        // Use Electron's net module instead of fetch
         try {
-          const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
-            method: 'POST',
-            headers: requestHeaders,
-            body: JSON.stringify(requestBody),
+          const response = await new Promise<{ status: number; body: string }>((resolve, reject) => {
+            const request = net.request({
+              method: 'POST',
+              url: 'https://openrouter.ai/api/v1/chat/completions',
+            })
+
+            request.setHeader('Authorization', `Bearer ${apiKey}`)
+            request.setHeader('Content-Type', 'application/json')
+
+            let responseBody = ''
+            let statusCode = 0
+
+            request.on('response', (res) => {
+              statusCode = res.statusCode
+              console.log('[AI] net.request response status:', statusCode)
+              console.log('[AI] net.request response headers:', res.headers)
+
+              res.on('data', (chunk) => {
+                responseBody += chunk.toString()
+              })
+
+              res.on('end', () => {
+                resolve({ status: statusCode, body: responseBody })
+              })
+            })
+
+            request.on('error', (error) => {
+              reject(error)
+            })
+
+            request.write(requestBody)
+            request.end()
           })
 
-          console.log('[AI] Direct OpenRouter response status:', response.status)
+          console.log('[AI] OpenRouter net.request status:', response.status)
 
-          if (!response.ok) {
-            const errorText = await response.text()
-            console.log('[AI] Direct OpenRouter error:', errorText)
-            event.sender.send(`ai:error:${channelId}`, `OpenRouter error: ${response.status} - ${errorText}`)
+          if (response.status !== 200) {
+            console.log('[AI] OpenRouter error response:', response.body)
+            event.sender.send(`ai:error:${channelId}`, `OpenRouter error: ${response.status} - ${response.body}`)
             return
           }
 
-          // Stream the response
-          const reader = response.body?.getReader()
-          const decoder = new TextDecoder()
-
-          if (!reader) {
-            event.sender.send(`ai:error:${channelId}`, 'No response body')
-            return
-          }
-
-          let buffer = ''
-          while (true) {
-            const { done, value } = await reader.read()
-            if (done) break
-
-            buffer += decoder.decode(value, { stream: true })
-            const lines = buffer.split('\n')
-            buffer = lines.pop() || ''
-
-            for (const line of lines) {
-              if (line.startsWith('data: ')) {
-                const data = line.slice(6)
-                if (data === '[DONE]') continue
-                try {
-                  const parsed = JSON.parse(data)
-                  const content = parsed.choices?.[0]?.delta?.content
-                  if (content) {
-                    event.sender.send(`ai:chunk:${channelId}`, content)
-                  }
-                } catch (e) {
-                  // Ignore parse errors
+          // Parse streaming response
+          const lines = response.body.split('\n')
+          for (const line of lines) {
+            if (line.startsWith('data: ')) {
+              const data = line.slice(6)
+              if (data === '[DONE]') continue
+              try {
+                const parsed = JSON.parse(data)
+                const content = parsed.choices?.[0]?.delta?.content || parsed.choices?.[0]?.message?.content
+                if (content) {
+                  event.sender.send(`ai:chunk:${channelId}`, content)
                 }
+              } catch (e) {
+                // Ignore parse errors
               }
             }
           }
@@ -547,7 +552,7 @@ export function registerAIHandlers() {
           })
           return
         } catch (e: any) {
-          console.log('[AI] Direct OpenRouter exception:', e.message)
+          console.log('[AI] OpenRouter net.request exception:', e.message)
           event.sender.send(`ai:error:${channelId}`, `OpenRouter error: ${e.message}`)
           return
         }
