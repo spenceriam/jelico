@@ -68,19 +68,28 @@ export function Message({
         `}
       >
         {isUser ? (
-          <div className="group relative">
-            <p className="whitespace-pre-wrap pr-8">{message.content}</p>
-            <button
-              onClick={handleCopyUserMessage}
-              className="absolute top-0 right-0 p-1 text-text-muted hover:text-text-secondary opacity-0 group-hover:opacity-100 transition-opacity"
-              title="Copy to clipboard"
-            >
-              {copied ? (
-                <Check className="w-4 h-4 text-success" />
-              ) : (
-                <Copy className="w-4 h-4" />
-              )}
-            </button>
+          <div className="group">
+            <p className="whitespace-pre-wrap">{message.content}</p>
+            {/* User message actions - appears on hover, right-aligned */}
+            <div className="flex justify-end mt-2 pt-2 border-t border-border-subtle opacity-0 group-hover:opacity-100 transition-opacity">
+              <button
+                onClick={handleCopyUserMessage}
+                className="flex items-center gap-1.5 text-xs text-text-muted hover:text-text-secondary transition-colors"
+                title="Copy to clipboard"
+              >
+                {copied ? (
+                  <>
+                    <Check className="w-3.5 h-3.5 text-success" />
+                    <span className="text-success">Copied</span>
+                  </>
+                ) : (
+                  <>
+                    <Copy className="w-3.5 h-3.5" />
+                    <span>Copy</span>
+                  </>
+                )}
+              </button>
+            </div>
           </div>
         ) : (
           <div className="prose prose-invert prose-sm max-w-none">
