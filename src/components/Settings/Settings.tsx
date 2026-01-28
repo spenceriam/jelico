@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { X, Plus, Trash2, Check, AlertCircle, Settings as SettingsIcon, Zap, Database, Edit2, Loader2, Search, HardDrive, Mic } from 'lucide-react'
+import { X, Plus, Trash2, Check, AlertCircle, Settings as SettingsIcon, Zap, Database, Edit2, Loader2, Search, HardDrive, Mic, Key, Eye, EyeOff } from 'lucide-react'
 import { useProviderStore } from '../../stores/providers'
 import { useUIStore } from '../../stores/ui'
 import { SkillManager } from '../Skills/SkillManager'
@@ -33,6 +33,13 @@ export function Settings({ onClose }: SettingsProps) {
   const [openRouterModels, setOpenRouterModels] = useState<OpenRouterModel[]>([])
   const [loadingModels, setLoadingModels] = useState(false)
   const [modelSearch, setModelSearch] = useState('')
+
+  // Edit API key state
+  const [editingKeyProviderId, setEditingKeyProviderId] = useState<string | null>(null)
+  const [editKeyValue, setEditKeyValue] = useState('')
+  const [showKey, setShowKey] = useState(false)
+  const [currentKey, setCurrentKey] = useState<string | null>(null)
+  const [loadingKey, setLoadingKey] = useState(false)
 
   useEffect(() => {
     loadSkills()
@@ -92,6 +99,43 @@ export function Settings({ onClose }: SettingsProps) {
     setEditModelValue('')
     setOpenRouterModels([])
     setModelSearch('')
+  }
+
+  // API Key editing functions
+  const startEditingKey = async (providerId: string) => {
+    setEditingKeyProviderId(providerId)
+    setEditKeyValue('')
+    setShowKey(false)
+    setLoadingKey(true)
+    try {
+      const key = await window.jelico.keychain.getApiKey(providerId)
+      setCurrentKey(key)
+    } catch (error) {
+      console.error('Failed to get API key:', error)
+      setCurrentKey(null)
+    } finally {
+      setLoadingKey(false)
+    }
+  }
+
+  const saveKeyEdit = async () => {
+    if (!editingKeyProviderId || !editKeyValue.trim()) return
+    try {
+      await window.jelico.keychain.setApiKey(editingKeyProviderId, editKeyValue.trim())
+      setEditingKeyProviderId(null)
+      setEditKeyValue('')
+      setCurrentKey(null)
+      setShowKey(false)
+    } catch (error) {
+      console.error('Failed to save API key:', error)
+    }
+  }
+
+  const cancelEditKey = () => {
+    setEditingKeyProviderId(null)
+    setEditKeyValue('')
+    setCurrentKey(null)
+    setShowKey(false)
   }
 
   const filteredModels = openRouterModels.filter(m =>
@@ -224,6 +268,13 @@ export function Settings({ onClose }: SettingsProps) {
                             >
                               <Edit2 className="w-3 h-3" />
                             </button>
+                            <button
+                              onClick={() => startEditingKey(provider.id)}
+                              className="p-1 text-text-muted hover:text-text-primary hover:bg-bg-hover rounded transition-colors"
+                              title="Edit API key"
+                            >
+                              <Key className="w-3 h-3" />
+                            </button>
                           </div>
                         </div>
 
@@ -335,6 +386,70 @@ export function Settings({ onClose }: SettingsProps) {
                               Cancel
                             </button>
                           </div>
+                        </div>
+                      )}
+
+                      {/* Edit API key form */}
+                      {editingKeyProviderId === provider.id && (
+                        <div className="mt-4 pt-4 border-t border-border">
+                          <label className="block text-sm font-medium text-text-secondary mb-2">
+                            API Key
+                          </label>
+
+                          {loadingKey ? (
+                            <div className="flex items-center gap-2 text-text-muted py-2">
+                              <Loader2 className="w-4 h-4 animate-spin" />
+                              <span>Loading key...</span>
+                            </div>
+                          ) : (
+                            <div className="space-y-3">
+                              {currentKey && (
+                                <div className="p-3 bg-bg-deep border border-border rounded">
+                                  <div className="flex items-center justify-between">
+                                    <span className="text-xs text-text-muted">Current key:</span>
+                                    <button
+                                      onClick={() => setShowKey(!showKey)}
+                                      className="p-1 text-text-muted hover:text-text-primary"
+                                    >
+                                      {showKey ? <EyeOff className="w-3 h-3" /> : <Eye className="w-3 h-3" />}
+                                    </button>
+                                  </div>
+                                  <code className="text-xs font-mono text-text-primary break-all">
+                                    {showKey ? currentKey : `${currentKey.substring(0, 10)}${'•'.repeat(20)}`}
+                                  </code>
+                                </div>
+                              )}
+
+                              <div>
+                                <label className="block text-xs text-text-muted mb-1">
+                                  Enter new API key:
+                                </label>
+                                <input
+                                  type="password"
+                                  value={editKeyValue}
+                                  onChange={(e) => setEditKeyValue(e.target.value)}
+                                  className="w-full px-3 py-2 text-sm bg-bg-deep border border-border rounded focus:outline-none focus:border-accent text-text-primary font-mono"
+                                  placeholder="sk-..."
+                                />
+                              </div>
+
+                              <div className="flex items-center gap-2">
+                                <button
+                                  onClick={saveKeyEdit}
+                                  disabled={!editKeyValue.trim()}
+                                  className="px-3 py-1.5 text-sm bg-accent text-black rounded hover:bg-accent-bright transition-colors disabled:opacity-50"
+                                >
+                                  Save New Key
+                                </button>
+                                <button
+                                  onClick={cancelEditKey}
+                                  className="px-3 py-1.5 text-sm text-text-secondary hover:text-text-primary hover:bg-bg-hover rounded transition-colors"
+                                >
+                                  Cancel
+                                </button>
+                              </div>
+                            </div>
+                          )}
                         </div>
                       )}
                     </div>
