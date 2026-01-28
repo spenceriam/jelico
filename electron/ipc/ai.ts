@@ -520,18 +520,39 @@ Use this as the base path for file operations. When reading, writing, or searchi
         }),
       ]
 
-      console.log('[AI] Starting stream with model:', modelId, 'mode:', mode)
+      console.log('\n[AI] ========== STREAM START ==========')
+      console.log('[AI] Model:', modelId)
+      console.log('[AI] Mode:', mode)
       console.log('[AI] Provider type:', providerConfig.type)
       console.log('[AI] Base URL:', providerConfig.base_url || '(default)')
-      console.log('[AI] Tools available:', Object.keys(tools))
+      console.log('[AI] Tool count:', Object.keys(tools).length)
+      console.log('[AI] Tool names:', Object.keys(tools))
       console.log('[AI] System prompt length:', systemPrompt.length)
       console.log('[AI] Message count:', messages.length)
 
-      // For debugging: log first tool definition to verify structure
-      const firstToolName = Object.keys(tools)[0]
-      if (firstToolName) {
-        console.log('[AI] Sample tool definition:', firstToolName, JSON.stringify(tools[firstToolName], null, 2).slice(0, 500))
+      // Log tool structure to verify they're correctly formed
+      console.log('[AI] === TOOL STRUCTURE CHECK ===')
+      const toolsArray = Object.entries(tools)
+      if (toolsArray.length > 0) {
+        const [firstName, firstTool] = toolsArray[0]
+        console.log('[AI] First tool inspection:')
+        console.log('  - Name:', firstName)
+        console.log('  - Keys:', Object.keys(firstTool as object))
+        // The tool() function should create objects with specific structure
+        const t = firstTool as any
+        console.log('  - Has description:', !!t.description)
+        console.log('  - Has parameters:', !!t.parameters)
+        console.log('  - Has execute:', typeof t.execute === 'function')
+        console.log('  - Parameters type:', typeof t.parameters)
+        if (t.parameters) {
+          console.log('  - Parameters keys:', Object.keys(t.parameters))
+        }
       }
+      console.log('[AI] === END TOOL CHECK ===')
+
+      // Log system prompt summary
+      console.log('[AI] System prompt includes "tool":', systemPrompt.toLowerCase().includes('tool'))
+      console.log('[AI] System prompt includes "function":', systemPrompt.toLowerCase().includes('function'))
 
       // Stream the response with tools
       // Using toolChoice: 'auto' (default) - model decides when to use tools
