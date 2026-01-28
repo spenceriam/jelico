@@ -11,35 +11,113 @@ import { getModeSystemPrompt, type AgentMode } from '../lib/modes'
 // Store active streams for cancellation
 const activeStreams = new Map<string, AbortController>()
 
+// Provider types that use OpenAI Chat Completions API (not Responses API)
+const OPENAI_CHAT_PROVIDERS = [
+  'openrouter',
+  'ollama',
+  'openai-compatible',
+  'anthropic-compatible',
+  'local',
+  'zai',
+  'zai-china',
+  'zai-coding',
+  'zai-coding-china',
+]
+
 function getProviderInstance(providerConfig: any, apiKey: string) {
   switch (providerConfig.type) {
     case 'anthropic':
       return createAnthropic({ apiKey })
+
     case 'openai':
       return createOpenAI({
         apiKey,
         baseURL: providerConfig.base_url || undefined,
       })
+
     case 'google':
       return createGoogleGenerativeAI({ apiKey })
+
     case 'openrouter':
       return createOpenAI({
         apiKey,
         baseURL: providerConfig.base_url || 'https://openrouter.ai/api/v1',
       })
+
     case 'ollama':
       return createOpenAI({
         apiKey: 'ollama', // Ollama doesn't need a real key
         baseURL: providerConfig.base_url || 'http://localhost:11434/v1',
       })
+
+    // Z.ai (Global)
+    case 'zai':
+      return createOpenAI({
+        apiKey,
+        baseURL: 'https://api.z.ai/api/paas/v4',
+      })
+
+    // Z.ai (China)
+    case 'zai-china':
+      return createOpenAI({
+        apiKey,
+        baseURL: 'https://open.bigmodel.cn/api/paas/v4',
+      })
+
+    // Z.ai Coding Plan (Global)
+    case 'zai-coding':
+      return createOpenAI({
+        apiKey,
+        baseURL: 'https://api.z.ai/api/coding/paas/v4',
+      })
+
+    // Z.ai Coding Plan (China)
+    case 'zai-coding-china':
+      return createOpenAI({
+        apiKey,
+        baseURL: 'https://open.bigmodel.cn/api/coding/paas/v4',
+      })
+
+    // Generic OpenAI-compatible provider (user-configured endpoint)
+    case 'openai-compatible':
+      return createOpenAI({
+        apiKey,
+        baseURL: providerConfig.base_url,
+      })
+
+    // Generic Anthropic-compatible provider (uses OpenAI SDK with Anthropic-style endpoint)
+    case 'anthropic-compatible':
+      return createOpenAI({
+        apiKey,
+        baseURL: providerConfig.base_url,
+      })
+
+    // Local provider (OpenAI-compatible, optional API key)
+    case 'local':
+      return createOpenAI({
+        apiKey: apiKey || 'local',
+        baseURL: providerConfig.base_url || 'http://localhost:8080/v1',
+      })
+
     case 'custom':
       return createOpenAI({
         apiKey,
         baseURL: providerConfig.base_url,
       })
+
     default:
       throw new Error(`Unknown provider type: ${providerConfig.type}`)
   }
+}
+
+// Get the model instance, using .chat() for OpenAI-compatible providers
+function getModelInstance(provider: any, modelId: string, providerType: string) {
+  // Use Chat Completions API for OpenAI-compatible providers
+  if (OPENAI_CHAT_PROVIDERS.includes(providerType)) {
+    return provider.chat(modelId)
+  }
+  // Use default API for native providers (Anthropic, Google, OpenAI)
+  return provider(modelId)
 }
 
 // Define built-in tools
@@ -355,9 +433,10 @@ export function registerAIHandlers() {
         return
       }
 
-      // Get API key
+      // Get API key (some providers like ollama and local don't require one)
       const apiKey = await keychainService.getApiKey(params.providerId)
-      if (!apiKey && providerConfig.type !== 'ollama') {
+      const noKeyRequired = ['ollama', 'local'].includes(providerConfig.type)
+      if (!apiKey && !noKeyRequired) {
         event.sender.send(`ai:error:${channelId}`, 'API key not found')
         return
       }
@@ -443,7 +522,7 @@ Use this as the base path for file operations. When reading, writing, or searchi
 
       // Stream the response with tools
       const result = await streamText({
-        model: provider(modelId),
+        model: getModelInstance(provider, modelId, providerConfig.type),
         messages,
         tools,
         maxSteps: 10, // Allow up to 10 tool calls
