@@ -454,6 +454,25 @@ export function registerAIHandlers() {
       console.log('[AI] Provider type:', providerConfig.type)
       console.log('[AI] API key retrieved:', apiKey ? `${apiKey.substring(0, 10)}...` : 'null')
 
+      // Direct API test for OpenRouter
+      if (providerConfig.type === 'openrouter' && apiKey) {
+        console.log('[AI] Testing OpenRouter API key directly...')
+        try {
+          const testResponse = await fetch('https://openrouter.ai/api/v1/models', {
+            headers: { 'Authorization': `Bearer ${apiKey}` }
+          })
+          console.log('[AI] Direct API test status:', testResponse.status)
+          if (!testResponse.ok) {
+            const errorBody = await testResponse.text()
+            console.log('[AI] Direct API test error:', errorBody)
+          } else {
+            console.log('[AI] Direct API test SUCCESS - key is valid')
+          }
+        } catch (e: any) {
+          console.log('[AI] Direct API test exception:', e.message)
+        }
+      }
+
       if (!apiKey && !noKeyRequired) {
         event.sender.send(`ai:error:${channelId}`, 'API key not found')
         return
