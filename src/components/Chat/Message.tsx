@@ -1,6 +1,7 @@
+import { useState } from 'react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
-import { User, Bot } from 'lucide-react'
+import { User, Bot, Copy, Check } from 'lucide-react'
 import { ToolCallDisplay } from './ToolCallDisplay'
 import { MessageActions } from './MessageActions'
 import type { ToolCall, ToolResult, MessageUsage } from '../../stores/chat'
@@ -32,12 +33,23 @@ export function Message({
   onRegenerate,
   isRegenerating,
 }: MessageProps) {
+  const [copied, setCopied] = useState(false)
   const isUser = message.role === 'user'
   const isAssistant = message.role === 'assistant'
 
   // Use streaming tool calls if currently streaming, otherwise use saved tool calls
   const toolCalls = isStreaming ? streamingToolCalls : message.toolCalls
   const toolResults = isStreaming ? streamingToolResults : message.toolResults
+
+  const handleCopyUserMessage = async () => {
+    try {
+      await navigator.clipboard.writeText(message.content)
+      setCopied(true)
+      setTimeout(() => setCopied(false), 2000)
+    } catch (err) {
+      console.error('Failed to copy:', err)
+    }
+  }
 
   return (
     <div className={`flex gap-4 ${isUser ? 'justify-end' : ''}`}>
@@ -56,7 +68,20 @@ export function Message({
         `}
       >
         {isUser ? (
-          <p className="whitespace-pre-wrap">{message.content}</p>
+          <div className="group relative">
+            <p className="whitespace-pre-wrap pr-8">{message.content}</p>
+            <button
+              onClick={handleCopyUserMessage}
+              className="absolute top-0 right-0 p-1 text-text-muted hover:text-text-secondary opacity-0 group-hover:opacity-100 transition-opacity"
+              title="Copy to clipboard"
+            >
+              {copied ? (
+                <Check className="w-4 h-4 text-success" />
+              ) : (
+                <Copy className="w-4 h-4" />
+              )}
+            </button>
+          </div>
         ) : (
           <div className="prose prose-invert prose-sm max-w-none">
             {/* Show tool calls before the text response */}
