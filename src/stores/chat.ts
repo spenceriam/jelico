@@ -13,11 +13,20 @@ export interface MessageUsage {
   durationMs?: number
 }
 
+export interface MessageAttachment {
+  id: string
+  type: 'image' | 'text' | 'document'
+  name: string
+  mimeType: string
+  data: string // base64 for images, text content for text files
+}
+
 export interface Message {
   id: string
   conversationId: string
   role: 'user' | 'assistant' | 'system' | 'tool'
   content: string
+  attachments?: MessageAttachment[]
   createdAt: number
   toolCalls?: ToolCall[]
   toolResults?: ToolResult[]
@@ -51,6 +60,7 @@ interface Conversation {
 // Message queue for queuing messages while streaming
 interface QueuedMessage {
   content: string
+  attachments?: MessageAttachment[]
   providerId: string
   model: string
 }
@@ -73,8 +83,8 @@ interface ChatStore {
   loadConversations: () => Promise<void>
   createConversation: (providerId: string, model: string) => Promise<string>
   setActiveConversation: (id: string | null) => Promise<void>
-  sendMessage: (content: string, providerId: string, model: string) => Promise<void>
-  queueMessage: (content: string, providerId: string, model: string) => void
+  sendMessage: (content: string, providerId: string, model: string, attachments?: MessageAttachment[]) => Promise<void>
+  queueMessage: (content: string, providerId: string, model: string, attachments?: MessageAttachment[]) => void
   processQueue: () => Promise<void>
   stopStreaming: () => void
   deleteConversation: (id: string) => Promise<void>
@@ -159,12 +169,12 @@ export const useChatStore = create<ChatStore>((set, get) => ({
     }
   },
 
-  sendMessage: async (content, providerId, model) => {
+  sendMessage: async (content, providerId, model, attachments) => {
     const { activeConversationId, messages, mode, isStreaming } = get()
 
     // If already streaming, queue the message
     if (isStreaming) {
-      get().queueMessage(content, providerId, model)
+      get().queueMessage(content, providerId, model, attachments)
       return
     }
 
@@ -222,9 +232,9 @@ export const useChatStore = create<ChatStore>((set, get) => ({
     // Build messages for AI - use expanded content for last user message if skill was used
     const aiMessages = updatedMessages.map((m, i) => {
       if (i === updatedMessages.length - 1 && m.role === 'user') {
-        return { role: m.role, content: finalContent }
+        return { role: m.role, content: finalContent, attachments }
       }
-      return { role: m.role, content: m.content }
+      return { role: m.role, content: m.content, attachments: m.attachments }
     })
 
     // Start streaming with mode and workspace context
@@ -355,9 +365,9 @@ export const useChatStore = create<ChatStore>((set, get) => ({
     })
   },
 
-  queueMessage: (content, providerId, model) => {
+  queueMessage: (content, providerId, model, attachments) => {
     set((state) => ({
-      messageQueue: [...state.messageQueue, { content, providerId, model }],
+      messageQueue: [...state.messageQueue, { content, attachments, providerId, model }],
     }))
   },
 
@@ -370,7 +380,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
     set({ messageQueue: remaining })
 
     // Send the queued message
-    await get().sendMessage(nextMessage.content, nextMessage.providerId, nextMessage.model)
+    await get().sendMessage(nextMessage.content, nextMessage.providerId, nextMessage.model, nextMessage.attachments)
   },
 
   stopStreaming: () => {

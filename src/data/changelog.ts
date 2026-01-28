@@ -21,6 +21,27 @@ export interface ChangelogEntry {
 
 export const changelog: ChangelogEntry[] = [
   {
+    version: '0.3.1',
+    date: '2026-01-27',
+    changes: {
+      added: [
+        'File attachments support with paperclip icon in prompt box',
+        'Drag and drop file support for images, text, PDF, and documents',
+        'Attachments are now sent to the AI (multimodal support)',
+        'Pasted content auto-collapse for content >10 lines (click to expand/collapse)',
+        'Voice input using local Whisper model (speech-to-text)',
+        'Microphone Settings tab for device and model configuration',
+        'Multiple Whisper models available (Tiny to Medium)',
+        'Recording timer with 2-minute limit',
+        'Voice transcription appends to existing text (multi-round dictation)',
+      ],
+      changed: [
+        'Prompt box now has visual divider between text area and action icons',
+        'Send button and icons now in dedicated row at bottom of prompt box',
+      ],
+    },
+  },
+  {
     version: '0.3.0',
     date: '2026-01-27',
     changes: {

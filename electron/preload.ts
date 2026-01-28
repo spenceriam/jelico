@@ -117,6 +117,21 @@ contextBridge.exposeInMainWorld('jelico', {
     getStats: () => ipcRenderer.invoke('backup:getStats'),
     clearAll: () => ipcRenderer.invoke('backup:clearAll'),
   },
+  speech: {
+    getModels: () => ipcRenderer.invoke('speech:getModels'),
+    getStatus: () => ipcRenderer.invoke('speech:getStatus'),
+    setModel: (modelId: string) => ipcRenderer.invoke('speech:setModel', modelId),
+    setLanguage: (language: string) => ipcRenderer.invoke('speech:setLanguage', language),
+    isModelDownloaded: (modelId: string) => ipcRenderer.invoke('speech:isModelDownloaded', modelId),
+    preload: () => ipcRenderer.invoke('speech:preload'),
+    transcribe: (audioData: ArrayBuffer, options?: { language?: string }) =>
+      ipcRenderer.invoke('speech:transcribe', audioData, options),
+    onProgress: (callback: (progress: any) => void) => {
+      const handler = (_: any, progress: any) => callback(progress)
+      ipcRenderer.on('speech:progress', handler)
+      return () => ipcRenderer.removeListener('speech:progress', handler)
+    },
+  },
   ai: {
     stream: (params: any) => {
       const channelId = crypto.randomUUID()

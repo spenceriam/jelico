@@ -121,6 +121,16 @@ interface Window {
       getStats: () => Promise<BackupStats>
       clearAll: () => Promise<{ success: boolean; error?: string }>
     }
+    speech: {
+      getModels: () => Promise<WhisperModel[]>
+      getStatus: () => Promise<SpeechModelStatus>
+      setModel: (modelId: string) => Promise<{ success: boolean }>
+      setLanguage: (language: string) => Promise<{ success: boolean }>
+      isModelDownloaded: (modelId: string) => Promise<boolean>
+      preload: () => Promise<{ success: boolean; error?: string }>
+      transcribe: (audioData: ArrayBuffer, options?: { language?: string }) => Promise<TranscriptionResult>
+      onProgress: (callback: (progress: TranscriptionProgress) => void) => () => void
+    }
   }
 }
 
@@ -166,7 +176,16 @@ interface Message {
   conversationId: string
   role: 'user' | 'assistant' | 'system'
   content: string
+  attachments?: MessageAttachmentData[]
   createdAt: number
+}
+
+interface MessageAttachmentData {
+  id: string
+  type: 'image' | 'text' | 'document'
+  name: string
+  mimeType: string
+  data: string
 }
 
 interface MessageInput {
@@ -445,4 +464,35 @@ interface BackupStats {
     preferences: number
   }
   soulSize?: number
+}
+
+// Speech types
+interface WhisperModel {
+  id: string
+  name: string
+  size: string
+  speed: string
+}
+
+interface SpeechModelStatus {
+  isLoaded: boolean
+  isLoading: boolean
+  currentModel: string
+  error: string | null
+}
+
+interface TranscriptionProgress {
+  status: 'loading' | 'transcribing' | 'done'
+  progress?: number
+  message?: string
+}
+
+interface TranscriptionResult {
+  success: boolean
+  result?: {
+    text: string
+    language?: string
+    duration?: number
+  }
+  error?: string
 }

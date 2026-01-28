@@ -12,6 +12,7 @@ import { registerMemoryHandlers } from './ipc/memory'
 import { registerPermissionHandlers } from './ipc/permissions'
 import { registerSoulHandlers } from './ipc/soul'
 import { registerBackupHandlers } from './ipc/backup'
+import { registerSpeechHandlers } from './ipc/speech'
 
 // Get version and git info
 const packageJson = require('../package.json')
@@ -218,6 +219,7 @@ app.whenReady().then(async () => {
   registerPermissionHandlers()
   registerSoulHandlers()
   registerBackupHandlers()
+  registerSpeechHandlers()
 
   // Create window
   createWindow()

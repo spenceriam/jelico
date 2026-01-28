@@ -393,10 +393,52 @@ Use this as the base path for file operations. When reading, writing, or searchi
       // Build messages with system prompt
       const messages = [
         { role: 'system' as const, content: systemPrompt },
-        ...params.messages.map((m: any) => ({
-          role: m.role as 'user' | 'assistant' | 'system',
-          content: m.content,
-        })),
+        ...params.messages.map((m: any) => {
+          // Handle messages with attachments (multimodal)
+          if (m.attachments && m.attachments.length > 0) {
+            const contentParts: any[] = []
+
+            // Add text content if present
+            if (m.content) {
+              contentParts.push({ type: 'text', text: m.content })
+            }
+
+            // Add attachments
+            for (const att of m.attachments) {
+              if (att.type === 'image') {
+                // Image attachment - add as image part
+                contentParts.push({
+                  type: 'image',
+                  image: att.data, // base64 data
+                  mimeType: att.mimeType,
+                })
+              } else if (att.type === 'text') {
+                // Text file content - add as text
+                contentParts.push({
+                  type: 'text',
+                  text: `\n\n--- Attached: ${att.name} ---\n${att.data}\n--- End of ${att.name} ---\n`,
+                })
+              } else if (att.type === 'document') {
+                // Document files - mention they're attached (content extraction would need more work)
+                contentParts.push({
+                  type: 'text',
+                  text: `\n\n[Attached document: ${att.name} (${att.mimeType})]`,
+                })
+              }
+            }
+
+            return {
+              role: m.role as 'user' | 'assistant' | 'system',
+              content: contentParts,
+            }
+          }
+
+          // Regular text message
+          return {
+            role: m.role as 'user' | 'assistant' | 'system',
+            content: m.content,
+          }
+        }),
       ]
 
       // Stream the response with tools

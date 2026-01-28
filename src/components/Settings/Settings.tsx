@@ -1,13 +1,14 @@
 import { useState, useEffect } from 'react'
-import { X, Plus, Trash2, Check, AlertCircle, Settings as SettingsIcon, Zap, Database, Edit2, Loader2, Search, HardDrive } from 'lucide-react'
+import { X, Plus, Trash2, Check, AlertCircle, Settings as SettingsIcon, Zap, Database, Edit2, Loader2, Search, HardDrive, Mic } from 'lucide-react'
 import { useProviderStore } from '../../stores/providers'
 import { useUIStore } from '../../stores/ui'
 import { SkillManager } from '../Skills/SkillManager'
 import { useSkillStore } from '../../stores/skills'
 import { BackupSettings } from './BackupSettings'
 import { GeneralSettings } from './GeneralSettings'
+import { MicrophoneSettings } from './MicrophoneSettings'
 
-type SettingsTab = 'general' | 'providers' | 'skills' | 'backup'
+type SettingsTab = 'general' | 'providers' | 'skills' | 'microphone' | 'backup'
 
 interface SettingsProps {
   onClose: () => void
@@ -146,6 +147,17 @@ export function Settings({ onClose }: SettingsProps) {
           >
             <Zap className="w-4 h-4" />
             Skills
+          </button>
+          <button
+            onClick={() => setActiveTab('microphone')}
+            className={`px-4 py-3 text-sm flex items-center gap-2 border-b-2 -mb-px transition-colors ${
+              activeTab === 'microphone'
+                ? 'border-accent text-accent'
+                : 'border-transparent text-text-muted hover:text-text-primary'
+            }`}
+          >
+            <Mic className="w-4 h-4" />
+            Microphone
           </button>
           <button
             onClick={() => setActiveTab('backup')}
@@ -335,6 +347,8 @@ export function Settings({ onClose }: SettingsProps) {
           {activeTab === 'skills' && <SkillManager />}
 
           {activeTab === 'general' && <GeneralSettings />}
+
+          {activeTab === 'microphone' && <MicrophoneSettings />}
 
           {activeTab === 'backup' && <BackupSettings />}
         </div>

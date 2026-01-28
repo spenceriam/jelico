@@ -1,6 +1,6 @@
-import { useState, useRef, useCallback, KeyboardEvent, useMemo } from 'react'
-import { Send, Square, Clock } from 'lucide-react'
-import { useChatStore } from '../../stores/chat'
+import { useState, useRef, useCallback, KeyboardEvent, useMemo, DragEvent, useEffect } from 'react'
+import { Send, Square, Clock, Paperclip, Mic, MicOff, X, FileText, Image, File, Loader2 } from 'lucide-react'
+import { useChatStore, type MessageAttachment } from '../../stores/chat'
 import { useProviderStore } from '../../stores/providers'
 
 // Detect if user is on macOS
@@ -8,32 +8,344 @@ function isMac(): boolean {
   return navigator.platform.toUpperCase().indexOf('MAC') >= 0
 }
 
+// Recording constants
+const MAX_RECORDING_TIME = 120 // 2 minutes in seconds
+
+// Attachment types
+interface Attachment {
+  id: string
+  type: 'file' | 'pasted'
+  name: string
+  file?: File
+  content?: string
+  lineCount?: number
+  isExpanded?: boolean
+}
+
+// Supported file types
+const SUPPORTED_FILE_TYPES = {
+  image: ['image/png', 'image/jpeg', 'image/gif', 'image/webp'],
+  text: ['text/plain', 'text/markdown', 'application/json'],
+  document: ['application/pdf', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', 'application/vnd.openxmlformats-officedocument.presentationml.presentation'],
+}
+
+const ACCEPTED_EXTENSIONS = '.png,.jpg,.jpeg,.gif,.webp,.txt,.md,.json,.pdf,.docx,.pptx'
+
+// Line threshold for collapsing pasted content
+const PASTE_COLLAPSE_THRESHOLD = 10
+
 interface ChatInputProps {
   disabled?: boolean
   isStreaming?: boolean
   centered?: boolean // For new chat view - hides hints below
 }
 
+type RecordingState = 'idle' | 'recording' | 'transcribing'
+
 export function ChatInput({ disabled, isStreaming, centered }: ChatInputProps) {
   const [input, setInput] = useState('')
+  const [attachments, setAttachments] = useState<Attachment[]>([])
+  const [isDragging, setIsDragging] = useState(false)
+  const [recordingState, setRecordingState] = useState<RecordingState>('idle')
+  const [recordingTime, setRecordingTime] = useState(0)
+  const [recordingError, setRecordingError] = useState<string | null>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
+  const fileInputRef = useRef<HTMLInputElement>(null)
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null)
+  const audioChunksRef = useRef<Blob[]>([])
+  const recordingTimerRef = useRef<NodeJS.Timeout | null>(null)
   const { sendMessage, stopStreaming, messageQueue } = useChatStore()
   const { activeProviderId, activeModel } = useProviderStore()
 
   // OS-aware modifier key
   const modKey = useMemo(() => isMac() ? '⌘' : 'Ctrl', [])
 
-  const handleSubmit = useCallback(() => {
-    if (!input.trim() || !activeProviderId || !activeModel) return
+  // Generate unique ID for attachments
+  const generateId = () => `att-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
 
-    sendMessage(input.trim(), activeProviderId, activeModel)
+  // Get file type icon
+  const getFileIcon = (file: File | undefined, type: string) => {
+    if (type === 'pasted') return FileText
+    if (!file) return File
+    if (SUPPORTED_FILE_TYPES.image.includes(file.type)) return Image
+    if (SUPPORTED_FILE_TYPES.text.includes(file.type)) return FileText
+    return File
+  }
+
+  // Handle file selection
+  const handleFileSelect = useCallback((files: FileList | null) => {
+    if (!files) return
+
+    const newAttachments: Attachment[] = []
+    for (let i = 0; i < files.length; i++) {
+      const file = files[i]
+      newAttachments.push({
+        id: generateId(),
+        type: 'file',
+        name: file.name,
+        file,
+      })
+    }
+    setAttachments(prev => [...prev, ...newAttachments])
+  }, [])
+
+  // Handle drag events
+  const handleDragOver = useCallback((e: DragEvent) => {
+    e.preventDefault()
+    setIsDragging(true)
+  }, [])
+
+  const handleDragLeave = useCallback((e: DragEvent) => {
+    e.preventDefault()
+    setIsDragging(false)
+  }, [])
+
+  const handleDrop = useCallback((e: DragEvent) => {
+    e.preventDefault()
+    setIsDragging(false)
+    handleFileSelect(e.dataTransfer.files)
+  }, [handleFileSelect])
+
+  // Handle paste with content detection
+  const handlePaste = useCallback((e: React.ClipboardEvent) => {
+    // Check for files first
+    const files = e.clipboardData.files
+    if (files.length > 0) {
+      e.preventDefault()
+      handleFileSelect(files)
+      return
+    }
+
+    // Check for large text paste
+    const pastedText = e.clipboardData.getData('text')
+    const lineCount = pastedText.split('\n').length
+
+    if (lineCount > PASTE_COLLAPSE_THRESHOLD) {
+      e.preventDefault()
+      const newAttachment: Attachment = {
+        id: generateId(),
+        type: 'pasted',
+        name: `Pasted ~${lineCount} lines`,
+        content: pastedText,
+        lineCount,
+        isExpanded: false,
+      }
+      setAttachments(prev => [...prev, newAttachment])
+    }
+    // Otherwise let default paste behavior happen
+  }, [handleFileSelect])
+
+  // Remove attachment
+  const removeAttachment = useCallback((id: string) => {
+    setAttachments(prev => prev.filter(att => att.id !== id))
+  }, [])
+
+  // Toggle pasted content expansion
+  const toggleAttachmentExpand = useCallback((id: string) => {
+    setAttachments(prev => prev.map(att =>
+      att.id === id ? { ...att, isExpanded: !att.isExpanded } : att
+    ))
+  }, [])
+
+  // Open file picker
+  const openFilePicker = useCallback(() => {
+    fileInputRef.current?.click()
+  }, [])
+
+  // Clean up recording on unmount
+  useEffect(() => {
+    return () => {
+      if (recordingTimerRef.current) {
+        clearInterval(recordingTimerRef.current)
+      }
+      if (mediaRecorderRef.current && mediaRecorderRef.current.state === 'recording') {
+        mediaRecorderRef.current.stop()
+      }
+    }
+  }, [])
+
+  // Start recording
+  const startRecording = useCallback(async () => {
+    setRecordingError(null)
+
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+      const mediaRecorder = new MediaRecorder(stream, { mimeType: 'audio/webm' })
+
+      audioChunksRef.current = []
+      mediaRecorderRef.current = mediaRecorder
+
+      mediaRecorder.ondataavailable = (e) => {
+        if (e.data.size > 0) {
+          audioChunksRef.current.push(e.data)
+        }
+      }
+
+      mediaRecorder.onstop = async () => {
+        // Stop all tracks
+        stream.getTracks().forEach(track => track.stop())
+
+        // Clear timer
+        if (recordingTimerRef.current) {
+          clearInterval(recordingTimerRef.current)
+          recordingTimerRef.current = null
+        }
+
+        if (audioChunksRef.current.length === 0) {
+          setRecordingState('idle')
+          setRecordingTime(0)
+          return
+        }
+
+        // Transcribe
+        setRecordingState('transcribing')
+
+        try {
+          const blob = new Blob(audioChunksRef.current, { type: 'audio/webm' })
+          const arrayBuffer = await blob.arrayBuffer()
+
+          const result = await window.jelico.speech.transcribe(arrayBuffer)
+
+          if (result.success && result.result?.text) {
+            // APPEND to existing input (don't overwrite)
+            const transcribedText = result.result.text
+            setInput(prev => {
+              const trimmedPrev = prev.trim()
+              const trimmedNew = transcribedText.trim()
+              if (trimmedPrev) {
+                return trimmedPrev + ' ' + trimmedNew
+              }
+              return trimmedNew
+            })
+          } else if (result.error) {
+            setRecordingError(result.error)
+          }
+        } catch (error: any) {
+          setRecordingError(error.message || 'Transcription failed')
+        }
+
+        setRecordingState('idle')
+        setRecordingTime(0)
+      }
+
+      // Start recording
+      mediaRecorder.start(1000) // Collect data every second
+      setRecordingState('recording')
+      setRecordingTime(0)
+
+      // Start timer
+      recordingTimerRef.current = setInterval(() => {
+        setRecordingTime(prev => {
+          const newTime = prev + 1
+          // Auto-stop at max time
+          if (newTime >= MAX_RECORDING_TIME) {
+            stopRecording()
+          }
+          return newTime
+        })
+      }, 1000)
+    } catch (error: any) {
+      console.error('Failed to start recording:', error)
+      setRecordingError(error.message || 'Could not access microphone')
+      setRecordingState('idle')
+    }
+  }, [])
+
+  // Stop recording
+  const stopRecording = useCallback(() => {
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state === 'recording') {
+      mediaRecorderRef.current.stop()
+    }
+  }, [])
+
+  // Toggle recording
+  const toggleRecording = useCallback(() => {
+    if (recordingState === 'recording') {
+      stopRecording()
+    } else if (recordingState === 'idle') {
+      startRecording()
+    }
+    // Don't do anything if transcribing
+  }, [recordingState, startRecording, stopRecording])
+
+  // Format recording time
+  const formatTime = (seconds: number): string => {
+    const mins = Math.floor(seconds / 60)
+    const secs = seconds % 60
+    return `${mins}:${secs.toString().padStart(2, '0')}`
+  }
+
+  // Convert File to base64
+  const fileToBase64 = (file: File): Promise<string> => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader()
+      reader.onload = () => {
+        const result = reader.result as string
+        // Remove data URL prefix if present (e.g., "data:image/png;base64,")
+        const base64 = result.includes(',') ? result.split(',')[1] : result
+        resolve(base64)
+      }
+      reader.onerror = reject
+      reader.readAsDataURL(file)
+    })
+  }
+
+  // Determine attachment type from MIME type
+  const getAttachmentType = (mimeType: string): 'image' | 'text' | 'document' => {
+    if (SUPPORTED_FILE_TYPES.image.includes(mimeType)) return 'image'
+    if (SUPPORTED_FILE_TYPES.text.includes(mimeType)) return 'text'
+    return 'document'
+  }
+
+  const handleSubmit = useCallback(async () => {
+    if ((!input.trim() && attachments.length === 0) || !activeProviderId || !activeModel) return
+
+    // Convert attachments to MessageAttachment format
+    const messageAttachments: MessageAttachment[] = await Promise.all(
+      attachments.map(async (att): Promise<MessageAttachment> => {
+        if (att.type === 'pasted') {
+          return {
+            id: att.id,
+            type: 'text',
+            name: att.name,
+            mimeType: 'text/plain',
+            data: att.content || '',
+          }
+        } else if (att.file) {
+          const base64 = await fileToBase64(att.file)
+          return {
+            id: att.id,
+            type: getAttachmentType(att.file.type),
+            name: att.name,
+            mimeType: att.file.type,
+            data: base64,
+          }
+        }
+        // Fallback
+        return {
+          id: att.id,
+          type: 'text',
+          name: att.name,
+          mimeType: 'text/plain',
+          data: '',
+        }
+      })
+    )
+
+    sendMessage(
+      input.trim(),
+      activeProviderId,
+      activeModel,
+      messageAttachments.length > 0 ? messageAttachments : undefined
+    )
     setInput('')
+    setAttachments([])
 
     // Reset textarea height
     if (textareaRef.current) {
       textareaRef.current.style.height = 'auto'
     }
-  }, [input, activeProviderId, activeModel, sendMessage])
+  }, [input, attachments, activeProviderId, activeModel, sendMessage])
 
   const handleKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === 'Enter' && !e.shiftKey) {
@@ -63,6 +375,16 @@ export function ChatInput({ disabled, isStreaming, centered }: ChatInputProps) {
 
   return (
     <div className="space-y-2">
+      {/* Hidden file input */}
+      <input
+        ref={fileInputRef}
+        type="file"
+        multiple
+        accept={ACCEPTED_EXTENSIONS}
+        onChange={(e) => handleFileSelect(e.target.files)}
+        className="hidden"
+      />
+
       {/* Queued messages indicator */}
       {queuedCount > 0 && (
         <div className="flex items-center gap-2 text-xs text-text-muted px-1">
@@ -71,36 +393,165 @@ export function ChatInput({ disabled, isStreaming, centered }: ChatInputProps) {
         </div>
       )}
 
-      <div className="flex items-end gap-3 bg-bg-elevated rounded-xl p-3 border border-border hover:border-border-strong focus-within:border-accent transition-colors">
+      {/* Recording error */}
+      {recordingError && (
+        <div className="flex items-center gap-2 text-xs text-error bg-error/10 rounded-lg px-3 py-2">
+          <span>{recordingError}</span>
+          <button
+            onClick={() => setRecordingError(null)}
+            className="text-error hover:text-error/80"
+          >
+            <X className="w-3 h-3" />
+          </button>
+        </div>
+      )}
+
+      {/* Attachments display */}
+      {attachments.length > 0 && (
+        <div className="flex flex-wrap gap-2 px-1">
+          {attachments.map((att) => {
+            const IconComponent = getFileIcon(att.file, att.type)
+            return (
+              <div key={att.id} className="group relative">
+                <div
+                  className={`flex items-center gap-2 px-3 py-1.5 bg-bg-surface border border-border rounded-lg text-sm cursor-pointer hover:border-border-strong transition-colors ${
+                    att.isExpanded ? 'ring-1 ring-accent' : ''
+                  }`}
+                  onClick={() => att.type === 'pasted' && toggleAttachmentExpand(att.id)}
+                >
+                  <IconComponent className="w-4 h-4 text-text-muted" />
+                  <span className="text-text-secondary max-w-[150px] truncate">
+                    {att.type === 'pasted' ? `Pasted ~${att.lineCount} lines` : att.name}
+                  </span>
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      removeAttachment(att.id)
+                    }}
+                    className="text-text-muted hover:text-error transition-colors"
+                    title="Remove"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+                {/* Expanded pasted content preview */}
+                {att.type === 'pasted' && att.isExpanded && att.content && (
+                  <div className="absolute bottom-full left-0 mb-2 w-80 max-h-60 overflow-auto bg-bg-elevated border border-border rounded-lg p-3 shadow-lg z-10">
+                    <pre className="text-xs text-text-secondary whitespace-pre-wrap font-mono">
+                      {att.content}
+                    </pre>
+                  </div>
+                )}
+              </div>
+            )
+          })}
+        </div>
+      )}
+
+      {/* Main input container */}
+      <div
+        className={`flex flex-col bg-bg-elevated rounded-xl border transition-colors ${
+          isDragging
+            ? 'border-accent border-dashed bg-accent/5'
+            : 'border-border hover:border-border-strong focus-within:border-accent'
+        }`}
+        onDragOver={handleDragOver}
+        onDragLeave={handleDragLeave}
+        onDrop={handleDrop}
+      >
+        {/* Text area */}
         <textarea
           ref={textareaRef}
           value={input}
           onChange={handleInput}
           onKeyDown={handleKeyDown}
-          placeholder={disabled ? 'Select a provider to start...' : isStreaming ? 'Message will be queued...' : 'Message Jelico...'}
+          onPaste={handlePaste}
+          placeholder={
+            isDragging
+              ? 'Drop files here...'
+              : disabled
+              ? 'Select a provider to start...'
+              : isStreaming
+              ? 'Message will be queued...'
+              : 'Message Jelico...'
+          }
           disabled={disabled}
           rows={4}
-          className="flex-1 bg-transparent text-text-primary placeholder:text-text-muted outline-none resize-none min-h-[96px] max-h-[200px] disabled:cursor-not-allowed focus:outline-none focus:ring-0 border-none leading-6 py-1"
+          className="flex-1 bg-transparent text-text-primary placeholder:text-text-muted outline-none resize-none min-h-[96px] max-h-[200px] disabled:cursor-not-allowed focus:outline-none focus:ring-0 border-none leading-6 p-3 pb-0"
         />
 
-        {isStreaming ? (
+        {/* Divider */}
+        <div className="mx-3 border-t border-border-subtle" />
+
+        {/* Icon row */}
+        <div className="flex items-center justify-between px-3 py-2">
+          {/* Left side - Attachments */}
           <button
-            onClick={handleStop}
-            className="p-2 bg-error text-white rounded-lg hover:bg-error/90 transition-colors self-end mb-1"
-            title="Stop generating"
+            onClick={openFilePicker}
+            disabled={disabled}
+            className="p-1.5 text-text-muted hover:text-text-secondary disabled:opacity-50 disabled:cursor-not-allowed transition-colors rounded-lg hover:bg-bg-hover"
+            title="Attach files"
           >
-            <Square className="w-5 h-5" />
+            <Paperclip className="w-5 h-5" />
           </button>
-        ) : (
-          <button
-            onClick={handleSubmit}
-            disabled={disabled || !input.trim()}
-            className="p-2 bg-accent text-black rounded-lg hover:bg-accent-bright disabled:opacity-50 disabled:cursor-not-allowed transition-colors self-end mb-1"
-            title="Send message"
-          >
-            <Send className="w-5 h-5" />
-          </button>
-        )}
+
+          {/* Right side - Mic and Send */}
+          <div className="flex items-center gap-1">
+            {/* Recording indicator */}
+            {recordingState === 'recording' && (
+              <div className="flex items-center gap-2 px-2 py-1 bg-error/10 text-error rounded-lg text-sm">
+                <span className="w-2 h-2 bg-error rounded-full animate-pulse" />
+                <span>{formatTime(recordingTime)}</span>
+                <span className="text-xs text-text-muted">/ {formatTime(MAX_RECORDING_TIME)}</span>
+              </div>
+            )}
+
+            {recordingState === 'transcribing' && (
+              <div className="flex items-center gap-2 px-2 py-1 bg-accent/10 text-accent rounded-lg text-sm">
+                <Loader2 className="w-4 h-4 animate-spin" />
+                <span>Transcribing...</span>
+              </div>
+            )}
+
+            {/* Microphone button */}
+            <button
+              onClick={toggleRecording}
+              disabled={disabled || recordingState === 'transcribing'}
+              className={`p-1.5 transition-colors rounded-lg disabled:opacity-50 disabled:cursor-not-allowed ${
+                recordingState === 'recording'
+                  ? 'text-error bg-error/10 hover:bg-error/20'
+                  : 'text-text-muted hover:text-text-secondary hover:bg-bg-hover'
+              }`}
+              title={recordingState === 'recording' ? 'Stop recording' : 'Start voice input'}
+            >
+              {recordingState === 'recording' ? (
+                <MicOff className="w-5 h-5" />
+              ) : (
+                <Mic className="w-5 h-5" />
+              )}
+            </button>
+
+            {/* Send/Stop button */}
+            {isStreaming ? (
+              <button
+                onClick={handleStop}
+                className="p-2 bg-error text-white rounded-lg hover:bg-error/90 transition-colors"
+                title="Stop generating"
+              >
+                <Square className="w-5 h-5" />
+              </button>
+            ) : (
+              <button
+                onClick={handleSubmit}
+                disabled={disabled || (!input.trim() && attachments.length === 0)}
+                className="p-2 bg-accent text-black rounded-lg hover:bg-accent-bright disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                title="Send message"
+              >
+                <Send className="w-5 h-5" />
+              </button>
+            )}
+          </div>
+        </div>
       </div>
 
       {/* Hints - hidden when centered (new chat view) */}
