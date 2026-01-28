@@ -554,8 +554,10 @@ Use this as the base path for file operations. When reading, writing, or searchi
       // Stream the response with tools
       // Using toolChoice: 'auto' (default) - model decides when to use tools
       // Can also use 'required' to force tool usage or 'none' to disable
+      // IMPORTANT: Use provider.chat() not provider() to get /chat/completions endpoint
+      // which properly supports tool calling. provider() uses /responses which doesn't.
       const result = await streamText({
-        model: provider(modelId),
+        model: provider.chat(modelId),
         system: systemPrompt, // Pass system prompt separately (may help with tool recognition)
         messages,
         tools,
