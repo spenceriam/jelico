@@ -39,9 +39,14 @@ function getProviderInstance(providerConfig: any, apiKey: string) {
       return createGoogleGenerativeAI({ apiKey })
 
     case 'openrouter':
+      console.log('[AI] Creating OpenRouter provider with key:', apiKey ? `${apiKey.substring(0, 10)}...` : 'MISSING')
       return createOpenAI({
         apiKey,
         baseURL: providerConfig.base_url || 'https://openrouter.ai/api/v1',
+        headers: {
+          'HTTP-Referer': 'https://jelico.app',
+          'X-Title': 'Jelico',
+        },
       })
 
     case 'ollama':
@@ -436,6 +441,12 @@ export function registerAIHandlers() {
       // Get API key (some providers like ollama and local don't require one)
       const apiKey = await keychainService.getApiKey(params.providerId)
       const noKeyRequired = ['ollama', 'local'].includes(providerConfig.type)
+
+      // Debug logging
+      console.log('[AI] Provider ID:', params.providerId)
+      console.log('[AI] Provider type:', providerConfig.type)
+      console.log('[AI] API key retrieved:', apiKey ? `${apiKey.substring(0, 10)}...` : 'null')
+
       if (!apiKey && !noKeyRequired) {
         event.sender.send(`ai:error:${channelId}`, 'API key not found')
         return
