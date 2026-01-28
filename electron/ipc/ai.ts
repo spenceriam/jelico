@@ -43,10 +43,6 @@ function getProviderInstance(providerConfig: any, apiKey: string) {
       return createOpenAI({
         apiKey,
         baseURL: providerConfig.base_url || 'https://openrouter.ai/api/v1',
-        headers: {
-          'HTTP-Referer': 'https://jelico.app',
-          'X-Title': 'Jelico',
-        },
       })
 
     case 'ollama':
