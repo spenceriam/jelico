@@ -12,8 +12,9 @@ import { getModeSystemPrompt, type AgentMode } from '../lib/modes'
 const activeStreams = new Map<string, AbortController>()
 
 // Provider types that use OpenAI Chat Completions API (not Responses API)
-// NOTE: OpenRouter removed - it works with provider(modelId) directly
+// These providers don't support OpenAI's new Responses API, only Chat Completions
 const OPENAI_CHAT_PROVIDERS = [
+  'openrouter',
   'ollama',
   'openai-compatible',
   'anthropic-compatible',
@@ -38,12 +39,24 @@ function getProviderInstance(providerConfig: any, apiKey: string) {
     case 'google':
       return createGoogleGenerativeAI({ apiKey })
 
-    case 'openrouter':
+    case 'openrouter': {
       console.log('[AI] Creating OpenRouter provider with key:', apiKey ? `${apiKey.substring(0, 10)}...` : 'MISSING')
+      // Custom fetch to ensure Authorization header is always set
+      const openRouterFetch = async (url: RequestInfo | URL, init?: RequestInit) => {
+        const headers = new Headers(init?.headers)
+        // Force set Authorization header
+        headers.set('Authorization', `Bearer ${apiKey}`)
+        console.log('[AI] OpenRouter fetch to:', url)
+        console.log('[AI] OpenRouter auth header:', headers.get('Authorization')?.substring(0, 20) + '...')
+        return fetch(url, { ...init, headers })
+      }
       return createOpenAI({
         apiKey,
         baseURL: providerConfig.base_url || 'https://openrouter.ai/api/v1',
+        compatibility: 'strict', // Force OpenAI-compatible mode
+        fetch: openRouterFetch,
       })
+    }
 
     case 'ollama':
       return createOpenAI({
