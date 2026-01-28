@@ -28,7 +28,7 @@ const PROVIDER_TYPES = [
   {
     type: 'ollama' as const,
     name: 'Ollama',
-    description: 'Local',
+    description: 'Local LLMs',
     icon: '\uD83E\uDD99', // llama emoji
     defaultModel: 'llama3.1',
   },
@@ -38,6 +38,55 @@ const PROVIDER_TYPES = [
     description: 'Any Model',
     icon: '\u25C8', // diamond
     defaultModel: 'anthropic/claude-3.5-sonnet',
+  },
+  {
+    type: 'zai' as const,
+    name: 'Z.ai',
+    description: 'Global API',
+    icon: 'Z',
+    defaultModel: 'glm-4.7',
+  },
+  {
+    type: 'zai-china' as const,
+    name: 'Z.ai China',
+    description: 'CN API',
+    icon: 'Z',
+    defaultModel: 'glm-4.7',
+  },
+  {
+    type: 'zai-coding' as const,
+    name: 'Z.ai Coding',
+    description: 'Global Coding',
+    icon: 'Z',
+    defaultModel: 'glm-4.7',
+  },
+  {
+    type: 'zai-coding-china' as const,
+    name: 'Z.ai Coding CN',
+    description: 'CN Coding',
+    icon: 'Z',
+    defaultModel: 'glm-4.7',
+  },
+  {
+    type: 'openai-compatible' as const,
+    name: 'OpenAI Compatible',
+    description: 'Custom Endpoint',
+    icon: '\u2699', // gear
+    defaultModel: 'gpt-4',
+  },
+  {
+    type: 'anthropic-compatible' as const,
+    name: 'Anthropic Compatible',
+    description: 'Custom Endpoint',
+    icon: '\u2699', // gear
+    defaultModel: 'claude-3-sonnet',
+  },
+  {
+    type: 'local' as const,
+    name: 'Local Server',
+    description: 'OpenAI API',
+    icon: '\uD83D\uDCBB', // laptop emoji
+    defaultModel: 'default',
   },
   {
     type: 'custom' as const,

@@ -6,6 +6,10 @@ const API_KEY_URLS: Record<string, string> = {
   openai: 'platform.openai.com',
   google: 'aistudio.google.com',
   openrouter: 'openrouter.ai',
+  zai: 'open.bigmodel.cn',
+  'zai-china': 'open.bigmodel.cn',
+  'zai-coding': 'open.bigmodel.cn',
+  'zai-coding-china': 'open.bigmodel.cn',
 }
 
 // Fallback models shown before API key is entered or when fetch fails
@@ -27,6 +31,43 @@ const FALLBACK_MODELS: Record<string, Array<{ id: string; name: string }>> = {
   openrouter: [],
   ollama: [],
   custom: [],
+  // Z.ai models - verified from z.ai/mastra.ai docs
+  zai: [
+    { id: 'glm-4.7', name: 'GLM-4.7 (Flagship)' },
+    { id: 'glm-4.7-flash', name: 'GLM-4.7 Flash' },
+    { id: 'glm-4.6', name: 'GLM-4.6 (205K)' },
+    { id: 'glm-4.6v', name: 'GLM-4.6v (Vision)' },
+    { id: 'glm-4.5', name: 'GLM-4.5 (131K)' },
+    { id: 'glm-4.5-air', name: 'GLM-4.5 Air' },
+    { id: 'glm-4.5-flash', name: 'GLM-4.5 Flash (Free)' },
+  ],
+  'zai-china': [
+    { id: 'glm-4.7', name: 'GLM-4.7 (Flagship)' },
+    { id: 'glm-4.7-flash', name: 'GLM-4.7 Flash' },
+    { id: 'glm-4.6', name: 'GLM-4.6 (205K)' },
+    { id: 'glm-4.6v', name: 'GLM-4.6v (Vision)' },
+    { id: 'glm-4.5', name: 'GLM-4.5 (131K)' },
+    { id: 'glm-4.5-air', name: 'GLM-4.5 Air' },
+    { id: 'glm-4.5-flash', name: 'GLM-4.5 Flash (Free)' },
+  ],
+  'zai-coding': [
+    { id: 'glm-4.7', name: 'GLM-4.7 (Flagship)' },
+    { id: 'glm-4.6', name: 'GLM-4.6 (205K)' },
+    { id: 'glm-4.5', name: 'GLM-4.5 (131K)' },
+    { id: 'glm-4.5-air', name: 'GLM-4.5 Air' },
+    { id: 'glm-4.5-flash', name: 'GLM-4.5 Flash' },
+  ],
+  'zai-coding-china': [
+    { id: 'glm-4.7', name: 'GLM-4.7 (Flagship)' },
+    { id: 'glm-4.6', name: 'GLM-4.6 (205K)' },
+    { id: 'glm-4.5', name: 'GLM-4.5 (131K)' },
+    { id: 'glm-4.5-air', name: 'GLM-4.5 Air' },
+    { id: 'glm-4.5-flash', name: 'GLM-4.5 Flash' },
+  ],
+  // Generic providers - user enters model manually
+  'openai-compatible': [],
+  'anthropic-compatible': [],
+  local: [],
 }
 
 // Provider types that support dynamic model fetching
@@ -55,7 +96,10 @@ export function ProviderConfigForm({ type, defaultModel, onSave, isLoading }: Pr
   const [name, setName] = useState('')
   const [apiKey, setApiKey] = useState('')
   const [model, setModel] = useState(defaultModel)
-  const [baseUrl, setBaseUrl] = useState(type === 'ollama' ? 'http://localhost:11434' : '')
+  const [baseUrl, setBaseUrl] = useState(
+    type === 'ollama' ? 'http://localhost:11434' :
+    type === 'local' ? 'http://localhost:8080/v1' : ''
+  )
   const [showKey, setShowKey] = useState(false)
 
   // Dynamic model fetching state
@@ -64,8 +108,8 @@ export function ProviderConfigForm({ type, defaultModel, onSave, isLoading }: Pr
   const [modelsFetched, setModelsFetched] = useState(false)
   const [modelSearch, setModelSearch] = useState('')
 
-  const needsApiKey = type !== 'ollama'
-  const needsBaseUrl = type === 'ollama' || type === 'custom'
+  const needsApiKey = type !== 'ollama' && type !== 'local'
+  const needsBaseUrl = ['ollama', 'custom', 'openai-compatible', 'anthropic-compatible', 'local'].includes(type)
   const isDynamic = DYNAMIC_MODEL_PROVIDERS.includes(type)
   const apiKeyUrl = API_KEY_URLS[type]
 
@@ -416,6 +460,13 @@ function getDefaultName(type: string): string {
     ollama: 'Ollama',
     openrouter: 'OpenRouter',
     custom: 'Custom',
+    zai: 'Z.ai',
+    'zai-china': 'Z.ai China',
+    'zai-coding': 'Z.ai Coding',
+    'zai-coding-china': 'Z.ai Coding CN',
+    'openai-compatible': 'OpenAI Compatible',
+    'anthropic-compatible': 'Anthropic Compatible',
+    local: 'Local Server',
   }
   return names[type] || 'Provider'
 }
