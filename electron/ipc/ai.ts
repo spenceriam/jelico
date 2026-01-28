@@ -38,12 +38,23 @@ function getProviderInstance(providerConfig: any, apiKey: string) {
     case 'google':
       return createGoogleGenerativeAI({ apiKey })
 
-    case 'openrouter':
+    case 'openrouter': {
       console.log('[AI] Creating OpenRouter provider with key:', apiKey ? `${apiKey.substring(0, 10)}...` : 'MISSING')
+      // Use custom fetch to ensure Authorization header is sent
+      const openRouterFetch: typeof fetch = (url, options) => {
+        const headers = new Headers(options?.headers)
+        headers.set('Authorization', `Bearer ${apiKey}`)
+        headers.set('HTTP-Referer', 'https://jelico.app')
+        headers.set('X-Title', 'Jelico')
+        console.log('[AI] OpenRouter request headers:', Object.fromEntries(headers.entries()))
+        return fetch(url, { ...options, headers })
+      }
       return createOpenAI({
-        apiKey,
+        apiKey: 'openrouter', // Dummy value since we handle auth in custom fetch
         baseURL: providerConfig.base_url || 'https://openrouter.ai/api/v1',
+        fetch: openRouterFetch,
       })
+    }
 
     case 'ollama':
       return createOpenAI({
