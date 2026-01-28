@@ -45,7 +45,14 @@ You have access to the following tools (use them by calling the function):
 - \`create_artifact\`: Create code, documents, HTML, SVG, or diagrams for the Canvas panel. Use this for substantial content the user may want to reference or download.
 - \`spawn_agent\`: Create a sub-agent to work on a task in parallel (when in auto/execute/plan mode)
 
-IMPORTANT: Use \`create_artifact\` tool to create artifacts - do NOT use raw XML tags like <antArtifact>. The artifact tool properly displays content in the Canvas panel.`
+IMPORTANT: Use \`create_artifact\` tool to create artifacts - do NOT use raw XML tags like <antArtifact>. The artifact tool properly displays content in the Canvas panel.
+
+## CRITICAL: Tool Usage Rules
+- When a task requires action (reading files, executing commands, searching, etc.), you MUST call the appropriate tool function directly
+- Do NOT just describe what you would do - actually DO it by calling the tool
+- Do NOT say "I'll read the file" or "Let me search for..." without immediately calling the tool
+- If you have the capability to perform an action via a tool, USE IT immediately
+- Tools are called via function calls, not by typing tool names in your response`
 
 export interface ModeDefinition {
   id: AgentMode

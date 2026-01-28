@@ -11,6 +11,41 @@ import { getModeSystemPrompt, type AgentMode } from '../lib/modes'
 // Store active streams for cancellation
 const activeStreams = new Map<string, AbortController>()
 
+// Debug flag - set to true to log API requests
+const DEBUG_API_REQUESTS = true
+
+// Wrap fetch to log requests when debugging
+const originalFetch = globalThis.fetch
+if (DEBUG_API_REQUESTS) {
+  globalThis.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
+    const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url
+
+    // Only log AI API requests
+    if (url.includes('openrouter') || url.includes('openai') || url.includes('anthropic')) {
+      console.log('[DEBUG FETCH] URL:', url)
+      console.log('[DEBUG FETCH] Method:', init?.method || 'GET')
+
+      if (init?.body) {
+        try {
+          const body = JSON.parse(init.body as string)
+          console.log('[DEBUG FETCH] Has tools:', !!body.tools)
+          console.log('[DEBUG FETCH] Tool count:', body.tools?.length || 0)
+          if (body.tools?.length > 0) {
+            console.log('[DEBUG FETCH] Tool names:', body.tools.map((t: any) => t.function?.name || t.name))
+          }
+          console.log('[DEBUG FETCH] Model:', body.model)
+          console.log('[DEBUG FETCH] Message count:', body.messages?.length)
+          console.log('[DEBUG FETCH] Tool choice:', body.tool_choice)
+        } catch {
+          console.log('[DEBUG FETCH] Body: (not JSON)')
+        }
+      }
+    }
+
+    return originalFetch(input, init)
+  }
+}
+
 function getProviderInstance(providerConfig: any, apiKey: string) {
   switch (providerConfig.type) {
     case 'anthropic':
@@ -26,6 +61,10 @@ function getProviderInstance(providerConfig: any, apiKey: string) {
       return createOpenAI({
         apiKey,
         baseURL: providerConfig.base_url || 'https://openrouter.ai/api/v1',
+        headers: {
+          'HTTP-Referer': 'https://github.com/jelico-app/jelico',
+          'X-Title': 'Jelico',
+        },
       })
     case 'ollama':
       return createOpenAI({
@@ -482,13 +521,26 @@ Use this as the base path for file operations. When reading, writing, or searchi
       ]
 
       console.log('[AI] Starting stream with model:', modelId, 'mode:', mode)
+      console.log('[AI] Provider type:', providerConfig.type)
+      console.log('[AI] Base URL:', providerConfig.base_url || '(default)')
       console.log('[AI] Tools available:', Object.keys(tools))
+      console.log('[AI] System prompt length:', systemPrompt.length)
+      console.log('[AI] Message count:', messages.length)
+
+      // For debugging: log first tool definition to verify structure
+      const firstToolName = Object.keys(tools)[0]
+      if (firstToolName) {
+        console.log('[AI] Sample tool definition:', firstToolName, JSON.stringify(tools[firstToolName], null, 2).slice(0, 500))
+      }
 
       // Stream the response with tools
+      // Using toolChoice: 'auto' (default) - model decides when to use tools
+      // Can also use 'required' to force tool usage or 'none' to disable
       const result = await streamText({
         model: provider(modelId),
         messages,
         tools,
+        toolChoice: 'auto', // Explicitly set to ensure tools are offered
         maxSteps: 10, // Allow up to 10 tool calls
         abortSignal: abortController.signal,
         onStepFinish: ({ toolCalls, toolResults, text, finishReason }) => {
@@ -525,6 +577,13 @@ Use this as the base path for file operations. When reading, writing, or searchi
         promptTokens: usage?.promptTokens,
         completionTokens: usage?.completionTokens,
       })
+
+      // Warn if model finished without using any tools when tools were available
+      if (finishReason === 'stop' && Object.keys(tools).length > 0) {
+        console.warn('[AI] WARNING: Model finished with finishReason=stop but tools were available.')
+        console.warn('[AI] This may indicate the model is not properly using function calling.')
+        console.warn('[AI] Consider trying a different model that supports tool use (e.g., Claude, GPT-4).')
+      }
 
       // Signal completion with stats
       if (!abortController.signal.aborted) {
