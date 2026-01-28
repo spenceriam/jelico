@@ -469,10 +469,8 @@ Use this as the base path for file operations. When reading, writing, or searchi
       // Get tools based on mode
       const tools = getBuiltInTools(mode, sendArtifact, sendSpawnAgent)
 
-      // Build messages with system prompt
-      const messages = [
-        { role: 'system' as const, content: systemPrompt },
-        ...params.messages.map((m: any) => {
+      // Build messages (without system prompt - we pass it separately to streamText)
+      const messages = params.messages.map((m: any) => {
           // Handle messages with attachments (multimodal)
           if (m.attachments && m.attachments.length > 0) {
             const contentParts: any[] = []
@@ -517,8 +515,7 @@ Use this as the base path for file operations. When reading, writing, or searchi
             role: m.role as 'user' | 'assistant' | 'system',
             content: m.content,
           }
-        }),
-      ]
+        })
 
       console.log('\n[AI] ========== STREAM START ==========')
       console.log('[AI] Model:', modelId)
@@ -559,6 +556,7 @@ Use this as the base path for file operations. When reading, writing, or searchi
       // Can also use 'required' to force tool usage or 'none' to disable
       const result = await streamText({
         model: provider(modelId),
+        system: systemPrompt, // Pass system prompt separately (may help with tool recognition)
         messages,
         tools,
         toolChoice: 'auto', // Explicitly set to ensure tools are offered
