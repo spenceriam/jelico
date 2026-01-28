@@ -573,12 +573,33 @@ Use this as the base path for file operations. When reading, writing, or searchi
           })
           // Send tool call updates to renderer
           if (toolCalls && toolCalls.length > 0) {
-            console.log('[AI] Tool calls:', toolCalls.map(tc => ({ name: tc.toolName, args: tc.args })))
-            event.sender.send(`ai:toolCalls:${channelId}`, toolCalls)
+            // Log full structure to debug args issue
+            console.log('[AI] Tool calls (full):', JSON.stringify(toolCalls, null, 2))
+            console.log('[AI] First tool call keys:', Object.keys(toolCalls[0]))
+
+            // Transform tool calls to our expected format
+            const formattedToolCalls = toolCalls.map(tc => ({
+              id: tc.toolCallId,
+              name: tc.toolName,
+              args: tc.args,
+            }))
+            console.log('[AI] Formatted tool calls:', formattedToolCalls)
+            event.sender.send(`ai:toolCalls:${channelId}`, formattedToolCalls)
           }
           if (toolResults && toolResults.length > 0) {
-            console.log('[AI] Tool results:', toolResults.map(tr => ({ id: tr.toolCallId, result: tr.result })))
-            event.sender.send(`ai:toolResults:${channelId}`, toolResults)
+            // Log full structure to debug result issue
+            console.log('[AI] Tool results (full):', JSON.stringify(toolResults, null, 2))
+            if (toolResults[0]) {
+              console.log('[AI] First tool result keys:', Object.keys(toolResults[0]))
+            }
+
+            // Transform tool results to our expected format
+            const formattedToolResults = toolResults.map(tr => ({
+              toolCallId: tr.toolCallId,
+              result: tr.result,
+            }))
+            console.log('[AI] Formatted tool results:', formattedToolResults)
+            event.sender.send(`ai:toolResults:${channelId}`, formattedToolResults)
           }
         },
       })

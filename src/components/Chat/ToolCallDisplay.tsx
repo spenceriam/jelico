@@ -9,7 +9,11 @@ import {
   ChevronRight,
   CheckCircle,
   XCircle,
-  Loader2
+  Loader2,
+  Globe,
+  Link,
+  Layers,
+  Bot
 } from 'lucide-react'
 import type { ToolCall, ToolResult } from '../../stores/chat'
 
@@ -25,6 +29,10 @@ const TOOL_ICONS: Record<string, React.ComponentType<{ className?: string }>> = 
   search_files: Search,
   write_file: Edit3,
   execute_command: Terminal,
+  web_search: Globe,
+  web_fetch: Link,
+  create_artifact: Layers,
+  spawn_agent: Bot,
 }
 
 const TOOL_LABELS: Record<string, string> = {
@@ -33,14 +41,31 @@ const TOOL_LABELS: Record<string, string> = {
   search_files: 'Search Files',
   write_file: 'Write File',
   execute_command: 'Execute Command',
+  web_search: 'Web Search',
+  web_fetch: 'Fetch URL',
+  create_artifact: 'Create Artifact',
+  spawn_agent: 'Spawn Agent',
 }
 
-function formatToolArgs(args: Record<string, unknown>): string {
+function formatToolArgs(args: Record<string, unknown> | undefined | null): string {
+  // Handle undefined/null args
+  if (!args || typeof args !== 'object') return '(no arguments)'
+
   // Show the primary argument nicely
   if (args.path) return String(args.path)
   if (args.command) return String(args.command)
+  if (args.query) return String(args.query)
+  if (args.url) return String(args.url)
+  if (args.title) return String(args.title)
+  if (args.name) return String(args.name)
+  if (args.task) return String(args.task).slice(0, 50) + (String(args.task).length > 50 ? '...' : '')
   if (args.pattern) return `${args.directory || '.'}/${args.pattern}`
-  return JSON.stringify(args, null, 2)
+  if (args.content) return `${String(args.content).slice(0, 30)}...`
+  if (args.type) return String(args.type)
+
+  // Fallback to JSON
+  const jsonStr = JSON.stringify(args, null, 2)
+  return jsonStr === '{}' ? '(no arguments)' : jsonStr
 }
 
 function formatToolResult(result: unknown): { content: string; isError: boolean } {
@@ -135,7 +160,7 @@ function SingleToolCall({
           <div className="px-3 py-2 bg-bg-surface">
             <div className="text-xs text-text-muted mb-1">Arguments</div>
             <pre className="text-xs font-mono text-text-secondary overflow-x-auto">
-              {JSON.stringify(toolCall.args, null, 2)}
+              {toolCall.args ? JSON.stringify(toolCall.args, null, 2) : '(no arguments)'}
             </pre>
           </div>
 
