@@ -1,19 +1,10 @@
 import { useState } from 'react'
 import {
-  FileText,
-  Folder,
-  Search,
-  Edit3,
-  Terminal,
   ChevronDown,
   ChevronRight,
   CheckCircle,
   XCircle,
-  Loader2,
-  Globe,
-  Link,
-  Layers,
-  Bot
+  Loader2
 } from 'lucide-react'
 import type { ToolCall, ToolResult } from '../../stores/chat'
 
@@ -21,18 +12,6 @@ interface ToolCallDisplayProps {
   toolCalls: ToolCall[]
   toolResults?: ToolResult[]
   isStreaming?: boolean
-}
-
-const TOOL_ICONS: Record<string, React.ComponentType<{ className?: string }>> = {
-  read_file: FileText,
-  list_directory: Folder,
-  search_files: Search,
-  write_file: Edit3,
-  execute_command: Terminal,
-  web_search: Globe,
-  web_fetch: Link,
-  create_artifact: Layers,
-  spawn_agent: Bot,
 }
 
 const TOOL_LABELS: Record<string, string> = {
@@ -82,7 +61,7 @@ function formatToolResult(result: unknown): { content: string; isError: boolean 
     }
     if (obj.items && Array.isArray(obj.items)) {
       return {
-        content: obj.items.map((i: any) => `${i.type === 'directory' ? '📁' : '📄'} ${i.name}`).join('\n'),
+        content: obj.items.map((i: any) => `${i.type === 'directory' ? '[dir]' : '[file]'} ${i.name}`).join('\n'),
         isError: false
       }
     }
@@ -112,7 +91,6 @@ function SingleToolCall({
   isStreaming?: boolean
 }) {
   const [expanded, setExpanded] = useState(false)
-  const Icon = TOOL_ICONS[toolCall.name] || Terminal
   const label = TOOL_LABELS[toolCall.name] || toolCall.name
   const argDisplay = formatToolArgs(toolCall.args)
 
@@ -133,9 +111,7 @@ function SingleToolCall({
           <ChevronRight className="w-4 h-4 text-text-muted flex-shrink-0" />
         )}
 
-        <Icon className="w-4 h-4 text-accent flex-shrink-0" />
-
-        <span className="text-sm font-medium text-text-primary">{label}</span>
+        <span className="text-sm font-medium text-accent">{label}</span>
 
         <span className="text-xs text-text-muted truncate flex-1 font-mono">
           {argDisplay}
