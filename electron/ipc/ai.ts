@@ -481,6 +481,9 @@ Use this as the base path for file operations. When reading, writing, or searchi
         }),
       ]
 
+      console.log('[AI] Starting stream with model:', modelId, 'mode:', mode)
+      console.log('[AI] Tools available:', Object.keys(tools))
+
       // Stream the response with tools
       const result = await streamText({
         model: provider(modelId),
@@ -488,12 +491,20 @@ Use this as the base path for file operations. When reading, writing, or searchi
         tools,
         maxSteps: 10, // Allow up to 10 tool calls
         abortSignal: abortController.signal,
-        onStepFinish: ({ toolCalls, toolResults }) => {
+        onStepFinish: ({ toolCalls, toolResults, text, finishReason }) => {
+          console.log('[AI] Step finished:', {
+            finishReason,
+            toolCallCount: toolCalls?.length || 0,
+            toolResultCount: toolResults?.length || 0,
+            textLength: text?.length || 0,
+          })
           // Send tool call updates to renderer
           if (toolCalls && toolCalls.length > 0) {
+            console.log('[AI] Tool calls:', toolCalls.map(tc => ({ name: tc.toolName, args: tc.args })))
             event.sender.send(`ai:toolCalls:${channelId}`, toolCalls)
           }
           if (toolResults && toolResults.length > 0) {
+            console.log('[AI] Tool results:', toolResults.map(tr => ({ id: tr.toolCallId, result: tr.result })))
             event.sender.send(`ai:toolResults:${channelId}`, toolResults)
           }
         },
@@ -509,6 +520,12 @@ Use this as the base path for file operations. When reading, writing, or searchi
       const usage = await result.usage
       const finishReason = await result.finishReason
 
+      console.log('[AI] Stream completed:', {
+        finishReason,
+        promptTokens: usage?.promptTokens,
+        completionTokens: usage?.completionTokens,
+      })
+
       // Signal completion with stats
       if (!abortController.signal.aborted) {
         event.sender.send(`ai:end:${channelId}`, {
@@ -522,7 +539,12 @@ Use this as the base path for file operations. When reading, writing, or searchi
       }
     } catch (error: any) {
       if (error.name !== 'AbortError') {
-        console.error('AI streaming error:', error)
+        console.error('[AI] Streaming error:', error)
+        console.error('[AI] Error details:', {
+          message: error.message,
+          cause: error.cause,
+          stack: error.stack?.split('\n').slice(0, 5).join('\n'),
+        })
         event.sender.send(`ai:error:${channelId}`, error.message || 'Unknown error')
       }
     } finally {

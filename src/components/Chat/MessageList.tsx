@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { Loader2 } from 'lucide-react'
 import { Message } from './Message'
 import type { ToolCall, ToolResult, MessageUsage } from '../../stores/chat'
 
@@ -60,7 +61,20 @@ export function MessageList({
         />
       ))}
 
-      {streamingContent !== undefined && (
+      {/* Thinking indicator - show when streaming starts but no content/tools yet */}
+      {streamingContent !== undefined && streamingContent === '' && (!streamingToolCalls || streamingToolCalls.length === 0) && (
+        <div className="flex gap-4">
+          <div className="w-8 h-8 rounded-full bg-accent/10 flex items-center justify-center flex-shrink-0">
+            <Loader2 className="w-4 h-4 text-accent animate-spin" />
+          </div>
+          <div className="flex items-center gap-2 text-text-muted">
+            <span className="text-sm">Thinking...</span>
+          </div>
+        </div>
+      )}
+
+      {/* Streaming message - show when we have content OR tool calls */}
+      {streamingContent !== undefined && (streamingContent !== '' || (streamingToolCalls && streamingToolCalls.length > 0)) && (
         <Message
           message={{
             id: 'streaming',
