@@ -10,7 +10,11 @@
   },
   "author": "",
   "license": "MIT",
+  "overrides": {
+    "sharp": "^0.33.0"
+  },
   "dependencies": {
+    "@aspect/sharp-libvips-wasm": "^0.33.0",
     "@ai-sdk/anthropic": "^3.0.28",
     "@ai-sdk/google": "^3.0.15",
     "@ai-sdk/openai": "^3.0.21",
