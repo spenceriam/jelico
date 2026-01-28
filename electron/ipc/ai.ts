@@ -474,20 +474,27 @@ export function registerAIHandlers() {
           })),
         ]
 
+        // Log everything we're sending
+        const requestBody = {
+          model: modelId,
+          messages,
+          stream: true,
+        }
+        const requestHeaders = {
+          'Authorization': `Bearer ${apiKey}`,
+          'Content-Type': 'application/json',
+        }
+
+        console.log('[AI] OpenRouter request URL: https://openrouter.ai/api/v1/chat/completions')
+        console.log('[AI] OpenRouter request headers:', JSON.stringify(requestHeaders, null, 2))
+        console.log('[AI] OpenRouter request body model:', modelId)
+        console.log('[AI] OpenRouter full API key:', apiKey) // Log full key to check for issues
+
         try {
           const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
             method: 'POST',
-            headers: {
-              'Authorization': `Bearer ${apiKey}`,
-              'Content-Type': 'application/json',
-              'HTTP-Referer': 'https://jelico.app',
-              'X-Title': 'Jelico',
-            },
-            body: JSON.stringify({
-              model: modelId,
-              messages,
-              stream: true,
-            }),
+            headers: requestHeaders,
+            body: JSON.stringify(requestBody),
           })
 
           console.log('[AI] Direct OpenRouter response status:', response.status)
