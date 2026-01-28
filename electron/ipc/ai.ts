@@ -456,22 +456,93 @@ export function registerAIHandlers() {
       console.log('[AI] Provider type:', providerConfig.type)
       console.log('[AI] API key retrieved:', apiKey ? `${apiKey.substring(0, 10)}...` : 'null')
 
-      // Direct API test for OpenRouter
+      // BYPASS SDK FOR OPENROUTER - Direct API call
       if (providerConfig.type === 'openrouter' && apiKey) {
-        console.log('[AI] Testing OpenRouter API key directly...')
+        console.log('[AI] Using DIRECT OpenRouter API (bypassing SDK)...')
+        const modelId = params.model || providerConfig.default_model
+        const mode: AgentMode = params.mode || 'auto'
+        let systemPrompt = getModeSystemPrompt(mode)
+        if (params.workspacePath) {
+          systemPrompt += `\n\nWorkspace: ${params.workspacePath}`
+        }
+
+        const messages = [
+          { role: 'system', content: systemPrompt },
+          ...params.messages.map((m: any) => ({
+            role: m.role,
+            content: m.content,
+          })),
+        ]
+
         try {
-          const testResponse = await fetch('https://openrouter.ai/api/v1/models', {
-            headers: { 'Authorization': `Bearer ${apiKey}` }
+          const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+            method: 'POST',
+            headers: {
+              'Authorization': `Bearer ${apiKey}`,
+              'Content-Type': 'application/json',
+              'HTTP-Referer': 'https://jelico.app',
+              'X-Title': 'Jelico',
+            },
+            body: JSON.stringify({
+              model: modelId,
+              messages,
+              stream: true,
+            }),
           })
-          console.log('[AI] Direct API test status:', testResponse.status)
-          if (!testResponse.ok) {
-            const errorBody = await testResponse.text()
-            console.log('[AI] Direct API test error:', errorBody)
-          } else {
-            console.log('[AI] Direct API test SUCCESS - key is valid')
+
+          console.log('[AI] Direct OpenRouter response status:', response.status)
+
+          if (!response.ok) {
+            const errorText = await response.text()
+            console.log('[AI] Direct OpenRouter error:', errorText)
+            event.sender.send(`ai:error:${channelId}`, `OpenRouter error: ${response.status} - ${errorText}`)
+            return
           }
+
+          // Stream the response
+          const reader = response.body?.getReader()
+          const decoder = new TextDecoder()
+
+          if (!reader) {
+            event.sender.send(`ai:error:${channelId}`, 'No response body')
+            return
+          }
+
+          let buffer = ''
+          while (true) {
+            const { done, value } = await reader.read()
+            if (done) break
+
+            buffer += decoder.decode(value, { stream: true })
+            const lines = buffer.split('\n')
+            buffer = lines.pop() || ''
+
+            for (const line of lines) {
+              if (line.startsWith('data: ')) {
+                const data = line.slice(6)
+                if (data === '[DONE]') continue
+                try {
+                  const parsed = JSON.parse(data)
+                  const content = parsed.choices?.[0]?.delta?.content
+                  if (content) {
+                    event.sender.send(`ai:chunk:${channelId}`, content)
+                  }
+                } catch (e) {
+                  // Ignore parse errors
+                }
+              }
+            }
+          }
+
+          event.sender.send(`ai:end:${channelId}`, {
+            usage: { promptTokens: 0, completionTokens: 0, totalTokens: 0 },
+            finishReason: 'stop',
+          })
+          return
         } catch (e: any) {
-          console.log('[AI] Direct API test exception:', e.message)
+          console.log('[AI] Direct OpenRouter exception:', e.message)
+          event.sender.send(`ai:error:${channelId}`, `OpenRouter error: ${e.message}`)
+          return
         }
       }
 
