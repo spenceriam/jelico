@@ -1,4 +1,4 @@
-import { ipcMain, net } from 'electron'
+import { ipcMain } from 'electron'
 import { streamText, tool } from 'ai'
 import { createAnthropic } from '@ai-sdk/anthropic'
 import { createOpenAI } from '@ai-sdk/openai'
@@ -11,127 +11,75 @@ import { getModeSystemPrompt, type AgentMode } from '../lib/modes'
 // Store active streams for cancellation
 const activeStreams = new Map<string, AbortController>()
 
-// Provider types that use OpenAI Chat Completions API (not Responses API)
-// These providers don't support OpenAI's new Responses API, only Chat Completions
-const OPENAI_CHAT_PROVIDERS = [
-  'openrouter',
-  'ollama',
-  'openai-compatible',
-  'anthropic-compatible',
-  'local',
-  'zai',
-  'zai-china',
-  'zai-coding',
-  'zai-coding-china',
-]
-
 function getProviderInstance(providerConfig: any, apiKey: string) {
   switch (providerConfig.type) {
     case 'anthropic':
       return createAnthropic({ apiKey })
-
     case 'openai':
       return createOpenAI({
         apiKey,
         baseURL: providerConfig.base_url || undefined,
       })
-
     case 'google':
       return createGoogleGenerativeAI({ apiKey })
-
-    case 'openrouter': {
-      console.log('[AI] Creating OpenRouter provider with key:', apiKey ? `${apiKey.substring(0, 10)}...` : 'MISSING')
-      // Custom fetch to ensure Authorization header is always set
-      const openRouterFetch = async (url: RequestInfo | URL, init?: RequestInit) => {
-        const headers = new Headers(init?.headers)
-        // Force set Authorization header
-        headers.set('Authorization', `Bearer ${apiKey}`)
-        console.log('[AI] OpenRouter fetch to:', url)
-        console.log('[AI] OpenRouter auth header:', headers.get('Authorization')?.substring(0, 20) + '...')
-        return fetch(url, { ...init, headers })
-      }
+    case 'openrouter':
       return createOpenAI({
         apiKey,
         baseURL: providerConfig.base_url || 'https://openrouter.ai/api/v1',
-        compatibility: 'strict', // Force OpenAI-compatible mode
-        fetch: openRouterFetch,
       })
-    }
-
     case 'ollama':
       return createOpenAI({
         apiKey: 'ollama', // Ollama doesn't need a real key
         baseURL: providerConfig.base_url || 'http://localhost:11434/v1',
       })
-
-    // Z.ai (Global)
-    case 'zai':
-      return createOpenAI({
-        apiKey,
-        baseURL: 'https://api.z.ai/api/paas/v4',
-      })
-
-    // Z.ai (China)
-    case 'zai-china':
-      return createOpenAI({
-        apiKey,
-        baseURL: 'https://open.bigmodel.cn/api/paas/v4',
-      })
-
-    // Z.ai Coding Plan (Global)
-    case 'zai-coding':
-      return createOpenAI({
-        apiKey,
-        baseURL: 'https://api.z.ai/api/coding/paas/v4',
-      })
-
-    // Z.ai Coding Plan (China)
-    case 'zai-coding-china':
-      return createOpenAI({
-        apiKey,
-        baseURL: 'https://open.bigmodel.cn/api/coding/paas/v4',
-      })
-
-    // Generic OpenAI-compatible provider (user-configured endpoint)
-    case 'openai-compatible':
-      return createOpenAI({
-        apiKey,
-        baseURL: providerConfig.base_url,
-      })
-
-    // Generic Anthropic-compatible provider (uses OpenAI SDK with Anthropic-style endpoint)
-    case 'anthropic-compatible':
-      return createOpenAI({
-        apiKey,
-        baseURL: providerConfig.base_url,
-      })
-
-    // Local provider (OpenAI-compatible, optional API key)
-    case 'local':
-      return createOpenAI({
-        apiKey: apiKey || 'local',
-        baseURL: providerConfig.base_url || 'http://localhost:8080/v1',
-      })
-
     case 'custom':
       return createOpenAI({
         apiKey,
         baseURL: providerConfig.base_url,
       })
 
+    // Z.ai providers
+    case 'zai':
+      return createOpenAI({
+        apiKey,
+        baseURL: 'https://api.z.ai/api/paas/v4',
+      })
+    case 'zai-china':
+      return createOpenAI({
+        apiKey,
+        baseURL: 'https://open.bigmodel.cn/api/paas/v4',
+      })
+    case 'zai-coding':
+      return createOpenAI({
+        apiKey,
+        baseURL: 'https://api.z.ai/api/coding/paas/v4',
+      })
+    case 'zai-coding-china':
+      return createOpenAI({
+        apiKey,
+        baseURL: 'https://open.bigmodel.cn/api/coding/paas/v4',
+      })
+
+    // Generic compatible providers
+    case 'openai-compatible':
+      return createOpenAI({
+        apiKey,
+        baseURL: providerConfig.base_url,
+      })
+    case 'anthropic-compatible':
+      return createOpenAI({
+        apiKey,
+        baseURL: providerConfig.base_url,
+      })
+    case 'local':
+      return createOpenAI({
+        apiKey: apiKey || 'local',
+        baseURL: providerConfig.base_url || 'http://localhost:8080/v1',
+      })
+
     default:
       throw new Error(`Unknown provider type: ${providerConfig.type}`)
   }
-}
-
-// Get the model instance, using .chat() for OpenAI-compatible providers
-function getModelInstance(provider: any, modelId: string, providerType: string) {
-  // Use Chat Completions API for OpenAI-compatible providers
-  if (OPENAI_CHAT_PROVIDERS.includes(providerType)) {
-    return provider.chat(modelId)
-  }
-  // Use default API for native providers (Anthropic, Google, OpenAI)
-  return provider(modelId)
 }
 
 // Define built-in tools
@@ -447,118 +395,9 @@ export function registerAIHandlers() {
         return
       }
 
-      // Get API key (some providers like ollama and local don't require one)
+      // Get API key
       const apiKey = await keychainService.getApiKey(params.providerId)
-      const noKeyRequired = ['ollama', 'local'].includes(providerConfig.type)
-
-      // Debug logging
-      console.log('[AI] Provider ID:', params.providerId)
-      console.log('[AI] Provider type:', providerConfig.type)
-      console.log('[AI] API key retrieved:', apiKey ? `${apiKey.substring(0, 10)}...` : 'null')
-
-      // BYPASS SDK FOR OPENROUTER - Direct API call
-      if (providerConfig.type === 'openrouter' && apiKey) {
-        console.log('[AI] Using DIRECT OpenRouter API (bypassing SDK)...')
-        const modelId = params.model || providerConfig.default_model
-        const mode: AgentMode = params.mode || 'auto'
-        let systemPrompt = getModeSystemPrompt(mode)
-        if (params.workspacePath) {
-          systemPrompt += `\n\nWorkspace: ${params.workspacePath}`
-        }
-
-        const messages = [
-          { role: 'system', content: systemPrompt },
-          ...params.messages.map((m: any) => ({
-            role: m.role,
-            content: m.content,
-          })),
-        ]
-
-        // Log everything we're sending
-        const requestBody = JSON.stringify({
-          model: modelId,
-          messages,
-          stream: true,
-        })
-
-        console.log('[AI] OpenRouter request model:', modelId)
-        console.log('[AI] OpenRouter API key length:', apiKey.length)
-
-        // Use Electron's net module instead of fetch
-        try {
-          const response = await new Promise<{ status: number; body: string }>((resolve, reject) => {
-            const request = net.request({
-              method: 'POST',
-              url: 'https://openrouter.ai/api/v1/chat/completions',
-            })
-
-            request.setHeader('Authorization', `Bearer ${apiKey}`)
-            request.setHeader('Content-Type', 'application/json')
-
-            let responseBody = ''
-            let statusCode = 0
-
-            request.on('response', (res) => {
-              statusCode = res.statusCode
-              console.log('[AI] net.request response status:', statusCode)
-              console.log('[AI] net.request response headers:', res.headers)
-
-              res.on('data', (chunk) => {
-                responseBody += chunk.toString()
-              })
-
-              res.on('end', () => {
-                resolve({ status: statusCode, body: responseBody })
-              })
-            })
-
-            request.on('error', (error) => {
-              reject(error)
-            })
-
-            request.write(requestBody)
-            request.end()
-          })
-
-          console.log('[AI] OpenRouter net.request status:', response.status)
-
-          if (response.status !== 200) {
-            console.log('[AI] OpenRouter error response:', response.body)
-            event.sender.send(`ai:error:${channelId}`, `OpenRouter error: ${response.status} - ${response.body}`)
-            return
-          }
-
-          // Parse streaming response
-          const lines = response.body.split('\n')
-          for (const line of lines) {
-            if (line.startsWith('data: ')) {
-              const data = line.slice(6)
-              if (data === '[DONE]') continue
-              try {
-                const parsed = JSON.parse(data)
-                const content = parsed.choices?.[0]?.delta?.content || parsed.choices?.[0]?.message?.content
-                if (content) {
-                  event.sender.send(`ai:chunk:${channelId}`, content)
-                }
-              } catch (e) {
-                // Ignore parse errors
-              }
-            }
-          }
-
-          event.sender.send(`ai:end:${channelId}`, {
-            usage: { promptTokens: 0, completionTokens: 0, totalTokens: 0 },
-            finishReason: 'stop',
-          })
-          return
-        } catch (e: any) {
-          console.log('[AI] OpenRouter net.request exception:', e.message)
-          event.sender.send(`ai:error:${channelId}`, `OpenRouter error: ${e.message}`)
-          return
-        }
-      }
-
-      if (!apiKey && !noKeyRequired) {
+      if (!apiKey && providerConfig.type !== 'ollama' && providerConfig.type !== 'local') {
         event.sender.send(`ai:error:${channelId}`, 'API key not found')
         return
       }
@@ -644,7 +483,7 @@ Use this as the base path for file operations. When reading, writing, or searchi
 
       // Stream the response with tools
       const result = await streamText({
-        model: getModelInstance(provider, modelId, providerConfig.type),
+        model: provider(modelId),
         messages,
         tools,
         maxSteps: 10, // Allow up to 10 tool calls
