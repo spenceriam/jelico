@@ -7,6 +7,23 @@ import { z } from 'zod'
 import { providerDb } from '../services/database'
 import { keychainService } from '../services/keychain'
 import { getModeSystemPrompt, type AgentMode } from '../lib/modes'
+import {
+  spawnSubAgent,
+  getSubAgentStatus,
+  waitForSubAgent,
+  getSubAgentsForStream,
+  getSubAgentsSummary,
+  continueSubAgent,
+  dismissSubAgent,
+  dismissAgentsForStream,
+  registerParentStream,
+  unregisterParentStream,
+  startOrphanCleanup,
+  heartbeatAgent,
+} from '../services/subagents'
+
+// Start orphan cleanup on module load
+startOrphanCleanup()
 
 // Store active streams for cancellation
 const activeStreams = new Map<string, AbortController>()
@@ -124,6 +141,12 @@ function getProviderInstance(providerConfig: any, apiKey: string) {
 // Define built-in tools
 function getBuiltInTools(
   mode: AgentMode,
+  streamContext: {
+    channelId: string
+    providerId: string
+    model: string
+    workspacePath?: string
+  },
   sendArtifact?: (artifact: any) => void,
   sendSpawnAgent?: (agent: any) => void,
   sendUpdateArtifact?: (update: { id: string; updates: any }) => void
@@ -134,12 +157,13 @@ function getBuiltInTools(
 
   const tools: Record<string, any> = {}
 
-  // Spawn sub-agent tool - for parallel task execution
+  // Spawn sub-agent tool - for parallel task execution (bi-directional)
   if (canSpawnAgents) {
     tools.spawn_agent = tool({
       description: `Spawn a background sub-agent to work on a task in parallel.
 Use this when you need to perform multiple independent tasks simultaneously, or when a task can be delegated while you continue with other work.
-The sub-agent will have access to the same tools and workspace context.`,
+The sub-agent runs independently and you can check its status or wait for results using get_agent_status or wait_for_agent.
+Returns an agent_id that you can use to track the agent.`,
       parameters: z.object({
         name: z.string().describe('A short name for the agent (e.g., "Test Runner", "Code Reviewer")'),
         task: z.string().describe('The detailed task description for the agent'),
@@ -148,10 +172,173 @@ The sub-agent will have access to the same tools and workspace context.`,
           .describe('The mode for the agent (defaults to auto)'),
       }),
       execute: async ({ name, task, mode: agentMode }) => {
+        // Spawn the sub-agent using the service
+        const agentId = await spawnSubAgent({
+          parentStreamId: streamContext.channelId,
+          name,
+          task,
+          mode: agentMode || 'auto',
+          providerId: streamContext.providerId,
+          model: streamContext.model,
+          workspacePath: streamContext.workspacePath,
+        })
+
+        // Notify the UI
         if (sendSpawnAgent) {
-          sendSpawnAgent({ name, task, mode: agentMode || 'auto' })
+          sendSpawnAgent({ id: agentId, name, task, mode: agentMode || 'auto' })
         }
-        return { success: true, message: `Agent "${name}" spawned to work on: ${task}` }
+
+        return {
+          success: true,
+          agent_id: agentId,
+          message: `Agent "${name}" spawned (ID: ${agentId}). Use get_agent_status or wait_for_agent to get results.`,
+        }
+      },
+    })
+
+    // Get sub-agent status - check on a spawned agent
+    tools.get_agent_status = tool({
+      description: `Check the status of a spawned sub-agent.
+Use this to see if the agent has completed, is waiting for input, or retrieve its result/progress.
+This is non-blocking - it returns immediately with the current state.
+If has_question is true, the agent is paused and waiting for you to respond using continue_agent.`,
+      parameters: z.object({
+        agent_id: z.string().describe('The ID of the agent to check (from spawn_agent result)'),
+      }),
+      execute: async ({ agent_id }) => {
+        const status = getSubAgentStatus(agent_id)
+
+        if (!status.found) {
+          return {
+            success: false,
+            error: `Agent not found: ${agent_id}. The agent may have been dismissed.`,
+          }
+        }
+
+        return {
+          success: true,
+          status: status.status,
+          is_complete: status.isComplete,
+          has_question: status.hasQuestion,
+          question: status.question?.question,
+          question_context: status.question?.context,
+          result: status.result,
+          progress: status.isComplete ? undefined : status.progress,
+          error: status.error,
+        }
+      },
+    })
+
+    // Wait for sub-agent completion or question - blocking wait
+    tools.wait_for_agent = tool({
+      description: `Wait for a spawned sub-agent to complete OR pause with a question.
+This blocks until the agent finishes (completes, fails) OR needs clarification.
+If has_question is true, respond using continue_agent to keep the agent working.`,
+      parameters: z.object({
+        agent_id: z.string().describe('The ID of the agent to wait for (from spawn_agent result)'),
+        timeout_seconds: z.number().optional().describe('Maximum seconds to wait (default: 60)'),
+      }),
+      execute: async ({ agent_id, timeout_seconds }) => {
+        const timeoutMs = (timeout_seconds || 60) * 1000
+        const result = await waitForSubAgent(agent_id, timeoutMs)
+
+        if (result.timedOut) {
+          return {
+            success: false,
+            timed_out: true,
+            error: `Agent did not respond within ${timeout_seconds || 60} seconds`,
+          }
+        }
+
+        if (result.hasQuestion) {
+          return {
+            success: true,
+            has_question: true,
+            question: result.question?.question,
+            question_context: result.question?.context,
+            message: 'Agent is waiting for your response. Use continue_agent to provide clarification.',
+          }
+        }
+
+        return {
+          success: result.success,
+          result: result.result,
+          error: result.error,
+        }
+      },
+    })
+
+    // Continue a sub-agent with feedback or answer to question
+    tools.continue_agent = tool({
+      description: `Continue a sub-agent that is waiting for input OR provide feedback to improve results.
+Use this when:
+1. An agent asked a question (has_question=true) - provide your answer
+2. Results were unsatisfactory - provide feedback for the agent to continue working
+The agent will continue with its preserved memory context.`,
+      parameters: z.object({
+        agent_id: z.string().describe('The ID of the agent to continue'),
+        response: z.string().describe('Your response, clarification, or feedback for the agent'),
+      }),
+      execute: async ({ agent_id, response }) => {
+        const result = await continueSubAgent(agent_id, response)
+
+        if (!result.success) {
+          return {
+            success: false,
+            error: result.error,
+          }
+        }
+
+        return {
+          success: true,
+          message: `Agent will continue with your feedback. Use wait_for_agent to get the result.`,
+        }
+      },
+    })
+
+    // Dismiss a sub-agent and clear its memory
+    tools.dismiss_agent = tool({
+      description: `Dismiss a sub-agent and clear its memory.
+Use this when you no longer need an agent's results or to free up resources.
+The agent will be stopped if running and its conversation memory will be cleared.`,
+      parameters: z.object({
+        agent_id: z.string().describe('The ID of the agent to dismiss'),
+      }),
+      execute: async ({ agent_id }) => {
+        const result = dismissSubAgent(agent_id)
+
+        if (!result.success) {
+          return {
+            success: false,
+            error: result.error,
+          }
+        }
+
+        return {
+          success: true,
+          message: 'Agent dismissed and memory cleared.',
+        }
+      },
+    })
+
+    // Get summary of all sub-agents for this conversation
+    tools.get_agents_summary = tool({
+      description: `Get a summary of all sub-agents spawned in this conversation.
+Shows the status and results of all your sub-agents at once.
+Useful for reviewing what work has been done by sub-agents.`,
+      parameters: z.object({}),
+      execute: async () => {
+        const agents = getSubAgentsForStream(streamContext.channelId)
+        const summary = getSubAgentsSummary(streamContext.channelId)
+
+        return {
+          success: true,
+          agent_count: agents.length,
+          completed: agents.filter(a => a.status === 'completed').length,
+          running: agents.filter(a => a.status === 'running').length,
+          failed: agents.filter(a => a.status === 'failed').length,
+          summary,
+        }
       },
     })
   }
@@ -447,6 +634,9 @@ export function registerAIHandlers() {
     const abortController = new AbortController()
     activeStreams.set(channelId, abortController)
 
+    // Register this stream as active (for sub-agent orphan detection)
+    registerParentStream(channelId)
+
     try {
       // Get provider config
       const providerConfig = providerDb.get(params.providerId)
@@ -507,7 +697,13 @@ When the user asks to modify, update, fix, or improve an existing artifact, use 
       }
 
       // Get tools based on mode
-      const tools = getBuiltInTools(mode, sendArtifact, sendSpawnAgent, sendUpdateArtifact)
+      const streamContext = {
+        channelId,
+        providerId: params.providerId,
+        model: modelId,
+        workspacePath: params.workspacePath,
+      }
+      const tools = getBuiltInTools(mode, streamContext, sendArtifact, sendSpawnAgent, sendUpdateArtifact)
 
       // Build messages (without system prompt - we pass it separately to streamText)
       const messages = params.messages.map((m: any) => {
@@ -680,6 +876,16 @@ When the user asks to modify, update, fix, or improve an existing artifact, use 
       }
     } finally {
       activeStreams.delete(channelId)
+
+      // Unregister parent stream - sub-agents get grace period before cleanup
+      unregisterParentStream(channelId)
+
+      // Dismiss completed sub-agents for this stream
+      // Running/waiting agents get grace period via orphan cleanup
+      const dismissed = dismissAgentsForStream(channelId)
+      if (dismissed > 0) {
+        console.log(`[AI] Dismissed ${dismissed} completed sub-agent(s) for ended stream`)
+      }
     }
   })
 
@@ -689,6 +895,15 @@ When the user asks to modify, update, fix, or improve an existing artifact, use 
     if (controller) {
       controller.abort()
       activeStreams.delete(channelId)
+    }
+
+    // Unregister parent stream
+    unregisterParentStream(channelId)
+
+    // Dismiss completed sub-agents - running ones get grace period
+    const dismissed = dismissAgentsForStream(channelId)
+    if (dismissed > 0) {
+      console.log(`[AI] Dismissed ${dismissed} sub-agent(s) for stopped stream`)
     }
   })
 }

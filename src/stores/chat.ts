@@ -356,9 +356,10 @@ export const useChatStore = create<ChatStore>((set, get) => ({
       }
     })
 
-    // Handle spawn agent requests
+    // Handle spawn agent events (agents run in main process, frontend just tracks for display)
     window.jelico.ai.onSpawnAgent(channelId, (agent) => {
-      useAgentStore.getState().spawnAgent({
+      useAgentStore.getState().addAgent({
+        id: agent.id,
         name: agent.name,
         task: agent.task,
         mode: agent.mode,

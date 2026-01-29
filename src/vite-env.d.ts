@@ -227,8 +227,8 @@ interface ToolDefinition {
 }
 
 interface ToolCallEvent {
-  toolCallId: string
-  toolName: string
+  id: string
+  name: string
   args: Record<string, unknown>
 }
 
@@ -245,6 +245,7 @@ interface ArtifactEvent {
 }
 
 interface SpawnAgentEvent {
+  id: string
   name: string
   task: string
   mode: 'auto' | 'explore' | 'execute' | 'plan' | 'review'
