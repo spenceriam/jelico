@@ -59,6 +59,7 @@ interface Window {
       onToolCallUpdate: (channelId: string, callback: (update: ToolCallUpdateEvent) => void) => void
       onArtifact: (channelId: string, callback: (artifact: ArtifactEvent) => void) => void
       onSpawnAgent: (channelId: string, callback: (agent: SpawnAgentEvent) => void) => void
+      onAgentProgress: (channelId: string, callback: (update: AgentProgressEvent) => void) => void
       onUpdateArtifact: (channelId: string, callback: (update: ArtifactUpdateEvent) => void) => void
       stopStream: (channelId: string) => void
       removeListeners: (channelId: string) => void
@@ -263,6 +264,14 @@ interface SpawnAgentEvent {
   name: string
   task: string
   mode: 'auto' | 'explore' | 'execute' | 'plan' | 'review'
+}
+
+interface AgentProgressEvent {
+  agentId: string
+  status: string
+  progress?: string
+  result?: string
+  error?: string
 }
 
 interface ArtifactUpdateEvent {

@@ -20,6 +20,7 @@ import {
   unregisterParentStream,
   startOrphanCleanup,
   heartbeatAgent,
+  setGlobalProgressCallback,
 } from '../services/subagents'
 
 // Start orphan cleanup on module load
@@ -661,6 +662,20 @@ export function registerAIHandlers() {
     // Register this stream as active (for sub-agent orphan detection)
     registerParentStream(channelId)
 
+    // Set up progress callback to forward agent updates to frontend
+    setGlobalProgressCallback((agentId, agent) => {
+      // Only forward if this agent belongs to this stream
+      if (agent.parentStreamId === channelId) {
+        event.sender.send(`ai:agentProgress:${channelId}`, {
+          agentId,
+          status: agent.status,
+          progress: agent.progress?.slice(-200), // Last 200 chars of progress
+          result: agent.result?.slice(-500), // Last 500 chars of result
+          error: agent.error,
+        })
+      }
+    })
+
     try {
       // Get provider config
       const providerConfig = providerDb.get(params.providerId)
@@ -999,6 +1014,9 @@ When the user asks to modify, update, fix, or improve an existing artifact, use 
       }
     } finally {
       activeStreams.delete(channelId)
+
+      // Clear global progress callback
+      setGlobalProgressCallback(null)
 
       // Unregister parent stream - sub-agents get grace period before cleanup
       unregisterParentStream(channelId)

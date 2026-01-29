@@ -83,6 +83,17 @@ const agentAbortControllers = new Map<string, AbortController>()
 type ProgressCallback = (agentId: string, agent: SubAgentRecord) => void
 const progressListeners = new Map<string, Set<ProgressCallback>>()
 
+// Global progress callback for IPC forwarding
+type GlobalProgressCallback = (agentId: string, agent: SubAgentRecord) => void
+let globalProgressCallback: GlobalProgressCallback | null = null
+
+/**
+ * Set global progress callback for IPC forwarding
+ */
+export function setGlobalProgressCallback(callback: GlobalProgressCallback | null) {
+  globalProgressCallback = callback
+}
+
 // Track active parent streams (for orphan detection)
 const activeParentStreams = new Set<string>()
 
@@ -873,6 +884,7 @@ export function getSubAgentsSummary(parentStreamId: string): string {
 
 // Progress notification helpers
 function notifyProgress(agentId: string, agent: SubAgentRecord) {
+  // Notify per-agent listeners
   const listeners = progressListeners.get(agentId)
   if (listeners) {
     for (const listener of listeners) {
@@ -881,6 +893,15 @@ function notifyProgress(agentId: string, agent: SubAgentRecord) {
       } catch (e) {
         console.error('Error in progress listener:', e)
       }
+    }
+  }
+
+  // Notify global callback for IPC forwarding
+  if (globalProgressCallback) {
+    try {
+      globalProgressCallback(agentId, agent)
+    } catch (e) {
+      console.error('Error in global progress callback:', e)
     }
   }
 }

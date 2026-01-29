@@ -5,6 +5,7 @@ import { useWorkspaceStore } from './workspaces'
 import { useAgentStore } from './agents'
 import { useSkillStore } from './skills'
 import { useContextStore } from './context'
+import { useSandboxStore } from './sandbox'
 
 export interface MessageUsage {
   promptTokens: number
@@ -390,6 +391,17 @@ export const useChatStore = create<ChatStore>((set, get) => ({
       })
     })
 
+    // Handle agent progress updates
+    window.jelico.ai.onAgentProgress(channelId, (update) => {
+      useAgentStore.getState().updateAgent(update.agentId, {
+        status: update.status as any,
+        progress: update.progress,
+        result: update.result,
+        error: update.error,
+        completedAt: update.status === 'completed' || update.status === 'failed' ? Date.now() : undefined,
+      })
+    })
+
     // Handle stream end
     window.jelico.ai.onStreamEnd(channelId, async (stats) => {
       window.jelico.ai.removeListeners(channelId)
@@ -572,6 +584,14 @@ export const useChatStore = create<ChatStore>((set, get) => ({
     try {
       // Delete artifacts for this conversation
       await useArtifactStore.getState().clearConversationArtifacts(id)
+
+      // Clear sandbox files for this conversation (ignore errors - sandbox may not exist)
+      try {
+        await useSandboxStore.getState().clearSandbox(id)
+      } catch {
+        // Sandbox may not exist for this conversation - that's OK
+      }
+
       await window.jelico.conversations.delete(id)
       const conversations = await window.jelico.conversations.list()
       const { activeConversationId } = get()
