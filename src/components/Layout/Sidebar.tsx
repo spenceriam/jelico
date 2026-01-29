@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Plus, Settings, Trash2, FileCode, FileText, Presentation, Image, ChevronDown, ChevronRight } from 'lucide-react'
+import { Plus, Settings, Trash2, FileCode, FileText, Presentation, Image, ChevronDown, ChevronRight, File } from 'lucide-react'
 import { useChatStore } from '../../stores/chat'
 import { useUIStore } from '../../stores/ui'
 import { useArtifactStore, type ArtifactType } from '../../stores/artifacts'
@@ -11,6 +11,9 @@ const ARTIFACT_ICONS: Record<ArtifactType, React.ComponentType<{ className?: str
   svg: Image,
   mermaid: Image,
 }
+
+// Fallback icon for unknown artifact types
+const DEFAULT_ARTIFACT_ICON = File
 
 export function Sidebar() {
   const { conversations, activeConversationId, setActiveConversation, deleteConversation } = useChatStore()
@@ -108,7 +111,7 @@ export function Sidebar() {
           {artifactsExpanded && (
             <div className="px-3 pb-2 max-h-48 overflow-y-auto">
               {conversationArtifacts.map((artifact) => {
-                const Icon = ARTIFACT_ICONS[artifact.type]
+                const Icon = ARTIFACT_ICONS[artifact.type] || DEFAULT_ARTIFACT_ICON
                 return (
                   <button
                     key={artifact.id}

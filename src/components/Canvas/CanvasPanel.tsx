@@ -1,4 +1,4 @@
-import { X, FileCode, FileText, Image, Presentation, ChevronLeft, ChevronRight, ChevronDown } from 'lucide-react'
+import { X, FileCode, FileText, Image, Presentation, ChevronLeft, ChevronRight, ChevronDown, File } from 'lucide-react'
 import { useState, useRef, useEffect } from 'react'
 import { useArtifactStore, type Artifact, type ArtifactType } from '../../stores/artifacts'
 import { useChatStore } from '../../stores/chat'
@@ -15,6 +15,9 @@ const TYPE_ICONS: Record<ArtifactType, React.ComponentType<{ className?: string 
   mermaid: Image,
 }
 
+// Fallback icon for unknown artifact types
+const DEFAULT_TYPE_ICON = File
+
 const TYPE_LABELS: Record<ArtifactType, string> = {
   code: 'Code',
   document: 'Document',
@@ -22,6 +25,9 @@ const TYPE_LABELS: Record<ArtifactType, string> = {
   svg: 'SVG',
   mermaid: 'Diagram',
 }
+
+// Fallback label for unknown artifact types
+const DEFAULT_TYPE_LABEL = 'Unknown'
 
 export function CanvasPanel() {
   const {
@@ -77,7 +83,7 @@ export function CanvasPanel() {
           {selectedArtifact && (
             <>
               {(() => {
-                const Icon = TYPE_ICONS[selectedArtifact.type]
+                const Icon = TYPE_ICONS[selectedArtifact.type] || DEFAULT_TYPE_ICON
                 return <Icon className="w-5 h-5 text-accent" />
               })()}
               <button
@@ -89,7 +95,7 @@ export function CanvasPanel() {
                     {selectedArtifact.title}
                   </h3>
                   <span className="text-xs text-text-muted">
-                    {TYPE_LABELS[selectedArtifact.type]}
+                    {TYPE_LABELS[selectedArtifact.type] || DEFAULT_TYPE_LABEL}
                   </span>
                 </div>
                 {conversationArtifacts.length > 1 && (
@@ -101,7 +107,7 @@ export function CanvasPanel() {
               {dropdownOpen && conversationArtifacts.length > 1 && (
                 <div className="absolute top-full left-0 mt-1 w-64 bg-bg-elevated border border-border rounded-lg shadow-lg z-50 max-h-64 overflow-y-auto">
                   {conversationArtifacts.map((artifact) => {
-                    const Icon = TYPE_ICONS[artifact.type]
+                    const Icon = TYPE_ICONS[artifact.type] || DEFAULT_TYPE_ICON
                     return (
                       <button
                         key={artifact.id}
@@ -116,7 +122,7 @@ export function CanvasPanel() {
                         <Icon className="w-4 h-4 text-text-muted flex-shrink-0" />
                         <div className="flex-1 min-w-0">
                           <div className="text-sm text-text-primary truncate">{artifact.title}</div>
-                          <div className="text-xs text-text-muted">{TYPE_LABELS[artifact.type]}</div>
+                          <div className="text-xs text-text-muted">{TYPE_LABELS[artifact.type] || DEFAULT_TYPE_LABEL}</div>
                         </div>
                       </button>
                     )

@@ -21,6 +21,23 @@ export interface ChangelogEntry {
 
 export const changelog: ChangelogEntry[] = [
   {
+    version: '0.3.2',
+    date: '2026-01-29',
+    changes: {
+      fixed: [
+        'Async tool call display - tools now show immediately when triggered instead of after completion',
+        'Multi-step tool calling - AI can now execute up to 10 tool call steps instead of stopping early',
+        'Undefined text appearing in chat stream during tool call processing',
+        'Execute command failures on Windows - improved shell handling and working directory',
+        'React crash caused by undefined icon components for unknown artifact types',
+      ],
+      added: [
+        'OS environment context - Jelico now detects OS and suggests appropriate terminal commands',
+        'Tool call status lifecycle display (starting, executing, complete, error)',
+      ],
+    },
+  },
+  {
     version: '0.3.1',
     date: '2026-01-27',
     changes: {
