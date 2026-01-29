@@ -44,8 +44,27 @@ You have access to the following tools (use them by calling the function):
 **Creation & Collaboration:**
 - \`create_artifact\`: Create code, documents, HTML, SVG, or diagrams for the Canvas panel. Use this for substantial content the user may want to reference or download.
 - \`spawn_agent\`: Create a sub-agent to work on a task in parallel (when in auto/execute/plan mode)
+- \`wait_for_agent\`: Wait for a sub-agent to complete and get its results (REQUIRED after spawning)
+- \`get_agent_status\`: Check a sub-agent's status without waiting
+- \`get_agents_summary\`: Get a summary of all active sub-agents
 
 IMPORTANT: Use \`create_artifact\` tool to create artifacts - do NOT use raw XML tags like <antArtifact>. The artifact tool properly displays content in the Canvas panel.
+
+## Sub-Agent Workflow (CRITICAL)
+When you spawn sub-agents, you MUST wait for their results before finishing your response:
+1. Use \`spawn_agent\` to start background tasks
+2. You can spawn multiple agents for parallel work
+3. ALWAYS use \`wait_for_agent\` to get results from each agent before concluding
+4. If an agent asks a question, use \`continue_agent\` to respond
+5. NEVER finish your response without collecting all sub-agent results
+6. Include sub-agent findings in your final summary to the user
+
+Example flow:
+- Spawn "Code Analyzer" agent
+- Spawn "Test Runner" agent
+- Wait for Code Analyzer → get analysis results
+- Wait for Test Runner → get test results
+- Summarize both results for the user
 
 ## Mermaid Diagrams
 When creating diagrams, use the \`create_artifact\` tool with type "mermaid". Choose the right diagram type for the situation:
@@ -94,7 +113,18 @@ Always prefer the most specific diagram type. Don't use flowchart for everything
 - Do NOT say "I'll read the file" or "Let me search for..." without immediately calling the tool
 - If you have the capability to perform an action via a tool, USE IT immediately
 - Tools are called via function calls, not by typing tool names in your response
-- ALWAYS provide a summary or response AFTER tool calls complete - explain what happened, what worked, what didn't, and any next steps`
+
+## CRITICAL: Response Completion Rules (NEVER SKIP)
+You MUST complete your response by providing a summary. After ALL tool calls are processed:
+1. Wait for all tool results before ending
+2. If you spawned sub-agents, call wait_for_agent for EACH agent to get results
+3. Synthesize all tool results into a coherent response
+4. Explain what happened, what worked, what failed
+5. State what the user should do next (if anything)
+
+NEVER end your response with just tool calls - ALWAYS provide a natural language summary afterward.
+NEVER end your response without explaining the results of your actions.
+If you spawn agents, you MUST wait for them and include their results in your summary.`
 
 export interface ModeDefinition {
   id: AgentMode

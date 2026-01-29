@@ -191,7 +191,7 @@ Returns an agent_id that you can use to track the agent.`,
         return {
           success: true,
           agent_id: agentId,
-          message: `Agent "${name}" spawned (ID: ${agentId}). Use get_agent_status or wait_for_agent to get results.`,
+          message: `Agent "${name}" spawned successfully. IMPORTANT: You MUST call wait_for_agent with this agent_id to get the results before finishing your response. Do not end without waiting.`,
         }
       },
     })
@@ -941,11 +941,31 @@ When the user asks to modify, update, fix, or improve an existing artifact, use 
       const usage = await result.usage
       const finishReason = await result.finishReason
 
+      // Parse usage if it's a string (some providers return stringified JSON)
+      let usageObj: any = usage
+      if (typeof usage === 'string') {
+        try {
+          usageObj = JSON.parse(usage)
+          console.log('[AI] Parsed stringified usage:', usageObj)
+        } catch {
+          console.warn('[AI] Failed to parse usage string:', usage)
+          usageObj = {}
+        }
+      }
+
       // AI SDK v6 uses inputTokens/outputTokens, map to promptTokens/completionTokens
       // Some providers also use promptTokens/completionTokens, so check both
-      const promptTokens = (usage as any)?.promptTokens || (usage as any)?.inputTokens || 0
-      const completionTokens = (usage as any)?.completionTokens || (usage as any)?.outputTokens || 0
+      const promptTokens = usageObj?.promptTokens || usageObj?.inputTokens || 0
+      const completionTokens = usageObj?.completionTokens || usageObj?.outputTokens || 0
       const totalTokens = promptTokens + completionTokens
+
+      // Check for running sub-agents that weren't waited for
+      const activeAgents = getSubAgentsForStream(channelId)
+      const runningAgents = activeAgents.filter(a => a.status === 'running' || a.status === 'pending')
+      if (runningAgents.length > 0) {
+        console.warn('[AI] WARNING: Stream ended with running sub-agents that were not waited for:',
+          runningAgents.map(a => `${a.name} (${a.status})`))
+      }
 
       // Log full usage object for debugging
       console.log('[AI] Stream completed:', {
@@ -953,6 +973,7 @@ When the user asks to modify, update, fix, or improve an existing artifact, use 
         promptTokens,
         completionTokens,
         totalTokens,
+        runningSubAgents: runningAgents.length,
       })
 
       // Signal completion with stats
