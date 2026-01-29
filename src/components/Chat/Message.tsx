@@ -4,6 +4,7 @@ import remarkGfm from 'remark-gfm'
 import { User, Bot, Copy, Check } from 'lucide-react'
 import { ToolCallDisplay } from './ToolCallDisplay'
 import { MessageActions } from './MessageActions'
+import { MermaidInline } from '../Canvas/MermaidViewer'
 import type { ToolCall, ToolResult, MessageUsage } from '../../stores/chat'
 
 interface MessageProps {
@@ -111,6 +112,7 @@ export function Message({
               code: ({ node, className, children, ...props }) => {
                 const match = /language-(\w+)/.exec(className || '')
                 const isInline = !match
+                const codeContent = String(children).replace(/\n$/, '')
 
                 if (isInline) {
                   return (
@@ -123,8 +125,15 @@ export function Message({
                   )
                 }
 
+                // Render mermaid diagrams inline
+                if (match && match[1] === 'mermaid') {
+                  return (
+                    <MermaidInline content={codeContent} className="my-4" />
+                  )
+                }
+
                 return (
-                  <div className="relative group">
+                  <div className="relative group my-4">
                     <div className="absolute top-2 right-2 text-xs text-text-muted">
                       {match[1]}
                     </div>

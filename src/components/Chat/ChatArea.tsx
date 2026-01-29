@@ -84,7 +84,7 @@ export function ChatArea() {
           {contextUsage && contextUsage.tokenCount > 0 && (
             <div className="mb-3">
               <div className="flex items-center justify-between text-xs text-text-muted mb-1">
-                <span>Context: {contextUsage.tokenCount.toLocaleString()} / {contextUsage.maxTokens.toLocaleString()} tokens</span>
+                <span>{contextUsage.tokenCount.toLocaleString()} / {contextUsage.maxTokens.toLocaleString()} tokens</span>
                 <span>{Math.round(contextUsage.percentage * 100)}%</span>
               </div>
               <div className="h-1 bg-bg-deep rounded-full overflow-hidden">

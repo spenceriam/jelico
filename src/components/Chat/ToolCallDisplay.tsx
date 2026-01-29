@@ -174,11 +174,40 @@ export function ToolCallDisplay({ toolCalls, toolResults = [], isStreaming }: To
   // Map results by toolCallId for easy lookup
   const resultsMap = new Map(toolResults.map(r => [r.toolCallId, r]))
 
+  // Count completed vs pending
+  const completedCount = toolCalls.filter(tc => resultsMap.has(tc.id)).length
+  const pendingCount = toolCalls.length - completedCount
+  const allComplete = pendingCount === 0
+
+  // Get current action description
+  const pendingTools = toolCalls.filter(tc => !resultsMap.has(tc.id))
+  const currentAction = pendingTools.length > 0
+    ? TOOL_LABELS[pendingTools[0].name] || pendingTools[0].name
+    : null
+
   return (
     <div className="space-y-2 my-3">
-      <div className="text-xs text-text-muted uppercase tracking-wider">
-        Tool Calls ({toolCalls.length})
+      {/* Header with status */}
+      <div className="flex items-center justify-between">
+        <div className="text-xs text-text-muted uppercase tracking-wider">
+          {isStreaming && !allComplete ? (
+            <span className="flex items-center gap-2">
+              <Loader2 className="w-3 h-3 animate-spin text-accent" />
+              <span className="text-accent">{currentAction}</span>
+              {pendingCount > 1 && <span className="text-text-muted">+{pendingCount - 1} more</span>}
+            </span>
+          ) : (
+            <span>Actions ({completedCount}/{toolCalls.length})</span>
+          )}
+        </div>
+        {allComplete && (
+          <span className="text-xs text-success flex items-center gap-1">
+            <CheckCircle className="w-3 h-3" />
+            Complete
+          </span>
+        )}
       </div>
+
       {toolCalls.map((toolCall, index) => (
         <SingleToolCall
           key={toolCall.id || `tool-${index}`}

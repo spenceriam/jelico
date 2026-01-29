@@ -5,6 +5,7 @@ import { useChatStore } from '../../stores/chat'
 import { CodeViewer } from './CodeViewer'
 import { DocumentViewer } from './DocumentViewer'
 import { HtmlViewer } from './HtmlViewer'
+import { MermaidViewer } from './MermaidViewer'
 
 const TYPE_ICONS: Record<ArtifactType, React.ComponentType<{ className?: string }>> = {
   code: FileCode,
@@ -217,9 +218,8 @@ function ArtifactContent({ artifact }: { artifact: Artifact }) {
         </div>
       )
     case 'mermaid':
-      // Mermaid would need a library to render - for now show code
       return (
-        <CodeViewer code={artifact.content} language="mermaid" title={artifact.title} />
+        <MermaidViewer content={artifact.content} title={artifact.title} />
       )
     default:
       return (
