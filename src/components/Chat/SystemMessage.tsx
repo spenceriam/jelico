@@ -80,7 +80,7 @@ export function SystemMessage({ type, message, artifacts, modelName }: SystemMes
   }
 
   return (
-    <div className="flex justify-center my-3">
+    <div className="my-3">
       <div className="flex items-center gap-2 px-3 py-1.5 text-xs font-medium italic text-accent">
         {getIcon()}
         <span>{getContent()}</span>

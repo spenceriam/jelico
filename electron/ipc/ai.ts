@@ -941,34 +941,27 @@ When the user asks to modify, update, fix, or improve an existing artifact, use 
       const usage = await result.usage
       const finishReason = await result.finishReason
 
+      // AI SDK v6 uses inputTokens/outputTokens, map to promptTokens/completionTokens
+      // Some providers also use promptTokens/completionTokens, so check both
+      const promptTokens = (usage as any)?.promptTokens || (usage as any)?.inputTokens || 0
+      const completionTokens = (usage as any)?.completionTokens || (usage as any)?.outputTokens || 0
+      const totalTokens = promptTokens + completionTokens
+
       // Log full usage object for debugging
       console.log('[AI] Stream completed:', {
         finishReason,
-        usage: usage ? JSON.stringify(usage) : 'undefined',
-        promptTokens: usage?.promptTokens,
-        completionTokens: usage?.completionTokens,
+        promptTokens,
+        completionTokens,
+        totalTokens,
       })
-
-      // If no usage from provider, log a warning (OpenRouter should include it)
-      if (!usage || (!usage.promptTokens && !usage.completionTokens)) {
-        console.warn('[AI] No usage stats from provider. This may be a provider limitation or format issue.')
-        console.warn('[AI] For OpenRouter, ensure the model supports usage reporting.')
-      }
-
-      // Warn if model finished without using any tools when tools were available
-      if (finishReason === 'stop' && Object.keys(tools).length > 0) {
-        console.warn('[AI] WARNING: Model finished with finishReason=stop but tools were available.')
-        console.warn('[AI] This may indicate the model is not properly using function calling.')
-        console.warn('[AI] Consider trying a different model that supports tool use (e.g., Claude, GPT-4).')
-      }
 
       // Signal completion with stats
       if (!abortController.signal.aborted) {
         event.sender.send(`ai:end:${channelId}`, {
           usage: {
-            promptTokens: usage?.promptTokens || 0,
-            completionTokens: usage?.completionTokens || 0,
-            totalTokens: (usage?.promptTokens || 0) + (usage?.completionTokens || 0),
+            promptTokens,
+            completionTokens,
+            totalTokens,
           },
           finishReason,
         })

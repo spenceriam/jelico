@@ -1,20 +1,51 @@
 import { useState } from 'react'
 import { Copy, Check, RefreshCw, Zap, Hash } from 'lucide-react'
-import type { MessageUsage } from '../../stores/chat'
+import type { MessageUsage, ToolCall, ToolResult } from '../../stores/chat'
 
 interface MessageActionsProps {
   content: string
+  toolCalls?: ToolCall[]
+  toolResults?: ToolResult[]
   usage?: MessageUsage
   onRegenerate?: () => void
   isRegenerating?: boolean
 }
 
-export function MessageActions({ content, usage, onRegenerate, isRegenerating }: MessageActionsProps) {
+/**
+ * Format tool calls and results for copying
+ */
+function formatToolCallsForCopy(toolCalls?: ToolCall[], toolResults?: ToolResult[]): string {
+  if (!toolCalls || toolCalls.length === 0) return ''
+
+  const resultsMap = new Map(toolResults?.map(r => [r.toolCallId, r]) || [])
+
+  let output = '\n\n---\nTool Calls:\n'
+
+  for (const tc of toolCalls) {
+    output += `\n[${tc.name}]\n`
+    output += `Arguments: ${JSON.stringify(tc.args, null, 2)}\n`
+
+    const result = resultsMap.get(tc.id)
+    if (result) {
+      const resultStr = typeof result.result === 'object'
+        ? JSON.stringify(result.result, null, 2)
+        : String(result.result)
+      output += `Result: ${resultStr}\n`
+    }
+  }
+
+  return output
+}
+
+export function MessageActions({ content, toolCalls, toolResults, usage, onRegenerate, isRegenerating }: MessageActionsProps) {
   const [copied, setCopied] = useState(false)
 
   const handleCopy = async () => {
     try {
-      await navigator.clipboard.writeText(content)
+      // Include tool calls in the copy if present
+      const toolCallsText = formatToolCallsForCopy(toolCalls, toolResults)
+      const fullContent = content + toolCallsText
+      await navigator.clipboard.writeText(fullContent)
       setCopied(true)
       setTimeout(() => setCopied(false), 2000)
     } catch (err) {

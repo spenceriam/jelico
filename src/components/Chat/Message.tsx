@@ -202,6 +202,8 @@ export function Message({
           {isAssistant && !isStreaming && isLastAssistantMessage && (
             <MessageActions
               content={message.content}
+              toolCalls={toolCalls}
+              toolResults={toolResults}
               usage={message.usage}
               onRegenerate={onRegenerate}
               isRegenerating={isRegenerating}
