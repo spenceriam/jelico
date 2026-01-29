@@ -254,9 +254,21 @@ export async function spawnSubAgent(params: {
 /**
  * Run a sub-agent (internal)
  */
-// Create provider client (duplicated from ai.ts to avoid circular dependency)
+/**
+ * Create provider client
+ *
+ * Provider types map to API structures:
+ * - anthropic: Anthropic native API
+ * - openai: OpenAI native API
+ * - google: Google Generative AI API
+ * - Everything else: OpenAI-compatible API (with baseURL override)
+ *
+ * OpenAI-compatible includes: openrouter, ollama, zai, custom, local, etc.
+ * All use the same createOpenAI() with different baseURL.
+ */
 function getProviderClient(providerConfig: any, apiKey: string | null) {
   switch (providerConfig.type) {
+    // Native APIs
     case 'anthropic':
       return createAnthropic({ apiKey: apiKey || '' })
     case 'openai':
@@ -266,6 +278,8 @@ function getProviderClient(providerConfig: any, apiKey: string | null) {
       })
     case 'google':
       return createGoogleGenerativeAI({ apiKey: apiKey || '' })
+
+    // OpenAI-compatible APIs (all use createOpenAI with baseURL)
     case 'openrouter':
       return createOpenAI({
         apiKey: apiKey || '',
@@ -280,6 +294,30 @@ function getProviderClient(providerConfig: any, apiKey: string | null) {
         apiKey: 'ollama',
         baseURL: providerConfig.base_url || 'http://localhost:11434/v1',
       })
+
+    // Z.ai providers (OpenAI-compatible)
+    case 'zai':
+      return createOpenAI({
+        apiKey: apiKey || '',
+        baseURL: 'https://api.z.ai/api/paas/v4',
+      })
+    case 'zai-china':
+      return createOpenAI({
+        apiKey: apiKey || '',
+        baseURL: 'https://open.bigmodel.cn/api/paas/v4',
+      })
+    case 'zai-coding':
+      return createOpenAI({
+        apiKey: apiKey || '',
+        baseURL: 'https://api.z.ai/api/coding/paas/v4',
+      })
+    case 'zai-coding-china':
+      return createOpenAI({
+        apiKey: apiKey || '',
+        baseURL: 'https://open.bigmodel.cn/api/coding/paas/v4',
+      })
+
+    // Generic compatible providers
     case 'custom':
     case 'openai-compatible':
     case 'anthropic-compatible':
@@ -288,7 +326,16 @@ function getProviderClient(providerConfig: any, apiKey: string | null) {
         apiKey: apiKey || 'local',
         baseURL: providerConfig.base_url || 'http://localhost:8080/v1',
       })
+
     default:
+      // Fallback: treat unknown as OpenAI-compatible if it has a base_url
+      if (providerConfig.base_url) {
+        console.warn(`[SubAgents] Unknown provider type '${providerConfig.type}', treating as OpenAI-compatible`)
+        return createOpenAI({
+          apiKey: apiKey || '',
+          baseURL: providerConfig.base_url,
+        })
+      }
       throw new Error(`Unknown provider type: ${providerConfig.type}`)
   }
 }
@@ -384,8 +431,11 @@ async function runSubAgent(agentId: string): Promise<void> {
 
   try {
     // Stream response
+    // IMPORTANT: Use .chat() to get Chat Completions API endpoint
+    // Using client(model) defaults to Responses API which doesn't support
+    // tool calling on most providers (OpenRouter, Ollama, Z.ai, etc.)
     const response = await streamText({
-      model: client(agent.model),
+      model: client.chat(agent.model),
       messages: agent.messages,
       abortSignal: abortController.signal,
     })

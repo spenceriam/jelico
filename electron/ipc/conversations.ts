@@ -21,6 +21,8 @@ function toMessageApi(row: any) {
     conversationId: row.conversation_id,
     role: row.role,
     content: row.content,
+    toolCalls: row.tool_calls,
+    toolResults: row.tool_results,
     createdAt: row.created_at,
   }
 }
@@ -54,8 +56,20 @@ export function registerConversationHandlers() {
     const message = messageDb.add(convId, {
       role: messageInput.role,
       content: messageInput.content,
+      toolCalls: messageInput.toolCalls,
+      toolResults: messageInput.toolResults,
     })
     return toMessageApi(message)
+  })
+
+  // Update a message (for adding tool calls/results)
+  ipcMain.handle('conversations:updateMessage', async (_, messageId: string, updates: any) => {
+    const message = messageDb.update(messageId, {
+      content: updates.content,
+      toolCalls: updates.toolCalls,
+      toolResults: updates.toolResults,
+    })
+    return message ? toMessageApi(message) : null
   })
 
   // Update conversation title

@@ -22,6 +22,7 @@ interface Window {
       get: (id: string) => Promise<Conversation | null>
       create: (conversation: ConversationInput) => Promise<Conversation>
       addMessage: (convId: string, message: MessageInput) => Promise<Message>
+      updateMessage: (messageId: string, updates: Partial<MessageInput>) => Promise<Message | null>
       updateTitle: (id: string, title: string) => Promise<void>
       delete: (id: string) => Promise<void>
     }
@@ -187,6 +188,8 @@ interface Message {
   role: 'user' | 'assistant' | 'system'
   content: string
   attachments?: MessageAttachmentData[]
+  toolCalls?: ToolCallEvent[]
+  toolResults?: ToolResultEvent[]
   createdAt: number
 }
 
@@ -201,6 +204,8 @@ interface MessageAttachmentData {
 interface MessageInput {
   role: Message['role']
   content: string
+  toolCalls?: ToolCallEvent[]
+  toolResults?: ToolResultEvent[]
 }
 
 interface StreamParams {

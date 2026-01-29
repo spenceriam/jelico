@@ -45,6 +45,8 @@ export function registerCompactionHandlers() {
       }
 
       // Convert database messages to compaction format
+      // Note: Tool calls/results are intentionally NOT included - compaction summarizes
+      // the conversation to save tokens, and tool details are verbose
       const messages = (conversation.messages || []).map(m => ({
         id: m.id,
         role: m.role as 'user' | 'assistant' | 'system' | 'tool',
@@ -88,23 +90,30 @@ export function registerCompactionHandlers() {
         })
       }
 
-      // Build new message history
+      // Build new message history (must use snake_case for database)
       const newMessages: any[] = []
 
       // Add summary as system message
       if (result.summary) {
         newMessages.push({
           id: `compaction-summary-${Date.now()}`,
-          conversationId: params.conversationId,
+          conversation_id: params.conversationId,
           role: 'system',
           content: `## Session Context (Compacted)\n\nThe following is a summary of the previous conversation:\n\n${result.summary}`,
-          createdAt: Date.now(),
+          created_at: Date.now(),
         })
       }
 
-      // Add retained messages
+      // Add retained messages (convert from compaction format to DB format)
+      // Note: Tool calls are NOT preserved through compaction - they're summarized in the text
       if (result.retainedMessages) {
-        newMessages.push(...result.retainedMessages)
+        newMessages.push(...result.retainedMessages.map(m => ({
+          id: m.id,
+          conversation_id: params.conversationId,
+          role: m.role,
+          content: m.content,
+          created_at: m.createdAt,
+        })))
       }
 
       // Update conversation in database with new messages
@@ -157,6 +166,7 @@ export function registerCompactionHandlers() {
       return { success: false, error: 'Conversation not found' }
     }
 
+    // Convert to compaction format - tool calls NOT included, they're summarized in text
     const messages = (conversation.messages || []).map(m => ({
       id: m.id,
       role: m.role as 'user' | 'assistant' | 'system' | 'tool',

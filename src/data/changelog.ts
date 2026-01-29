@@ -21,6 +21,19 @@ export interface ChangelogEntry {
 
 export const changelog: ChangelogEntry[] = [
   {
+    version: '0.3.5',
+    date: '2026-01-29',
+    changes: {
+      fixed: [
+        'Tool calls and results now persist to database - conversation reload preserves full tool history',
+        'Compaction message format mismatch - fixed data corruption during context compaction',
+      ],
+      added: [
+        'Message update API for modifying existing messages',
+      ],
+    },
+  },
+  {
     version: '0.3.4',
     date: '2026-01-29',
     changes: {

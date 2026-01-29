@@ -315,6 +315,8 @@ export const messageDb = {
       conversation_id: conversationId,
       role: message.role,
       content: message.content,
+      tool_calls: message.toolCalls,
+      tool_results: message.toolResults,
       created_at: now,
     }
 
@@ -325,6 +327,19 @@ export const messageDb = {
 
     saveDb()
     return record
+  },
+
+  // Update an existing message (for adding tool calls/results after creation)
+  update(id: string, updates: Partial<MessageInput>): MessageRow | null {
+    const message = db.messages.find(m => m.id === id)
+    if (!message) return null
+
+    if (updates.content !== undefined) message.content = updates.content
+    if (updates.toolCalls !== undefined) message.tool_calls = updates.toolCalls
+    if (updates.toolResults !== undefined) message.tool_results = updates.toolResults
+
+    saveDb()
+    return message
   },
 
   getByConversation(conversationId: string): MessageRow[] {
@@ -371,17 +386,34 @@ interface ConversationInput {
   workspaceId?: string
 }
 
+interface ToolCallRow {
+  id: string
+  name: string
+  args: Record<string, unknown>
+  status?: 'starting' | 'executing' | 'complete' | 'error'
+}
+
+interface ToolResultRow {
+  toolCallId: string
+  result: unknown
+  error?: string
+}
+
 interface MessageRow {
   id: string
   conversation_id: string
   role: string
   content: string
+  tool_calls?: ToolCallRow[]
+  tool_results?: ToolResultRow[]
   created_at: number
 }
 
 interface MessageInput {
   role: string
   content: string
+  toolCalls?: ToolCallRow[]
+  toolResults?: ToolResultRow[]
 }
 
 interface WorkspaceRow {

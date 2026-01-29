@@ -414,19 +414,19 @@ export const useChatStore = create<ChatStore>((set, get) => ({
           }
         }
 
-        // Save assistant message - even if content is empty (tool-only responses)
+        // Save assistant message with tool calls/results - even if content is empty
         const assistantMessage = await window.jelico.conversations.addMessage(conversationId!, {
           role: 'assistant',
           content: fullContent || '(Used tools)', // Ensure non-empty for DB
+          toolCalls: streamingToolCalls.length > 0 ? streamingToolCalls : undefined,
+          toolResults: streamingToolResults.length > 0 ? streamingToolResults : undefined,
         })
 
-        // Attach tool calls/results and usage to the message object for display
+        // Attach usage to the message object for display
         // Restore original content (could be empty) for display
         const messageWithTools: Message = {
           ...assistantMessage,
           content: fullContent, // Keep original empty if it was empty
-          toolCalls: streamingToolCalls.length > 0 ? streamingToolCalls : undefined,
-          toolResults: streamingToolResults.length > 0 ? streamingToolResults : undefined,
           usage,
         }
 

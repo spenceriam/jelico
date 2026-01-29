@@ -1,5 +1,67 @@
 # AGENTS.md
 
+## Purpose of Jelico
+
+**What Jelico IS:**
+
+Jelico is a local-first AI desktop assistant. A native app where you chat with AI, and the AI can actually DO things - read your files, run commands, create code artifacts, and learn your preferences over time.
+
+**Core Baseline Features (what users actually do):**
+
+1. **Chat** - User sends a message → AI streams a response. Multi-turn conversations persisted to local database. Switch between conversations in the sidebar.
+
+2. **Tool Calling** - AI executes tools during responses:
+   - `read_file` - Read any file content
+   - `write_file` - Create/update files
+   - `list_directory` - Explore folder structure
+   - `search_files` - Find files by pattern
+   - `execute_command` - Run terminal commands
+   - `create_artifact` / `update_artifact` - Create visual outputs
+   - Tool calls are displayed in real-time and persisted with messages
+
+3. **Artifacts** - AI creates persistent outputs shown in the Canvas panel:
+   - Code (syntax highlighted, downloadable)
+   - Documents (markdown rendered)
+   - HTML (sandboxed preview)
+   - SVG (rendered visually)
+   - Mermaid diagrams (flowcharts, sequences, etc.)
+   - Artifacts persist per-conversation and survive reload
+
+4. **Memory System** - Facts and context stored across scopes:
+   - Global memories (apply everywhere)
+   - Workspace memories (apply to specific project)
+   - Conversation memories (apply to specific chat)
+   - Used to maintain context the AI should "remember"
+
+5. **Soul System** - Learns user patterns over time:
+   - Patterns: Observed behaviors (coding style, preferences)
+   - Corrections: Mistakes the AI made and how to fix them
+   - Preferences: User-stated likes/dislikes
+   - Confidence scores decay if not reinforced
+   - **CRITICAL**: Soul context should be injected into every AI prompt
+
+6. **Workspaces** - Project folder context:
+   - Select a folder as active workspace
+   - AI knows the workspace path for file operations
+   - Git branch awareness
+   - Sandbox mode for no-workspace experimentation
+
+7. **Multi-Provider** - Use any AI provider:
+   - Anthropic, OpenAI, Google, OpenRouter, Ollama, local models
+   - API keys stored securely in OS keychain
+   - Switch providers/models per conversation
+
+8. **Context Compaction** - When context window fills:
+   - Summarize old messages to free tokens
+   - Preserve recent messages intact
+   - Tool call outcomes summarized (not raw JSON)
+
+**What Makes Jelico Different:**
+
+The Soul/Memory system should make Jelico increasingly personalized - it learns YOUR coding style, YOUR preferences, YOUR common mistakes. Every conversation teaches it to help YOU better.
+
+**Current Status:** Soul/Memory systems exist but need verification that they're properly injected into AI prompts.
+
 ## Setup commands
 - Install dependencies: `npm install`
 - Start development server: `npm run dev` (Vite + Electron, check ports 5173/5174)
@@ -9,7 +71,7 @@
 ## Project overview
 Jelico is an AI Productivity Desktop built with Electron, React, TypeScript, and Vite. It provides a frictionless AI assistant experience with multi-provider support (Anthropic, OpenAI, Google), workspace management, conversation persistence, and a soul/memory system that learns user patterns and preferences over time.
 
-**Current Version:** 0.3.4
+**Current Version:** 0.3.5
 
 ## Development workflow discipline
 - **CRITICAL**: NEVER commit or push changes without explicit user approval
@@ -217,6 +279,20 @@ The soul system enables Jelico to learn and remember:
 - **Corrections**: Mistakes and their corrections for learning
 
 Pattern categories: `coding_style`, `communication`, `mistake`, `preference`, `workflow`
+
+## Tool calls and context management
+
+**Tool Call Persistence:**
+- Tool calls and results are saved to the database with each message
+- When reloading a conversation, full tool history is preserved
+- Uses AI SDK's normalized format (works with all providers)
+
+**Context Compaction:**
+- Compaction summarizes conversation to save tokens when context window fills
+- Tool calls are NOT preserved through compaction (too verbose)
+- Instead, the TEXT content describes what tools did
+- This allows AI to know "we tried X and it failed" without the full JSON
+- Design principle: Summarize outcomes, not raw tool data
 
 ## Greeting system
 
