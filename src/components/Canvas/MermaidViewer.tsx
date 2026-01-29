@@ -77,41 +77,8 @@ export function MermaidViewer({ content, title }: MermaidViewerProps) {
     URL.revokeObjectURL(url)
   }
 
-  const handleDownloadPng = async () => {
-    if (!svgContent) return
-
-    // Create an image from SVG
-    const img = new Image()
-    const svgBlob = new Blob([svgContent], { type: 'image/svg+xml' })
-    const url = URL.createObjectURL(svgBlob)
-
-    img.onload = () => {
-      const canvas = document.createElement('canvas')
-      const scale = 2 // Higher resolution
-      canvas.width = img.width * scale
-      canvas.height = img.height * scale
-      const ctx = canvas.getContext('2d')
-      if (ctx) {
-        ctx.scale(scale, scale)
-        ctx.fillStyle = '#0d0d10'
-        ctx.fillRect(0, 0, canvas.width, canvas.height)
-        ctx.drawImage(img, 0, 0)
-
-        canvas.toBlob((blob) => {
-          if (blob) {
-            const pngUrl = URL.createObjectURL(blob)
-            const a = document.createElement('a')
-            a.href = pngUrl
-            a.download = `${title || 'diagram'}.png`
-            a.click()
-            URL.revokeObjectURL(pngUrl)
-          }
-        }, 'image/png')
-      }
-      URL.revokeObjectURL(url)
-    }
-    img.src = url
-  }
+  // Note: PNG download removed - SVG is sufficient for now
+  // Can be re-added when PNG export button is added to UI
 
   return (
     <div className="h-full flex flex-col">

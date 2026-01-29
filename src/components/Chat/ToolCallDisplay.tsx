@@ -15,31 +15,52 @@ interface ToolCallDisplayProps {
 }
 
 const TOOL_LABELS: Record<string, string> = {
+  // File operations
   read_file: 'Read File',
+  write_file: 'Write File',
   list_directory: 'List Directory',
   search_files: 'Search Files',
-  write_file: 'Write File',
+  // Execution
   execute_command: 'Execute Command',
+  // Web
   web_search: 'Web Search',
   web_fetch: 'Fetch URL',
+  // Artifacts
   create_artifact: 'Create Artifact',
+  update_artifact: 'Update Artifact',
+  // Sub-agents
   spawn_agent: 'Spawn Agent',
+  get_agent_status: 'Check Agent',
+  wait_for_agent: 'Wait for Agent',
+  continue_agent: 'Continue Agent',
+  dismiss_agent: 'Dismiss Agent',
+  get_agents_summary: 'Agents Summary',
 }
 
 function formatToolArgs(args: Record<string, unknown> | undefined | null): string {
   // Handle undefined/null args
   if (!args || typeof args !== 'object') return '(no arguments)'
 
-  // Show the primary argument nicely
+  // Show the primary argument nicely based on tool type
   if (args.path) return String(args.path)
   if (args.command) return String(args.command)
   if (args.query) return String(args.query)
   if (args.url) return String(args.url)
   if (args.title) return String(args.title)
+  // Agent-related: show name and task preview
+  if (args.name && args.task) return `${args.name}: ${String(args.task).slice(0, 40)}${String(args.task).length > 40 ? '...' : ''}`
   if (args.name) return String(args.name)
+  // Agent ID for status/wait/continue/dismiss
+  if (args.agent_id) return `Agent: ${String(args.agent_id).slice(0, 8)}...`
+  // Task description
   if (args.task) return String(args.task).slice(0, 50) + (String(args.task).length > 50 ? '...' : '')
+  // Response for continue_agent
+  if (args.response) return `"${String(args.response).slice(0, 40)}${String(args.response).length > 40 ? '...' : ''}"`
+  // File patterns
   if (args.pattern) return `${args.directory || '.'}/${args.pattern}`
+  // Content preview
   if (args.content) return `${String(args.content).slice(0, 30)}...`
+  // Artifact type
   if (args.type) return String(args.type)
 
   // Fallback to JSON
@@ -50,24 +71,34 @@ function formatToolArgs(args: Record<string, unknown> | undefined | null): strin
 function formatToolResult(result: unknown): { content: string; isError: boolean } {
   if (typeof result === 'object' && result !== null) {
     const obj = result as Record<string, unknown>
+
+    // Handle errors
     if (obj.success === false) {
       return {
         content: String(obj.error || 'Unknown error'),
         isError: true
       }
     }
+
+    // File content
     if (obj.content) {
       return { content: String(obj.content), isError: false }
     }
+
+    // Directory listing
     if (obj.items && Array.isArray(obj.items)) {
       return {
         content: obj.items.map((i: any) => `${i.type === 'directory' ? '[dir]' : '[file]'} ${i.name}`).join('\n'),
         isError: false
       }
     }
+
+    // File search results
     if (obj.files && Array.isArray(obj.files)) {
       return { content: obj.files.join('\n'), isError: false }
     }
+
+    // Command output
     if (obj.stdout !== undefined || obj.stderr !== undefined) {
       const out = String(obj.stdout || '')
       const err = String(obj.stderr || '')
@@ -76,6 +107,54 @@ function formatToolResult(result: unknown): { content: string; isError: boolean 
         isError: obj.success === false
       }
     }
+
+    // Agent spawn result
+    if (obj.agent_id) {
+      return {
+        content: `Agent ID: ${obj.agent_id}\n${obj.message || ''}`,
+        isError: false
+      }
+    }
+
+    // Agent status result
+    if (obj.status !== undefined && obj.is_complete !== undefined) {
+      let statusInfo = `Status: ${obj.status}`
+      if (obj.has_question) {
+        statusInfo += `\n[Question] ${obj.question || 'Waiting for input'}`
+        if (obj.question_context) statusInfo += `\nContext: ${obj.question_context}`
+      }
+      if (obj.result) statusInfo += `\n\nResult:\n${typeof obj.result === 'string' ? obj.result : JSON.stringify(obj.result, null, 2)}`
+      if (obj.progress) statusInfo += `\n\nProgress:\n${obj.progress}`
+      return { content: statusInfo, isError: false }
+    }
+
+    // Agents summary
+    if (obj.agent_count !== undefined) {
+      return {
+        content: `Total: ${obj.agent_count} | Running: ${obj.running || 0} | Completed: ${obj.completed || 0} | Failed: ${obj.failed || 0}\n\n${obj.summary || ''}`,
+        isError: false
+      }
+    }
+
+    // Web search results
+    if (obj.results && typeof obj.results === 'object') {
+      const r = obj.results as any
+      let searchInfo = ''
+      if (r.abstract) searchInfo += `${r.abstract}\n\nSource: ${r.abstractSource || 'Unknown'}\n`
+      if (r.answer) searchInfo += `Answer: ${r.answer}\n`
+      if (r.relatedTopics?.length) {
+        searchInfo += '\nRelated:\n' + r.relatedTopics.map((t: any) => `• ${t.text}`).join('\n')
+      }
+      if (r.message) searchInfo = r.message
+      return { content: searchInfo || JSON.stringify(r, null, 2), isError: false }
+    }
+
+    // Artifact created/updated
+    if (obj.message && String(obj.message).includes('Artifact')) {
+      return { content: String(obj.message), isError: false }
+    }
+
+    // Default: pretty JSON
     return { content: JSON.stringify(result, null, 2), isError: false }
   }
   return { content: String(result), isError: false }
@@ -96,7 +175,15 @@ function SingleToolCall({
 
   const hasResult = result !== undefined
   const formattedResult = hasResult ? formatToolResult(result.result) : null
-  const isPending = !hasResult && isStreaming
+
+  // Use explicit status if available, otherwise infer from result presence
+  const status = toolCall.status || (hasResult ? 'complete' : (isStreaming ? 'executing' : 'complete'))
+  const isInProgress = status === 'starting' || status === 'executing'
+
+  // Status text for display
+  const statusText = status === 'starting' ? 'Starting...' :
+                     status === 'executing' ? 'Running...' :
+                     status === 'error' ? 'Error' : ''
 
   return (
     <div className="border border-border rounded-lg overflow-hidden bg-bg-deep">
@@ -114,19 +201,19 @@ function SingleToolCall({
         <span className="text-sm font-medium text-accent">{label}</span>
 
         <span className="text-xs text-text-muted truncate flex-1 font-mono">
-          {argDisplay}
+          {argDisplay || statusText}
         </span>
 
         {/* Status indicator */}
-        {isPending && (
+        {isInProgress && (
           <Loader2 className="w-4 h-4 text-accent animate-spin flex-shrink-0" />
         )}
         {hasResult && !formattedResult?.isError && (
           <CheckCircle className="w-4 h-4 text-green-500 flex-shrink-0" />
         )}
-        {hasResult && formattedResult?.isError && (
+        {(hasResult && formattedResult?.isError) || status === 'error' ? (
           <XCircle className="w-4 h-4 text-error flex-shrink-0" />
-        )}
+        ) : null}
       </button>
 
       {/* Expanded content */}
@@ -154,11 +241,11 @@ function SingleToolCall({
             </div>
           )}
 
-          {isPending && (
+          {isInProgress && (
             <div className="px-3 py-2 border-t border-border">
               <div className="text-xs text-text-muted flex items-center gap-2">
                 <Loader2 className="w-3 h-3 animate-spin" />
-                Executing...
+                {status === 'starting' ? 'Starting...' : 'Running...'}
               </div>
             </div>
           )}

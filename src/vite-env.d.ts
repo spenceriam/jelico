@@ -55,6 +55,7 @@ interface Window {
       onStreamError: (channelId: string, callback: (error: string) => void) => void
       onToolCalls: (channelId: string, callback: (toolCalls: ToolCallEvent[]) => void) => void
       onToolResults: (channelId: string, callback: (toolResults: ToolResultEvent[]) => void) => void
+      onToolCallUpdate: (channelId: string, callback: (update: ToolCallUpdateEvent) => void) => void
       onArtifact: (channelId: string, callback: (artifact: ArtifactEvent) => void) => void
       onSpawnAgent: (channelId: string, callback: (agent: SpawnAgentEvent) => void) => void
       onUpdateArtifact: (channelId: string, callback: (update: ArtifactUpdateEvent) => void) => void
@@ -145,7 +146,7 @@ interface Window {
 
 interface ProviderConfig {
   id: string
-  type: 'anthropic' | 'openai' | 'google' | 'ollama' | 'openrouter' | 'custom'
+  type: 'anthropic' | 'openai' | 'google' | 'ollama' | 'openrouter' | 'custom' | 'local' | 'zai' | 'zai-china' | 'zai-coding' | 'zai-coding-china' | 'openai-compatible' | 'anthropic-compatible'
   name: string
   baseUrl?: string
   defaultModel: string
@@ -230,6 +231,14 @@ interface ToolCallEvent {
   id: string
   name: string
   args: Record<string, unknown>
+  status?: 'starting' | 'executing' | 'complete' | 'error'
+}
+
+interface ToolCallUpdateEvent {
+  id: string
+  name: string
+  args: Record<string, unknown>
+  status: 'starting' | 'executing' | 'complete' | 'error'
 }
 
 interface ToolResultEvent {

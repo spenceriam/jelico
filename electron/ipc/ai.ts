@@ -1,5 +1,5 @@
 import { ipcMain } from 'electron'
-import { streamText, tool } from 'ai'
+import { streamText, tool, stepCountIs } from 'ai'
 import { createAnthropic } from '@ai-sdk/anthropic'
 import { createOpenAI } from '@ai-sdk/openai'
 import { createGoogleGenerativeAI } from '@ai-sdk/google'
@@ -603,20 +603,44 @@ Use this to read documentation, articles, or any web page content.`,
           const { exec } = await import('child_process')
           const { promisify } = await import('util')
           const execAsync = promisify(exec)
+
+          // Use workspace path or fallback to home directory (not process.cwd() which may be app directory)
+          const workingDir = cwd || streamContext.workspacePath || process.env.HOME || process.cwd()
+
+          console.log('[Tool:execute_command] Running:', command)
+          console.log('[Tool:execute_command] CWD:', workingDir)
+
           const result = await execAsync(command, {
-            cwd: cwd || process.cwd(),
+            cwd: workingDir,
             timeout: 60000, // 1 minute timeout
             maxBuffer: 10 * 1024 * 1024, // 10MB buffer
+            shell: process.platform === 'win32' ? 'cmd.exe' : '/bin/bash',
+            env: { ...process.env }, // Pass through environment
           })
+
+          console.log('[Tool:execute_command] Success, stdout length:', result.stdout?.length || 0)
+
           return {
             success: true,
             stdout: result.stdout,
             stderr: result.stderr,
           }
         } catch (error: any) {
+          // Capture detailed error info
+          console.error('[Tool:execute_command] Error:', {
+            message: error.message,
+            code: error.code,
+            signal: error.signal,
+            killed: error.killed,
+            stdout: error.stdout?.slice(0, 200),
+            stderr: error.stderr?.slice(0, 200),
+          })
+
           return {
             success: false,
             error: error.message,
+            code: error.code,
+            signal: error.signal,
             stdout: error.stdout || '',
             stderr: error.stderr || '',
           }
@@ -798,53 +822,109 @@ When the user asks to modify, update, fix, or improve an existing artifact, use 
         messages,
         tools,
         toolChoice: 'auto', // Explicitly set to ensure tools are offered
-        maxSteps: 10, // Allow up to 10 tool calls
+        stopWhen: stepCountIs(10), // Allow up to 10 tool call steps (AI SDK v6 uses stopWhen instead of maxSteps)
         abortSignal: abortController.signal,
         onStepFinish: ({ toolCalls, toolResults, text, finishReason }) => {
+          // Log step completion for debugging
+          // Note: Tool calls/results are now sent via fullStream events for async display
           console.log('[AI] Step finished:', {
             finishReason,
             toolCallCount: toolCalls?.length || 0,
             toolResultCount: toolResults?.length || 0,
             textLength: text?.length || 0,
           })
-          // Send tool call updates to renderer
-          if (toolCalls && toolCalls.length > 0) {
-            // AI SDK uses 'input' for arguments, not 'args'
-            const formattedToolCalls = toolCalls.map((tc: any) => ({
-              id: tc.toolCallId,
-              name: tc.toolName,
-              args: tc.input || tc.args || {},  // AI SDK v6 uses 'input'
-            }))
-            console.log('[AI] Tool calls:', formattedToolCalls.map(tc => ({ name: tc.name, args: tc.args })))
-            event.sender.send(`ai:toolCalls:${channelId}`, formattedToolCalls)
-          }
-          if (toolResults && toolResults.length > 0) {
-            // AI SDK uses 'output' for results, not 'result'
-            const formattedToolResults = toolResults.map((tr: any) => ({
-              toolCallId: tr.toolCallId,
-              result: tr.output || tr.result,  // AI SDK v6 uses 'output'
-            }))
-            console.log('[AI] Tool results:', formattedToolResults.map(tr => ({ id: tr.toolCallId, success: tr.result?.success })))
-            event.sender.send(`ai:toolResults:${channelId}`, formattedToolResults)
-          }
         },
       })
 
-      // Send chunks as they arrive
-      for await (const chunk of result.textStream) {
+      // Use fullStream to get both text AND tool call events as they happen
+      // This enables async display of tool calls BEFORE they complete
+      const pendingToolCalls = new Map<string, { name: string; args: Record<string, unknown> }>()
+
+      for await (const part of result.fullStream) {
         if (abortController.signal.aborted) break
-        event.sender.send(`ai:chunk:${channelId}`, chunk)
+
+        switch (part.type) {
+          case 'text-delta':
+            // Regular text chunk
+            event.sender.send(`ai:chunk:${channelId}`, part.textDelta)
+            break
+
+          case 'tool-call-streaming-start':
+            // Tool call is STARTING - show immediately in UI
+            console.log('[AI] Tool call starting:', part.toolName)
+            pendingToolCalls.set(part.toolCallId, { name: part.toolName, args: {} })
+            // Send initial tool call info to UI
+            event.sender.send(`ai:toolCalls:${channelId}`, [{
+              id: part.toolCallId,
+              name: part.toolName,
+              args: {}, // Args not yet known
+              status: 'starting',
+            }])
+            break
+
+          case 'tool-call-delta':
+            // Arguments being built - could update UI with partial args
+            // For now, just track it
+            break
+
+          case 'tool-call':
+            // Tool call complete with full args - update UI
+            // AI SDK uses 'input' for the arguments property
+            const toolArgs = (part as any).input || (part as any).args || {}
+            console.log('[AI] Tool call ready:', part.toolName, toolArgs)
+            pendingToolCalls.set(part.toolCallId, { name: part.toolName, args: toolArgs })
+            // Update tool call with full args
+            event.sender.send(`ai:toolCallUpdate:${channelId}`, {
+              id: part.toolCallId,
+              name: part.toolName,
+              args: toolArgs,
+              status: 'executing',
+            })
+            break
+
+          case 'tool-result':
+            // Tool execution complete - send result
+            // AI SDK uses 'output' or 'result' depending on version
+            const toolResult = (part as any).output || (part as any).result
+            console.log('[AI] Tool result:', part.toolCallId, toolResult)
+            event.sender.send(`ai:toolResults:${channelId}`, [{
+              toolCallId: part.toolCallId,
+              result: toolResult,
+            }])
+            break
+
+          // Other events we might care about
+          case 'step-start':
+            console.log('[AI] Step starting:', part.messageId)
+            break
+
+          case 'step-finish':
+            console.log('[AI] Step finished:', part.finishReason)
+            break
+
+          case 'error':
+            console.error('[AI] Stream error:', part.error)
+            break
+        }
       }
 
       // Get usage stats
       const usage = await result.usage
       const finishReason = await result.finishReason
 
+      // Log full usage object for debugging
       console.log('[AI] Stream completed:', {
         finishReason,
+        usage: usage ? JSON.stringify(usage) : 'undefined',
         promptTokens: usage?.promptTokens,
         completionTokens: usage?.completionTokens,
       })
+
+      // If no usage from provider, log a warning (OpenRouter should include it)
+      if (!usage || (!usage.promptTokens && !usage.completionTokens)) {
+        console.warn('[AI] No usage stats from provider. This may be a provider limitation or format issue.')
+        console.warn('[AI] For OpenRouter, ensure the model supports usage reporting.')
+      }
 
       // Warn if model finished without using any tools when tools were available
       if (finishReason === 'stop' && Object.keys(tools).length > 0) {

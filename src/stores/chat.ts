@@ -38,6 +38,7 @@ export interface ToolCall {
   id: string
   name: string
   args: Record<string, unknown>
+  status?: 'starting' | 'executing' | 'complete' | 'error'
 }
 
 export interface ToolResult {
@@ -319,6 +320,18 @@ export const useChatStore = create<ChatStore>((set, get) => ({
       }))
     })
 
+    // Handle tool call updates - updates status and args for existing tool calls
+    window.jelico.ai.onToolCallUpdate(channelId, (update) => {
+      console.log('[Chat Store] Tool call update:', update)
+      set((state) => ({
+        streamingToolCalls: state.streamingToolCalls.map((tc) =>
+          tc.id === update.id
+            ? { ...tc, args: update.args, status: update.status }
+            : tc
+        ),
+      }))
+    })
+
     // Track artifacts created during this stream
     const createdArtifacts: Array<{ id: string; title: string; type: string }> = []
 
@@ -403,9 +416,19 @@ export const useChatStore = create<ChatStore>((set, get) => ({
         usage,
       }
 
-      // Update context window token count
-      if (usage?.totalTokens && conversationId) {
+      console.log('[Chat Store] Final message:', {
+        content: fullContent?.slice(0, 100),
+        toolCallCount: streamingToolCalls.length,
+        toolResultCount: streamingToolResults.length,
+        hasUsage: !!usage,
+      })
+
+      // Update context window token count from actual usage
+      if (conversationId && usage?.totalTokens) {
         useContextStore.getState().updateTokenCount(conversationId, usage.totalTokens)
+      } else if (conversationId) {
+        // Log when no usage stats received - need to investigate provider
+        console.warn('[Chat Store] No usage stats received from provider - context tracking disabled for this message')
       }
 
       set((state) => ({
