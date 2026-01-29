@@ -318,9 +318,17 @@ export const useChatStore = create<ChatStore>((set, get) => ({
     // Handle tool results - ai.ts now sends pre-formatted { toolCallId, result }
     window.jelico.ai.onToolResults(channelId, (toolResults) => {
       console.log('[Chat Store] Received tool results:', toolResults)
-      set((state) => ({
-        streamingToolResults: [...state.streamingToolResults, ...toolResults],
-      }))
+      set((state) => {
+        // Update tool call statuses to 'complete' when their results arrive
+        const completedIds = new Set(toolResults.map(r => r.toolCallId))
+        const updatedToolCalls = state.streamingToolCalls.map((tc) =>
+          completedIds.has(tc.id) ? { ...tc, status: 'complete' as const } : tc
+        )
+        return {
+          streamingToolCalls: updatedToolCalls,
+          streamingToolResults: [...state.streamingToolResults, ...toolResults],
+        }
+      })
     })
 
     // Handle tool call updates - updates status and args for existing tool calls
@@ -552,7 +560,12 @@ export const useChatStore = create<ChatStore>((set, get) => ({
       window.jelico.ai.removeListeners(currentStreamChannelId)
       currentStreamChannelId = null
     }
-    set({ isStreaming: false, streamingContent: '' })
+    set({
+      isStreaming: false,
+      streamingContent: '',
+      streamingToolCalls: [],
+      streamingToolResults: [],
+    })
   },
 
   deleteConversation: async (id) => {

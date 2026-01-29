@@ -21,6 +21,16 @@ export interface ChangelogEntry {
 
 export const changelog: ChangelogEntry[] = [
   {
+    version: '0.3.4',
+    date: '2026-01-29',
+    changes: {
+      fixed: [
+        'Tool call status now correctly updates to complete when result arrives',
+        'Stop streaming now properly clears tool call and result state',
+      ],
+    },
+  },
+  {
     version: '0.3.3',
     date: '2026-01-29',
     changes: {
