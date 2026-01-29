@@ -5,7 +5,7 @@ import { WorkspaceSelector } from '../Workspace/WorkspaceSelector'
 import { ModelSelector } from '../Model/ModelSelector'
 
 export function Header() {
-  const { openSettings } = useUIStore()
+  const { openSettings, sidebarCollapsed } = useUIStore()
   const { artifacts, canvasOpen, toggleCanvas } = useArtifactStore()
 
   return (
@@ -35,14 +35,16 @@ export function Header() {
           )}
         </button>
 
-        {/* Settings button */}
-        <button
-          onClick={() => openSettings()}
-          className="p-2 text-text-muted hover:text-text-primary hover:bg-bg-surface rounded-md transition-colors"
-          title="Settings"
-        >
-          <Settings className="w-5 h-5" />
-        </button>
+        {/* Settings button - only show when sidebar is collapsed (sidebar has its own settings) */}
+        {sidebarCollapsed && (
+          <button
+            onClick={() => openSettings()}
+            className="p-2 text-text-muted hover:text-text-primary hover:bg-bg-surface rounded-md transition-colors"
+            title="Settings"
+          >
+            <Settings className="w-5 h-5" />
+          </button>
+        )}
       </div>
     </header>
   )

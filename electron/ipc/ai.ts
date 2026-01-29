@@ -881,25 +881,41 @@ When the user asks to modify, update, fix, or improve an existing artifact, use 
             break
 
           case 'tool-call':
-            // Tool call complete with full args - update UI
+            // Tool call complete with full args
             // AI SDK uses 'input' for the arguments property
             const toolArgs = (part as any).input || (part as any).args || {}
             console.log('[AI] Tool call ready:', part.toolName, toolArgs)
+
+            // Check if we already sent this tool call via streaming-start
+            const existingCall = pendingToolCalls.get(part.toolCallId)
             pendingToolCalls.set(part.toolCallId, { name: part.toolName, args: toolArgs })
-            // Update tool call with full args
-            event.sender.send(`ai:toolCallUpdate:${channelId}`, {
-              id: part.toolCallId,
-              name: part.toolName,
-              args: toolArgs,
-              status: 'executing',
-            })
+
+            if (existingCall) {
+              // Update existing tool call with full args
+              event.sender.send(`ai:toolCallUpdate:${channelId}`, {
+                id: part.toolCallId,
+                name: part.toolName,
+                args: toolArgs,
+                status: 'executing',
+              })
+            } else {
+              // No streaming-start event - send as new tool call
+              // This happens with some providers that don't support streaming tool calls
+              console.log('[AI] Tool call without streaming-start, sending as new')
+              event.sender.send(`ai:toolCalls:${channelId}`, [{
+                id: part.toolCallId,
+                name: part.toolName,
+                args: toolArgs,
+                status: 'executing',
+              }])
+            }
             break
 
           case 'tool-result':
             // Tool execution complete - send result
             // AI SDK uses 'output' or 'result' depending on version
             const toolResult = (part as any).output || (part as any).result
-            console.log('[AI] Tool result:', part.toolCallId, toolResult)
+            console.log('[AI] Tool result:', part.toolCallId, typeof toolResult === 'object' ? JSON.stringify(toolResult).slice(0, 100) : toolResult)
             event.sender.send(`ai:toolResults:${channelId}`, [{
               toolCallId: part.toolCallId,
               result: toolResult,
@@ -908,11 +924,11 @@ When the user asks to modify, update, fix, or improve an existing artifact, use 
 
           // Other events we might care about
           case 'step-start':
-            console.log('[AI] Step starting:', part.messageId)
+            console.log('[AI] Step starting')
             break
 
           case 'step-finish':
-            console.log('[AI] Step finished:', part.finishReason)
+            console.log('[AI] Step finished:', part.finishReason, 'isContinued:', (part as any).isContinued)
             break
 
           case 'error':

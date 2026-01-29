@@ -19,12 +19,26 @@ export function Sidebar() {
   const { conversations, activeConversationId, setActiveConversation, deleteConversation } = useChatStore()
   const { sidebarCollapsed, openSettings } = useUIStore()
   const { artifacts, selectArtifact, openCanvas } = useArtifactStore()
-  const [artifactsExpanded, setArtifactsExpanded] = useState(true)
+  // Track which conversations have their artifact trees expanded
+  const [expandedConversations, setExpandedConversations] = useState<Set<string>>(new Set())
 
-  // Filter artifacts to current conversation
-  const conversationArtifacts = activeConversationId
-    ? artifacts.filter((a) => a.conversationId === activeConversationId)
-    : []
+  // Get artifacts grouped by conversation
+  const getArtifactsForConversation = (convId: string) =>
+    artifacts.filter((a) => a.conversationId === convId)
+
+  // Toggle artifact tree for a conversation
+  const toggleConversationArtifacts = (e: React.MouseEvent, convId: string) => {
+    e.stopPropagation()
+    setExpandedConversations(prev => {
+      const next = new Set(prev)
+      if (next.has(convId)) {
+        next.delete(convId)
+      } else {
+        next.add(convId)
+      }
+      return next
+    })
+  }
 
   const handleNewChat = () => {
     setActiveConversation(null)
@@ -70,66 +84,76 @@ export function Sidebar() {
             <div className="text-xs text-text-muted uppercase tracking-wider px-2 mb-2">
               {group}
             </div>
-            {convs.map((conv) => (
-              <div
-                key={conv.id}
-                onClick={() => setActiveConversation(conv.id)}
-                className={`
-                  w-full flex items-center justify-between gap-2 px-3 py-2 text-sm rounded-lg transition-colors group cursor-pointer
-                  ${activeConversationId === conv.id
-                    ? 'bg-bg-elevated text-text-primary'
-                    : 'text-text-secondary hover:text-text-primary hover:bg-bg-hover'}
-                `}
-              >
-                <span className="truncate">{conv.title}</span>
-                <button
-                  onClick={(e) => handleDeleteConversation(e, conv.id)}
-                  className="opacity-0 group-hover:opacity-100 p-1 hover:bg-bg-hover rounded text-text-muted hover:text-error"
-                >
-                  <Trash2 className="w-3 h-3" />
-                </button>
-              </div>
-            ))}
+            {convs.map((conv) => {
+              const convArtifacts = getArtifactsForConversation(conv.id)
+              const hasArtifacts = convArtifacts.length > 0
+              const isExpanded = expandedConversations.has(conv.id)
+              const isActive = activeConversationId === conv.id
+
+              return (
+                <div key={conv.id}>
+                  {/* Conversation entry */}
+                  <div
+                    onClick={() => setActiveConversation(conv.id)}
+                    className={`
+                      w-full flex items-center gap-2 px-3 py-2 text-sm rounded-lg transition-colors group cursor-pointer
+                      ${isActive
+                        ? 'bg-bg-elevated text-text-primary'
+                        : 'text-text-secondary hover:text-text-primary hover:bg-bg-hover'}
+                    `}
+                  >
+                    {/* Expand/collapse toggle for artifacts */}
+                    {hasArtifacts ? (
+                      <button
+                        onClick={(e) => toggleConversationArtifacts(e, conv.id)}
+                        className="p-0.5 -ml-1 hover:bg-bg-hover rounded transition-colors flex-shrink-0"
+                      >
+                        {isExpanded ? (
+                          <ChevronDown className="w-3 h-3 text-text-muted" />
+                        ) : (
+                          <ChevronRight className="w-3 h-3 text-text-muted" />
+                        )}
+                      </button>
+                    ) : (
+                      <div className="w-4 flex-shrink-0" /> /* Spacer for alignment */
+                    )}
+                    <span className="truncate flex-1">{conv.title}</span>
+                    <button
+                      onClick={(e) => handleDeleteConversation(e, conv.id)}
+                      className="opacity-0 group-hover:opacity-100 p-1 hover:bg-bg-hover rounded text-text-muted hover:text-error flex-shrink-0"
+                    >
+                      <Trash2 className="w-3 h-3" />
+                    </button>
+                  </div>
+
+                  {/* Artifact sub-tree (collapsed by default) */}
+                  {hasArtifacts && isExpanded && (
+                    <div className="ml-6 pl-2 border-l border-border/50 mt-1 mb-2">
+                      {convArtifacts.map((artifact) => {
+                        const Icon = ARTIFACT_ICONS[artifact.type] || DEFAULT_ARTIFACT_ICON
+                        return (
+                          <button
+                            key={artifact.id}
+                            onClick={() => {
+                              setActiveConversation(conv.id)
+                              selectArtifact(artifact.id)
+                              openCanvas()
+                            }}
+                            className="w-full flex items-center gap-2 px-2 py-1 text-xs text-text-muted hover:text-text-primary hover:bg-bg-hover rounded transition-colors"
+                          >
+                            <Icon className="w-3 h-3 flex-shrink-0" />
+                            <span className="truncate">{artifact.title}</span>
+                          </button>
+                        )
+                      })}
+                    </div>
+                  )}
+                </div>
+              )
+            })}
           </div>
         ))}
       </div>
-
-      {/* Artifacts section */}
-      {conversationArtifacts.length > 0 && (
-        <div className="border-t border-border">
-          <button
-            onClick={() => setArtifactsExpanded(!artifactsExpanded)}
-            className="w-full flex items-center gap-2 px-4 py-2 text-xs text-text-muted uppercase tracking-wider hover:bg-bg-hover transition-colors"
-          >
-            {artifactsExpanded ? (
-              <ChevronDown className="w-3 h-3" />
-            ) : (
-              <ChevronRight className="w-3 h-3" />
-            )}
-            Artifacts ({conversationArtifacts.length})
-          </button>
-          {artifactsExpanded && (
-            <div className="px-3 pb-2 max-h-48 overflow-y-auto">
-              {conversationArtifacts.map((artifact) => {
-                const Icon = ARTIFACT_ICONS[artifact.type] || DEFAULT_ARTIFACT_ICON
-                return (
-                  <button
-                    key={artifact.id}
-                    onClick={() => {
-                      selectArtifact(artifact.id)
-                      openCanvas()
-                    }}
-                    className="w-full flex items-center gap-2 px-2 py-1.5 text-sm text-text-secondary hover:text-text-primary hover:bg-bg-hover rounded transition-colors"
-                  >
-                    <Icon className="w-3.5 h-3.5 text-text-muted flex-shrink-0" />
-                    <span className="truncate">{artifact.title}</span>
-                  </button>
-                )
-              })}
-            </div>
-          )}
-        </div>
-      )}
 
       {/* Settings */}
       <div className="p-3 border-t border-border">

@@ -390,57 +390,71 @@ export const useChatStore = create<ChatStore>((set, get) => ({
       const { streamingToolCalls, streamingToolResults } = get()
       const durationMs = Date.now() - streamStartTime
 
-      // Calculate tokens per second
-      let usage: Message['usage'] = undefined
-      if (stats?.usage) {
-        const tokensPerSecond = durationMs > 0
-          ? Math.round((stats.usage.completionTokens / durationMs) * 1000)
-          : 0
-        usage = {
-          promptTokens: stats.usage.promptTokens,
-          completionTokens: stats.usage.completionTokens,
-          totalTokens: stats.usage.totalTokens,
-          tokensPerSecond,
-          durationMs,
+      try {
+        // Calculate tokens per second
+        let usage: Message['usage'] = undefined
+        if (stats?.usage) {
+          const tokensPerSecond = durationMs > 0
+            ? Math.round((stats.usage.completionTokens / durationMs) * 1000)
+            : 0
+          usage = {
+            promptTokens: stats.usage.promptTokens,
+            completionTokens: stats.usage.completionTokens,
+            totalTokens: stats.usage.totalTokens,
+            tokensPerSecond,
+            durationMs,
+          }
         }
+
+        // Save assistant message - even if content is empty (tool-only responses)
+        const assistantMessage = await window.jelico.conversations.addMessage(conversationId!, {
+          role: 'assistant',
+          content: fullContent || '(Used tools)', // Ensure non-empty for DB
+        })
+
+        // Attach tool calls/results and usage to the message object for display
+        // Restore original content (could be empty) for display
+        const messageWithTools: Message = {
+          ...assistantMessage,
+          content: fullContent, // Keep original empty if it was empty
+          toolCalls: streamingToolCalls.length > 0 ? streamingToolCalls : undefined,
+          toolResults: streamingToolResults.length > 0 ? streamingToolResults : undefined,
+          usage,
+        }
+
+        console.log('[Chat Store] Final message:', {
+          content: fullContent?.slice(0, 100),
+          toolCallCount: streamingToolCalls.length,
+          toolResultCount: streamingToolResults.length,
+          hasUsage: !!usage,
+        })
+
+        // Update context window token count from actual usage
+        if (conversationId && usage?.totalTokens) {
+          useContextStore.getState().updateTokenCount(conversationId, usage.totalTokens)
+        } else if (conversationId) {
+          // Log when no usage stats received - need to investigate provider
+          console.warn('[Chat Store] No usage stats received from provider - context tracking disabled for this message')
+        }
+
+        set((state) => ({
+          messages: [...state.messages, messageWithTools],
+          isStreaming: false,
+          streamingContent: '',
+          streamingToolCalls: [],
+          streamingToolResults: [],
+        }))
+      } catch (error) {
+        console.error('[Chat Store] Error in onStreamEnd:', error)
+        // Still need to end streaming state even on error
+        set({
+          isStreaming: false,
+          streamingContent: '',
+          streamingToolCalls: [],
+          streamingToolResults: [],
+          error: `Failed to save message: ${error}`,
+        })
       }
-
-      // Save assistant message
-      const assistantMessage = await window.jelico.conversations.addMessage(conversationId!, {
-        role: 'assistant',
-        content: fullContent,
-      })
-
-      // Attach tool calls/results and usage to the message object for display
-      const messageWithTools: Message = {
-        ...assistantMessage,
-        toolCalls: streamingToolCalls.length > 0 ? streamingToolCalls : undefined,
-        toolResults: streamingToolResults.length > 0 ? streamingToolResults : undefined,
-        usage,
-      }
-
-      console.log('[Chat Store] Final message:', {
-        content: fullContent?.slice(0, 100),
-        toolCallCount: streamingToolCalls.length,
-        toolResultCount: streamingToolResults.length,
-        hasUsage: !!usage,
-      })
-
-      // Update context window token count from actual usage
-      if (conversationId && usage?.totalTokens) {
-        useContextStore.getState().updateTokenCount(conversationId, usage.totalTokens)
-      } else if (conversationId) {
-        // Log when no usage stats received - need to investigate provider
-        console.warn('[Chat Store] No usage stats received from provider - context tracking disabled for this message')
-      }
-
-      set((state) => ({
-        messages: [...state.messages, messageWithTools],
-        isStreaming: false,
-        streamingContent: '',
-        streamingToolCalls: [],
-        streamingToolResults: [],
-      }))
 
       // Add system notification for created artifacts
       if (createdArtifacts.length > 0) {

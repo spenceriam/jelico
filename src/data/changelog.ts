@@ -21,6 +21,22 @@ export interface ChangelogEntry {
 
 export const changelog: ChangelogEntry[] = [
   {
+    version: '0.3.3',
+    date: '2026-01-29',
+    changes: {
+      fixed: [
+        'AI response disappearing - added try/catch to stream end handler to prevent lost messages',
+        'Tool calls not showing for providers without streaming support - fallback to show on tool-call event',
+        'Empty AI responses now saved correctly (tool-only responses)',
+        'Duplicate Settings icon - now shows in header only when sidebar is collapsed',
+      ],
+      changed: [
+        'Artifacts now appear as collapsible sub-tree under each conversation in sidebar',
+        'Removed separate Artifacts section from sidebar bottom',
+      ],
+    },
+  },
+  {
     version: '0.3.2',
     date: '2026-01-29',
     changes: {
