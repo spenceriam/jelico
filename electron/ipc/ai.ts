@@ -684,6 +684,17 @@ export function registerAIHandlers() {
       // Get mode system prompt
       let systemPrompt = getModeSystemPrompt(mode)
 
+      // Add OS/environment context for terminal commands
+      const osType = process.platform === 'win32' ? 'Windows' : process.platform === 'darwin' ? 'macOS' : 'Linux'
+      const shellInfo = process.platform === 'win32'
+        ? 'Use Windows commands (cmd/PowerShell). Examples: dir instead of ls, type instead of cat, del instead of rm, copy instead of cp.'
+        : 'Use Unix/bash commands.'
+
+      systemPrompt += `\n\n## System Environment
+- **Operating System**: ${osType}
+- **Shell**: ${shellInfo}
+- When executing terminal commands, use commands appropriate for ${osType}.`
+
       // Add workspace context if provided
       if (params.workspacePath) {
         systemPrompt += `\n\n## Workspace Context
