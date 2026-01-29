@@ -955,6 +955,7 @@ When the user asks to modify, update, fix, or improve an existing artifact, use 
       // Get usage stats
       const usage = await result.usage
       const finishReason = await result.finishReason
+      const fullText = await result.text
 
       // Parse usage if it's a string (some providers return stringified JSON)
       let usageObj: any = usage
@@ -970,17 +971,65 @@ When the user asks to modify, update, fix, or improve an existing artifact, use 
 
       // AI SDK v6 uses inputTokens/outputTokens, map to promptTokens/completionTokens
       // Some providers also use promptTokens/completionTokens, so check both
-      const promptTokens = usageObj?.promptTokens || usageObj?.inputTokens || 0
-      const completionTokens = usageObj?.completionTokens || usageObj?.outputTokens || 0
-      const totalTokens = promptTokens + completionTokens
+      let promptTokens = usageObj?.promptTokens || usageObj?.inputTokens || 0
+      let completionTokens = usageObj?.completionTokens || usageObj?.outputTokens || 0
 
       // Check for running sub-agents that weren't waited for
       const activeAgents = getSubAgentsForStream(channelId)
       const runningAgents = activeAgents.filter(a => a.status === 'running' || a.status === 'pending')
+
+      // CRITICAL: Check if AI ended with tool calls but no text summary
+      // This happens when model executes tools but doesn't provide explanation
+      const hasToolCalls = pendingToolCalls.size > 0
+      const hasTextContent = fullText && fullText.trim().length > 50 // Meaningful text, not just whitespace
+
+      if (hasToolCalls && !hasTextContent && !abortController.signal.aborted) {
+        console.log('[AI] Detected missing summary after tool calls - requesting continuation')
+
+        // Get tool results summary for context
+        const toolSummary = Array.from(pendingToolCalls.entries())
+          .map(([id, tc]) => `- ${tc.name}: ${JSON.stringify(tc.args).slice(0, 100)}`)
+          .join('\n')
+
+        // Make a follow-up call to get summary
+        try {
+          const summaryResult = await streamText({
+            model: provider.chat(modelId),
+            system: `You just executed tools. Provide a brief, helpful summary of what happened and what the results mean for the user. Be concise but informative.`,
+            messages: [
+              ...messages,
+              { role: 'assistant', content: `[Executed tools]\n${toolSummary}` },
+              { role: 'user', content: 'Please summarize what you did and the results.' },
+            ],
+            abortSignal: abortController.signal,
+          })
+
+          // Stream the summary
+          for await (const chunk of summaryResult.textStream) {
+            if (abortController.signal.aborted) break
+            event.sender.send(`ai:chunk:${channelId}`, chunk)
+          }
+
+          // Add summary usage to totals
+          const summaryUsage = await summaryResult.usage
+          if (summaryUsage) {
+            const sUsage = typeof summaryUsage === 'string' ? JSON.parse(summaryUsage) : summaryUsage
+            promptTokens += sUsage?.promptTokens || sUsage?.inputTokens || 0
+            completionTokens += sUsage?.completionTokens || sUsage?.outputTokens || 0
+          }
+        } catch (summaryError: any) {
+          console.warn('[AI] Failed to generate summary:', summaryError.message)
+          // Send a fallback message
+          event.sender.send(`ai:chunk:${channelId}`, '\n\n*Tool execution completed. Check tool results above for details.*')
+        }
+      }
+
       if (runningAgents.length > 0) {
         console.warn('[AI] WARNING: Stream ended with running sub-agents that were not waited for:',
           runningAgents.map(a => `${a.name} (${a.status})`))
       }
+
+      const totalTokens = promptTokens + completionTokens
 
       // Log full usage object for debugging
       console.log('[AI] Stream completed:', {
@@ -989,6 +1038,8 @@ When the user asks to modify, update, fix, or improve an existing artifact, use 
         completionTokens,
         totalTokens,
         runningSubAgents: runningAgents.length,
+        hadToolCalls: hasToolCalls,
+        hadTextContent: hasTextContent,
       })
 
       // Signal completion with stats

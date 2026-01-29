@@ -12,10 +12,11 @@
  * - Orphaned agents (idle too long, parent dead) are auto-cleaned
  */
 
-import { streamText, type CoreMessage } from 'ai'
+import { streamText, tool, type CoreMessage } from 'ai'
 import { createAnthropic } from '@ai-sdk/anthropic'
 import { createOpenAI } from '@ai-sdk/openai'
 import { createGoogleGenerativeAI } from '@ai-sdk/google'
+import { z } from 'zod'
 import { providerDb } from './database'
 import { keychainService } from './keychain'
 
@@ -406,6 +407,234 @@ function parseAgentResponse(text: string): { isQuestion: boolean; question?: Sub
 }
 
 /**
+ * Get tools for sub-agents
+ * Sub-agents get read/search/web tools but NOT agent management or artifact tools
+ */
+function getSubAgentTools(mode: string, workspacePath?: string) {
+  const canWrite = mode !== 'explore'
+  const canExecute = mode === 'auto' || mode === 'execute' || mode === 'review'
+
+  const tools: Record<string, any> = {}
+
+  // Read file tool - always available
+  tools.read_file = tool({
+    description: 'Read the contents of a file at the specified path',
+    parameters: z.object({
+      path: z.string().describe('The file path to read'),
+    }),
+    execute: async ({ path }) => {
+      try {
+        const fs = await import('fs/promises')
+        const content = await fs.readFile(path, 'utf-8')
+        return { success: true, content }
+      } catch (error: any) {
+        return { success: false, error: error.message }
+      }
+    },
+  })
+
+  // List directory tool - always available
+  tools.list_directory = tool({
+    description: 'List files and directories at the specified path',
+    parameters: z.object({
+      path: z.string().describe('The directory path to list'),
+    }),
+    execute: async ({ path }) => {
+      try {
+        const fs = await import('fs/promises')
+        const entries = await fs.readdir(path, { withFileTypes: true })
+        const items = entries.map(entry => ({
+          name: entry.name,
+          type: entry.isDirectory() ? 'directory' : 'file',
+        }))
+        return { success: true, items }
+      } catch (error: any) {
+        return { success: false, error: error.message }
+      }
+    },
+  })
+
+  // Search files tool - always available
+  tools.search_files = tool({
+    description: 'Search for files matching a pattern',
+    parameters: z.object({
+      directory: z.string().describe('The directory to search in'),
+      pattern: z.string().describe('Glob pattern to match files'),
+    }),
+    execute: async ({ directory, pattern }) => {
+      try {
+        const { glob } = await import('glob')
+        const files = await glob(pattern, { cwd: directory })
+        return { success: true, files }
+      } catch (error: any) {
+        return { success: false, error: error.message }
+      }
+    },
+  })
+
+  // Web search tool - always available
+  tools.web_search = tool({
+    description: `Search the web for information using DuckDuckGo.
+Returns instant answers, related topics, and web results.`,
+    parameters: z.object({
+      query: z.string().describe('The search query'),
+    }),
+    execute: async ({ query }) => {
+      try {
+        const encodedQuery = encodeURIComponent(query)
+        const response = await fetch(
+          `https://api.duckduckgo.com/?q=${encodedQuery}&format=json&no_html=1&skip_disambig=1`
+        )
+
+        if (!response.ok) {
+          throw new Error(`Search failed: ${response.statusText}`)
+        }
+
+        const data = await response.json()
+
+        const results: any = {
+          query,
+          abstract: data.Abstract || null,
+          abstractSource: data.AbstractSource || null,
+          abstractURL: data.AbstractURL || null,
+          answer: data.Answer || null,
+          definition: data.Definition || null,
+          relatedTopics: (data.RelatedTopics || []).slice(0, 5).map((topic: any) => ({
+            text: topic.Text,
+            url: topic.FirstURL,
+          })).filter((t: any) => t.text),
+        }
+
+        if (results.abstract || results.answer || results.definition || results.relatedTopics.length > 0) {
+          return { success: true, results }
+        }
+
+        return {
+          success: true,
+          results: {
+            query,
+            message: 'No instant answer found. Try using web_fetch with specific URLs.',
+          },
+        }
+      } catch (error: any) {
+        return { success: false, error: error.message }
+      }
+    },
+  })
+
+  // Web fetch tool - always available
+  tools.web_fetch = tool({
+    description: `Fetch content from a URL. Returns the text content of the page.`,
+    parameters: z.object({
+      url: z.string().describe('The URL to fetch'),
+    }),
+    execute: async ({ url }) => {
+      try {
+        const response = await fetch(url, {
+          headers: {
+            'User-Agent': 'Mozilla/5.0 (compatible; Jelico/1.0)',
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+          },
+        })
+
+        if (!response.ok) {
+          throw new Error(`Fetch failed: ${response.status} ${response.statusText}`)
+        }
+
+        const html = await response.text()
+
+        // Simple HTML to text conversion
+        let text = html
+          .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, '')
+          .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '')
+          .replace(/<[^>]+>/g, ' ')
+          .replace(/&nbsp;/g, ' ')
+          .replace(/&amp;/g, '&')
+          .replace(/&lt;/g, '<')
+          .replace(/&gt;/g, '>')
+          .replace(/\s+/g, ' ')
+          .trim()
+
+        // Truncate if too long
+        const maxLength = 10000
+        if (text.length > maxLength) {
+          text = text.substring(0, maxLength) + '\n\n[Content truncated...]'
+        }
+
+        return { success: true, url, content: text }
+      } catch (error: any) {
+        return { success: false, error: error.message }
+      }
+    },
+  })
+
+  // Write file tool - only if canWrite
+  if (canWrite) {
+    tools.write_file = tool({
+      description: 'Write content to a file at the specified path',
+      parameters: z.object({
+        path: z.string().describe('The file path to write to'),
+        content: z.string().describe('The content to write'),
+      }),
+      execute: async ({ path, content }) => {
+        try {
+          const fs = await import('fs/promises')
+          const pathModule = await import('path')
+          await fs.mkdir(pathModule.dirname(path), { recursive: true })
+          await fs.writeFile(path, content, 'utf-8')
+          return { success: true, message: `File written to ${path}` }
+        } catch (error: any) {
+          return { success: false, error: error.message }
+        }
+      },
+    })
+  }
+
+  // Execute command tool - only if canExecute
+  if (canExecute) {
+    tools.execute_command = tool({
+      description: 'Execute a shell command',
+      parameters: z.object({
+        command: z.string().describe('The command to execute'),
+        cwd: z.string().optional().describe('Working directory for the command'),
+      }),
+      execute: async ({ command, cwd }) => {
+        try {
+          const { exec } = await import('child_process')
+          const { promisify } = await import('util')
+          const execAsync = promisify(exec)
+
+          const workingDir = cwd || workspacePath || process.env.HOME || process.cwd()
+
+          const result = await execAsync(command, {
+            cwd: workingDir,
+            timeout: 60000,
+            maxBuffer: 10 * 1024 * 1024,
+            shell: process.platform === 'win32' ? 'cmd.exe' : '/bin/bash',
+            env: { ...process.env },
+          })
+
+          return {
+            success: true,
+            stdout: result.stdout,
+            stderr: result.stderr,
+          }
+        } catch (error: any) {
+          return {
+            success: false,
+            error: error.message,
+            stdout: error.stdout || '',
+            stderr: error.stderr || '',
+          }
+        }
+      },
+    })
+  }
+
+  return tools
+}
+
+/**
  * Run a sub-agent (internal)
  */
 async function runSubAgent(agentId: string): Promise<void> {
@@ -441,6 +670,11 @@ async function runSubAgent(agentId: string): Promise<void> {
   }
 
   try {
+    // Get tools for this sub-agent based on its mode
+    const tools = getSubAgentTools(agent.mode, agent.workspacePath)
+
+    console.log(`[SubAgents] ${agent.name} starting with ${Object.keys(tools).length} tools:`, Object.keys(tools))
+
     // Stream response
     // IMPORTANT: Use .chat() to get Chat Completions API endpoint
     // Using client(model) defaults to Responses API which doesn't support
@@ -448,18 +682,52 @@ async function runSubAgent(agentId: string): Promise<void> {
     const response = await streamText({
       model: client.chat(agent.model),
       messages: agent.messages,
+      tools,
+      toolChoice: 'auto',
+      maxSteps: 5, // Allow up to 5 tool call steps per agent run
       abortSignal: abortController.signal,
     })
 
-    // Accumulate the result
+    // Accumulate the result using fullStream to handle text AND tool calls
     let fullText = ''
-    for await (const chunk of response.textStream) {
+    for await (const part of response.fullStream) {
       if (agent.status === 'dismissed') break
 
-      fullText += chunk
-      agent.progress = fullText
-      agent.lastActivityAt = Date.now()
-      notifyProgress(agentId, agent)
+      switch (part.type) {
+        case 'text-delta':
+          if (part.textDelta) {
+            fullText += part.textDelta
+            agent.progress = fullText
+            agent.lastActivityAt = Date.now()
+            notifyProgress(agentId, agent)
+          }
+          break
+
+        case 'tool-call':
+          // Track tool calls made by this agent
+          const toolArgs = (part as any).input || (part as any).args || {}
+          agent.toolCalls.push({
+            id: part.toolCallId,
+            name: part.toolName,
+            input: toolArgs,
+          })
+          console.log(`[SubAgents] ${agent.name} calling tool: ${part.toolName}`)
+          agent.lastActivityAt = Date.now()
+          notifyProgress(agentId, agent)
+          break
+
+        case 'tool-result':
+          // Update tool call with output
+          const toolResult = (part as any).output || (part as any).result
+          const toolCall = agent.toolCalls.find(tc => tc.id === part.toolCallId)
+          if (toolCall) {
+            toolCall.output = toolResult
+          }
+          console.log(`[SubAgents] ${agent.name} tool result for: ${part.toolCallId}`)
+          agent.lastActivityAt = Date.now()
+          notifyProgress(agentId, agent)
+          break
+      }
     }
 
     if (agent.status === 'dismissed') return
@@ -467,8 +735,12 @@ async function runSubAgent(agentId: string): Promise<void> {
     // Check if agent is asking a question
     const parsed = parseAgentResponse(fullText)
 
-    // Add response to conversation memory
-    agent.messages.push({ role: 'assistant', content: fullText })
+    // Add response to conversation memory (with tool call context if any)
+    const assistantMessage: CoreMessage = {
+      role: 'assistant',
+      content: fullText || (agent.toolCalls.length > 0 ? '[Used tools]' : ''),
+    }
+    agent.messages.push(assistantMessage)
 
     if (parsed.isQuestion && parsed.question) {
       // Agent is pausing for clarification

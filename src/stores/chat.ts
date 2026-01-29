@@ -298,11 +298,18 @@ export const useChatStore = create<ChatStore>((set, get) => ({
 
     let fullContent = ''
     const streamStartTime = Date.now()
+    let firstChunkTime: number | null = null
+    let lastChunkTime: number | null = null
 
     // Handle stream chunks
     window.jelico.ai.onStreamChunk(channelId, (chunk) => {
       // Guard against undefined chunks (can happen with some stream events)
       if (chunk !== undefined && chunk !== null) {
+        const now = Date.now()
+        if (firstChunkTime === null) {
+          firstChunkTime = now
+        }
+        lastChunkTime = now
         fullContent += chunk
         set({ streamingContent: fullContent })
       }
@@ -408,21 +415,27 @@ export const useChatStore = create<ChatStore>((set, get) => ({
       currentStreamChannelId = null
 
       const { streamingToolCalls, streamingToolResults } = get()
-      const durationMs = Date.now() - streamStartTime
+      const totalDurationMs = Date.now() - streamStartTime
+      // Calculate actual generation time (first chunk to last chunk)
+      // This excludes tool execution time and gives accurate tok/s
+      const generationMs = (firstChunkTime && lastChunkTime)
+        ? (lastChunkTime - firstChunkTime)
+        : totalDurationMs
 
       try {
-        // Calculate tokens per second
+        // Calculate tokens per second using actual generation time
         let usage: Message['usage'] = undefined
         if (stats?.usage) {
-          const tokensPerSecond = durationMs > 0
-            ? Math.round((stats.usage.completionTokens / durationMs) * 1000)
+          // Use generation time for tok/s (accurate), but store total duration for reference
+          const tokensPerSecond = generationMs > 0
+            ? Math.round((stats.usage.completionTokens / generationMs) * 1000)
             : 0
           usage = {
             promptTokens: stats.usage.promptTokens,
             completionTokens: stats.usage.completionTokens,
             totalTokens: stats.usage.totalTokens,
             tokensPerSecond,
-            durationMs,
+            durationMs: totalDurationMs,
           }
         }
 
