@@ -845,8 +845,10 @@ When the user asks to modify, update, fix, or improve an existing artifact, use 
 
         switch (part.type) {
           case 'text-delta':
-            // Regular text chunk
-            event.sender.send(`ai:chunk:${channelId}`, part.textDelta)
+            // Regular text chunk - only send if we have actual text
+            if (part.textDelta) {
+              event.sender.send(`ai:chunk:${channelId}`, part.textDelta)
+            }
             break
 
           case 'tool-call-streaming-start':

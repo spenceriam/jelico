@@ -300,8 +300,11 @@ export const useChatStore = create<ChatStore>((set, get) => ({
 
     // Handle stream chunks
     window.jelico.ai.onStreamChunk(channelId, (chunk) => {
-      fullContent += chunk
-      set({ streamingContent: fullContent })
+      // Guard against undefined chunks (can happen with some stream events)
+      if (chunk !== undefined && chunk !== null) {
+        fullContent += chunk
+        set({ streamingContent: fullContent })
+      }
     })
 
     // Handle tool calls - ai.ts now sends pre-formatted { id, name, args }
