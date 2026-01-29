@@ -574,16 +574,24 @@ Use this as the base path for file operations. When reading, writing, or searchi
           // Send tool call updates to renderer
           if (toolCalls && toolCalls.length > 0) {
             // Log full structure to debug args issue
-            console.log('[AI] Tool calls (full):', JSON.stringify(toolCalls, null, 2))
-            console.log('[AI] First tool call keys:', Object.keys(toolCalls[0]))
+            const tc0 = toolCalls[0] as any
+            console.log('[AI] First tool call inspection:')
+            console.log('  - Keys:', Object.keys(tc0))
+            console.log('  - toolCallId:', tc0.toolCallId)
+            console.log('  - toolName:', tc0.toolName)
+            console.log('  - args:', tc0.args)
+            console.log('  - input:', tc0.input)  // Some SDKs use 'input' instead of 'args'
+            console.log('  - arguments:', tc0.arguments)  // Or 'arguments'
+            console.log('  - Full JSON:', JSON.stringify(tc0, null, 2))
 
             // Transform tool calls to our expected format
-            const formattedToolCalls = toolCalls.map(tc => ({
+            // Check for various possible property names for arguments
+            const formattedToolCalls = toolCalls.map((tc: any) => ({
               id: tc.toolCallId,
               name: tc.toolName,
-              args: tc.args,
+              args: tc.args || tc.input || tc.arguments || {},
             }))
-            console.log('[AI] Formatted tool calls:', formattedToolCalls)
+            console.log('[AI] Formatted tool calls:', JSON.stringify(formattedToolCalls, null, 2))
             event.sender.send(`ai:toolCalls:${channelId}`, formattedToolCalls)
           }
           if (toolResults && toolResults.length > 0) {

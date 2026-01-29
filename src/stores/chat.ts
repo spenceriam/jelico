@@ -256,26 +256,19 @@ export const useChatStore = create<ChatStore>((set, get) => ({
       set({ streamingContent: fullContent })
     })
 
-    // Handle tool calls
+    // Handle tool calls - ai.ts now sends pre-formatted { id, name, args }
     window.jelico.ai.onToolCalls(channelId, (toolCalls) => {
-      const mapped = toolCalls.map(tc => ({
-        id: tc.toolCallId,
-        name: tc.toolName,
-        args: tc.args,
-      }))
+      console.log('[Chat Store] Received tool calls:', toolCalls)
       set((state) => ({
-        streamingToolCalls: [...state.streamingToolCalls, ...mapped],
+        streamingToolCalls: [...state.streamingToolCalls, ...toolCalls],
       }))
     })
 
-    // Handle tool results
+    // Handle tool results - ai.ts now sends pre-formatted { toolCallId, result }
     window.jelico.ai.onToolResults(channelId, (toolResults) => {
-      const mapped = toolResults.map(tr => ({
-        toolCallId: tr.toolCallId,
-        result: tr.result,
-      }))
+      console.log('[Chat Store] Received tool results:', toolResults)
       set((state) => ({
-        streamingToolResults: [...state.streamingToolResults, ...mapped],
+        streamingToolResults: [...state.streamingToolResults, ...toolResults],
       }))
     })
 
