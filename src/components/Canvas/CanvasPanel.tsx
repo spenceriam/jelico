@@ -166,32 +166,6 @@ export function CanvasPanel() {
         </div>
       </div>
 
-      {/* Artifact list (tabs) */}
-      {conversationArtifacts.length > 1 && (
-        <div className="flex items-center gap-1 px-2 py-2 border-b border-border overflow-x-auto">
-          {conversationArtifacts.map((artifact) => {
-            const Icon = TYPE_ICONS[artifact.type]
-            return (
-              <button
-                key={artifact.id}
-                onClick={() => selectArtifact(artifact.id)}
-                className={`
-                  flex items-center gap-2 px-3 py-1.5 text-xs rounded-md whitespace-nowrap
-                  transition-colors
-                  ${artifact.id === selectedArtifactId
-                    ? 'bg-bg-elevated text-text-primary'
-                    : 'text-text-muted hover:text-text-secondary hover:bg-bg-hover'
-                  }
-                `}
-              >
-                <Icon className="w-3 h-3" />
-                <span className="max-w-24 truncate">{artifact.title}</span>
-              </button>
-            )
-          })}
-        </div>
-      )}
-
       {/* Content */}
       <div className="flex-1 overflow-hidden">
         {selectedArtifact ? (

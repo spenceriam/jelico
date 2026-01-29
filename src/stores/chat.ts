@@ -4,6 +4,7 @@ import { useArtifactStore } from './artifacts'
 import { useWorkspaceStore } from './workspaces'
 import { useAgentStore } from './agents'
 import { useSkillStore } from './skills'
+import { useContextStore } from './context'
 
 export interface MessageUsage {
   promptTokens: number
@@ -327,6 +328,15 @@ export const useChatStore = create<ChatStore>((set, get) => ({
         toolCalls: streamingToolCalls.length > 0 ? streamingToolCalls : undefined,
         toolResults: streamingToolResults.length > 0 ? streamingToolResults : undefined,
         usage,
+      }
+
+      // Update context window tracking
+      if (usage?.totalTokens && conversationId) {
+        useContextStore.getState().setConversationContext(
+          conversationId,
+          usage.totalTokens,
+          model
+        )
       }
 
       set((state) => ({

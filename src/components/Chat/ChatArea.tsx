@@ -80,11 +80,11 @@ export function ChatArea() {
             </div>
           )}
 
-          {/* Context usage indicator */}
-          {contextUsage && contextUsage.percentage > 0.5 && (
+          {/* Context usage indicator - always show when there's usage */}
+          {contextUsage && contextUsage.tokenCount > 0 && (
             <div className="mb-3">
               <div className="flex items-center justify-between text-xs text-text-muted mb-1">
-                <span>Context usage</span>
+                <span>Context: {contextUsage.tokenCount.toLocaleString()} / {contextUsage.maxTokens.toLocaleString()} tokens</span>
                 <span>{Math.round(contextUsage.percentage * 100)}%</span>
               </div>
               <div className="h-1 bg-bg-deep rounded-full overflow-hidden">
@@ -93,15 +93,15 @@ export function ChatArea() {
                     contextUsage.percentage >= 0.75
                       ? 'bg-error'
                       : contextUsage.percentage >= 0.5
-                      ? 'bg-accent'
-                      : 'bg-success'
+                      ? 'bg-warning'
+                      : 'bg-accent'
                   }`}
-                  style={{ width: `${Math.min(contextUsage.percentage * 100, 100)}%` }}
+                  style={{ width: `${Math.max(Math.min(contextUsage.percentage * 100, 100), 1)}%` }}
                 />
               </div>
               {contextUsage.shouldCompact && (
-                <p className="text-xs text-text-muted mt-1">
-                  Context is filling up. Auto-compaction will occur soon.
+                <p className="text-xs text-warning mt-1">
+                  Context filling up. Auto-compaction will occur soon.
                 </p>
               )}
             </div>

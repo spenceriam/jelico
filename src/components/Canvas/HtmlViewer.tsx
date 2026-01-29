@@ -10,9 +10,14 @@ export function HtmlViewer({ html }: HtmlViewerProps) {
   const [copied, setCopied] = useState(false)
   const iframeRef = useRef<HTMLIFrameElement>(null)
 
-  // Create a sandboxed HTML document
-  const sandboxedHtml = `
-    <!DOCTYPE html>
+  // Check if the content is already a complete HTML document
+  const isCompleteDocument = html.trim().toLowerCase().startsWith('<!doctype') ||
+    html.trim().toLowerCase().startsWith('<html')
+
+  // Use the HTML as-is if it's a complete document, otherwise wrap it
+  const sandboxedHtml = isCompleteDocument
+    ? html
+    : `<!DOCTYPE html>
     <html>
     <head>
       <meta charset="utf-8">
@@ -34,8 +39,7 @@ export function HtmlViewer({ html }: HtmlViewerProps) {
     <body>
       ${html}
     </body>
-    </html>
-  `
+    </html>`
 
   const handleCopy = async () => {
     await navigator.clipboard.writeText(html)
