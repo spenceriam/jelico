@@ -1,5 +1,5 @@
 import { useRef, useEffect, useState, useMemo, useCallback } from 'react'
-import { Settings } from 'lucide-react'
+import { Settings, AlertTriangle } from 'lucide-react'
 import { useChatStore } from '../../stores/chat'
 import { useProviderStore } from '../../stores/providers'
 import { useUIStore } from '../../stores/ui'
@@ -12,7 +12,7 @@ import { ModelSelector } from '../Model/ModelSelector'
 import { ShimmerText } from '../StatusIndicators/ShimmerText'
 
 export function ChatArea() {
-  const { messages, isStreaming, streamingContent, streamingToolCalls, streamingToolResults, activeConversationId, regenerateLastResponse } = useChatStore()
+  const { messages, isStreaming, streamingContent, streamingToolCalls, streamingToolResults, systemNotifications, activeConversationId, regenerateLastResponse } = useChatStore()
   const { activeProviderId, activeModel } = useProviderStore()
   const { isCompacting, isProcessing, processingMessage } = useUIStore()
   const { getContextUsage } = useContextStore()
@@ -62,6 +62,7 @@ export function ChatArea() {
             streamingContent={isStreaming ? streamingContent : undefined}
             streamingToolCalls={isStreaming ? streamingToolCalls : undefined}
             streamingToolResults={isStreaming ? streamingToolResults : undefined}
+            systemNotifications={systemNotifications}
             onRegenerate={handleRegenerate}
           />
           <div ref={messagesEndRef} />
@@ -84,7 +85,14 @@ export function ChatArea() {
           {contextUsage && contextUsage.tokenCount > 0 && (
             <div className="mb-3">
               <div className="flex items-center justify-between text-xs text-text-muted mb-1">
-                <span>{contextUsage.tokenCount.toLocaleString()} / {contextUsage.maxTokens.toLocaleString()} tokens</span>
+                <div className="flex items-center gap-2">
+                  <span>{contextUsage.tokenCount.toLocaleString()} / {contextUsage.maxTokens.toLocaleString()} tokens</span>
+                  {contextUsage.shouldCompact && (
+                    <span className="text-warning" title="Compacting conversation soon">
+                      <AlertTriangle className="w-3.5 h-3.5" />
+                    </span>
+                  )}
+                </div>
                 <span>{Math.round(contextUsage.percentage * 100)}%</span>
               </div>
               <div className="h-1 bg-bg-deep rounded-full overflow-hidden">
@@ -99,11 +107,6 @@ export function ChatArea() {
                   style={{ width: `${Math.max(Math.min(contextUsage.percentage * 100, 100), 1)}%` }}
                 />
               </div>
-              {contextUsage.shouldCompact && (
-                <p className="text-xs text-warning mt-1">
-                  Context filling up. Auto-compaction will occur soon.
-                </p>
-              )}
             </div>
           )}
 

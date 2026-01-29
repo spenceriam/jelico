@@ -66,6 +66,22 @@ interface QueuedMessage {
   model: string
 }
 
+// System notifications that appear inline in chat
+export type SystemNotificationType =
+  | 'compaction_warning'
+  | 'compaction_complete'
+  | 'model_changed'
+  | 'artifacts_created'
+
+export interface SystemNotification {
+  id: string
+  type: SystemNotificationType
+  message?: string
+  artifacts?: Array<{ id: string; title: string; type: string }>
+  modelName?: string
+  timestamp: number
+}
+
 interface ChatStore {
   conversations: Conversation[]
   activeConversationId: string | null
@@ -74,6 +90,7 @@ interface ChatStore {
   streamingContent: string
   streamingToolCalls: ToolCall[]
   streamingToolResults: ToolResult[]
+  systemNotifications: SystemNotification[]
   isLoading: boolean
   error: string | null
   mode: AgentMode
@@ -93,6 +110,8 @@ interface ChatStore {
   setModeTransitioning: (transitioning: boolean) => void
   clearError: () => void
   regenerateLastResponse: (providerId: string, model: string) => Promise<void>
+  addSystemNotification: (notification: Omit<SystemNotification, 'id' | 'timestamp'>) => void
+  clearSystemNotifications: () => void
 }
 
 let currentStreamChannelId: string | null = null
@@ -106,6 +125,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
   streamingContent: '',
   streamingToolCalls: [],
   streamingToolResults: [],
+  systemNotifications: [],
   isLoading: false,
   error: null,
   mode: 'auto' as AgentMode,
@@ -273,15 +293,27 @@ export const useChatStore = create<ChatStore>((set, get) => ({
       }))
     })
 
+    // Track artifacts created during this stream
+    const createdArtifacts: Array<{ id: string; title: string; type: string }> = []
+
     // Handle artifacts
-    window.jelico.ai.onArtifact(channelId, (artifact) => {
-      useArtifactStore.getState().addArtifact({
-        conversationId: conversationId!,
-        type: artifact.type,
-        title: artifact.title,
-        content: artifact.content,
-        language: artifact.language,
-      })
+    window.jelico.ai.onArtifact(channelId, async (artifact) => {
+      try {
+        const newArtifact = await useArtifactStore.getState().addArtifact({
+          conversationId: conversationId!,
+          type: artifact.type,
+          title: artifact.title,
+          content: artifact.content,
+          language: artifact.language,
+        })
+        createdArtifacts.push({
+          id: newArtifact.id,
+          title: newArtifact.title,
+          type: newArtifact.type,
+        })
+      } catch (error) {
+        console.error('Failed to create artifact:', error)
+      }
     })
 
     // Handle spawn agent requests
@@ -346,6 +378,24 @@ export const useChatStore = create<ChatStore>((set, get) => ({
         streamingToolCalls: [],
         streamingToolResults: [],
       }))
+
+      // Add system notification for created artifacts
+      if (createdArtifacts.length > 0) {
+        get().addSystemNotification({
+          type: 'artifacts_created',
+          artifacts: createdArtifacts,
+        })
+      }
+
+      // Check if compaction warning should be shown
+      if (conversationId) {
+        const contextUsage = useContextStore.getState().getContextUsage(conversationId)
+        if (contextUsage.shouldCompact) {
+          get().addSystemNotification({
+            type: 'compaction_warning',
+          })
+        }
+      }
 
       // Process any queued messages
       get().processQueue()
@@ -473,5 +523,20 @@ export const useChatStore = create<ChatStore>((set, get) => ({
 
     // Re-send the user's message to regenerate
     await get().sendMessage(lastUserMessage.content, providerId, model)
+  },
+
+  addSystemNotification: (notification) => {
+    const newNotification: SystemNotification = {
+      ...notification,
+      id: `notification-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+      timestamp: Date.now(),
+    }
+    set((state) => ({
+      systemNotifications: [...state.systemNotifications, newNotification],
+    }))
+  },
+
+  clearSystemNotifications: () => {
+    set({ systemNotifications: [] })
   },
 }))

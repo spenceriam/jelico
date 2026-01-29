@@ -1,7 +1,8 @@
 import { useState } from 'react'
 import { Message } from './Message'
+import { SystemMessage } from './SystemMessage'
 import { ThinkingIndicator } from '../StatusIndicators/ThinkingIndicator'
-import type { ToolCall, ToolResult, MessageUsage } from '../../stores/chat'
+import type { ToolCall, ToolResult, MessageUsage, SystemNotification } from '../../stores/chat'
 
 interface MessageData {
   id: string
@@ -18,6 +19,7 @@ interface MessageListProps {
   streamingContent?: string
   streamingToolCalls?: ToolCall[]
   streamingToolResults?: ToolResult[]
+  systemNotifications?: SystemNotification[]
   onRegenerate?: () => Promise<void>
 }
 
@@ -26,6 +28,7 @@ export function MessageList({
   streamingContent,
   streamingToolCalls,
   streamingToolResults,
+  systemNotifications = [],
   onRegenerate,
 }: MessageListProps) {
   const [isRegenerating, setIsRegenerating] = useState(false)
@@ -58,6 +61,17 @@ export function MessageList({
           isLastAssistantMessage={index === lastAssistantIndex}
           onRegenerate={index === lastAssistantIndex ? handleRegenerate : undefined}
           isRegenerating={isRegenerating}
+        />
+      ))}
+
+      {/* System notifications - show after last message */}
+      {systemNotifications.map((notification) => (
+        <SystemMessage
+          key={notification.id}
+          type={notification.type}
+          message={notification.message}
+          artifacts={notification.artifacts}
+          modelName={notification.modelName}
         />
       ))}
 
