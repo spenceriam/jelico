@@ -166,17 +166,19 @@ Use this when you need to perform multiple independent tasks simultaneously, or 
 The sub-agent runs independently and you can check its status or wait for results using get_agent_status or wait_for_agent.
 Returns an agent_id that you can use to track the agent.`,
       parameters: z.object({
-        name: z.string().describe('A short name for the agent (e.g., "Test Runner", "Code Reviewer")'),
+        name: z.string().optional().describe('A short name for the agent (e.g., "Test Runner", "Code Reviewer"). If not provided, will be auto-generated.'),
         task: z.string().describe('The detailed task description for the agent'),
         mode: z.enum(['auto', 'explore', 'execute', 'plan', 'review'])
           .optional()
           .describe('The mode for the agent (defaults to auto)'),
       }),
       execute: async ({ name, task, mode: agentMode }) => {
+        // Auto-generate name if not provided
+        const agentName = name || `Agent-${Date.now().toString(36).slice(-4)}`
         // Spawn the sub-agent using the service
         const agentId = await spawnSubAgent({
           parentStreamId: streamContext.channelId,
-          name,
+          name: agentName,
           task,
           mode: agentMode || 'auto',
           providerId: streamContext.providerId,
@@ -186,13 +188,13 @@ Returns an agent_id that you can use to track the agent.`,
 
         // Notify the UI
         if (sendSpawnAgent) {
-          sendSpawnAgent({ id: agentId, name, task, mode: agentMode || 'auto' })
+          sendSpawnAgent({ id: agentId, name: agentName, task, mode: agentMode || 'auto' })
         }
 
         return {
           success: true,
           agent_id: agentId,
-          message: `Agent "${name}" spawned successfully. IMPORTANT: You MUST call wait_for_agent with this agent_id to get the results before finishing your response. Do not end without waiting.`,
+          message: `Agent "${agentName}" spawned successfully. IMPORTANT: You MUST call wait_for_agent with this agent_id to get the results before finishing your response. Do not end without waiting.`,
         }
       },
     })
@@ -865,6 +867,8 @@ When the user asks to modify, update, fix, or improve an existing artifact, use 
       // Use fullStream to get both text AND tool call events as they happen
       // This enables async display of tool calls BEFORE they complete
       const pendingToolCalls = new Map<string, { name: string; args: Record<string, unknown> }>()
+      let textAfterLastToolResult = '' // Track text generated AFTER last tool result
+      let hadAnyToolCalls = false
 
       for await (const part of result.fullStream) {
         if (abortController.signal.aborted) break
@@ -874,6 +878,7 @@ When the user asks to modify, update, fix, or improve an existing artifact, use 
             // Regular text chunk - only send if we have actual text
             if (part.textDelta) {
               event.sender.send(`ai:chunk:${channelId}`, part.textDelta)
+              textAfterLastToolResult += part.textDelta
             }
             break
 
@@ -935,6 +940,9 @@ When the user asks to modify, update, fix, or improve an existing artifact, use 
               toolCallId: part.toolCallId,
               result: toolResult,
             }])
+            // Reset text tracker - we want to know if text comes AFTER tool results
+            textAfterLastToolResult = ''
+            hadAnyToolCalls = true
             break
 
           // Other events we might care about
@@ -978,12 +986,18 @@ When the user asks to modify, update, fix, or improve an existing artifact, use 
       const activeAgents = getSubAgentsForStream(channelId)
       const runningAgents = activeAgents.filter(a => a.status === 'running' || a.status === 'pending')
 
-      // CRITICAL: Check if AI ended with tool calls but no text summary
-      // This happens when model executes tools but doesn't provide explanation
-      const hasToolCalls = pendingToolCalls.size > 0
-      const hasTextContent = fullText && fullText.trim().length > 50 // Meaningful text, not just whitespace
+      // CRITICAL: Check if AI ended with tool calls but no text summary AFTER those tool calls
+      // We track text generated AFTER the last tool result to detect missing summaries
+      const hasTextAfterTools = textAfterLastToolResult.trim().length > 50
 
-      if (hasToolCalls && !hasTextContent && !abortController.signal.aborted) {
+      console.log('[AI] Summary detection:', {
+        hadAnyToolCalls,
+        textAfterLastToolResult: textAfterLastToolResult.length,
+        hasTextAfterTools,
+        finishReason,
+      })
+
+      if (hadAnyToolCalls && !hasTextAfterTools && !abortController.signal.aborted) {
         console.log('[AI] Detected missing summary after tool calls - requesting continuation')
 
         // Get tool results summary for context
@@ -1038,8 +1052,8 @@ When the user asks to modify, update, fix, or improve an existing artifact, use 
         completionTokens,
         totalTokens,
         runningSubAgents: runningAgents.length,
-        hadToolCalls: hasToolCalls,
-        hadTextContent: hasTextContent,
+        hadAnyToolCalls,
+        textAfterToolsLength: textAfterLastToolResult.length,
       })
 
       // Signal completion with stats
