@@ -573,40 +573,22 @@ Use this as the base path for file operations. When reading, writing, or searchi
           })
           // Send tool call updates to renderer
           if (toolCalls && toolCalls.length > 0) {
-            // Log full structure to debug args issue
-            const tc0 = toolCalls[0] as any
-            console.log('[AI] First tool call inspection:')
-            console.log('  - Keys:', Object.keys(tc0))
-            console.log('  - toolCallId:', tc0.toolCallId)
-            console.log('  - toolName:', tc0.toolName)
-            console.log('  - args:', tc0.args)
-            console.log('  - input:', tc0.input)  // Some SDKs use 'input' instead of 'args'
-            console.log('  - arguments:', tc0.arguments)  // Or 'arguments'
-            console.log('  - Full JSON:', JSON.stringify(tc0, null, 2))
-
-            // Transform tool calls to our expected format
-            // Check for various possible property names for arguments
+            // AI SDK uses 'input' for arguments, not 'args'
             const formattedToolCalls = toolCalls.map((tc: any) => ({
               id: tc.toolCallId,
               name: tc.toolName,
-              args: tc.args || tc.input || tc.arguments || {},
+              args: tc.input || tc.args || {},  // AI SDK v6 uses 'input'
             }))
-            console.log('[AI] Formatted tool calls:', JSON.stringify(formattedToolCalls, null, 2))
+            console.log('[AI] Tool calls:', formattedToolCalls.map(tc => ({ name: tc.name, args: tc.args })))
             event.sender.send(`ai:toolCalls:${channelId}`, formattedToolCalls)
           }
           if (toolResults && toolResults.length > 0) {
-            // Log full structure to debug result issue
-            console.log('[AI] Tool results (full):', JSON.stringify(toolResults, null, 2))
-            if (toolResults[0]) {
-              console.log('[AI] First tool result keys:', Object.keys(toolResults[0]))
-            }
-
-            // Transform tool results to our expected format
-            const formattedToolResults = toolResults.map(tr => ({
+            // AI SDK uses 'output' for results, not 'result'
+            const formattedToolResults = toolResults.map((tr: any) => ({
               toolCallId: tr.toolCallId,
-              result: tr.result,
+              result: tr.output || tr.result,  // AI SDK v6 uses 'output'
             }))
-            console.log('[AI] Formatted tool results:', formattedToolResults)
+            console.log('[AI] Tool results:', formattedToolResults.map(tr => ({ id: tr.toolCallId, success: tr.result?.success })))
             event.sender.send(`ai:toolResults:${channelId}`, formattedToolResults)
           }
         },

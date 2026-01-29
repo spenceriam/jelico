@@ -52,7 +52,8 @@ IMPORTANT: Use \`create_artifact\` tool to create artifacts - do NOT use raw XML
 - Do NOT just describe what you would do - actually DO it by calling the tool
 - Do NOT say "I'll read the file" or "Let me search for..." without immediately calling the tool
 - If you have the capability to perform an action via a tool, USE IT immediately
-- Tools are called via function calls, not by typing tool names in your response`
+- Tools are called via function calls, not by typing tool names in your response
+- ALWAYS provide a summary or response AFTER tool calls complete - explain what happened, what worked, what didn't, and any next steps`
 
 export interface ModeDefinition {
   id: AgentMode

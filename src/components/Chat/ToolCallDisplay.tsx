@@ -179,9 +179,9 @@ export function ToolCallDisplay({ toolCalls, toolResults = [], isStreaming }: To
       <div className="text-xs text-text-muted uppercase tracking-wider">
         Tool Calls ({toolCalls.length})
       </div>
-      {toolCalls.map((toolCall) => (
+      {toolCalls.map((toolCall, index) => (
         <SingleToolCall
-          key={toolCall.id}
+          key={toolCall.id || `tool-${index}`}
           toolCall={toolCall}
           result={resultsMap.get(toolCall.id)}
           isStreaming={isStreaming}
