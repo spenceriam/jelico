@@ -11,6 +11,8 @@ contextBridge.exposeInMainWorld('jelico', {
     delete: (id: string) => ipcRenderer.invoke('providers:delete', id),
     test: (id: string) => ipcRenderer.invoke('providers:test', id),
     fetchOpenRouterModels: (apiKey: string) => ipcRenderer.invoke('providers:fetchOpenRouterModels', apiKey),
+    getModelContextSize: (providerId: string, modelId: string) =>
+      ipcRenderer.invoke('providers:getModelContextSize', providerId, modelId),
   },
   keychain: {
     setApiKey: (providerId: string, key: string) => ipcRenderer.invoke('keychain:set', providerId, key),
@@ -132,6 +134,25 @@ contextBridge.exposeInMainWorld('jelico', {
       return () => ipcRenderer.removeListener('speech:progress', handler)
     },
   },
+  compaction: {
+    getThresholds: () => ipcRenderer.invoke('compaction:getThresholds'),
+    shouldCompact: (currentTokens: number, maxTokens: number) =>
+      ipcRenderer.invoke('compaction:shouldCompact', currentTokens, maxTokens),
+    getStatus: (currentTokens: number, maxTokens: number) =>
+      ipcRenderer.invoke('compaction:getStatus', currentTokens, maxTokens),
+    compact: (params: {
+      conversationId: string
+      providerId: string
+      model: string
+      customInstructions?: string
+      forceCompact?: boolean
+    }) => ipcRenderer.invoke('compaction:compact', params),
+    onProgress: (callback: (progress: any) => void) => {
+      const handler = (_: any, progress: any) => callback(progress)
+      ipcRenderer.on('compaction:progress', handler)
+      return () => ipcRenderer.removeListener('compaction:progress', handler)
+    },
+  },
   ai: {
     stream: (params: any) => {
       const channelId = crypto.randomUUID()
@@ -166,6 +187,10 @@ contextBridge.exposeInMainWorld('jelico', {
       const handler = (_: any, agent: any) => callback(agent)
       ipcRenderer.on(`ai:spawnAgent:${channelId}`, handler)
     },
+    onUpdateArtifact: (channelId: string, callback: (update: { id: string; updates: any }) => void) => {
+      const handler = (_: any, update: any) => callback(update)
+      ipcRenderer.on(`ai:updateArtifact:${channelId}`, handler)
+    },
     stopStream: (channelId: string) => {
       ipcRenderer.send('ai:stop', channelId)
     },
@@ -177,6 +202,7 @@ contextBridge.exposeInMainWorld('jelico', {
       ipcRenderer.removeAllListeners(`ai:toolResults:${channelId}`)
       ipcRenderer.removeAllListeners(`ai:artifact:${channelId}`)
       ipcRenderer.removeAllListeners(`ai:spawnAgent:${channelId}`)
+      ipcRenderer.removeAllListeners(`ai:updateArtifact:${channelId}`)
     },
   },
 })

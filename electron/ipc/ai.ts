@@ -125,7 +125,8 @@ function getProviderInstance(providerConfig: any, apiKey: string) {
 function getBuiltInTools(
   mode: AgentMode,
   sendArtifact?: (artifact: any) => void,
-  sendSpawnAgent?: (agent: any) => void
+  sendSpawnAgent?: (agent: any) => void,
+  sendUpdateArtifact?: (update: { id: string; updates: any }) => void
 ) {
   const canWrite = mode !== 'explore'
   const canExecute = mode === 'auto' || mode === 'execute' || mode === 'review'
@@ -177,6 +178,26 @@ Types:
         sendArtifact({ type, title, content, language })
       }
       return { success: true, message: `Artifact "${title}" created successfully` }
+    },
+  })
+
+  // Update artifact tool - always available
+  // Allows AI to modify existing artifacts
+  tools.update_artifact = tool({
+    description: `Update an existing artifact in the Canvas panel.
+Use this to modify, improve, or fix content in an artifact that already exists.
+You must know the artifact ID from the existing artifacts context.`,
+    parameters: z.object({
+      id: z.string().describe('The ID of the artifact to update'),
+      title: z.string().optional().describe('New title (if changing)'),
+      content: z.string().describe('The updated content'),
+      language: z.string().optional().describe('For code artifacts: the programming language (if changing)'),
+    }),
+    execute: async ({ id, title, content, language }) => {
+      if (sendUpdateArtifact) {
+        sendUpdateArtifact({ id, updates: { title, content, language } })
+      }
+      return { success: true, message: `Artifact "${id}" updated successfully` }
     },
   })
 
@@ -456,9 +477,28 @@ You are working in the workspace located at: ${params.workspacePath}
 Use this as the base path for file operations. When reading, writing, or searching files, use paths relative to this workspace unless the user specifies an absolute path.`
       }
 
+      // Add artifact context if there are existing artifacts
+      if (params.artifacts && params.artifacts.length > 0) {
+        const artifactList = params.artifacts.map((a: any) =>
+          `- **${a.title}** (ID: ${a.id}, type: ${a.type}${a.language ? `, ${a.language}` : ''})\n  Preview: ${a.preview}`
+        ).join('\n')
+
+        systemPrompt += `\n\n## Existing Artifacts
+The following artifacts exist in this conversation. You can reference them by title or update them using their ID:
+
+${artifactList}
+
+When the user asks to modify, update, fix, or improve an existing artifact, use the \`update_artifact\` tool with the artifact's ID instead of creating a new one.`
+      }
+
       // Artifact sender function
       const sendArtifact = (artifact: any) => {
         event.sender.send(`ai:artifact:${channelId}`, artifact)
+      }
+
+      // Update artifact function
+      const sendUpdateArtifact = (update: { id: string; updates: any }) => {
+        event.sender.send(`ai:updateArtifact:${channelId}`, update)
       }
 
       // Spawn agent function
@@ -467,7 +507,7 @@ Use this as the base path for file operations. When reading, writing, or searchi
       }
 
       // Get tools based on mode
-      const tools = getBuiltInTools(mode, sendArtifact, sendSpawnAgent)
+      const tools = getBuiltInTools(mode, sendArtifact, sendSpawnAgent, sendUpdateArtifact)
 
       // Build messages (without system prompt - we pass it separately to streamText)
       const messages = params.messages.map((m: any) => {

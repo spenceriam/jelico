@@ -47,7 +47,7 @@ export function SystemMessage({ type, message, artifacts, modelName }: SystemMes
   const getContent = () => {
     switch (type) {
       case 'compaction_warning':
-        return 'Conversation will compact soon'
+        return 'Compacting conversation soon'
       case 'compaction_complete':
         return 'Conversation compacted'
       case 'model_changed':

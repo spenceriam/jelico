@@ -10,6 +10,7 @@ interface Window {
       delete: (id: string) => Promise<void>
       test: (id: string) => Promise<boolean>
       fetchOpenRouterModels: (apiKey: string) => Promise<OpenRouterModel[]>
+      getModelContextSize: (providerId: string, modelId: string) => Promise<number | null>
     }
     keychain: {
       setApiKey: (providerId: string, key: string) => Promise<void>
@@ -40,6 +41,13 @@ interface Window {
       createWorktree: (workspaceId: string, branch: string, targetPath?: string) => Promise<Workspace>
       removeWorktree: (mainWorkspaceId: string, worktreePath: string) => Promise<boolean>
     }
+    compaction: {
+      getThresholds: () => Promise<CompactionThresholds>
+      shouldCompact: (currentTokens: number, maxTokens: number) => Promise<boolean>
+      getStatus: (currentTokens: number, maxTokens: number) => Promise<CompactionStatus>
+      compact: (params: CompactionParams) => Promise<CompactionResult>
+      onProgress: (callback: (progress: CompactionProgress) => void) => () => void
+    }
     ai: {
       stream: (params: StreamParams) => string
       onStreamChunk: (channelId: string, callback: (chunk: string) => void) => void
@@ -49,6 +57,7 @@ interface Window {
       onToolResults: (channelId: string, callback: (toolResults: ToolResultEvent[]) => void) => void
       onArtifact: (channelId: string, callback: (artifact: ArtifactEvent) => void) => void
       onSpawnAgent: (channelId: string, callback: (agent: SpawnAgentEvent) => void) => void
+      onUpdateArtifact: (channelId: string, callback: (update: ArtifactUpdateEvent) => void) => void
       stopStream: (channelId: string) => void
       removeListeners: (channelId: string) => void
     }
@@ -200,6 +209,15 @@ interface StreamParams {
   messages: Array<{ role: string; content: string }>
   tools?: ToolDefinition[]
   workspacePath?: string
+  artifacts?: ArtifactContext[]
+}
+
+interface ArtifactContext {
+  id: string
+  type: string
+  title: string
+  language?: string
+  preview: string
 }
 
 interface ToolDefinition {
@@ -230,6 +248,15 @@ interface SpawnAgentEvent {
   name: string
   task: string
   mode: 'auto' | 'explore' | 'execute' | 'plan' | 'review'
+}
+
+interface ArtifactUpdateEvent {
+  id: string
+  updates: {
+    title?: string
+    content: string
+    language?: string
+  }
 }
 
 interface StreamEndStats {
@@ -495,4 +522,37 @@ interface TranscriptionResult {
     duration?: number
   }
   error?: string
+}
+
+// Compaction types
+interface CompactionThresholds {
+  WARNING: number
+  COMPACT: number
+  CRITICAL: number
+}
+
+type CompactionStatus = 'normal' | 'warning' | 'compact' | 'critical'
+
+interface CompactionParams {
+  conversationId: string
+  providerId: string
+  model: string
+  customInstructions?: string
+  forceCompact?: boolean
+}
+
+interface CompactionResult {
+  success: boolean
+  tokensBefore?: number
+  tokensAfter?: number
+  messagesBefore?: number
+  messagesAfter?: number
+  error?: string
+}
+
+interface CompactionProgress {
+  status: 'compacting' | 'saving' | 'complete'
+  message: string
+  tokensBefore?: number
+  tokensAfter?: number
 }

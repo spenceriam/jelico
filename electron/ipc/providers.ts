@@ -318,6 +318,125 @@ export function registerProviderHandlers() {
     }
   })
 
+  // Get context window size for a specific model from the provider's API
+  ipcMain.handle('providers:getModelContextSize', async (_, providerId: string, modelId: string) => {
+    try {
+      const provider = providerDb.get(providerId)
+      if (!provider) {
+        console.error('[Providers] Provider not found:', providerId)
+        return null
+      }
+
+      const apiKey = await keychainService.getApiKey(providerId)
+      const baseUrl = provider.base_url
+
+      switch (provider.type) {
+        case 'anthropic': {
+          if (!apiKey) return null
+          const response = await fetch('https://api.anthropic.com/v1/models', {
+            headers: {
+              'x-api-key': apiKey,
+              'anthropic-version': '2023-06-01',
+            },
+          })
+          if (!response.ok) return null
+          const data = await response.json()
+          const model = (data.data || []).find((m: any) => m.id === modelId)
+          // Anthropic returns max_tokens or we can infer from model name
+          if (model?.context_window) return model.context_window
+          // Fallback: Claude 3.x models have 200k context
+          if (modelId.includes('claude-3') || modelId.includes('claude-sonnet') || modelId.includes('claude-opus')) {
+            return 200000
+          }
+          return null
+        }
+
+        case 'openai': {
+          if (!apiKey) return null
+          // OpenAI doesn't expose context length in their API directly
+          // We need to use known values or query a different endpoint
+          // For now, use known values for common models
+          const knownSizes: Record<string, number> = {
+            'gpt-4o': 128000,
+            'gpt-4o-mini': 128000,
+            'gpt-4-turbo': 128000,
+            'gpt-4-turbo-preview': 128000,
+            'gpt-4': 8192,
+            'gpt-4-32k': 32768,
+            'gpt-3.5-turbo': 16385,
+            'gpt-3.5-turbo-16k': 16385,
+            'o1': 200000,
+            'o1-mini': 128000,
+            'o1-preview': 128000,
+            'o3-mini': 200000,
+          }
+          // Check exact match first
+          if (knownSizes[modelId]) return knownSizes[modelId]
+          // Check partial match
+          for (const [key, size] of Object.entries(knownSizes)) {
+            if (modelId.includes(key)) return size
+          }
+          return 128000 // Default for newer models
+        }
+
+        case 'google': {
+          if (!apiKey) return null
+          const response = await fetch(
+            `https://generativelanguage.googleapis.com/v1/models/${modelId}?key=${apiKey}`
+          )
+          if (!response.ok) return null
+          const data = await response.json()
+          // Google returns inputTokenLimit
+          return data.inputTokenLimit || null
+        }
+
+        case 'openrouter': {
+          if (!apiKey) return null
+          const response = await fetch('https://openrouter.ai/api/v1/models', {
+            headers: { 'Authorization': `Bearer ${apiKey}` },
+          })
+          if (!response.ok) return null
+          const data = await response.json()
+          const model = (data.data || []).find((m: any) => m.id === modelId)
+          return model?.context_length || null
+        }
+
+        case 'ollama': {
+          const url = baseUrl || 'http://localhost:11434'
+          const response = await fetch(`${url}/api/show`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ name: modelId }),
+          })
+          if (!response.ok) return null
+          const data = await response.json()
+          // Ollama returns model info with context length in parameters
+          // Look for num_ctx in modelfile or parameters
+          const params = data.parameters || ''
+          const match = params.match(/num_ctx\s+(\d+)/)
+          if (match) return parseInt(match[1], 10)
+          // Default Ollama context is often 2048 or 4096
+          return data.model_info?.context_length || 4096
+        }
+
+        case 'zai':
+        case 'zai-china':
+        case 'zai-coding':
+        case 'zai-coding-china': {
+          // Z.ai models - use known values
+          return 128000
+        }
+
+        default:
+          // For custom/unknown providers, return null (will need fallback)
+          return null
+      }
+    } catch (err) {
+      console.error('[Providers] Failed to get model context size:', err)
+      return null
+    }
+  })
+
   // Keychain handlers
   ipcMain.handle('keychain:set', async (_, providerId: string, key: string) => {
     await keychainService.setApiKey(providerId, key)

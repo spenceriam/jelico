@@ -192,9 +192,10 @@ export const useChatStore = create<ChatStore>((set, get) => ({
 
   sendMessage: async (content, providerId, model, attachments) => {
     const { activeConversationId, messages, mode, isStreaming } = get()
+    const { isCompacting } = useContextStore.getState()
 
-    // If already streaming, queue the message
-    if (isStreaming) {
+    // If already streaming or compacting, queue the message
+    if (isStreaming || isCompacting) {
       get().queueMessage(content, providerId, model, attachments)
       return
     }
@@ -218,6 +219,14 @@ export const useChatStore = create<ChatStore>((set, get) => ({
     // Create conversation if needed
     if (!conversationId) {
       conversationId = await get().createConversation(providerId, model)
+      // Initialize context tracking for new conversation
+      await useContextStore.getState().initConversationContext(conversationId, providerId, model)
+    } else {
+      // Ensure context is initialized for existing conversation
+      const contextState = useContextStore.getState()
+      if (!contextState.conversationContexts[conversationId]) {
+        await contextState.initConversationContext(conversationId, providerId, model)
+      }
     }
 
     // Add user message (show original content, not expanded skill)
@@ -258,13 +267,30 @@ export const useChatStore = create<ChatStore>((set, get) => ({
       return { role: m.role, content: m.content, attachments: m.attachments }
     })
 
-    // Start streaming with mode and workspace context
+    // Get current artifacts for context
+    const artifactStore = useArtifactStore.getState()
+    const conversationArtifacts = conversationId
+      ? artifactStore.getArtifactsByConversation(conversationId)
+      : []
+
+    // Build artifact context for AI
+    const artifactContext = conversationArtifacts.map(a => ({
+      id: a.id,
+      type: a.type,
+      title: a.title,
+      language: a.language,
+      // Include brief content preview for context (first 200 chars)
+      preview: a.content.slice(0, 200) + (a.content.length > 200 ? '...' : ''),
+    }))
+
+    // Start streaming with mode, workspace, and artifact context
     const channelId = window.jelico.ai.stream({
       providerId,
       model,
       mode: finalMode,
       messages: aiMessages,
       workspacePath: activeWorkspace?.path,
+      artifacts: artifactContext,
     })
     currentStreamChannelId = channelId
 
@@ -316,6 +342,20 @@ export const useChatStore = create<ChatStore>((set, get) => ({
       }
     })
 
+    // Handle artifact updates
+    window.jelico.ai.onUpdateArtifact(channelId, async (update) => {
+      try {
+        await useArtifactStore.getState().updateArtifact(update.id, {
+          title: update.updates.title,
+          content: update.updates.content,
+          language: update.updates.language,
+        })
+        console.log('[Chat Store] Artifact updated:', update.id)
+      } catch (error) {
+        console.error('Failed to update artifact:', error)
+      }
+    })
+
     // Handle spawn agent requests
     window.jelico.ai.onSpawnAgent(channelId, (agent) => {
       useAgentStore.getState().spawnAgent({
@@ -362,13 +402,9 @@ export const useChatStore = create<ChatStore>((set, get) => ({
         usage,
       }
 
-      // Update context window tracking
+      // Update context window token count
       if (usage?.totalTokens && conversationId) {
-        useContextStore.getState().setConversationContext(
-          conversationId,
-          usage.totalTokens,
-          model
-        )
+        useContextStore.getState().updateTokenCount(conversationId, usage.totalTokens)
       }
 
       set((state) => ({
@@ -387,12 +423,45 @@ export const useChatStore = create<ChatStore>((set, get) => ({
         })
       }
 
-      // Check if compaction warning should be shown
+      // Check context usage and trigger compaction if needed
       if (conversationId) {
-        const contextUsage = useContextStore.getState().getContextUsage(conversationId)
-        if (contextUsage.shouldCompact) {
-          get().addSystemNotification({
-            type: 'compaction_warning',
+        const contextStore = useContextStore.getState()
+        const contextUsage = contextStore.getContextUsage(conversationId)
+
+        if (contextUsage.shouldCompact && contextStore.autoCompact) {
+          // Start compaction - set flag to block new messages
+          contextStore.setIsCompacting(true)
+
+          // Run compaction async
+          window.jelico.compaction.compact({
+            conversationId,
+            providerId,
+            model,
+          }).then(async (result) => {
+            if (result.success) {
+              // Update context with new token count
+              if (result.tokensAfter !== undefined) {
+                contextStore.updateTokenCount(conversationId, result.tokensAfter)
+              }
+
+              // Show compaction complete notification
+              get().addSystemNotification({
+                type: 'compaction_complete',
+              })
+
+              // Reload messages to get the compacted version
+              await get().setActiveConversation(conversationId)
+            } else {
+              console.error('[Chat] Compaction failed:', result.error)
+            }
+
+            // Clear compacting flag and process any queued messages
+            contextStore.setIsCompacting(false)
+            get().processQueue()
+          }).catch((error) => {
+            console.error('[Chat] Compaction error:', error)
+            contextStore.setIsCompacting(false)
+            get().processQueue()
           })
         }
       }

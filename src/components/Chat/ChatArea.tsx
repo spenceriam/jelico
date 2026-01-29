@@ -1,5 +1,5 @@
 import { useRef, useEffect, useState, useMemo, useCallback } from 'react'
-import { Settings, AlertTriangle } from 'lucide-react'
+import { Settings, AlertTriangle, Loader2 } from 'lucide-react'
 import { useChatStore } from '../../stores/chat'
 import { useProviderStore } from '../../stores/providers'
 import { useUIStore } from '../../stores/ui'
@@ -14,9 +14,10 @@ import { ShimmerText } from '../StatusIndicators/ShimmerText'
 export function ChatArea() {
   const { messages, isStreaming, streamingContent, streamingToolCalls, streamingToolResults, systemNotifications, activeConversationId, regenerateLastResponse } = useChatStore()
   const { activeProviderId, activeModel } = useProviderStore()
-  const { isCompacting, isProcessing, processingMessage } = useUIStore()
-  const { getContextUsage } = useContextStore()
+  const { isProcessing, processingMessage } = useUIStore()
+  const { getContextUsage, isCompacting } = useContextStore()
   const messagesEndRef = useRef<HTMLDivElement>(null)
+  const [showContextBar, setShowContextBar] = useState(false)
 
   // Get context usage for current conversation
   const contextUsage = activeConversationId ? getContextUsage(activeConversationId) : null
@@ -81,32 +82,38 @@ export function ChatArea() {
             </div>
           )}
 
-          {/* Context usage indicator - always show when there's usage */}
+          {/* Context usage indicator - percentage only, right-aligned */}
           {contextUsage && contextUsage.tokenCount > 0 && (
             <div className="mb-3">
-              <div className="flex items-center justify-between text-xs text-text-muted mb-1">
-                <div className="flex items-center gap-2">
-                  <span>{contextUsage.tokenCount.toLocaleString()} / {contextUsage.maxTokens.toLocaleString()} tokens</span>
-                  {contextUsage.shouldCompact && (
-                    <span className="text-warning" title="Compacting conversation soon">
-                      <AlertTriangle className="w-3.5 h-3.5" />
-                    </span>
-                  )}
+              <div
+                className="flex items-center justify-end gap-2 text-xs text-text-muted"
+                onMouseEnter={() => setShowContextBar(true)}
+                onMouseLeave={() => setShowContextBar(false)}
+              >
+                {/* Spinner during compaction */}
+                {isCompacting && (
+                  <Loader2 className="w-3.5 h-3.5 animate-spin text-accent" />
+                )}
+                {/* Warning icon when approaching limit (but not compacting) */}
+                {!isCompacting && contextUsage.shouldWarn && (
+                  <span
+                    className="text-warning"
+                    title="Compacting conversation soon"
+                  >
+                    <AlertTriangle className="w-3.5 h-3.5" />
+                  </span>
+                )}
+                <span className="cursor-default">{Math.round(contextUsage.percentage * 100)}%</span>
+              </div>
+              {/* Progress bar - only visible on hover */}
+              {showContextBar && (
+                <div className="h-1 bg-bg-deep rounded-full overflow-hidden mt-1">
+                  <div
+                    className="h-full transition-all duration-300 bg-accent"
+                    style={{ width: `${Math.max(Math.min(contextUsage.percentage * 100, 100), 1)}%` }}
+                  />
                 </div>
-                <span>{Math.round(contextUsage.percentage * 100)}%</span>
-              </div>
-              <div className="h-1 bg-bg-deep rounded-full overflow-hidden">
-                <div
-                  className={`h-full transition-all duration-300 ${
-                    contextUsage.percentage >= 0.75
-                      ? 'bg-error'
-                      : contextUsage.percentage >= 0.5
-                      ? 'bg-warning'
-                      : 'bg-accent'
-                  }`}
-                  style={{ width: `${Math.max(Math.min(contextUsage.percentage * 100, 100), 1)}%` }}
-                />
-              </div>
+              )}
             </div>
           )}
 

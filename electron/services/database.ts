@@ -216,6 +216,17 @@ export const conversationDb = {
     db.conversations = db.conversations.filter(c => c.id !== id)
     saveDb()
   },
+
+  // Replace all messages for a conversation (used by compaction)
+  updateMessages(id: string, newMessages: MessageRow[]): void {
+    // Remove existing messages
+    db.messages = db.messages.filter(m => m.conversation_id !== id)
+    // Add new messages
+    db.messages.push(...newMessages)
+    // Update conversation timestamp
+    this.touch(id)
+    saveDb()
+  },
 }
 
 // Workspace operations

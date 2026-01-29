@@ -1,25 +1,22 @@
 import { create } from 'zustand'
 
-// Default context window sizes for common models
-const MODEL_CONTEXT_SIZES: Record<string, number> = {
-  // Anthropic
-  'claude-sonnet-4-20250514': 200000,
-  'claude-opus-4-20250514': 200000,
-  'claude-3-5-haiku-20241022': 200000,
-  // OpenAI
-  'gpt-4o': 128000,
-  'gpt-4-turbo': 128000,
-  'gpt-3.5-turbo': 16385,
-  // Google
-  'gemini-1.5-pro': 2000000,
-  'gemini-1.5-flash': 1000000,
-  // Default
-  default: 100000,
+// Compaction thresholds (must match electron/services/compaction.ts)
+export const COMPACTION_THRESHOLDS = {
+  WARNING: 0.70,    // Show warning icon at 70%
+  COMPACT: 0.75,    // Auto-compact at 75%
+  CRITICAL: 0.90,   // Force compact at 90%
 }
+
+export type CompactionStatus = 'normal' | 'warning' | 'compact' | 'critical'
+
+// Fallback context size only used when API query fails
+const FALLBACK_CONTEXT_SIZE = 100000
 
 interface ContextState {
   // Per-conversation context tracking
   conversationContexts: Record<string, {
+    providerId: string
+    modelId: string
     modelContextSize: number
     currentTokenCount: number
     lastCompactionAt: number | null
@@ -28,49 +25,90 @@ interface ContextState {
 
   // Compaction settings
   compactionThreshold: number // Default 0.75 (75%)
+  warningThreshold: number   // Default 0.70 (70%)
   autoCompact: boolean
 
+  // Compaction state
+  isCompacting: boolean
+
   // Actions
-  setConversationContext: (
+  initConversationContext: (
     conversationId: string,
-    tokenCount: number,
-    modelId?: string
+    providerId: string,
+    modelId: string
+  ) => Promise<void>
+  updateTokenCount: (
+    conversationId: string,
+    tokenCount: number
   ) => void
   getContextUsage: (conversationId: string) => {
     percentage: number
     tokenCount: number
     maxTokens: number
+    status: CompactionStatus
     shouldCompact: boolean
+    shouldWarn: boolean
   }
-  setCompactionSummary: (conversationId: string, summary: string) => void
+  setCompactionSummary: (conversationId: string, summary: string, newTokenCount: number) => void
   clearConversationContext: (conversationId: string) => void
-  getModelContextSize: (modelId: string) => number
   setAutoCompact: (enabled: boolean) => void
   setCompactionThreshold: (threshold: number) => void
+  setIsCompacting: (isCompacting: boolean) => void
 }
 
 export const useContextStore = create<ContextState>((set, get) => ({
   conversationContexts: {},
-  compactionThreshold: 0.75,
+  compactionThreshold: COMPACTION_THRESHOLDS.COMPACT,
+  warningThreshold: COMPACTION_THRESHOLDS.WARNING,
   autoCompact: true,
+  isCompacting: false,
 
-  setConversationContext: (conversationId, tokenCount, modelId) => {
-    const modelContextSize = modelId
-      ? MODEL_CONTEXT_SIZES[modelId] || MODEL_CONTEXT_SIZES.default
-      : MODEL_CONTEXT_SIZES.default
+  initConversationContext: async (conversationId, providerId, modelId) => {
+    // Fetch context size from the provider's API
+    let modelContextSize = FALLBACK_CONTEXT_SIZE
+
+    try {
+      const size = await window.jelico.providers.getModelContextSize(providerId, modelId)
+      if (size) {
+        modelContextSize = size
+        console.log(`[Context] Fetched context size for ${modelId}: ${size}`)
+      } else {
+        console.warn(`[Context] Could not fetch context size for ${modelId}, using fallback: ${FALLBACK_CONTEXT_SIZE}`)
+      }
+    } catch (err) {
+      console.error('[Context] Error fetching context size:', err)
+    }
 
     set((state) => ({
       conversationContexts: {
         ...state.conversationContexts,
         [conversationId]: {
-          ...state.conversationContexts[conversationId],
+          providerId,
+          modelId,
           modelContextSize,
-          currentTokenCount: tokenCount,
-          lastCompactionAt: state.conversationContexts[conversationId]?.lastCompactionAt || null,
-          compactionSummary: state.conversationContexts[conversationId]?.compactionSummary || null,
+          currentTokenCount: 0,
+          lastCompactionAt: null,
+          compactionSummary: null,
         },
       },
     }))
+  },
+
+  updateTokenCount: (conversationId, tokenCount) => {
+    set((state) => {
+      const existing = state.conversationContexts[conversationId]
+      if (!existing) return state
+
+      return {
+        conversationContexts: {
+          ...state.conversationContexts,
+          [conversationId]: {
+            ...existing,
+            currentTokenCount: tokenCount,
+          },
+        },
+      }
+    })
   },
 
   getContextUsage: (conversationId) => {
@@ -79,35 +117,54 @@ export const useContextStore = create<ContextState>((set, get) => ({
       return {
         percentage: 0,
         tokenCount: 0,
-        maxTokens: MODEL_CONTEXT_SIZES.default,
+        maxTokens: FALLBACK_CONTEXT_SIZE,
+        status: 'normal' as CompactionStatus,
         shouldCompact: false,
+        shouldWarn: false,
       }
     }
 
-    const percentage = context.currentTokenCount / context.modelContextSize
+    const percentage = context.modelContextSize > 0
+      ? context.currentTokenCount / context.modelContextSize
+      : 0
+
+    // Determine status
+    let status: CompactionStatus = 'normal'
+    if (percentage >= COMPACTION_THRESHOLDS.CRITICAL) {
+      status = 'critical'
+    } else if (percentage >= COMPACTION_THRESHOLDS.COMPACT) {
+      status = 'compact'
+    } else if (percentage >= COMPACTION_THRESHOLDS.WARNING) {
+      status = 'warning'
+    }
+
     return {
       percentage,
       tokenCount: context.currentTokenCount,
       maxTokens: context.modelContextSize,
+      status,
       shouldCompact: percentage >= get().compactionThreshold,
+      shouldWarn: percentage >= get().warningThreshold,
     }
   },
 
-  setCompactionSummary: (conversationId, summary) => {
-    set((state) => ({
-      conversationContexts: {
-        ...state.conversationContexts,
-        [conversationId]: {
-          ...state.conversationContexts[conversationId],
-          lastCompactionAt: Date.now(),
-          compactionSummary: summary,
-          // Reset token count after compaction (summary is smaller)
-          currentTokenCount: Math.floor(
-            (state.conversationContexts[conversationId]?.currentTokenCount || 0) * 0.25
-          ),
+  setCompactionSummary: (conversationId, summary, newTokenCount) => {
+    set((state) => {
+      const existing = state.conversationContexts[conversationId]
+      if (!existing) return state
+
+      return {
+        conversationContexts: {
+          ...state.conversationContexts,
+          [conversationId]: {
+            ...existing,
+            lastCompactionAt: Date.now(),
+            compactionSummary: summary,
+            currentTokenCount: newTokenCount,
+          },
         },
-      },
-    }))
+      }
+    })
   },
 
   clearConversationContext: (conversationId) => {
@@ -117,13 +174,11 @@ export const useContextStore = create<ContextState>((set, get) => ({
     })
   },
 
-  getModelContextSize: (modelId) => {
-    return MODEL_CONTEXT_SIZES[modelId] || MODEL_CONTEXT_SIZES.default
-  },
-
   setAutoCompact: (enabled) => set({ autoCompact: enabled }),
 
   setCompactionThreshold: (threshold) => set({ compactionThreshold: threshold }),
+
+  setIsCompacting: (isCompacting) => set({ isCompacting }),
 }))
 
 // Utility function to estimate tokens (rough approximation: ~4 chars per token)
