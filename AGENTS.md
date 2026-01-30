@@ -17,6 +17,7 @@ Jelico is a local-first AI desktop assistant. A native app where you chat with A
    - `search_files` - Find files by pattern
    - `execute_command` - Run terminal commands
    - `create_artifact` / `update_artifact` - Create visual outputs
+   - `todo_write` / `todo_read` / `todo_check` - Task tracking for multi-step work
    - Tool calls are displayed in real-time and persisted with messages
 
 3. **Artifacts** - AI creates persistent outputs shown in the Canvas panel:
@@ -71,7 +72,7 @@ The Soul/Memory system should make Jelico increasingly personalized - it learns 
 ## Project overview
 Jelico is an AI Productivity Desktop built with Electron, React, TypeScript, and Vite. It provides a frictionless AI assistant experience with multi-provider support (Anthropic, OpenAI, Google), workspace management, conversation persistence, and a soul/memory system that learns user patterns and preferences over time.
 
-**Current Version:** 0.5.9
+**Current Version:** 0.6.0
 
 ## Development workflow discipline
 - **CRITICAL**: NEVER commit or push changes without explicit user approval
@@ -480,6 +481,53 @@ Jelico protects users from destructive AI actions with an approval workflow.
 - **Calm**: Patient, no pressure
 
 Greetings personalize with user name when available from soul preferences.
+
+## Todo System (AI Task Tracking)
+
+The AI can show its work plan to users via a visual task tracker with accent-colored border.
+
+**Tools:**
+| Tool | Purpose |
+|------|---------|
+| `todo_write` | Create/update task list (call at start of multi-step tasks) |
+| `todo_read` | Get current task state |
+| `todo_check` | Validate working on right task (auto-updates to in_progress) |
+
+**Task Status:**
+- `pending` (☐) - Not started yet
+- `in_progress` (◉) - Currently working (animated pulse)
+- `done` (☑) - Completed (strikethrough text)
+
+**Workflow Example:**
+```javascript
+// At task start: plan all steps
+todo_write({ tasks: [
+  { id: "1", text: "Read requirements", status: "pending" },
+  { id: "2", text: "Implement feature", status: "pending" },
+  { id: "3", text: "Write tests", status: "pending" }
+]})
+
+// Before each step: validate and auto-start
+todo_check({ taskId: "1" }) // Sets task 1 to in_progress
+
+// After completing: update status
+todo_write({ tasks: [
+  { id: "1", text: "Read requirements", status: "done" },
+  { id: "2", text: "Implement feature", status: "in_progress" },
+  { id: "3", text: "Write tests", status: "pending" }
+]})
+```
+
+**UI Component:**
+- Panel appears between Mode Selector and Chat Input
+- Only visible when todos exist (otherwise completely hidden)
+- Collapsible header shows progress count (e.g., "2/4 completed")
+- 2px accent-colored border with glow effect
+
+**Files:**
+- `src/stores/todos.ts` - Zustand state management
+- `src/components/Todo/TodoPanel.tsx` - UI component
+- `electron/ipc/ai.ts` - Tool definitions (todo_write, todo_read, todo_check)
 
 ## Progress tracking
 

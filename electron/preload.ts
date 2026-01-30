@@ -232,6 +232,10 @@ contextBridge.exposeInMainWorld('jelico', {
       const handler = (_: any, update: any) => callback(update)
       ipcRenderer.on(`ai:updateArtifact:${channelId}`, handler)
     },
+    onTodos: (channelId: string, callback: (todos: Array<{ id: string; text: string; status: 'pending' | 'in_progress' | 'done' }>) => void) => {
+      const handler = (_: any, todos: any[]) => callback(todos)
+      ipcRenderer.on(`ai:todos:${channelId}`, handler)
+    },
     stopStream: (channelId: string) => {
       ipcRenderer.send('ai:stop', channelId)
     },
@@ -246,6 +250,7 @@ contextBridge.exposeInMainWorld('jelico', {
       ipcRenderer.removeAllListeners(`ai:spawnAgent:${channelId}`)
       ipcRenderer.removeAllListeners(`ai:agentProgress:${channelId}`)
       ipcRenderer.removeAllListeners(`ai:updateArtifact:${channelId}`)
+      ipcRenderer.removeAllListeners(`ai:todos:${channelId}`)
     },
     generateTitle: (params: { providerId: string; model: string; userMessage: string; assistantMessage: string }): Promise<{ success: boolean; title?: string; error?: string }> => {
       return ipcRenderer.invoke('ai:generateTitle', params)

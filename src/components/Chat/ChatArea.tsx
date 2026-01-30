@@ -10,6 +10,7 @@ import { ModeSelector } from '../ModeSelector/ModeSelector'
 import { WorkspaceSelector } from '../Workspace/WorkspaceSelector'
 import { ModelSelector } from '../Model/ModelSelector'
 import { ShimmerText, BrailleLoader } from '../StatusIndicators'
+import { TodoPanel } from '../Todo/TodoPanel'
 
 export function ChatArea() {
   const { messages, isStreaming, streamingContent, streamingToolCalls, streamingToolResults, systemNotifications, activeConversationId, regenerateLastResponse, modeSwitchReason, modeTransitioning, lastCompletedTool } = useChatStore()
@@ -242,6 +243,10 @@ export function ChatArea() {
           <div className="flex justify-center mb-3">
             <ModeSelector />
           </div>
+
+          {/* Todo panel - shows AI's task progress */}
+          <TodoPanel />
+
           <ChatInput
             disabled={!activeProviderId || !activeModel}
             isStreaming={isStreaming}

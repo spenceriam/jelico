@@ -21,6 +21,21 @@ export interface ChangelogEntry {
 
 export const changelog: ChangelogEntry[] = [
   {
+    version: '0.6.0',
+    date: '2026-01-30',
+    changes: {
+      added: [
+        'Todo System - AI can now show task progress with accent-colored panel',
+        'Three todo tools: todo_write (create/update), todo_read (check state), todo_check (validate task)',
+        'Visual task indicators: ☐ pending, ◉ in_progress (animated), ☑ done',
+        'Collapsible todo panel with progress counter (e.g., "2/4 completed")',
+      ],
+      changed: [
+        'Todo panel appears between Mode Selector and Chat Input when AI creates tasks',
+      ],
+    },
+  },
+  {
     version: '0.5.9',
     date: '2026-01-30',
     changes: {

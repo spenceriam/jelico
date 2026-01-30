@@ -176,6 +176,13 @@ interface ToolExecution {
   endTime?: number
 }
 
+// Todo state type for type safety
+interface TodoTask {
+  id: string
+  text: string
+  status: 'pending' | 'in_progress' | 'done'
+}
+
 // Define built-in tools
 function getBuiltInTools(
   mode: AgentMode,
@@ -189,7 +196,9 @@ function getBuiltInTools(
   sendArtifact?: (artifact: any) => void,
   sendSpawnAgent?: (agent: any) => void,
   sendUpdateArtifact?: (update: { id: string; updates: any }) => void,
-  sendModeSwitch?: (fromMode: AgentMode, toMode: AgentMode, reason: string) => void
+  sendModeSwitch?: (fromMode: AgentMode, toMode: AgentMode, reason: string) => void,
+  sendTodos?: (todos: TodoTask[]) => void,
+  getTodos?: () => TodoTask[]
 ) {
   const canWrite = mode !== 'explore'
   const canExecute = mode === 'auto' || mode === 'execute' || mode === 'review'
@@ -226,6 +235,113 @@ Keep mode switches natural - don't switch for every tiny action.`,
       },
     })
   }
+
+  // Todo tools - for tracking multi-step task progress
+  // Always available - helps AI show work plan to user
+  tools.todo_write = tool({
+    description: `Create or update your task list. Use this at the START of multi-step tasks to show your plan.
+The todo list appears in the UI with accent-colored border, showing your progress.
+
+WHEN TO USE:
+- At the start of any task with 3+ steps
+- When planning your approach
+- To update task status as you work
+
+STATUS VALUES:
+- "pending": Not started yet (☐)
+- "in_progress": Currently working on this (◉ animated)
+- "done": Completed (☑)
+
+WORKFLOW:
+1. At task start: todo_write with all steps as "pending"
+2. Before each step: update that task to "in_progress"
+3. After completing: update to "done"
+
+Keep tasks clear and concise. The user sees this as a progress tracker.`,
+    parameters: z.object({
+      tasks: z.array(z.object({
+        id: z.string().describe('Unique task ID (e.g., "1", "2", "3")'),
+        text: z.string().describe('Clear, concise task description'),
+        status: z.enum(['pending', 'in_progress', 'done']).describe('Current status'),
+      })).describe('The complete task list'),
+    }),
+    execute: async ({ tasks }) => {
+      if (sendTodos) {
+        sendTodos(tasks)
+      }
+      const completed = tasks.filter(t => t.status === 'done').length
+      return {
+        success: true,
+        message: `Task list updated: ${completed}/${tasks.length} completed`,
+        tasks,
+      }
+    },
+  })
+
+  tools.todo_read = tool({
+    description: `Read the current task list. Use this to check your progress or remind yourself of the plan.
+Returns the current state of all tasks.`,
+    parameters: z.object({}),
+    execute: async () => {
+      const tasks = getTodos ? getTodos() : []
+      if (tasks.length === 0) {
+        return {
+          success: true,
+          message: 'No tasks defined yet. Use todo_write to create a task list.',
+          tasks: [],
+        }
+      }
+      const completed = tasks.filter(t => t.status === 'done').length
+      const inProgress = tasks.find(t => t.status === 'in_progress')
+      return {
+        success: true,
+        tasks,
+        progress: `${completed}/${tasks.length} completed`,
+        currentTask: inProgress ? inProgress.text : null,
+      }
+    },
+  })
+
+  tools.todo_check = tool({
+    description: `Validate you're working on the right task before taking action.
+Call this before starting work on a task to ensure proper sequencing.
+Returns validation result and updates the task status if valid.`,
+    parameters: z.object({
+      taskId: z.string().describe('The ID of the task you are about to work on'),
+    }),
+    execute: async ({ taskId }) => {
+      const tasks = getTodos ? getTodos() : []
+      const task = tasks.find(t => t.id === taskId)
+
+      if (!task) {
+        return {
+          success: false,
+          error: `Task "${taskId}" not found. Available tasks: ${tasks.map(t => t.id).join(', ')}`,
+        }
+      }
+
+      if (task.status === 'done') {
+        return {
+          success: false,
+          error: `Task "${taskId}" is already done. Move to the next task.`,
+        }
+      }
+
+      // Auto-update status to in_progress
+      const updatedTasks = tasks.map(t =>
+        t.id === taskId ? { ...t, status: 'in_progress' as const } : t
+      )
+      if (sendTodos) {
+        sendTodos(updatedTasks)
+      }
+
+      return {
+        success: true,
+        message: `Now working on: ${task.text}`,
+        task: { ...task, status: 'in_progress' },
+      }
+    },
+  })
 
   // Spawn sub-agent tool - for parallel task execution (bi-directional)
   if (canSpawnAgents) {
@@ -964,6 +1080,18 @@ When the user asks to modify, update, fix, or improve an existing artifact, use 
         event.sender.send(`ai:modeSwitch:${channelId}`, { fromMode, toMode, reason })
       }
 
+      // Todo state management - tracks tasks for this stream
+      let currentTodos: TodoTask[] = []
+
+      // Send todos to UI
+      const sendTodos = (todos: TodoTask[]) => {
+        currentTodos = todos
+        event.sender.send(`ai:todos:${channelId}`, todos)
+      }
+
+      // Get current todos (for todo_read and todo_check)
+      const getTodos = () => currentTodos
+
       // Get tools based on mode
       const streamContext = {
         channelId,
@@ -971,7 +1099,7 @@ When the user asks to modify, update, fix, or improve an existing artifact, use 
         model: modelId,
         workspacePath: params.workspacePath,
       }
-      const tools = getBuiltInTools(mode, streamContext, toolTracker, sendArtifact, sendSpawnAgent, sendUpdateArtifact, sendModeSwitch)
+      const tools = getBuiltInTools(mode, streamContext, toolTracker, sendArtifact, sendSpawnAgent, sendUpdateArtifact, sendModeSwitch, sendTodos, getTodos)
 
       // Build messages (without system prompt - we pass it separately to streamText)
       const messages = params.messages.map((m: any) => {

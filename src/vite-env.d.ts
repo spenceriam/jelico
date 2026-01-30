@@ -62,6 +62,7 @@ interface Window {
       onModeSwitch: (channelId: string, callback: (data: ModeSwitchEvent) => void) => void
       onAgentProgress: (channelId: string, callback: (update: AgentProgressEvent) => void) => void
       onUpdateArtifact: (channelId: string, callback: (update: ArtifactUpdateEvent) => void) => void
+      onTodos: (channelId: string, callback: (todos: TodoTask[]) => void) => void
       stopStream: (channelId: string) => void
       removeListeners: (channelId: string) => void
       generateTitle: (params: GenerateTitleParams) => Promise<GenerateTitleResult>
@@ -284,6 +285,12 @@ interface ModeSwitchEvent {
   fromMode: 'auto' | 'explore' | 'execute' | 'plan' | 'review'
   toMode: 'auto' | 'explore' | 'execute' | 'plan' | 'review'
   reason: string
+}
+
+interface TodoTask {
+  id: string
+  text: string
+  status: 'pending' | 'in_progress' | 'done'
 }
 
 interface AgentProgressEvent {

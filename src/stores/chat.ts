@@ -6,6 +6,7 @@ import { useAgentStore } from './agents'
 import { useSkillStore } from './skills'
 import { useContextStore } from './context'
 import { useSandboxStore } from './sandbox'
+import { useTodoStore } from './todos'
 
 export interface MessageUsage {
   promptTokens: number
@@ -460,6 +461,11 @@ export const useChatStore = create<ChatStore>((set, get) => ({
         toolCalls: mappedToolCalls,
         completedAt: update.status === 'completed' || update.status === 'failed' ? Date.now() : undefined,
       })
+    })
+
+    // Handle todo updates from AI
+    window.jelico.ai.onTodos(channelId, (todos) => {
+      useTodoStore.getState().setTodos(todos)
     })
 
     // Handle stream end
