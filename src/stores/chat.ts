@@ -424,11 +424,20 @@ export const useChatStore = create<ChatStore>((set, get) => ({
 
     // Handle agent progress updates
     window.jelico.ai.onAgentProgress(channelId, (update) => {
+      // Map backend toolCalls (input/output) to frontend format (args/result)
+      const mappedToolCalls = update.toolCalls?.map(tc => ({
+        id: tc.id,
+        name: tc.name,
+        args: tc.input,
+        result: tc.output,
+      }))
+
       useAgentStore.getState().updateAgent(update.agentId, {
         status: update.status as any,
         progress: update.progress,
         result: update.result,
         error: update.error,
+        toolCalls: mappedToolCalls,
         completedAt: update.status === 'completed' || update.status === 'failed' ? Date.now() : undefined,
       })
     })

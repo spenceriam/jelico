@@ -195,8 +195,11 @@ function getBuiltInTools(
   if (canSpawnAgents) {
     tools.spawn_agent = tool({
       description: `Spawn a background sub-agent to work on a task in parallel.
-Use this when you need to perform multiple independent tasks simultaneously, or when a task can be delegated while you continue with other work.
-The sub-agent runs independently and you can check its status or wait for results using get_agent_status or wait_for_agent.
+Use this to delegate work and keep your context clean. Sub-agents run independently and return summarized results.
+
+PREFER sub-agents for: reading multiple files, research tasks, any work that would bulk up your context.
+
+The sub-agent can ask you questions via [QUESTION] or request capabilities via [REQUEST].
 Returns an agent_id that you can use to track the agent.
 
 CRITICAL: After spawning, you MUST call wait_for_agent before finishing your response.`,
@@ -206,8 +209,9 @@ CRITICAL: After spawning, you MUST call wait_for_agent before finishing your res
         mode: z.enum(['auto', 'explore', 'execute', 'plan', 'review'])
           .optional()
           .describe('The mode for the agent (defaults to auto)'),
+        siblingContext: z.string().optional().describe('Info about other agents working in parallel (e.g., "Agent B is researching API docs"). Helps agents understand the bigger picture.'),
       }),
-      execute: async ({ name, task, mode: agentMode }) => {
+      execute: async ({ name, task, mode: agentMode, siblingContext }) => {
         // Auto-generate name if not provided
         const agentName = name || `Agent-${Date.now().toString(36).slice(-4)}`
         // Spawn the sub-agent using the service
@@ -219,6 +223,7 @@ CRITICAL: After spawning, you MUST call wait_for_agent before finishing your res
           providerId: streamContext.providerId,
           model: streamContext.model,
           workspacePath: streamContext.workspacePath,
+          siblingContext,
         })
 
         // Notify the UI
@@ -797,9 +802,10 @@ export function registerAIHandlers() {
         event.sender.send(`ai:agentProgress:${channelId}`, {
           agentId,
           status: agent.status,
-          progress: agent.progress?.slice(-200), // Last 200 chars of progress
-          result: agent.result?.slice(-500), // Last 500 chars of result
+          progress: agent.progress, // Full progress text for sub-agent display
+          result: agent.result, // Full result for sub-agent display
           error: agent.error,
+          toolCalls: agent.toolCalls, // Sub-agent's tool calls for display
         })
       }
     })

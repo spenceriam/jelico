@@ -77,6 +77,7 @@ export interface SubAgentRecord {
   providerId: string
   model: string
   workspacePath?: string
+  siblingContext?: string // Info about other agents working in parallel
 }
 
 // In-memory storage for active sub-agents
@@ -224,6 +225,7 @@ export async function spawnSubAgent(params: {
   providerId: string
   model: string
   workspacePath?: string
+  siblingContext?: string // Info about other agents working in parallel
 }): Promise<string> {
   // Check agent limit for this conversation
   if (params.conversationId) {
@@ -266,6 +268,7 @@ export async function spawnSubAgent(params: {
     providerId: params.providerId,
     model: params.model,
     workspacePath: params.workspacePath,
+    siblingContext: params.siblingContext,
   }
 
   activeAgents.set(agentId, agent)
@@ -710,7 +713,13 @@ async function runSubAgent(agentId: string): Promise<void> {
 
   // Build initial messages if this is a fresh start
   if (agent.messages.length === 0) {
-    const systemPrompt = buildSubAgentSystemPrompt(agent.name, agent.task, agent.mode, agent.workspacePath)
+    const systemPrompt = buildSubAgentSystemPrompt(
+      agent.name,
+      agent.task,
+      agent.mode,
+      agent.workspacePath,
+      agent.siblingContext
+    )
     agent.messages = [
       { role: 'system', content: systemPrompt },
       { role: 'user', content: agent.task },
@@ -762,8 +771,10 @@ async function runSubAgent(agentId: string): Promise<void> {
 
       switch (part.type) {
         case 'text-delta':
-          if (part.textDelta) {
-            fullText += part.textDelta
+          // AI SDK may use 'text' or 'textDelta' depending on version/config
+          const textContent = (part as any).text || part.textDelta
+          if (textContent) {
+            fullText += textContent
             agent.progress = fullText
             agent.lastActivityAt = Date.now()
             notifyProgress(agentId, agent)
@@ -944,7 +955,8 @@ function buildSubAgentSystemPrompt(
   name: string,
   task: string,
   mode: string,
-  workspacePath?: string
+  workspacePath?: string,
+  siblingContext?: string
 ): string {
   let prompt = `You are ${name}, a focused sub-agent working on a specific task.
 
@@ -954,30 +966,56 @@ Your task: ${task}
 - Stay focused on your assigned task
 - Be concise and direct in your response
 - Provide actionable results that can be used by the orchestrating AI
+- Summarize findings rather than dumping raw data
 
-## Asking for Clarification
-If you need clarification or have a question for the main AI:
+## Communication with Main AI
+
+### Asking Questions
+If you need clarification or have a question:
 1. Provide any partial work or context you have so far
-2. Then write [QUESTION] followed by your question
+2. Write [QUESTION] followed by your question
 3. The main AI will respond and you can continue
 
 Example:
 "I've analyzed the code structure and found 3 potential approaches.
 [QUESTION] Should I prioritize performance or readability for this refactor?"
 
-Only ask questions when truly necessary - try to complete the task autonomously when possible.
+### Requesting Capabilities
+If you need a tool or capability you don't have:
+1. Explain what you've tried or why you need it
+2. Write [REQUEST] followed by what you need
+3. The main AI may grant it, do it for you, or provide alternatives
+
+Example:
+"I found the files that need updating but I don't have write access.
+[REQUEST] Write access to update src/config.ts
+- What: Need to modify the API endpoint configuration
+- Why: Current endpoint is deprecated
+- Alternative: I can provide the exact changes for you to apply"
+
+Only ask when truly necessary - try to complete the task autonomously when possible.
 `
 
+  // Add sibling context if provided
+  if (siblingContext) {
+    prompt += `\n## Sibling Agents
+You are part of a coordinated effort. Other agents are working in parallel:
+${siblingContext}
+
+Your results will be combined with theirs by the main AI. Focus on your specific task but be aware of the bigger picture.
+`
+  }
+
   if (workspacePath) {
-    prompt += `\n## Workspace Context\n${workspacePath}\n`
+    prompt += `\n## Workspace Context\nWorking in: ${workspacePath}\n`
   }
 
   switch (mode) {
     case 'explore':
-      prompt += '\n## Mode: EXPLORE\nFocus on analysis and research. Do not suggest changes.'
+      prompt += '\n## Mode: EXPLORE\nFocus on analysis and research. Do not make changes.'
       break
     case 'execute':
-      prompt += '\n## Mode: EXECUTE\nProvide implementation details and code.'
+      prompt += '\n## Mode: EXECUTE\nProvide implementation details and code. You can make changes.'
       break
     case 'plan':
       prompt += '\n## Mode: PLAN\nCreate structured plans and strategies.'

@@ -71,7 +71,7 @@ The Soul/Memory system should make Jelico increasingly personalized - it learns 
 ## Project overview
 Jelico is an AI Productivity Desktop built with Electron, React, TypeScript, and Vite. It provides a frictionless AI assistant experience with multi-provider support (Anthropic, OpenAI, Google), workspace management, conversation persistence, and a soul/memory system that learns user patterns and preferences over time.
 
-**Current Version:** 0.3.11
+**Current Version:** 0.4.0
 
 ## Development workflow discipline
 - **CRITICAL**: NEVER commit or push changes without explicit user approval
@@ -279,6 +279,74 @@ The soul system enables Jelico to learn and remember:
 - **Corrections**: Mistakes and their corrections for learning
 
 Pattern categories: `coding_style`, `communication`, `mistake`, `preference`, `workflow`
+
+## Sub-Agent Orchestration System
+
+Jelico uses a bi-directional sub-agent system for parallel task execution.
+
+### Architecture
+```
+┌─────────────────────────────────────────────┐
+│              MAIN AI (Orchestrator)          │
+│  - Has ALL tools including agent management  │
+│  - Spawns sub-agents with specific tasks     │
+│  - Waits for sub-agent results               │
+│  - Uses results to inform next steps         │
+└───────┬─────────────┬─────────────┬─────────┘
+        │             │             │
+        ▼             ▼             ▼
+   ┌─────────┐   ┌─────────┐   ┌─────────┐
+   │ Agent A │   │ Agent B │   │ Agent C │
+   │ Limited │   │ Limited │   │ Limited │
+   │ Tools   │   │ Tools   │   │ Tools   │
+   └────┬────┘   └────┬────┘   └────┬────┘
+        └──────── Results ─────────┘
+```
+
+### Key Design Principles
+1. **Main AI as Orchestrator**: Delegates work, receives summaries, makes decisions
+2. **Sub-agents are isolated**: Each has own context, tools, and task focus
+3. **Parallel execution**: Multiple agents run simultaneously
+4. **Context efficiency**: Main AI gets summaries, not raw data
+5. **Bi-directional communication**: Sub-agents can ask questions or request capabilities
+
+### Sub-Agent Tools
+Sub-agents automatically get a subset of tools based on mode:
+- `read_file`, `list_directory`, `search_files` (always)
+- `web_search`, `web_fetch` (always)
+- `write_file`, `execute_command` (if mode allows)
+- NO agent management tools (prevents recursion)
+
+### Communication Patterns
+**Sub-agent asking a question:**
+```
+"I've analyzed the code but found 3 approaches.
+[QUESTION] Should I prioritize performance or readability?"
+```
+
+**Sub-agent requesting capability:**
+```
+"I need to create a pull request but don't have GitHub access.
+[REQUEST] GitHub MCP access
+- What: Need to create PR for these changes
+- Why: Complete the implementation workflow
+- Alternative: I can provide exact PR details for you to create"
+```
+
+### Sibling Awareness
+Main AI can inform sub-agents about other agents working in parallel:
+```javascript
+spawn_agent({
+  task: "Analyze the API layer",
+  siblingContext: "Agent B is analyzing the database layer, Agent C is reviewing tests"
+})
+```
+
+### When to Use Sub-Agents
+- Reading multiple files (parallel reads, summarized results)
+- Research tasks (web search, documentation lookup)
+- Any task that would add bulk to main AI's context
+- Independent subtasks that can run concurrently
 
 ## Tool calls and context management
 

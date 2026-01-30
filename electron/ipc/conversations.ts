@@ -23,6 +23,7 @@ function toMessageApi(row: any) {
     content: row.content,
     toolCalls: row.tool_calls,
     toolResults: row.tool_results,
+    attachments: row.attachments,
     createdAt: row.created_at,
   }
 }
@@ -58,6 +59,7 @@ export function registerConversationHandlers() {
       content: messageInput.content,
       toolCalls: messageInput.toolCalls,
       toolResults: messageInput.toolResults,
+      attachments: messageInput.attachments,
     })
     return toMessageApi(message)
   })
@@ -68,6 +70,7 @@ export function registerConversationHandlers() {
       content: updates.content,
       toolCalls: updates.toolCalls,
       toolResults: updates.toolResults,
+      attachments: updates.attachments,
     })
     return message ? toMessageApi(message) : null
   })

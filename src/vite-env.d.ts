@@ -63,6 +63,9 @@ interface Window {
       onUpdateArtifact: (channelId: string, callback: (update: ArtifactUpdateEvent) => void) => void
       stopStream: (channelId: string) => void
       removeListeners: (channelId: string) => void
+      generateTitle: (params: GenerateTitleParams) => Promise<GenerateTitleResult>
+      getAgentLimit: (conversationId: string) => Promise<AgentLimitInfo>
+      increaseAgentLimit: (params: IncreaseAgentLimitParams) => Promise<IncreaseAgentLimitResult>
     }
     artifacts: {
       list: () => Promise<ArtifactRow[]>
@@ -207,6 +210,7 @@ interface MessageInput {
   content: string
   toolCalls?: ToolCallEvent[]
   toolResults?: ToolResultEvent[]
+  attachments?: MessageAttachmentData[]
 }
 
 interface StreamParams {
@@ -272,6 +276,12 @@ interface AgentProgressEvent {
   progress?: string
   result?: string
   error?: string
+  toolCalls?: Array<{
+    id: string
+    name: string
+    input: Record<string, unknown>
+    output?: unknown
+  }>
 }
 
 interface ArtifactUpdateEvent {
@@ -290,6 +300,36 @@ interface StreamEndStats {
     totalTokens: number
   }
   finishReason: string
+}
+
+interface GenerateTitleParams {
+  providerId: string
+  model: string
+  userMessage: string
+  assistantMessage: string
+}
+
+interface GenerateTitleResult {
+  success: boolean
+  title?: string
+  error?: string
+}
+
+interface AgentLimitInfo {
+  current: number
+  limit: number
+  remaining: number
+}
+
+interface IncreaseAgentLimitParams {
+  conversationId: string
+  additionalAgents?: number
+}
+
+interface IncreaseAgentLimitResult {
+  success: boolean
+  newLimit: number
+  current: number
 }
 
 interface OpenRouterModel {

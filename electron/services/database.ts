@@ -317,6 +317,7 @@ export const messageDb = {
       content: message.content,
       tool_calls: message.toolCalls,
       tool_results: message.toolResults,
+      attachments: message.attachments,
       created_at: now,
     }
 
@@ -337,6 +338,7 @@ export const messageDb = {
     if (updates.content !== undefined) message.content = updates.content
     if (updates.toolCalls !== undefined) message.tool_calls = updates.toolCalls
     if (updates.toolResults !== undefined) message.tool_results = updates.toolResults
+    if (updates.attachments !== undefined) message.attachments = updates.attachments
 
     saveDb()
     return message
@@ -399,6 +401,14 @@ interface ToolResultRow {
   error?: string
 }
 
+interface MessageAttachment {
+  id: string
+  type: 'text' | 'image' | 'document'
+  name: string
+  mimeType: string
+  data: string // base64 for images, text content for text files
+}
+
 interface MessageRow {
   id: string
   conversation_id: string
@@ -406,6 +416,7 @@ interface MessageRow {
   content: string
   tool_calls?: ToolCallRow[]
   tool_results?: ToolResultRow[]
+  attachments?: MessageAttachment[]
   created_at: number
 }
 
@@ -414,6 +425,7 @@ interface MessageInput {
   content: string
   toolCalls?: ToolCallRow[]
   toolResults?: ToolResultRow[]
+  attachments?: MessageAttachment[]
 }
 
 interface WorkspaceRow {

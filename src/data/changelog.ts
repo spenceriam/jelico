@@ -21,6 +21,29 @@ export interface ChangelogEntry {
 
 export const changelog: ChangelogEntry[] = [
   {
+    version: '0.4.0',
+    date: '2026-01-30',
+    changes: {
+      added: [
+        'Sub-agent sibling awareness - agents can now be informed about other agents working in parallel',
+        'Capability request pattern - sub-agents can request tools or capabilities via [REQUEST] marker',
+        'Sub-agent tool call display - see what tools sub-agents are using in real-time',
+        'Main AI delegation guidance - encourages spawning sub-agents for parallel, context-efficient work',
+        'Pasted content persistence - pasted text/images now saved with messages and display on reload',
+      ],
+      changed: [
+        'Sub-agent UI redesign - shows task, progress, tool calls, and results in organized panel',
+        'Main AI system prompt updated to emphasize orchestrator role and sub-agent benefits',
+        'Sub-agent progress now sends full text instead of truncated for better display',
+      ],
+      fixed: [
+        'Sub-agent text capture - fixed property name mismatch (text vs textDelta) for result collection',
+        'Pasted content not showing in user messages - attachments now persist to database correctly',
+        'TypeScript types for AI IPC methods (generateTitle, getAgentLimit, increaseAgentLimit)',
+      ],
+    },
+  },
+  {
     version: '0.3.5',
     date: '2026-01-29',
     changes: {
