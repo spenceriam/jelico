@@ -199,6 +199,27 @@ function createWindow() {
   mainWindow.on('closed', () => {
     mainWindow = null
   })
+
+  // Handle renderer crashes
+  mainWindow.webContents.on('render-process-gone', (_event, details) => {
+    console.error('[Main] Renderer process crashed:', details.reason, details.exitCode)
+    dialog.showErrorBox(
+      'Renderer Crashed',
+      `The renderer process crashed.\nReason: ${details.reason}\nExit code: ${details.exitCode}\n\nThe app will now reload.`
+    )
+    // Reload the window
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.reload()
+    }
+  })
+
+  mainWindow.webContents.on('unresponsive', () => {
+    console.error('[Main] Renderer became unresponsive')
+  })
+
+  mainWindow.webContents.on('responsive', () => {
+    console.log('[Main] Renderer became responsive again')
+  })
 }
 
 // Initialize app
