@@ -1203,6 +1203,11 @@ When the user asks to modify, update, fix, or improve an existing artifact, use 
           for await (const part of result.fullStream) {
             if (abortController.signal.aborted) break
 
+            // Debug: log all event types
+            if (DEBUG_API_REQUESTS) {
+              console.log('[AI] Stream event:', part.type, part.type === 'text-delta' ? `"${(part as any).textDelta?.slice(0, 50)}..."` : '')
+            }
+
             switch (part.type) {
               case 'text-delta':
                 if (part.textDelta) {
@@ -1326,6 +1331,14 @@ When the user asks to modify, update, fix, or improve an existing artifact, use 
                 console.error('[AI] Stream error:', part.error)
                 break
             }
+          }
+
+          // Get final text from result (fallback if streaming didn't capture it)
+          const finalText = await result.text
+          if (finalText && textAfterLastToolResult.length === 0) {
+            console.log('[AI] Text not streamed, using final result:', finalText.slice(0, 100) + '...')
+            event.sender.send(`ai:chunk:${channelId}`, finalText)
+            textAfterLastToolResult = finalText
           }
 
           // Get usage stats
