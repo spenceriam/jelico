@@ -71,29 +71,40 @@ export default function App() {
   useEffect(() => {
     if (!isResizing) return
 
+    let currentWidth = canvasWidth
+
     const handleMouseMove = (e: MouseEvent) => {
       if (!resizeRef.current) return
 
       // Moving left increases width, moving right decreases
       const delta = resizeRef.current.startX - e.clientX
       const newWidth = Math.min(MAX_CANVAS_WIDTH, Math.max(MIN_CANVAS_WIDTH, resizeRef.current.startWidth + delta))
+      currentWidth = newWidth
       setCanvasWidth(newWidth)
     }
 
     const handleMouseUp = () => {
       setIsResizing(false)
-      // Save to localStorage
-      localStorage.setItem('jelico-canvas-width', String(canvasWidth))
+      resizeRef.current = null
+      // Save to localStorage using tracked width
+      localStorage.setItem('jelico-canvas-width', String(currentWidth))
     }
 
+    // Add listeners to document so they fire even if mouse leaves the handle
     document.addEventListener('mousemove', handleMouseMove)
     document.addEventListener('mouseup', handleMouseUp)
+
+    // Prevent text selection during drag
+    document.body.style.userSelect = 'none'
+    document.body.style.cursor = 'col-resize'
 
     return () => {
       document.removeEventListener('mousemove', handleMouseMove)
       document.removeEventListener('mouseup', handleMouseUp)
+      document.body.style.userSelect = ''
+      document.body.style.cursor = ''
     }
-  }, [isResizing, canvasWidth])
+  }, [isResizing]) // Only depend on isResizing - don't re-add listeners on width change
 
   // Handle onboarding completion - save profile to soul system
   const handleOnboardingComplete = useCallback(async (profile: OnboardingProfile) => {
