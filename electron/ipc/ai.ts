@@ -29,38 +29,57 @@ startOrphanCleanup()
 // Store active streams for cancellation
 const activeStreams = new Map<string, AbortController>()
 
-// Debug flag - set to true to log API requests
-const DEBUG_API_REQUESTS = true
+// Debug flag - controlled by environment
+const DEBUG_API_REQUESTS = process.env.DEBUG_AI === 'true' || process.env.NODE_ENV === 'development'
 
-// Wrap fetch to log requests when debugging
-const originalFetch = globalThis.fetch
-if (DEBUG_API_REQUESTS) {
-  globalThis.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
-    const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url
+// Streaming timeout in ms (2 minutes)
+const STREAM_TIMEOUT_MS = 120000
 
-    // Only log AI API requests
-    if (url.includes('openrouter') || url.includes('openai') || url.includes('anthropic')) {
-      console.log('[DEBUG FETCH] URL:', url)
-      console.log('[DEBUG FETCH] Method:', init?.method || 'GET')
+// Max retries for transient errors
+const MAX_RETRIES = 2
+const RETRY_DELAY_MS = 1000
 
-      if (init?.body) {
-        try {
-          const body = JSON.parse(init.body as string)
-          console.log('[DEBUG FETCH] Has tools:', !!body.tools)
-          console.log('[DEBUG FETCH] Tool count:', body.tools?.length || 0)
-          if (body.tools?.length > 0) {
-            console.log('[DEBUG FETCH] Tool names:', body.tools.map((t: any) => t.function?.name || t.name))
-          }
-          console.log('[DEBUG FETCH] Model:', body.model)
-          console.log('[DEBUG FETCH] Message count:', body.messages?.length)
-          console.log('[DEBUG FETCH] Tool choice:', body.tool_choice)
-        } catch {
-          console.log('[DEBUG FETCH] Body: (not JSON)')
-        }
-      }
+// Helper to check if error is retryable
+function isRetryableError(error: any): boolean {
+  const message = error?.message?.toLowerCase() || ''
+  return (
+    message.includes('rate limit') ||
+    message.includes('timeout') ||
+    message.includes('network') ||
+    message.includes('econnreset') ||
+    message.includes('socket hang up') ||
+    error?.status === 429 ||
+    error?.status === 503 ||
+    error?.status === 502
+  )
+}
+
+// Sleep helper for retry delays
+function sleep(ms: number): Promise<void> {
+  return new Promise(resolve => setTimeout(resolve, ms))
+}
+
+// Debug logger that doesn't override global fetch
+function logAIRequest(url: string, method: string, body: any) {
+  if (!DEBUG_API_REQUESTS) return
+
+  // Only log AI API requests
+  if (!url.includes('openrouter') && !url.includes('openai') && !url.includes('anthropic') && !url.includes('google')) {
+    return
+  }
+
+  console.log('[DEBUG AI] URL:', url)
+  console.log('[DEBUG AI] Method:', method)
+
+  if (body) {
+    console.log('[DEBUG AI] Has tools:', !!body.tools)
+    console.log('[DEBUG AI] Tool count:', body.tools?.length || 0)
+    if (body.tools?.length > 0) {
+      console.log('[DEBUG AI] Tool names:', body.tools.map((t: any) => t.function?.name || t.name))
     }
-
-    return originalFetch(input, init)
+    console.log('[DEBUG AI] Model:', body.model)
+    console.log('[DEBUG AI] Message count:', body.messages?.length)
+    console.log('[DEBUG AI] Tool choice:', body.tool_choice)
   }
 }
 
@@ -139,6 +158,17 @@ function getProviderInstance(providerConfig: any, apiKey: string) {
   }
 }
 
+// Tool result tracking for proper context
+interface ToolExecution {
+  id: string
+  name: string
+  args: Record<string, unknown>
+  result?: unknown
+  error?: string
+  startTime: number
+  endTime?: number
+}
+
 // Define built-in tools
 function getBuiltInTools(
   mode: AgentMode,
@@ -148,6 +178,7 @@ function getBuiltInTools(
     model: string
     workspacePath?: string
   },
+  toolTracker: Map<string, ToolExecution>,
   sendArtifact?: (artifact: any) => void,
   sendSpawnAgent?: (agent: any) => void,
   sendUpdateArtifact?: (update: { id: string; updates: any }) => void
@@ -164,9 +195,11 @@ function getBuiltInTools(
       description: `Spawn a background sub-agent to work on a task in parallel.
 Use this when you need to perform multiple independent tasks simultaneously, or when a task can be delegated while you continue with other work.
 The sub-agent runs independently and you can check its status or wait for results using get_agent_status or wait_for_agent.
-Returns an agent_id that you can use to track the agent.`,
+Returns an agent_id that you can use to track the agent.
+
+CRITICAL: After spawning, you MUST call wait_for_agent before finishing your response.`,
       parameters: z.object({
-        name: z.string().optional().describe('A short name for the agent (e.g., "Test Runner", "Code Reviewer"). If not provided, will be auto-generated.'),
+        name: z.string().optional().describe('A short name for the agent (e.g., "Test Runner", "Code Reviewer"). Auto-generated if not provided.'),
         task: z.string().describe('The detailed task description for the agent'),
         mode: z.enum(['auto', 'explore', 'execute', 'plan', 'review'])
           .optional()
@@ -194,7 +227,7 @@ Returns an agent_id that you can use to track the agent.`,
         return {
           success: true,
           agent_id: agentId,
-          message: `Agent "${agentName}" spawned successfully. IMPORTANT: You MUST call wait_for_agent with this agent_id to get the results before finishing your response. Do not end without waiting.`,
+          message: `Agent "${agentName}" spawned. You MUST call wait_for_agent("${agentId}") to get results before finishing.`,
         }
       },
     })
@@ -236,7 +269,9 @@ If has_question is true, the agent is paused and waiting for you to respond usin
     tools.wait_for_agent = tool({
       description: `Wait for a spawned sub-agent to complete OR pause with a question.
 This blocks until the agent finishes (completes, fails) OR needs clarification.
-If has_question is true, respond using continue_agent to keep the agent working.`,
+If has_question is true, respond using continue_agent to keep the agent working.
+
+IMPORTANT: Always call this after spawn_agent to get results.`,
       parameters: z.object({
         agent_id: z.string().describe('The ID of the agent to wait for (from spawn_agent result)'),
         timeout_seconds: z.number().optional().describe('Maximum seconds to wait (default: 60)'),
@@ -447,53 +482,108 @@ You must know the artifact ID from the existing artifacts context.`,
     },
   })
 
-  // Web search tool - always available
+  // Web search tool - using DuckDuckGo HTML search for better results
   tools.web_search = tool({
-    description: `Search the web for information using DuckDuckGo.
-Returns instant answers, related topics, and web results.
+    description: `Search the web for information.
+Returns search results with titles, snippets, and URLs.
 Use this to find current information, documentation, or answers to questions.`,
     parameters: z.object({
       query: z.string().describe('The search query'),
     }),
     execute: async ({ query }) => {
       try {
-        // Use DuckDuckGo's instant answer API
+        // Try DuckDuckGo instant answer first
         const encodedQuery = encodeURIComponent(query)
-        const response = await fetch(
+        const instantResponse = await fetch(
           `https://api.duckduckgo.com/?q=${encodedQuery}&format=json&no_html=1&skip_disambig=1`
         )
 
-        if (!response.ok) {
-          throw new Error(`Search failed: ${response.statusText}`)
+        if (instantResponse.ok) {
+          const data = await instantResponse.json()
+
+          // If we got a good instant answer, return it
+          if (data.Abstract || data.Answer || data.Definition) {
+            return {
+              success: true,
+              results: {
+                query,
+                type: 'instant_answer',
+                abstract: data.Abstract || null,
+                abstractSource: data.AbstractSource || null,
+                abstractURL: data.AbstractURL || null,
+                answer: data.Answer || null,
+                definition: data.Definition || null,
+                relatedTopics: (data.RelatedTopics || []).slice(0, 5).map((topic: any) => ({
+                  text: topic.Text,
+                  url: topic.FirstURL,
+                })).filter((t: any) => t.text),
+              },
+            }
+          }
         }
 
-        const data = await response.json()
+        // Fallback: Use DuckDuckGo HTML lite for actual search results
+        const htmlResponse = await fetch(
+          `https://lite.duckduckgo.com/lite/?q=${encodedQuery}`,
+          {
+            headers: {
+              'User-Agent': 'Mozilla/5.0 (compatible; Jelico/1.0)',
+              'Accept': 'text/html',
+            },
+          }
+        )
 
-        const results: any = {
-          query,
-          abstract: data.Abstract || null,
-          abstractSource: data.AbstractSource || null,
-          abstractURL: data.AbstractURL || null,
-          answer: data.Answer || null,
-          definition: data.Definition || null,
-          definitionSource: data.DefinitionSource || null,
-          relatedTopics: (data.RelatedTopics || []).slice(0, 5).map((topic: any) => ({
-            text: topic.Text,
-            url: topic.FirstURL,
-          })).filter((t: any) => t.text),
+        if (htmlResponse.ok) {
+          const html = await htmlResponse.text()
+
+          // Extract search results from HTML
+          const results: Array<{ title: string; url: string; snippet: string }> = []
+
+          // Simple regex to extract result links and snippets
+          const linkRegex = /<a[^>]+class="result-link"[^>]*href="([^"]+)"[^>]*>([^<]+)<\/a>/gi
+          const snippetRegex = /<td[^>]+class="result-snippet"[^>]*>([^<]+)/gi
+
+          let match
+          const urls: string[] = []
+          const titles: string[] = []
+          const snippets: string[] = []
+
+          while ((match = linkRegex.exec(html)) !== null) {
+            urls.push(match[1])
+            titles.push(match[2].trim())
+          }
+
+          while ((match = snippetRegex.exec(html)) !== null) {
+            snippets.push(match[1].trim())
+          }
+
+          for (let i = 0; i < Math.min(urls.length, 5); i++) {
+            results.push({
+              title: titles[i] || 'Untitled',
+              url: urls[i],
+              snippet: snippets[i] || '',
+            })
+          }
+
+          if (results.length > 0) {
+            return {
+              success: true,
+              results: {
+                query,
+                type: 'search_results',
+                items: results,
+              },
+            }
+          }
         }
 
-        // If we got good results
-        if (results.abstract || results.answer || results.definition || results.relatedTopics.length > 0) {
-          return { success: true, results }
-        }
-
-        // Fallback message
+        // Final fallback
         return {
           success: true,
           results: {
             query,
-            message: 'No instant answer found. Try using web_fetch with specific URLs for more detailed information.',
+            type: 'no_results',
+            message: 'No search results found. Try web_fetch with a specific URL for more information.',
           },
         }
       } catch (error: any) {
@@ -655,6 +745,34 @@ Use this to read documentation, articles, or any web page content.`,
   return tools
 }
 
+// Build context from tool executions for summary
+function buildToolContext(toolTracker: Map<string, ToolExecution>): string {
+  if (toolTracker.size === 0) return ''
+
+  const lines: string[] = ['## Tool Execution Summary\n']
+
+  for (const [id, exec] of toolTracker) {
+    lines.push(`### ${exec.name}`)
+    lines.push(`**Arguments:** ${JSON.stringify(exec.args, null, 2)}`)
+
+    if (exec.error) {
+      lines.push(`**Error:** ${exec.error}`)
+    } else if (exec.result !== undefined) {
+      const resultStr = typeof exec.result === 'object'
+        ? JSON.stringify(exec.result, null, 2)
+        : String(exec.result)
+      // Truncate long results
+      const truncated = resultStr.length > 500
+        ? resultStr.slice(0, 500) + '...[truncated]'
+        : resultStr
+      lines.push(`**Result:** ${truncated}`)
+    }
+    lines.push('')
+  }
+
+  return lines.join('\n')
+}
+
 export function registerAIHandlers() {
   // Stream AI response with tool support
   ipcMain.on('ai:stream', async (event, channelId: string, params: any) => {
@@ -663,6 +781,12 @@ export function registerAIHandlers() {
 
     // Register this stream as active (for sub-agent orphan detection)
     registerParentStream(channelId)
+
+    // Set up timeout
+    const timeoutId = setTimeout(() => {
+      console.warn('[AI] Stream timeout - aborting after', STREAM_TIMEOUT_MS, 'ms')
+      abortController.abort()
+    }, STREAM_TIMEOUT_MS)
 
     // Set up progress callback to forward agent updates to frontend
     setGlobalProgressCallback((agentId, agent) => {
@@ -677,6 +801,9 @@ export function registerAIHandlers() {
         })
       }
     })
+
+    // Track tool executions with results
+    const toolTracker = new Map<string, ToolExecution>()
 
     try {
       // Get provider config
@@ -755,7 +882,7 @@ When the user asks to modify, update, fix, or improve an existing artifact, use 
         model: modelId,
         workspacePath: params.workspacePath,
       }
-      const tools = getBuiltInTools(mode, streamContext, sendArtifact, sendSpawnAgent, sendUpdateArtifact)
+      const tools = getBuiltInTools(mode, streamContext, toolTracker, sendArtifact, sendSpawnAgent, sendUpdateArtifact)
 
       // Build messages (without system prompt - we pass it separately to streamText)
       const messages = params.messages.map((m: any) => {
@@ -805,268 +932,288 @@ When the user asks to modify, update, fix, or improve an existing artifact, use 
           }
         })
 
-      console.log('\n[AI] ========== STREAM START ==========')
-      console.log('[AI] Model:', modelId)
-      console.log('[AI] Mode:', mode)
-      console.log('[AI] Provider type:', providerConfig.type)
-      console.log('[AI] Base URL:', providerConfig.base_url || '(default)')
-      console.log('[AI] Tool count:', Object.keys(tools).length)
-      console.log('[AI] Tool names:', Object.keys(tools))
-      console.log('[AI] System prompt length:', systemPrompt.length)
-      console.log('[AI] Message count:', messages.length)
-
-      // Log tool structure to verify they're correctly formed
-      console.log('[AI] === TOOL STRUCTURE CHECK ===')
-      const toolsArray = Object.entries(tools)
-      if (toolsArray.length > 0) {
-        const [firstName, firstTool] = toolsArray[0]
-        console.log('[AI] First tool inspection:')
-        console.log('  - Name:', firstName)
-        console.log('  - Keys:', Object.keys(firstTool as object))
-        // The tool() function should create objects with specific structure
-        const t = firstTool as any
-        console.log('  - Has description:', !!t.description)
-        console.log('  - Has parameters:', !!t.parameters)
-        console.log('  - Has execute:', typeof t.execute === 'function')
-        console.log('  - Parameters type:', typeof t.parameters)
-        if (t.parameters) {
-          console.log('  - Parameters keys:', Object.keys(t.parameters))
-        }
-      }
-      console.log('[AI] === END TOOL CHECK ===')
-
-      // Log system prompt summary
-      console.log('[AI] System prompt includes "tool":', systemPrompt.toLowerCase().includes('tool'))
-      console.log('[AI] System prompt includes "function":', systemPrompt.toLowerCase().includes('function'))
-
-      // Stream the response with tools
-      // Using toolChoice: 'auto' (default) - model decides when to use tools
-      // Can also use 'required' to force tool usage or 'none' to disable
-      // IMPORTANT: Use provider.chat() not provider() to get /chat/completions endpoint
-      // which properly supports tool calling. provider() uses /responses which doesn't.
-      const result = await streamText({
-        model: provider.chat(modelId),
-        system: systemPrompt, // Pass system prompt separately (may help with tool recognition)
-        messages,
-        tools,
-        toolChoice: 'auto', // Explicitly set to ensure tools are offered
-        stopWhen: stepCountIs(10), // Allow up to 10 tool call steps (AI SDK v6 uses stopWhen instead of maxSteps)
-        abortSignal: abortController.signal,
-        onStepFinish: ({ toolCalls, toolResults, text, finishReason }) => {
-          // Log step completion for debugging
-          // Note: Tool calls/results are now sent via fullStream events for async display
-          console.log('[AI] Step finished:', {
-            finishReason,
-            toolCallCount: toolCalls?.length || 0,
-            toolResultCount: toolResults?.length || 0,
-            textLength: text?.length || 0,
-          })
-        },
-      })
-
-      // Use fullStream to get both text AND tool call events as they happen
-      // This enables async display of tool calls BEFORE they complete
-      const pendingToolCalls = new Map<string, { name: string; args: Record<string, unknown> }>()
-      let textAfterLastToolResult = '' // Track text generated AFTER last tool result
-      let hadAnyToolCalls = false
-
-      for await (const part of result.fullStream) {
-        if (abortController.signal.aborted) break
-
-        switch (part.type) {
-          case 'text-delta':
-            // Regular text chunk - only send if we have actual text
-            if (part.textDelta) {
-              event.sender.send(`ai:chunk:${channelId}`, part.textDelta)
-              textAfterLastToolResult += part.textDelta
-            }
-            break
-
-          case 'tool-call-streaming-start':
-            // Tool call is STARTING - show immediately in UI
-            console.log('[AI] Tool call starting:', part.toolName)
-            pendingToolCalls.set(part.toolCallId, { name: part.toolName, args: {} })
-            // Send initial tool call info to UI
-            event.sender.send(`ai:toolCalls:${channelId}`, [{
-              id: part.toolCallId,
-              name: part.toolName,
-              args: {}, // Args not yet known
-              status: 'starting',
-            }])
-            break
-
-          case 'tool-call-delta':
-            // Arguments being built - could update UI with partial args
-            // For now, just track it
-            break
-
-          case 'tool-call':
-            // Tool call complete with full args
-            // AI SDK uses 'input' for the arguments property
-            const toolArgs = (part as any).input || (part as any).args || {}
-            console.log('[AI] Tool call ready:', part.toolName, toolArgs)
-
-            // Check if we already sent this tool call via streaming-start
-            const existingCall = pendingToolCalls.get(part.toolCallId)
-            pendingToolCalls.set(part.toolCallId, { name: part.toolName, args: toolArgs })
-
-            if (existingCall) {
-              // Update existing tool call with full args
-              event.sender.send(`ai:toolCallUpdate:${channelId}`, {
-                id: part.toolCallId,
-                name: part.toolName,
-                args: toolArgs,
-                status: 'executing',
-              })
-            } else {
-              // No streaming-start event - send as new tool call
-              // This happens with some providers that don't support streaming tool calls
-              console.log('[AI] Tool call without streaming-start, sending as new')
-              event.sender.send(`ai:toolCalls:${channelId}`, [{
-                id: part.toolCallId,
-                name: part.toolName,
-                args: toolArgs,
-                status: 'executing',
-              }])
-            }
-            break
-
-          case 'tool-result':
-            // Tool execution complete - send result
-            // AI SDK uses 'output' or 'result' depending on version
-            const toolResult = (part as any).output || (part as any).result
-            console.log('[AI] Tool result:', part.toolCallId, typeof toolResult === 'object' ? JSON.stringify(toolResult).slice(0, 100) : toolResult)
-            event.sender.send(`ai:toolResults:${channelId}`, [{
-              toolCallId: part.toolCallId,
-              result: toolResult,
-            }])
-            // Reset text tracker - we want to know if text comes AFTER tool results
-            textAfterLastToolResult = ''
-            hadAnyToolCalls = true
-            break
-
-          // Other events we might care about
-          case 'step-start':
-            console.log('[AI] Step starting')
-            break
-
-          case 'step-finish':
-            console.log('[AI] Step finished:', part.finishReason, 'isContinued:', (part as any).isContinued)
-            break
-
-          case 'error':
-            console.error('[AI] Stream error:', part.error)
-            break
-        }
+      if (DEBUG_API_REQUESTS) {
+        console.log('\n[AI] ========== STREAM START ==========')
+        console.log('[AI] Model:', modelId)
+        console.log('[AI] Mode:', mode)
+        console.log('[AI] Provider type:', providerConfig.type)
+        console.log('[AI] Tool count:', Object.keys(tools).length)
+        console.log('[AI] Tool names:', Object.keys(tools))
+        console.log('[AI] System prompt length:', systemPrompt.length)
+        console.log('[AI] Message count:', messages.length)
       }
 
-      // Get usage stats
-      const usage = await result.usage
-      const finishReason = await result.finishReason
-      const fullText = await result.text
+      // Retry loop for transient errors
+      let lastError: any = null
+      for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+        if (attempt > 0) {
+          console.log(`[AI] Retry attempt ${attempt}/${MAX_RETRIES}`)
+          await sleep(RETRY_DELAY_MS * attempt) // Exponential backoff
+        }
 
-      // Parse usage if it's a string (some providers return stringified JSON)
-      let usageObj: any = usage
-      if (typeof usage === 'string') {
         try {
-          usageObj = JSON.parse(usage)
-          console.log('[AI] Parsed stringified usage:', usageObj)
-        } catch {
-          console.warn('[AI] Failed to parse usage string:', usage)
-          usageObj = {}
-        }
-      }
-
-      // AI SDK v6 uses inputTokens/outputTokens, map to promptTokens/completionTokens
-      // Some providers also use promptTokens/completionTokens, so check both
-      let promptTokens = usageObj?.promptTokens || usageObj?.inputTokens || 0
-      let completionTokens = usageObj?.completionTokens || usageObj?.outputTokens || 0
-
-      // Check for running sub-agents that weren't waited for
-      const activeAgents = getSubAgentsForStream(channelId)
-      const runningAgents = activeAgents.filter(a => a.status === 'running' || a.status === 'pending')
-
-      // CRITICAL: Check if AI ended with tool calls but no text summary AFTER those tool calls
-      // We track text generated AFTER the last tool result to detect missing summaries
-      const hasTextAfterTools = textAfterLastToolResult.trim().length > 50
-
-      console.log('[AI] Summary detection:', {
-        hadAnyToolCalls,
-        textAfterLastToolResult: textAfterLastToolResult.length,
-        hasTextAfterTools,
-        finishReason,
-      })
-
-      if (hadAnyToolCalls && !hasTextAfterTools && !abortController.signal.aborted) {
-        console.log('[AI] Detected missing summary after tool calls - requesting continuation')
-
-        // Get tool results summary for context
-        const toolSummary = Array.from(pendingToolCalls.entries())
-          .map(([id, tc]) => `- ${tc.name}: ${JSON.stringify(tc.args).slice(0, 100)}`)
-          .join('\n')
-
-        // Make a follow-up call to get summary
-        try {
-          const summaryResult = await streamText({
+          // Stream the response with tools
+          const result = await streamText({
             model: provider.chat(modelId),
-            system: `You just executed tools. Provide a brief, helpful summary of what happened and what the results mean for the user. Be concise but informative.`,
-            messages: [
-              ...messages,
-              { role: 'assistant', content: `[Executed tools]\n${toolSummary}` },
-              { role: 'user', content: 'Please summarize what you did and the results.' },
-            ],
+            system: systemPrompt,
+            messages,
+            tools,
+            toolChoice: 'auto',
+            stopWhen: stepCountIs(10), // Allow up to 10 tool call steps
             abortSignal: abortController.signal,
+            onStepFinish: ({ toolCalls, toolResults, text, finishReason }) => {
+              if (DEBUG_API_REQUESTS) {
+                console.log('[AI] Step finished:', {
+                  finishReason,
+                  toolCallCount: toolCalls?.length || 0,
+                  toolResultCount: toolResults?.length || 0,
+                  textLength: text?.length || 0,
+                })
+              }
+            },
           })
 
-          // Stream the summary
-          for await (const chunk of summaryResult.textStream) {
+          // Track text generated after last tool result
+          let textAfterLastToolResult = ''
+          let hadAnyToolCalls = false
+
+          for await (const part of result.fullStream) {
             if (abortController.signal.aborted) break
-            event.sender.send(`ai:chunk:${channelId}`, chunk)
+
+            switch (part.type) {
+              case 'text-delta':
+                if (part.textDelta) {
+                  event.sender.send(`ai:chunk:${channelId}`, part.textDelta)
+                  textAfterLastToolResult += part.textDelta
+                }
+                break
+
+              case 'tool-call-streaming-start':
+                console.log('[AI] Tool call starting:', part.toolName)
+                toolTracker.set(part.toolCallId, {
+                  id: part.toolCallId,
+                  name: part.toolName,
+                  args: {},
+                  startTime: Date.now(),
+                })
+                event.sender.send(`ai:toolCalls:${channelId}`, [{
+                  id: part.toolCallId,
+                  name: part.toolName,
+                  args: {},
+                  status: 'starting',
+                }])
+                break
+
+              case 'tool-call':
+                const toolArgs = (part as any).input || (part as any).args || {}
+                console.log('[AI] Tool call ready:', part.toolName, toolArgs)
+
+                const existingExec = toolTracker.get(part.toolCallId)
+                if (existingExec) {
+                  existingExec.args = toolArgs
+                } else {
+                  toolTracker.set(part.toolCallId, {
+                    id: part.toolCallId,
+                    name: part.toolName,
+                    args: toolArgs,
+                    startTime: Date.now(),
+                  })
+                }
+
+                if (existingExec) {
+                  event.sender.send(`ai:toolCallUpdate:${channelId}`, {
+                    id: part.toolCallId,
+                    name: part.toolName,
+                    args: toolArgs,
+                    status: 'executing',
+                  })
+                } else {
+                  console.log('[AI] Tool call without streaming-start, sending as new')
+                  event.sender.send(`ai:toolCalls:${channelId}`, [{
+                    id: part.toolCallId,
+                    name: part.toolName,
+                    args: toolArgs,
+                    status: 'executing',
+                  }])
+                }
+                break
+
+              case 'tool-result':
+                const toolResult = (part as any).output || (part as any).result
+                console.log('[AI] Tool result:', part.toolCallId,
+                  typeof toolResult === 'object' ? JSON.stringify(toolResult).slice(0, 100) : toolResult)
+
+                // Update tracker with result
+                const exec = toolTracker.get(part.toolCallId)
+                if (exec) {
+                  exec.result = toolResult
+                  exec.endTime = Date.now()
+                }
+
+                event.sender.send(`ai:toolResults:${channelId}`, [{
+                  toolCallId: part.toolCallId,
+                  result: toolResult,
+                }])
+
+                // Reset text tracker - we want to know if text comes AFTER tool results
+                textAfterLastToolResult = ''
+                hadAnyToolCalls = true
+                break
+
+              case 'step-start':
+                if (DEBUG_API_REQUESTS) console.log('[AI] Step starting')
+                break
+
+              case 'step-finish':
+                if (DEBUG_API_REQUESTS) {
+                  console.log('[AI] Step finished:', part.finishReason, 'isContinued:', (part as any).isContinued)
+                }
+                break
+
+              case 'error':
+                console.error('[AI] Stream error:', part.error)
+                break
+            }
           }
 
-          // Add summary usage to totals
-          const summaryUsage = await summaryResult.usage
-          if (summaryUsage) {
-            const sUsage = typeof summaryUsage === 'string' ? JSON.parse(summaryUsage) : summaryUsage
-            promptTokens += sUsage?.promptTokens || sUsage?.inputTokens || 0
-            completionTokens += sUsage?.completionTokens || sUsage?.outputTokens || 0
+          // Get usage stats
+          const usage = await result.usage
+          const finishReason = await result.finishReason
+
+          // Parse usage if it's a string
+          let usageObj: any = usage
+          if (typeof usage === 'string') {
+            try {
+              usageObj = JSON.parse(usage)
+            } catch {
+              usageObj = {}
+            }
           }
-        } catch (summaryError: any) {
-          console.warn('[AI] Failed to generate summary:', summaryError.message)
-          // Send a fallback message
-          event.sender.send(`ai:chunk:${channelId}`, '\n\n*Tool execution completed. Check tool results above for details.*')
-        }
-      }
 
-      if (runningAgents.length > 0) {
-        console.warn('[AI] WARNING: Stream ended with running sub-agents that were not waited for:',
-          runningAgents.map(a => `${a.name} (${a.status})`))
-      }
+          let promptTokens = usageObj?.promptTokens || usageObj?.inputTokens || 0
+          let completionTokens = usageObj?.completionTokens || usageObj?.outputTokens || 0
 
-      const totalTokens = promptTokens + completionTokens
+          // Check for running sub-agents that weren't waited for
+          const activeAgents = getSubAgentsForStream(channelId)
+          const runningAgents = activeAgents.filter(a => a.status === 'running' || a.status === 'pending')
 
-      // Log full usage object for debugging
-      console.log('[AI] Stream completed:', {
-        finishReason,
-        promptTokens,
-        completionTokens,
-        totalTokens,
-        runningSubAgents: runningAgents.length,
-        hadAnyToolCalls,
-        textAfterToolsLength: textAfterLastToolResult.length,
-      })
+          // If there are running agents, wait for them
+          if (runningAgents.length > 0 && !abortController.signal.aborted) {
+            console.log('[AI] Waiting for', runningAgents.length, 'running sub-agent(s)...')
 
-      // Signal completion with stats
-      if (!abortController.signal.aborted) {
-        event.sender.send(`ai:end:${channelId}`, {
-          usage: {
+            for (const agent of runningAgents) {
+              try {
+                const agentResult = await waitForSubAgent(agent.id, 30000) // 30 sec timeout per agent
+                console.log(`[AI] Agent ${agent.name} completed:`, agentResult.success ? 'success' : 'failed')
+              } catch (e) {
+                console.warn(`[AI] Failed to wait for agent ${agent.name}:`, e)
+              }
+            }
+          }
+
+          // Check if we need to generate a summary
+          const hasTextAfterTools = textAfterLastToolResult.trim().length > 50
+
+          console.log('[AI] Summary detection:', {
+            hadAnyToolCalls,
+            textAfterLastToolResult: textAfterLastToolResult.length,
+            hasTextAfterTools,
+            finishReason,
+          })
+
+          if (hadAnyToolCalls && !hasTextAfterTools && !abortController.signal.aborted) {
+            console.log('[AI] Generating summary for tool results...')
+
+            // Build proper context with actual tool results
+            const toolContext = buildToolContext(toolTracker)
+
+            try {
+              const summaryResult = await streamText({
+                model: provider.chat(modelId),
+                system: `You just executed tools to help the user. Now provide a clear, helpful summary:
+1. What you did (briefly)
+2. Key results or findings
+3. Any issues encountered
+4. Next steps if applicable
+
+Be concise but informative. The user needs to understand what happened.`,
+                messages: [
+                  ...messages,
+                  { role: 'assistant', content: `I executed the following tools:\n\n${toolContext}` },
+                  { role: 'user', content: 'Please summarize what you did and the results.' },
+                ],
+                abortSignal: abortController.signal,
+              })
+
+              // Stream the summary
+              for await (const chunk of summaryResult.textStream) {
+                if (abortController.signal.aborted) break
+                event.sender.send(`ai:chunk:${channelId}`, chunk)
+              }
+
+              // Add summary usage to totals
+              const summaryUsage = await summaryResult.usage
+              if (summaryUsage) {
+                const sUsage = typeof summaryUsage === 'string' ? JSON.parse(summaryUsage) : summaryUsage
+                promptTokens += sUsage?.promptTokens || sUsage?.inputTokens || 0
+                completionTokens += sUsage?.completionTokens || sUsage?.outputTokens || 0
+              }
+            } catch (summaryError: any) {
+              console.warn('[AI] Failed to generate summary:', summaryError.message)
+              // Send a fallback message with tool results
+              const fallbackSummary = `\n\n---\n**Tool Execution Complete**\n${buildToolContext(toolTracker)}`
+              event.sender.send(`ai:chunk:${channelId}`, fallbackSummary)
+            }
+          }
+
+          const totalTokens = promptTokens + completionTokens
+
+          console.log('[AI] Stream completed:', {
+            finishReason,
             promptTokens,
             completionTokens,
             totalTokens,
-          },
-          finishReason,
-        })
+            toolsExecuted: toolTracker.size,
+          })
+
+          // Signal completion with stats
+          if (!abortController.signal.aborted) {
+            event.sender.send(`ai:end:${channelId}`, {
+              usage: {
+                promptTokens,
+                completionTokens,
+                totalTokens,
+              },
+              finishReason,
+            })
+          }
+
+          // Success - exit retry loop
+          break
+
+        } catch (error: any) {
+          lastError = error
+
+          if (error.name === 'AbortError') {
+            // User cancelled - don't retry
+            break
+          }
+
+          if (isRetryableError(error) && attempt < MAX_RETRIES) {
+            console.warn(`[AI] Retryable error on attempt ${attempt + 1}:`, error.message)
+            continue
+          }
+
+          // Non-retryable error or max retries reached
+          throw error
+        }
       }
+
+      // If we exhausted retries, throw the last error
+      if (lastError && !abortController.signal.aborted) {
+        throw lastError
+      }
+
     } catch (error: any) {
       if (error.name !== 'AbortError') {
         console.error('[AI] Streaming error:', error)
@@ -1078,6 +1225,7 @@ When the user asks to modify, update, fix, or improve an existing artifact, use 
         event.sender.send(`ai:error:${channelId}`, error.message || 'Unknown error')
       }
     } finally {
+      clearTimeout(timeoutId)
       activeStreams.delete(channelId)
 
       // Clear global progress callback
@@ -1087,7 +1235,6 @@ When the user asks to modify, update, fix, or improve an existing artifact, use 
       unregisterParentStream(channelId)
 
       // Dismiss completed sub-agents for this stream
-      // Running/waiting agents get grace period via orphan cleanup
       const dismissed = dismissAgentsForStream(channelId)
       if (dismissed > 0) {
         console.log(`[AI] Dismissed ${dismissed} completed sub-agent(s) for ended stream`)
