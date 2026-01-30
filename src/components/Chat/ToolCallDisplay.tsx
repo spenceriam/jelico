@@ -172,13 +172,14 @@ function formatToolResult(result: unknown): { content: string; isError: boolean 
   return { content: String(result), isError: false }
 }
 
-function SingleToolCall({
+// Single tool call display - exported for use in interleaved message segments
+export function SingleToolCallDisplay({
   toolCall,
-  result,
+  toolResult,
   isStreaming
 }: {
   toolCall: ToolCall
-  result?: ToolResult
+  toolResult?: ToolResult
   isStreaming?: boolean
 }) {
   const [expanded, setExpanded] = useState(false)
@@ -191,8 +192,8 @@ function SingleToolCall({
     : (TOOL_LABELS[toolCall.name] || toolCall.name)
   const argDisplay = toolCall.name === 'spawn_agent' ? '' : formatToolArgs(toolCall.args)
 
-  const hasResult = result !== undefined
-  const formattedResult = hasResult ? formatToolResult(result.result) : null
+  const hasResult = toolResult !== undefined
+  const formattedResult = hasResult ? formatToolResult(toolResult.result) : null
 
   // Use explicit status if available, otherwise infer from result presence
   const status = toolCall.status || (hasResult ? 'complete' : (isStreaming ? 'executing' : 'complete'))
@@ -204,8 +205,8 @@ function SingleToolCall({
                      status === 'error' ? 'Error' : ''
 
   // Get sub-agent info if this is a spawn_agent call
-  const agentId = toolCall.name === 'spawn_agent' && result?.result
-    ? (result.result as any)?.agent_id
+  const agentId = toolCall.name === 'spawn_agent' && toolResult?.result
+    ? (toolResult.result as any)?.agent_id
     : null
   const subAgent = agentId ? agents.find(a => a.id === agentId) : null
 
@@ -512,10 +513,10 @@ export function ToolCallDisplay({ toolCalls, toolResults = [], isStreaming }: To
         {!collapsed && (
           <div className="space-y-2 mt-2">
             {visibleToolCalls.map((toolCall, index) => (
-              <SingleToolCall
+              <SingleToolCallDisplay
                 key={toolCall.id || `tool-${index}`}
                 toolCall={toolCall}
-                result={resultsMap.get(toolCall.id)}
+                toolResult={resultsMap.get(toolCall.id)}
                 isStreaming={false}
               />
             ))}
@@ -529,10 +530,10 @@ export function ToolCallDisplay({ toolCalls, toolResults = [], isStreaming }: To
   return (
     <div className="space-y-2 my-3">
       {visibleToolCalls.map((toolCall, index) => (
-        <SingleToolCall
+        <SingleToolCallDisplay
           key={toolCall.id || `tool-${index}`}
           toolCall={toolCall}
-          result={resultsMap.get(toolCall.id)}
+          toolResult={resultsMap.get(toolCall.id)}
           isStreaming={isStreaming}
         />
       ))}

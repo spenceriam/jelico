@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { Message } from './Message'
 import { SystemMessage } from './SystemMessage'
 import { ThinkingIndicator } from '../StatusIndicators/ThinkingIndicator'
-import type { ToolCall, ToolResult, MessageUsage, SystemNotification, MessageAttachment } from '../../stores/chat'
+import type { ToolCall, ToolResult, MessageUsage, SystemNotification, MessageAttachment, StreamingSegment } from '../../stores/chat'
 
 interface MessageData {
   id: string
@@ -20,6 +20,7 @@ interface MessageListProps {
   streamingContent?: string
   streamingToolCalls?: ToolCall[]
   streamingToolResults?: ToolResult[]
+  streamingSegments?: StreamingSegment[]
   systemNotifications?: SystemNotification[]
   onRegenerate?: () => Promise<void>
   userName?: string  // User's name for avatar
@@ -30,6 +31,7 @@ export function MessageList({
   streamingContent,
   streamingToolCalls,
   streamingToolResults,
+  streamingSegments,
   systemNotifications = [],
   onRegenerate,
   userName,
@@ -98,6 +100,7 @@ export function MessageList({
           isStreaming
           streamingToolCalls={streamingToolCalls}
           streamingToolResults={streamingToolResults}
+          streamingSegments={streamingSegments}
           userName={userName}
         />
       )}

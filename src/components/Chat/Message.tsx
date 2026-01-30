@@ -2,10 +2,10 @@ import { useState } from 'react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { Copy, Check, FileText, Image, File } from 'lucide-react'
-import { ToolCallDisplay } from './ToolCallDisplay'
+import { ToolCallDisplay, SingleToolCallDisplay } from './ToolCallDisplay'
 import { MessageActions } from './MessageActions'
 import { MermaidInline } from '../Canvas/MermaidViewer'
-import type { ToolCall, ToolResult, MessageUsage, MessageAttachment } from '../../stores/chat'
+import type { ToolCall, ToolResult, MessageUsage, MessageAttachment, StreamingSegment } from '../../stores/chat'
 
 interface MessageProps {
   message: {
@@ -21,6 +21,7 @@ interface MessageProps {
   isStreaming?: boolean
   streamingToolCalls?: ToolCall[]
   streamingToolResults?: ToolResult[]
+  streamingSegments?: StreamingSegment[]
   isLastAssistantMessage?: boolean
   onRegenerate?: () => void
   isRegenerating?: boolean
@@ -72,6 +73,7 @@ export function Message({
   isStreaming,
   streamingToolCalls,
   streamingToolResults,
+  streamingSegments,
   isLastAssistantMessage,
   onRegenerate,
   isRegenerating,
@@ -85,6 +87,8 @@ export function Message({
   // Use streaming tool calls if currently streaming, otherwise use saved tool calls
   const toolCalls = isStreaming ? streamingToolCalls : message.toolCalls
   const toolResults = isStreaming ? streamingToolResults : message.toolResults
+  // Segments are only available during streaming
+  const segments = isStreaming ? streamingSegments : undefined
 
   const handleCopy = async () => {
     try {
@@ -178,6 +182,101 @@ export function Message({
     )
   }
 
+  // Helper to render markdown content
+  const renderMarkdown = (content: string) => (
+    <ReactMarkdown
+      remarkPlugins={[remarkGfm]}
+      components={{
+        code: ({ node, className, children, ...props }) => {
+          const match = /language-(\w+)/.exec(className || '')
+          const isInline = !match
+          const codeContent = String(children).replace(/\n$/, '')
+
+          if (isInline) {
+            return (
+              <code
+                className="px-1.5 py-0.5 bg-bg-elevated rounded text-accent-bright font-mono text-sm"
+                {...props}
+              >
+                {children}
+              </code>
+            )
+          }
+
+          // Render mermaid diagrams inline
+          if (match && match[1] === 'mermaid') {
+            return (
+              <MermaidInline content={codeContent} className="my-4" />
+            )
+          }
+
+          return (
+            <div className="relative group my-4">
+              <div className="absolute top-2 right-2 text-xs text-text-muted">
+                {match[1]}
+              </div>
+              <pre className="bg-bg-elevated rounded-lg p-4 overflow-x-auto">
+                <code className="font-mono text-sm" {...props}>
+                  {children}
+                </code>
+              </pre>
+            </div>
+          )
+        },
+        p: ({ children }) => (
+          <p className="mb-3 last:mb-0 text-text-primary leading-relaxed">
+            {children}
+          </p>
+        ),
+        ul: ({ children }) => (
+          <ul className="list-disc list-inside mb-3 space-y-1 text-text-primary">
+            {children}
+          </ul>
+        ),
+        ol: ({ children }) => (
+          <ol className="list-decimal list-inside mb-3 space-y-1 text-text-primary">
+            {children}
+          </ol>
+        ),
+        li: ({ children }) => (
+          <li className="text-text-primary">{children}</li>
+        ),
+        a: ({ children, href }) => (
+          <a
+            href={href}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-accent hover:underline"
+          >
+            {children}
+          </a>
+        ),
+        h1: ({ children }) => (
+          <h1 className="text-xl font-semibold text-text-primary mb-3 mt-4 first:mt-0">
+            {children}
+          </h1>
+        ),
+        h2: ({ children }) => (
+          <h2 className="text-lg font-semibold text-text-primary mb-2 mt-4 first:mt-0">
+            {children}
+          </h2>
+        ),
+        h3: ({ children }) => (
+          <h3 className="text-base font-semibold text-text-primary mb-2 mt-3 first:mt-0">
+            {children}
+          </h3>
+        ),
+        blockquote: ({ children }) => (
+          <blockquote className="border-l-2 border-accent pl-4 italic text-text-secondary my-3">
+            {children}
+          </blockquote>
+        ),
+      }}
+    >
+      {content}
+    </ReactMarkdown>
+  )
+
   // Assistant messages
   return (
     <div className="flex gap-4 group relative">
@@ -189,105 +288,48 @@ export function Message({
 
       <div className="max-w-[80%]">
         <div className="prose prose-invert prose-sm max-w-none">
-          {/* Show tool calls before the text response */}
-          {toolCalls && toolCalls.length > 0 && (
-            <ToolCallDisplay
-              toolCalls={toolCalls}
-              toolResults={toolResults}
-              isStreaming={isStreaming}
-            />
-          )}
-          <ReactMarkdown
-            remarkPlugins={[remarkGfm]}
-            components={{
-              code: ({ node, className, children, ...props }) => {
-                const match = /language-(\w+)/.exec(className || '')
-                const isInline = !match
-                const codeContent = String(children).replace(/\n$/, '')
-
-                if (isInline) {
+          {/* Interleaved segments during streaming */}
+          {segments && segments.length > 0 ? (
+            <>
+              {segments.map((segment, idx) => {
+                if (segment.type === 'text') {
                   return (
-                    <code
-                      className="px-1.5 py-0.5 bg-bg-elevated rounded text-accent-bright font-mono text-sm"
-                      {...props}
-                    >
-                      {children}
-                    </code>
-                  )
-                }
-
-                // Render mermaid diagrams inline
-                if (match && match[1] === 'mermaid') {
-                  return (
-                    <MermaidInline content={codeContent} className="my-4" />
-                  )
-                }
-
-                return (
-                  <div className="relative group my-4">
-                    <div className="absolute top-2 right-2 text-xs text-text-muted">
-                      {match[1]}
+                    <div key={`text-${idx}`}>
+                      {renderMarkdown(segment.content || (isStreaming ? '▊' : ''))}
                     </div>
-                    <pre className="bg-bg-elevated rounded-lg p-4 overflow-x-auto">
-                      <code className="font-mono text-sm" {...props}>
-                        {children}
-                      </code>
-                    </pre>
-                  </div>
-                )
-              },
-              p: ({ children }) => (
-                <p className="mb-3 last:mb-0 text-text-primary leading-relaxed">
-                  {children}
-                </p>
-              ),
-              ul: ({ children }) => (
-                <ul className="list-disc list-inside mb-3 space-y-1 text-text-primary">
-                  {children}
-                </ul>
-              ),
-              ol: ({ children }) => (
-                <ol className="list-decimal list-inside mb-3 space-y-1 text-text-primary">
-                  {children}
-                </ol>
-              ),
-              li: ({ children }) => (
-                <li className="text-text-primary">{children}</li>
-              ),
-              a: ({ children, href }) => (
-                <a
-                  href={href}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="text-accent hover:underline"
-                >
-                  {children}
-                </a>
-              ),
-              h1: ({ children }) => (
-                <h1 className="text-xl font-semibold text-text-primary mb-3 mt-4 first:mt-0">
-                  {children}
-                </h1>
-              ),
-              h2: ({ children }) => (
-                <h2 className="text-lg font-semibold text-text-primary mb-2 mt-4 first:mt-0">
-                  {children}
-                </h2>
-              ),
-              h3: ({ children }) => (
-                <h3 className="text-base font-semibold text-text-primary mb-2 mt-3 first:mt-0">
-                  {children}
-                </h3>
-              ),
-              blockquote: ({ children }) => (
-                <blockquote className="border-l-2 border-accent pl-4 italic text-text-secondary my-3">
-                  {children}
-                </blockquote>
-              ),
-            }}
-          >
-            {message.content || (isStreaming ? '▊' : '')}
-          </ReactMarkdown>
+                  )
+                } else {
+                  // Tool segment - find the tool call and result
+                  const toolCall = toolCalls?.find(tc => tc.id === segment.toolCallId)
+                  const toolResult = toolResults?.find(tr => tr.toolCallId === segment.toolCallId)
+
+                  if (!toolCall) return null
+
+                  return (
+                    <SingleToolCallDisplay
+                      key={`tool-${segment.toolCallId}`}
+                      toolCall={toolCall}
+                      toolResult={toolResult}
+                      isStreaming={isStreaming}
+                    />
+                  )
+                }
+              })}
+            </>
+          ) : (
+            <>
+              {/* Fallback: Show tool calls first (for saved messages without segments) */}
+              {toolCalls && toolCalls.length > 0 && (
+                <ToolCallDisplay
+                  toolCalls={toolCalls}
+                  toolResults={toolResults}
+                  isStreaming={isStreaming}
+                />
+              )}
+              {/* Then show text content */}
+              {renderMarkdown(message.content || (isStreaming ? '▊' : ''))}
+            </>
+          )}
 
           {/* Message actions for assistant messages (not while streaming) */}
           {isAssistant && !isStreaming && isLastAssistantMessage && (

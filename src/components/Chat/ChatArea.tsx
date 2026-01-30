@@ -16,7 +16,7 @@ import { TodoPanel } from '../Todo/TodoPanel'
 const MIN_STATUS_DISPLAY_MS = 600
 
 export function ChatArea() {
-  const { messages, isStreaming, streamingContent, streamingToolCalls, streamingToolResults, systemNotifications, activeConversationId, regenerateLastResponse, modeSwitchReason, modeTransitioning, lastCompletedTool, statusDisplayQueue } = useChatStore()
+  const { messages, isStreaming, streamingContent, streamingToolCalls, streamingToolResults, streamingSegments, systemNotifications, activeConversationId, regenerateLastResponse, modeSwitchReason, modeTransitioning, lastCompletedTool, statusDisplayQueue } = useChatStore()
   const { activeProviderId, activeModel } = useProviderStore()
   const { isProcessing, processingMessage } = useUIStore()
   const { getContextUsage, isCompacting } = useContextStore()
@@ -87,6 +87,7 @@ export function ChatArea() {
             streamingContent={isStreaming ? streamingContent : undefined}
             streamingToolCalls={isStreaming ? streamingToolCalls : undefined}
             streamingToolResults={isStreaming ? streamingToolResults : undefined}
+            streamingSegments={isStreaming ? streamingSegments : undefined}
             systemNotifications={systemNotifications}
             onRegenerate={handleRegenerate}
             userName={userName || undefined}

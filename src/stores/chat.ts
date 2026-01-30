@@ -49,6 +49,12 @@ export interface ToolResult {
   error?: string
 }
 
+// Streaming segment - tracks content in the order it arrives
+// This enables proper interleaving of text and tool calls in the UI
+export type StreamingSegment =
+  | { type: 'text'; content: string }
+  | { type: 'tool'; toolCallId: string }
+
 interface Conversation {
   id: string
   title: string
@@ -102,6 +108,8 @@ interface ChatStore {
   streamingContent: string
   streamingToolCalls: ToolCall[]
   streamingToolResults: ToolResult[]
+  // Segments track the ORDER of content arrival for proper interleaving in UI
+  streamingSegments: StreamingSegment[]
   systemNotifications: SystemNotification[]
   isLoading: boolean
   error: string | null
@@ -144,6 +152,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
   streamingContent: '',
   streamingToolCalls: [],
   streamingToolResults: [],
+  streamingSegments: [],
   systemNotifications: [],
   isLoading: false,
   error: null,
@@ -190,6 +199,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
         streamingContent: '',
         streamingToolCalls: [],
         streamingToolResults: [],
+        streamingSegments: [],
         statusDisplayQueue: [],
         error: null,
       })
@@ -296,6 +306,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
       streamingContent: '',
       streamingToolCalls: [],
       streamingToolResults: [],
+      streamingSegments: [],
       statusDisplayQueue: [],
     })
 
@@ -345,7 +356,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
     let firstChunkTime: number | null = null
     let lastChunkTime: number | null = null
 
-    // Handle stream chunks
+    // Handle stream chunks - track text segments for interleaving
     window.jelico.ai.onStreamChunk(channelId, (chunk) => {
       // Guard against undefined chunks (can happen with some stream events)
       if (chunk !== undefined && chunk !== null) {
@@ -355,27 +366,57 @@ export const useChatStore = create<ChatStore>((set, get) => ({
         }
         lastChunkTime = now
         fullContent += chunk
-        set({ streamingContent: fullContent })
+        set((state) => {
+          // Find or create the current text segment
+          const segments = [...state.streamingSegments]
+          const lastSegment = segments[segments.length - 1]
+
+          if (lastSegment?.type === 'text') {
+            // Append to existing text segment
+            segments[segments.length - 1] = {
+              type: 'text',
+              content: lastSegment.content + chunk,
+            }
+          } else {
+            // Create new text segment (first text, or text after a tool)
+            segments.push({ type: 'text', content: chunk })
+          }
+
+          return {
+            streamingContent: fullContent,
+            streamingSegments: segments,
+          }
+        })
       }
     })
 
     // Handle tool calls - ai.ts now sends pre-formatted { id, name, args }
+    // Also track segments for interleaving in UI
     window.jelico.ai.onToolCalls(channelId, (toolCalls) => {
       console.log('[Chat Store] Received tool calls:', toolCalls)
       const now = Date.now()
-      set((state) => ({
-        streamingToolCalls: [...state.streamingToolCalls, ...toolCalls],
-        // Add to status display queue for graceful UX
-        statusDisplayQueue: [
-          ...state.statusDisplayQueue,
-          ...toolCalls.map(tc => ({
-            id: tc.id,
-            toolName: tc.name,
-            args: tc.args,
-            startedAt: now,
-          })),
-        ],
-      }))
+      set((state) => {
+        // Add tool segments for each new tool call
+        const newSegments: StreamingSegment[] = toolCalls.map(tc => ({
+          type: 'tool' as const,
+          toolCallId: tc.id,
+        }))
+
+        return {
+          streamingToolCalls: [...state.streamingToolCalls, ...toolCalls],
+          streamingSegments: [...state.streamingSegments, ...newSegments],
+          // Add to status display queue for graceful UX
+          statusDisplayQueue: [
+            ...state.statusDisplayQueue,
+            ...toolCalls.map(tc => ({
+              id: tc.id,
+              toolName: tc.name,
+              args: tc.args,
+              startedAt: now,
+            })),
+          ],
+        }
+      })
     })
 
     // Handle tool results - ai.ts now sends pre-formatted { toolCallId, result }
@@ -571,6 +612,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
           streamingContent: '',
           streamingToolCalls: [],
           streamingToolResults: [],
+          streamingSegments: [],
           statusDisplayQueue: [],
           lastCompletedTool: null,
         }))
@@ -619,6 +661,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
           streamingContent: '',
           streamingToolCalls: [],
           streamingToolResults: [],
+          streamingSegments: [],
           statusDisplayQueue: [],
           lastCompletedTool: null,
           error: `Failed to save message: ${error}`,
@@ -689,6 +732,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
         streamingContent: '',
         streamingToolCalls: [],
         streamingToolResults: [],
+        streamingSegments: [],
         statusDisplayQueue: [],
         error: error,
       })
@@ -727,6 +771,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
       streamingContent: '',
       streamingToolCalls: [],
       streamingToolResults: [],
+      streamingSegments: [],
       statusDisplayQueue: [],
     })
   },
@@ -757,6 +802,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
           streamingContent: '',
           streamingToolCalls: [],
           streamingToolResults: [],
+          streamingSegments: [],
           statusDisplayQueue: [],
           error: null,
         })
