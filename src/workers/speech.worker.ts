@@ -4,12 +4,39 @@
  * This enables cross-platform speech recognition including Windows ARM64
  */
 
-import { pipeline, env } from '@xenova/transformers'
+// Dynamic import of transformers.js to avoid bundling issues
+// The library will be loaded from CDN at runtime
+let pipeline: any = null
+let env: any = null
+let transformersLoaded = false
+let transformersError: string | null = null
 
-// Configure transformers.js for browser environment
-env.allowLocalModels = false
-env.allowRemoteModels = true
-// WASM is the default backend in browser context
+async function loadTransformers() {
+  if (transformersLoaded) return
+  if (transformersError) throw new Error(transformersError)
+
+  try {
+    console.log('[SpeechWorker] Loading transformers.js from CDN...')
+    // Use dynamic import from CDN to avoid Vite bundling issues
+    const transformers = await import(
+      /* @vite-ignore */
+      'https://cdn.jsdelivr.net/npm/@xenova/transformers@2.17.2'
+    )
+    pipeline = transformers.pipeline
+    env = transformers.env
+
+    // Configure for browser environment
+    env.allowLocalModels = false
+    env.allowRemoteModels = true
+
+    transformersLoaded = true
+    console.log('[SpeechWorker] Transformers.js loaded successfully')
+  } catch (error: any) {
+    console.error('[SpeechWorker] Failed to load transformers.js:', error)
+    transformersError = `Failed to load transformers.js: ${error.message}`
+    throw new Error(transformersError)
+  }
+}
 
 // Types
 interface TranscriptionProgress {
@@ -61,6 +88,11 @@ async function initializePipeline(modelId: string, messageId: string): Promise<v
   loadError = null
 
   try {
+    postProgress(messageId, { status: 'loading', message: 'Loading transformers.js library...' })
+
+    // First ensure transformers.js is loaded from CDN
+    await loadTransformers()
+
     postProgress(messageId, { status: 'loading', message: 'Initializing speech recognition...' })
 
     console.log('[SpeechWorker] Loading model:', modelId)

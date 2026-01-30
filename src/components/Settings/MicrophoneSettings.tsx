@@ -49,24 +49,10 @@ export function MicrophoneSettings() {
   const [transcriptionError, setTranscriptionError] = useState<string>('')
 
   // Track which models have been loaded (cached in browser's IndexedDB by transformers.js)
+  // Note: We intentionally don't call speechClient.getStatus() on mount to avoid
+  // spawning the worker prematurely. The worker is only created when the user
+  // downloads a model or starts transcription.
   const [loadedModels, setLoadedModels] = useState<Set<string>>(new Set())
-
-  // Load status on mount
-  useEffect(() => {
-    async function loadStatus() {
-      try {
-        const statusData = await speechClient.getStatus()
-        setStatus(statusData)
-        setSelectedModel(statusData.currentModel || 'Xenova/whisper-tiny')
-        if (statusData.isLoaded) {
-          setLoadedModels(new Set([statusData.currentModel]))
-        }
-      } catch (error) {
-        console.error('Failed to load speech status:', error)
-      }
-    }
-    loadStatus()
-  }, [])
 
   // Load audio devices
   useEffect(() => {
@@ -125,14 +111,16 @@ export function MicrophoneSettings() {
     // Language is passed at transcription time, no need to persist
   }, [])
 
-  // Cleanup audio element on unmount
+  // Cleanup audio element and reset recording state on unmount
   useEffect(() => {
     return () => {
+      // Stop any playing audio
       if (audioElementRef.current) {
         audioElementRef.current.pause()
         audioElementRef.current.src = ''
         audioElementRef.current = null
       }
+      // Recording state will be reset naturally when component remounts
     }
   }, [])
 

@@ -35,22 +35,33 @@ class SpeechClient {
   private pendingRequests: Map<string, PendingRequest> = new Map()
   private messageId = 0
   private initPromise: Promise<void> | null = null
+  private workerError: string | null = null
 
   /**
    * Initialize the speech worker
    */
   private async ensureWorker(): Promise<Worker> {
+    // If worker previously failed, throw immediately
+    if (this.workerError) {
+      throw new Error(this.workerError)
+    }
+
     if (this.worker) {
       return this.worker
     }
 
     if (this.initPromise) {
       await this.initPromise
+      if (this.workerError) {
+        throw new Error(this.workerError)
+      }
       return this.worker!
     }
 
     this.initPromise = new Promise((resolve, reject) => {
       try {
+        console.log('[SpeechClient] Creating worker...')
+
         // Create worker using Vite's worker import syntax
         this.worker = new Worker(
           new URL('../workers/speech.worker.ts', import.meta.url),
@@ -63,17 +74,19 @@ class SpeechClient {
 
         this.worker.onerror = (error) => {
           console.error('[SpeechClient] Worker error:', error)
+          this.workerError = `Worker failed: ${error.message || 'Unknown error'}`
           // Reject all pending requests
           this.pendingRequests.forEach((request) => {
-            request.reject(new Error(`Worker error: ${error.message}`))
+            request.reject(new Error(this.workerError!))
           })
           this.pendingRequests.clear()
         }
 
-        console.log('[SpeechClient] Worker created')
+        console.log('[SpeechClient] Worker created successfully')
         resolve()
       } catch (error: any) {
         console.error('[SpeechClient] Failed to create worker:', error)
+        this.workerError = error.message
         reject(error)
       }
     })
@@ -122,13 +135,33 @@ class SpeechClient {
   private async sendMessage(
     type: string,
     payload?: any,
-    onProgress?: ProgressCallback
+    onProgress?: ProgressCallback,
+    timeoutMs: number = 300000 // 5 minute default timeout for model downloads
   ): Promise<any> {
     const worker = await this.ensureWorker()
     const id = `msg-${++this.messageId}`
 
+    console.log(`[SpeechClient] Sending message: ${type}`, { id, payload: payload ? Object.keys(payload) : null })
+
     return new Promise((resolve, reject) => {
-      this.pendingRequests.set(id, { resolve, reject, onProgress })
+      // Set up timeout
+      const timeoutId = setTimeout(() => {
+        this.pendingRequests.delete(id)
+        reject(new Error(`Request timed out after ${timeoutMs / 1000}s`))
+      }, timeoutMs)
+
+      this.pendingRequests.set(id, {
+        resolve: (value) => {
+          clearTimeout(timeoutId)
+          resolve(value)
+        },
+        reject: (error) => {
+          clearTimeout(timeoutId)
+          reject(error)
+        },
+        onProgress,
+      })
+
       worker.postMessage({ type, id, payload })
     })
   }
