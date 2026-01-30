@@ -43,6 +43,22 @@ export default defineConfig({
   resolve: {
     alias: {
       '@': path.resolve(__dirname, './src'),
+      // Stub Node.js modules for browser/worker context (used by @xenova/transformers)
+      'fs': path.resolve(__dirname, './src/lib/stubs/fs.ts'),
+      'path': path.resolve(__dirname, './src/lib/stubs/path.ts'),
     },
+  },
+  // Worker configuration - ensure Node.js modules are stubbed
+  worker: {
+    format: 'es',
+    rollupOptions: {
+      output: {
+        entryFileNames: '[name].js',
+      },
+    },
+  },
+  // Optimize deps to handle transformers.js
+  optimizeDeps: {
+    exclude: ['@xenova/transformers'],
   },
 })
