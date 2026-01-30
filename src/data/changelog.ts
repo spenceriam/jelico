@@ -21,6 +21,20 @@ export interface ChangelogEntry {
 
 export const changelog: ChangelogEntry[] = [
   {
+    version: '0.6.1',
+    date: '2026-01-30',
+    changes: {
+      fixed: [
+        'Message ordering - AI acknowledgment now appears BEFORE tool calls, not after',
+        'Interleaved message segments - text and tool calls render in arrival order',
+      ],
+      changed: [
+        'Chat store tracks streaming segments to preserve content order',
+        'Message component renders segments sequentially during streaming',
+      ],
+    },
+  },
+  {
     version: '0.6.0',
     date: '2026-01-30',
     changes: {
