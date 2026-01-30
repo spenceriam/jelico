@@ -35,7 +35,6 @@ export function MicrophoneSettings() {
 
   // Microphone test state (audio playback only)
   const [isMicTesting, setIsMicTesting] = useState(false)
-  const [micTestStatus, setMicTestStatus] = useState<string>('')
   const [recordedBlob, setRecordedBlob] = useState<Blob | null>(null)
   const [isPlaying, setIsPlaying] = useState(false)
   const audioElementRef = useRef<HTMLAudioElement | null>(null)
@@ -149,15 +148,13 @@ export function MicrophoneSettings() {
     setRecordedBlob(null)
     setIsPlaying(false)
     setIsMicTesting(true)
-    setMicTestStatus('Requesting microphone access...')
-
+    
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
         audio: selectedDevice ? { deviceId: { exact: selectedDevice } } : true,
       })
 
-      setMicTestStatus('Recording... speak now (3 seconds)')
-
+      
       // Find supported mime type
       const mimeTypes = [
         'audio/webm;codecs=opus',
@@ -181,7 +178,6 @@ export function MicrophoneSettings() {
 
       mediaRecorder.onerror = (e) => {
         console.error('[MicTest] MediaRecorder error:', e)
-        setMicTestStatus('Recording error occurred')
         setIsMicTesting(false)
       }
 
@@ -190,7 +186,7 @@ export function MicrophoneSettings() {
         stream.getTracks().forEach(track => track.stop())
 
         if (chunks.length === 0) {
-          setMicTestStatus('No audio data captured. Check microphone permissions.')
+          console.warn('[MicTest] No audio data captured')
           setIsMicTesting(false)
           return
         }
@@ -199,13 +195,12 @@ export function MicrophoneSettings() {
         console.log('[MicTest] Created blob, size:', blob.size, 'type:', blob.type)
 
         if (blob.size === 0) {
-          setMicTestStatus('Recording was empty. Try speaking louder.')
+          console.warn('[MicTest] Recording was empty')
           setIsMicTesting(false)
           return
         }
 
         setRecordedBlob(blob)
-        setMicTestStatus(`Recording complete (${(blob.size / 1024).toFixed(1)} KB). Click play to listen.`)
         setIsMicTesting(false)
       }
 
@@ -221,7 +216,6 @@ export function MicrophoneSettings() {
       }, 3000)
     } catch (error: any) {
       console.error('[MicrophoneSettings] Mic test error:', error)
-      setMicTestStatus(`Error: ${error.message}`)
       setIsMicTesting(false)
     }
   }, [selectedDevice])
@@ -237,7 +231,6 @@ export function MicrophoneSettings() {
       audioElementRef.current.pause()
       audioElementRef.current = null
       setIsPlaying(false)
-      setMicTestStatus('Playback stopped.')
       return
     }
 
@@ -249,14 +242,12 @@ export function MicrophoneSettings() {
     audio.onplay = () => {
       console.log('[MicTest] Playback started')
       setIsPlaying(true)
-      setMicTestStatus('Playing...')
     }
 
     audio.onended = () => {
       console.log('[MicTest] Playback ended')
       URL.revokeObjectURL(url)
       setIsPlaying(false)
-      setMicTestStatus('Playback complete. Your microphone is working!')
       audioElementRef.current = null
     }
 
@@ -264,7 +255,6 @@ export function MicrophoneSettings() {
       console.error('[MicTest] Playback error:', e)
       URL.revokeObjectURL(url)
       setIsPlaying(false)
-      setMicTestStatus('Playback failed. The audio format may not be supported.')
       audioElementRef.current = null
     }
 
@@ -272,7 +262,6 @@ export function MicrophoneSettings() {
       console.error('[MicTest] Play failed:', err)
       URL.revokeObjectURL(url)
       setIsPlaying(false)
-      setMicTestStatus(`Playback error: ${err.message}`)
       audioElementRef.current = null
     })
   }, [recordedBlob, isPlaying])
@@ -466,13 +455,6 @@ export function MicrophoneSettings() {
           <p className="text-xs text-text-muted">
             Records 3 seconds of audio for playback to verify your microphone is working.
           </p>
-
-          {micTestStatus && (
-            <div className="p-3 bg-bg-surface border border-border rounded-lg text-sm text-text-secondary">
-              {micTestStatus}
-            </div>
-          )}
-
         </div>
       </section>
 
