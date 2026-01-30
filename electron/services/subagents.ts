@@ -16,6 +16,7 @@ import { streamText, tool, type CoreMessage } from 'ai'
 import { createAnthropic } from '@ai-sdk/anthropic'
 import { createOpenAI } from '@ai-sdk/openai'
 import { createGoogleGenerativeAI } from '@ai-sdk/google'
+import { randomUUID } from 'crypto'
 import { z } from 'zod'
 import { providerDb } from './database'
 import { keychainService } from './keychain'
@@ -219,7 +220,7 @@ export async function spawnSubAgent(params: {
   model: string
   workspacePath?: string
 }): Promise<string> {
-  const agentId = crypto.randomUUID()
+  const agentId = randomUUID()
   const now = Date.now()
 
   const agent: SubAgentRecord = {
