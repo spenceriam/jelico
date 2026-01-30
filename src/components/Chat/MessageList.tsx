@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { Message } from './Message'
 import { SystemMessage } from './SystemMessage'
 import { ThinkingIndicator } from '../StatusIndicators/ThinkingIndicator'
-import type { ToolCall, ToolResult, MessageUsage, SystemNotification } from '../../stores/chat'
+import type { ToolCall, ToolResult, MessageUsage, SystemNotification, MessageAttachment } from '../../stores/chat'
 
 interface MessageData {
   id: string
@@ -12,6 +12,7 @@ interface MessageData {
   toolCalls?: ToolCall[]
   toolResults?: ToolResult[]
   usage?: MessageUsage
+  attachments?: MessageAttachment[]
 }
 
 interface MessageListProps {

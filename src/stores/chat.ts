@@ -235,6 +235,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
     const userMessage = await window.jelico.conversations.addMessage(conversationId, {
       role: 'user',
       content: content, // Original content for display
+      attachments: attachments, // Include attachments for display
     })
 
     // Update title if this is the first message

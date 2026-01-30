@@ -2,6 +2,13 @@
 
 All notable changes to Jelico will be documented in this file.
 
+## [0.3.9] - 2026-01-29
+
+### Fixed
+- **Pasted content not showing in user messages**: Fixed two bugs:
+  1. `sendMessage` wasn't passing `attachments` to `addMessage`
+  2. `MessageData` interface in MessageList was missing `attachments` field
+
 ## [0.3.8] - 2026-01-29
 
 ### Changed
