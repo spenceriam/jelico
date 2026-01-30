@@ -30,22 +30,20 @@ async function loadTransformers() {
     env.allowRemoteModels = true
     env.useBrowserCache = true  // Explicitly enable browser cache (Cache API)
 
-    // Configure ONNX runtime for ARM64 compatibility
-    // Disable SIMD and multi-threading which can cause crashes on ARM64 emulation
-    if (env.backends?.onnx?.wasm) {
-      env.backends.onnx.wasm.simd = false      // Disable SIMD - often crashes on ARM64
-      env.backends.onnx.wasm.numThreads = 1    // Single thread - more stable
-      console.log('[SpeechWorker] WASM SIMD disabled, single-threaded mode')
-    }
+    // Force WebGL backend instead of WASM - WASM crashes on Windows ARM64
+    // WebGL uses GPU and avoids ARM64 emulation issues
+    env.backends = env.backends || {}
+    env.backends.onnx = env.backends.onnx || {}
+    env.backends.onnx.executionProviders = ['webgl']
+
+    console.log('[SpeechWorker] Forcing WebGL backend (WASM crashes on ARM64)')
 
     // Log full config
     console.log('[SpeechWorker] Transformers.js config:', {
       allowLocalModels: env.allowLocalModels,
       allowRemoteModels: env.allowRemoteModels,
       useBrowserCache: env.useBrowserCache,
-      cacheDir: env.cacheDir,
-      wasmSimd: env.backends?.onnx?.wasm?.simd,
-      wasmThreads: env.backends?.onnx?.wasm?.numThreads,
+      executionProviders: env.backends?.onnx?.executionProviders,
     })
 
     transformersLoaded = true
@@ -117,8 +115,10 @@ async function initializePipeline(modelId: string, messageId: string): Promise<v
     console.log('[SpeechWorker] Loading model:', modelId)
 
     // Create the automatic speech recognition pipeline
+    // Use WebGL device to avoid WASM crashes on ARM64
     transcriber = await pipeline('automatic-speech-recognition', modelId, {
       quantized: true,
+      device: 'webgl',  // Force WebGL instead of WASM
       progress_callback: (progress: any) => {
         // Log all progress events for debugging
         console.log('[SpeechWorker] Progress:', progress.status, progress.name, progress.file, progress.progress)
