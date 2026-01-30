@@ -21,6 +21,19 @@ export interface ChangelogEntry {
 
 export const changelog: ChangelogEntry[] = [
   {
+    version: '0.6.5',
+    date: '2026-01-30',
+    changes: {
+      fixed: [
+        'Braille animation now displays correctly (CSS specificity fix)',
+        'Removed duplicate "Thinking" indicator from MessageList',
+      ],
+      removed: [
+        'ThinkingIndicator from MessageList - status line handles this now',
+      ],
+    },
+  },
+  {
     version: '0.6.4',
     date: '2026-01-30',
     changes: {

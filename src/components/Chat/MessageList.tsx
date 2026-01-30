@@ -1,7 +1,6 @@
 import { useState } from 'react'
 import { Message } from './Message'
 import { SystemMessage } from './SystemMessage'
-import { ThinkingIndicator } from '../StatusIndicators/ThinkingIndicator'
 import type { ToolCall, ToolResult, MessageUsage, SystemNotification, MessageAttachment, StreamingSegment } from '../../stores/chat'
 
 interface MessageData {
@@ -82,11 +81,6 @@ export function MessageList({
             modelName={notification.modelName}
           />
         ))}
-
-      {/* Thinking indicator - show when streaming starts but no content/tools yet */}
-      {streamingContent !== undefined && streamingContent === '' && (!streamingToolCalls || streamingToolCalls.length === 0) && (
-        <ThinkingIndicator />
-      )}
 
       {/* Streaming message - show when we have content OR tool calls */}
       {streamingContent !== undefined && (streamingContent !== '' || (streamingToolCalls && streamingToolCalls.length > 0)) && (

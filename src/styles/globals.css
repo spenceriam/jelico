@@ -192,42 +192,44 @@
     83.33% { content: '\2820'; }
   }
 
-  .braille-loader {
-    font-family: var(--font-mono);
-    display: inline-block;
-    line-height: 1;
-    font-size: 0; /* Hide fallback text */
-  }
+}
 
-  .braille-loader::after {
-    font-size: 1rem; /* Restore size for pseudo-element */
-    animation-iteration-count: infinite;
-    animation-timing-function: step-end;
-  }
+/* Braille loader - outside @layer for proper specificity over Tailwind utilities */
+.braille-loader {
+  font-family: var(--font-mono);
+  display: inline-block;
+  line-height: 1;
+  font-size: 0 !important; /* Hide fallback text - !important to override Tailwind */
+}
 
-  .braille-loader--circle::after {
-    content: '\2809';
-    animation-name: braille-circle;
-    animation-duration: 0.8s;
-  }
+.braille-loader::after {
+  font-size: 1rem;
+  animation-iteration-count: infinite;
+  animation-timing-function: step-end;
+}
 
-  .braille-loader--fill::after {
-    content: '\2801';
-    animation-name: braille-fill;
-    animation-duration: 1.2s;
-  }
+.braille-loader--circle::after {
+  content: '\2809';
+  animation-name: braille-circle;
+  animation-duration: 0.8s;
+}
 
-  .braille-loader--bounce::after {
-    content: '\2809';
-    animation-name: braille-bounce;
-    animation-duration: 0.8s;
-  }
+.braille-loader--fill::after {
+  content: '\2801';
+  animation-name: braille-fill;
+  animation-duration: 1.2s;
+}
 
-  .braille-loader--scroll::after {
-    content: '\2801';
-    animation-name: braille-scroll;
-    animation-duration: 0.8s;
-  }
+.braille-loader--bounce::after {
+  content: '\2809';
+  animation-name: braille-bounce;
+  animation-duration: 0.8s;
+}
+
+.braille-loader--scroll::after {
+  content: '\2801';
+  animation-name: braille-scroll;
+  animation-duration: 0.8s;
 }
 
 @layer components {
