@@ -17,7 +17,7 @@ export function ChatArea() {
   const { isProcessing, processingMessage } = useUIStore()
   const { getContextUsage, isCompacting } = useContextStore()
   const messagesEndRef = useRef<HTMLDivElement>(null)
-  const [showContextBar, setShowContextBar] = useState(false)
+  const [showContextBar, setShowContextBar] = useState(true) // Always show by default
 
   // Get context usage for current conversation
   const contextUsage = activeConversationId ? getContextUsage(activeConversationId) : null
@@ -84,39 +84,42 @@ export function ChatArea() {
             </div>
           )}
 
-          {/* Context usage indicator - percentage only, right-aligned */}
+          {/* Context usage indicator - bar on left, percentage on right, click to toggle bar */}
           {/* Show after first message (tokenCount > 0) or during active streaming */}
           {contextUsage && (contextUsage.tokenCount > 0 || isStreaming || messages.length > 0) && (
             <div className="mb-3">
-              <div
-                className="flex items-center justify-end gap-2 text-xs text-text-muted"
-                onMouseEnter={() => setShowContextBar(true)}
-                onMouseLeave={() => setShowContextBar(false)}
+              <button
+                onClick={() => setShowContextBar(!showContextBar)}
+                className="w-full flex items-center gap-3 text-xs text-text-muted hover:text-text-secondary transition-colors"
               >
-                {/* Spinner during compaction */}
-                {isCompacting && (
-                  <Loader2 className="w-3.5 h-3.5 animate-spin text-accent" />
+                {/* Progress bar - left side, thicker, always visible when toggled on */}
+                {showContextBar && (
+                  <div className="flex-1 h-2 bg-bg-deep rounded-full overflow-hidden">
+                    <div
+                      className={`h-full transition-all duration-300 ${
+                        contextUsage.shouldWarn ? 'bg-warning' : 'bg-accent'
+                      }`}
+                      style={{ width: `${Math.max(Math.min(contextUsage.percentage * 100, 100), 1)}%` }}
+                    />
+                  </div>
                 )}
-                {/* Warning icon when approaching limit (but not compacting) */}
-                {!isCompacting && contextUsage.shouldWarn && (
-                  <span
-                    className="text-warning"
-                    title="Compacting conversation soon"
-                  >
-                    <AlertTriangle className="w-3.5 h-3.5" />
-                  </span>
-                )}
-                <span className="cursor-default">{Math.round(contextUsage.percentage * 100)}%</span>
-              </div>
-              {/* Progress bar - only visible on hover */}
-              {showContextBar && (
-                <div className="h-1 bg-bg-deep rounded-full overflow-hidden mt-1">
-                  <div
-                    className="h-full transition-all duration-300 bg-accent"
-                    style={{ width: `${Math.max(Math.min(contextUsage.percentage * 100, 100), 1)}%` }}
-                  />
+                {!showContextBar && <div className="flex-1" />}
+
+                {/* Right side: icons and percentage */}
+                <div className="flex items-center gap-2">
+                  {/* Spinner during compaction */}
+                  {isCompacting && (
+                    <Loader2 className="w-3.5 h-3.5 animate-spin text-accent" />
+                  )}
+                  {/* Warning icon when approaching limit (but not compacting) */}
+                  {!isCompacting && contextUsage.shouldWarn && (
+                    <span className="text-warning" title="Compacting conversation soon">
+                      <AlertTriangle className="w-3.5 h-3.5" />
+                    </span>
+                  )}
+                  <span>{Math.round(contextUsage.percentage * 100)}%</span>
                 </div>
-              )}
+              </button>
             </div>
           )}
 

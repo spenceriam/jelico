@@ -26,6 +26,22 @@ interface MessageProps {
   isRegenerating?: boolean
 }
 
+// Format timestamp for display
+function formatTimestamp(timestamp: number): string {
+  const date = new Date(timestamp)
+  const now = new Date()
+  const isToday = date.toDateString() === now.toDateString()
+
+  const timeStr = date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+
+  if (isToday) {
+    return timeStr
+  }
+
+  const dateStr = date.toLocaleDateString([], { month: 'short', day: 'numeric' })
+  return `${dateStr} ${timeStr}`
+}
+
 export function Message({
   message,
   isStreaming,
@@ -38,6 +54,7 @@ export function Message({
   const [copied, setCopied] = useState(false)
   const isUser = message.role === 'user'
   const isAssistant = message.role === 'assistant'
+  const timestamp = formatTimestamp(message.createdAt)
 
   // Use streaming tool calls if currently streaming, otherwise use saved tool calls
   const toolCalls = isStreaming ? streamingToolCalls : message.toolCalls
@@ -68,7 +85,11 @@ export function Message({
     const hasAttachments = message.attachments && message.attachments.length > 0
 
     return (
-      <div className="flex gap-4 justify-end group">
+      <div className="flex gap-4 justify-end group relative">
+        {/* Timestamp - shows on hover */}
+        <div className="absolute left-0 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 transition-opacity">
+          <span className="text-xs text-text-muted">{timestamp}</span>
+        </div>
         <div className="max-w-[80%] flex flex-col items-end">
           {/* Message bubble */}
           <div className="rounded-2xl px-4 py-3 bg-bg-elevated text-text-primary">
@@ -135,7 +156,11 @@ export function Message({
 
   // Assistant messages
   return (
-    <div className="flex gap-4">
+    <div className="flex gap-4 group relative">
+      {/* Timestamp - shows on hover */}
+      <div className="absolute right-0 top-1 opacity-0 group-hover:opacity-100 transition-opacity">
+        <span className="text-xs text-text-muted">{timestamp}</span>
+      </div>
       <div className="w-8 h-8 rounded-full bg-accent/10 flex items-center justify-center flex-shrink-0">
         <Bot className="w-4 h-4 text-accent" />
       </div>

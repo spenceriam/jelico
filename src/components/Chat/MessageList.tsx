@@ -64,16 +64,18 @@ export function MessageList({
         />
       ))}
 
-      {/* System notifications - show after last message */}
-      {systemNotifications.map((notification) => (
-        <SystemMessage
-          key={notification.id}
-          type={notification.type}
-          message={notification.message}
-          artifacts={notification.artifacts}
-          modelName={notification.modelName}
-        />
-      ))}
+      {/* System notifications - show after last message (filter out artifact notifications - now inline with tool calls) */}
+      {systemNotifications
+        .filter((n) => n.type !== 'artifacts_created')
+        .map((notification) => (
+          <SystemMessage
+            key={notification.id}
+            type={notification.type}
+            message={notification.message}
+            artifacts={notification.artifacts}
+            modelName={notification.modelName}
+          />
+        ))}
 
       {/* Thinking indicator - show when streaming starts but no content/tools yet */}
       {streamingContent !== undefined && streamingContent === '' && (!streamingToolCalls || streamingToolCalls.length === 0) && (

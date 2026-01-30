@@ -4,9 +4,13 @@ import {
   ChevronRight,
   CheckCircle,
   XCircle,
-  Loader2
+  Loader2,
+  Bot,
+  ExternalLink
 } from 'lucide-react'
 import type { ToolCall, ToolResult } from '../../stores/chat'
+import { useAgentStore } from '../../stores/agents'
+import { useArtifactStore } from '../../stores/artifacts'
 
 interface ToolCallDisplayProps {
   toolCalls: ToolCall[]
@@ -28,8 +32,8 @@ const TOOL_LABELS: Record<string, string> = {
   // Artifacts
   create_artifact: 'Create Artifact',
   update_artifact: 'Update Artifact',
-  // Sub-agents
-  spawn_agent: 'Spawn Agent',
+  // Sub-agents - spawn_agent handled specially below
+  spawn_agent: 'Sub-agent',
   get_agent_status: 'Check Agent',
   wait_for_agent: 'Wait for Agent',
   continue_agent: 'Continue Agent',
@@ -170,8 +174,14 @@ function SingleToolCall({
   isStreaming?: boolean
 }) {
   const [expanded, setExpanded] = useState(false)
-  const label = TOOL_LABELS[toolCall.name] || toolCall.name
-  const argDisplay = formatToolArgs(toolCall.args)
+  const { agents } = useAgentStore()
+  const { selectArtifact, openCanvas, artifacts } = useArtifactStore()
+
+  // Custom label for spawn_agent to show task inline
+  const label = toolCall.name === 'spawn_agent' && toolCall.args?.task
+    ? `Sub-agent: ${String(toolCall.args.task).slice(0, 60)}${String(toolCall.args.task).length > 60 ? '...' : ''}`
+    : (TOOL_LABELS[toolCall.name] || toolCall.name)
+  const argDisplay = toolCall.name === 'spawn_agent' ? '' : formatToolArgs(toolCall.args)
 
   const hasResult = result !== undefined
   const formattedResult = hasResult ? formatToolResult(result.result) : null
@@ -184,6 +194,27 @@ function SingleToolCall({
   const statusText = status === 'starting' ? 'Starting...' :
                      status === 'executing' ? 'Running...' :
                      status === 'error' ? 'Error' : ''
+
+  // Get sub-agent info if this is a spawn_agent call
+  const agentId = toolCall.name === 'spawn_agent' && result?.result
+    ? (result.result as any)?.agent_id
+    : null
+  const subAgent = agentId ? agents.find(a => a.id === agentId) : null
+
+  // Get artifact info if this is a create_artifact call
+  const artifactTitle = toolCall.name === 'create_artifact' && toolCall.args?.title
+    ? String(toolCall.args.title)
+    : null
+  const createdArtifact = artifactTitle
+    ? artifacts.find(a => a.title === artifactTitle)
+    : null
+
+  const handleArtifactClick = () => {
+    if (createdArtifact) {
+      selectArtifact(createdArtifact.id)
+      openCanvas()
+    }
+  }
 
   return (
     <div className="border border-border rounded-lg overflow-hidden bg-bg-deep">
@@ -215,6 +246,53 @@ function SingleToolCall({
           <XCircle className="w-4 h-4 text-error flex-shrink-0" />
         ) : null}
       </button>
+
+      {/* Artifact link - shown inline when create_artifact completes */}
+      {toolCall.name === 'create_artifact' && hasResult && !formattedResult?.isError && createdArtifact && (
+        <div className="px-3 py-2 border-t border-border bg-bg-surface">
+          <button
+            onClick={handleArtifactClick}
+            className="flex items-center gap-2 text-xs text-accent hover:text-accent-bright transition-colors"
+          >
+            <ExternalLink className="w-3 h-3" />
+            <span className="underline">{createdArtifact.title}</span>
+          </button>
+        </div>
+      )}
+
+      {/* Sub-agent status - shown under spawn_agent calls */}
+      {toolCall.name === 'spawn_agent' && subAgent && (
+        <div className="px-3 py-2 border-t border-border bg-bg-surface">
+          <div className="flex items-center gap-2 text-xs mb-2">
+            <Bot className="w-3 h-3 text-accent" />
+            <span className="font-medium text-text-primary">{subAgent.name}</span>
+            <span className={`px-1.5 py-0.5 rounded text-[10px] font-medium ${
+              subAgent.status === 'running' ? 'bg-accent/20 text-accent' :
+              subAgent.status === 'completed' ? 'bg-green-500/20 text-green-500' :
+              subAgent.status === 'failed' ? 'bg-error/20 text-error' :
+              'bg-bg-elevated text-text-muted'
+            }`}>
+              {subAgent.status}
+            </span>
+          </div>
+          {/* Progress/Result */}
+          {subAgent.status === 'running' && subAgent.progress && (
+            <div className="text-xs text-text-secondary pl-5 max-h-20 overflow-y-auto">
+              {subAgent.progress.slice(-200)}
+            </div>
+          )}
+          {subAgent.status === 'completed' && subAgent.result && (
+            <div className="text-xs text-text-secondary pl-5 max-h-32 overflow-y-auto whitespace-pre-wrap">
+              {subAgent.result}
+            </div>
+          )}
+          {subAgent.status === 'failed' && subAgent.error && (
+            <div className="text-xs text-error pl-5">
+              {subAgent.error}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Expanded content */}
       {expanded && (

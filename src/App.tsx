@@ -11,7 +11,7 @@ import { Sidebar } from './components/Layout/Sidebar'
 import { Header } from './components/Layout/Header'
 import { ChatArea } from './components/Chat/ChatArea'
 import { CanvasPanel } from './components/Canvas'
-import { AgentPanel } from './components/Agents/AgentPanel'
+// AgentPanel removed - sub-agent status now shown inline with tool calls
 import { CommandPalette, useCommandPalette } from './components/CommandPalette/CommandPalette'
 import { ProviderSetup } from './components/Setup/ProviderSetup'
 import { Settings } from './components/Settings/Settings'
@@ -110,7 +110,6 @@ export default function App() {
         <div className="flex-1 flex min-h-0">
           <div className="flex-1 flex flex-col min-w-0">
             <ChatArea />
-            <AgentPanel />
           </div>
           {canvasOpen && <CanvasPanel />}
         </div>

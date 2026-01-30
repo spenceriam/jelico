@@ -2,6 +2,19 @@
 
 All notable changes to Jelico will be documented in this file.
 
+## [0.3.8] - 2026-01-29
+
+### Changed
+- **Removed AgentPanel**: Sub-agent status now displays inline under spawn_agent tool calls
+- **Spawn agent display**: Shows "Sub-agent: [task]" instead of generic "Spawn Agent" label
+- **Artifact links inline**: Created artifacts now show clickable links under create_artifact tool calls (removed sticky footer notification)
+- **Message timestamps**: Timestamps appear on hover for all messages
+- **Context bar redesign**: Bar now always visible (toggle with click), thicker, positioned left of percentage
+
+### Removed
+- AgentPanel component from below chat view
+- Sticky "Created: artifact" notifications at bottom of chat
+
 ## [0.3.7] - 2026-01-29
 
 ### Fixed
