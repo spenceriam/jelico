@@ -21,6 +21,8 @@ import {
   startOrphanCleanup,
   heartbeatAgent,
   setGlobalProgressCallback,
+  getAgentLimit,
+  increaseAgentLimit,
 } from '../services/subagents'
 
 // Start orphan cleanup on module load
@@ -1304,5 +1306,19 @@ Be concise but informative. The user needs to understand what happened.`,
       console.error('[AI] Title generation error:', error.message)
       return { success: false, error: error.message }
     }
+  })
+
+  // Get agent limit status for a conversation
+  ipcMain.handle('ai:getAgentLimit', async (_, conversationId: string) => {
+    return getAgentLimit(conversationId)
+  })
+
+  // Increase agent limit (user granted permission)
+  ipcMain.handle('ai:increaseAgentLimit', async (_, params: {
+    conversationId: string
+    additionalAgents?: number
+  }) => {
+    const result = increaseAgentLimit(params.conversationId, params.additionalAgents || 10)
+    return { success: true, ...result }
   })
 }

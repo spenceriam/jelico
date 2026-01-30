@@ -25,6 +25,11 @@ import { keychainService } from './keychain'
 const ORPHAN_CHECK_INTERVAL_MS = 60 * 1000 // Check for orphans every minute
 const COMPLETED_AGENT_TTL_MS = 30 * 60 * 1000 // Keep completed agents for 30 min before cleanup
 const DEAD_PARENT_GRACE_PERIOD_MS = 5 * 60 * 1000 // 5 min grace after parent dies
+const DEFAULT_AGENT_LIMIT = 30 // Max sub-agents per conversation before requiring permission
+
+// Track agent limits per conversation (can be increased with permission)
+const conversationAgentLimits = new Map<string, number>()
+const conversationAgentCounts = new Map<string, number>()
 
 export type SubAgentStatus =
   | 'pending'
@@ -220,6 +225,23 @@ export async function spawnSubAgent(params: {
   model: string
   workspacePath?: string
 }): Promise<string> {
+  // Check agent limit for this conversation
+  if (params.conversationId) {
+    const currentCount = conversationAgentCounts.get(params.conversationId) || 0
+    const limit = conversationAgentLimits.get(params.conversationId) || DEFAULT_AGENT_LIMIT
+
+    if (currentCount >= limit) {
+      throw new Error(
+        `AGENT_LIMIT_EXCEEDED: You have reached the limit of ${limit} sub-agents for this conversation. ` +
+        `To spawn more agents, you must ask the user for permission and explain why additional agents are needed. ` +
+        `Current count: ${currentCount}/${limit}`
+      )
+    }
+
+    // Increment count
+    conversationAgentCounts.set(params.conversationId, currentCount + 1)
+  }
+
   const agentId = randomUUID()
   const now = Date.now()
 
@@ -1245,6 +1267,52 @@ function removeProgressListener(agentId: string, listener: ProgressCallback) {
       progressListeners.delete(agentId)
     }
   }
+}
+
+// ============================================
+// Agent Limit Management
+// ============================================
+
+/**
+ * Get the current agent count and limit for a conversation
+ */
+export function getAgentLimit(conversationId: string): {
+  current: number
+  limit: number
+  remaining: number
+} {
+  const current = conversationAgentCounts.get(conversationId) || 0
+  const limit = conversationAgentLimits.get(conversationId) || DEFAULT_AGENT_LIMIT
+  return {
+    current,
+    limit,
+    remaining: Math.max(0, limit - current),
+  }
+}
+
+/**
+ * Increase the agent limit for a conversation (user granted permission)
+ */
+export function increaseAgentLimit(conversationId: string, additionalAgents: number = 10): {
+  newLimit: number
+  current: number
+} {
+  const currentLimit = conversationAgentLimits.get(conversationId) || DEFAULT_AGENT_LIMIT
+  const newLimit = currentLimit + additionalAgents
+  conversationAgentLimits.set(conversationId, newLimit)
+
+  const current = conversationAgentCounts.get(conversationId) || 0
+  console.log(`[SubAgents] Increased limit for conversation ${conversationId}: ${currentLimit} -> ${newLimit} (current: ${current})`)
+
+  return { newLimit, current }
+}
+
+/**
+ * Reset agent count for a conversation (e.g., on conversation clear)
+ */
+export function resetAgentCount(conversationId: string): void {
+  conversationAgentCounts.delete(conversationId)
+  conversationAgentLimits.delete(conversationId)
 }
 
 // Export types

@@ -2,6 +2,13 @@
 
 All notable changes to Jelico will be documented in this file.
 
+## [0.3.11] - 2026-01-29
+
+### Added
+- **Sub-agent limit**: Cap of 30 sub-agents per conversation by default
+- **Permission system**: When limit reached, AI must ask user for permission to spawn more
+- **IPC handlers**: `getAgentLimit` and `increaseAgentLimit` for managing agent quotas
+
 ## [0.3.10] - 2026-01-29
 
 ### Added

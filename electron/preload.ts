@@ -218,5 +218,11 @@ contextBridge.exposeInMainWorld('jelico', {
     generateTitle: (params: { providerId: string; model: string; userMessage: string; assistantMessage: string }): Promise<{ success: boolean; title?: string; error?: string }> => {
       return ipcRenderer.invoke('ai:generateTitle', params)
     },
+    getAgentLimit: (conversationId: string): Promise<{ current: number; limit: number; remaining: number }> => {
+      return ipcRenderer.invoke('ai:getAgentLimit', conversationId)
+    },
+    increaseAgentLimit: (params: { conversationId: string; additionalAgents?: number }): Promise<{ success: boolean; newLimit: number; current: number }> => {
+      return ipcRenderer.invoke('ai:increaseAgentLimit', params)
+    },
   },
 })
