@@ -194,20 +194,11 @@
 
   .braille-loader {
     font-family: var(--font-mono);
-    position: relative;
     display: inline-block;
-    width: 1em;
-    height: 1em;
-  }
-
-  .braille-loader::before {
-    content: '\283F';
-    opacity: 0.15;
-    position: absolute;
+    line-height: 1;
   }
 
   .braille-loader::after {
-    position: absolute;
     animation-iteration-count: infinite;
     animation-timing-function: step-end;
   }

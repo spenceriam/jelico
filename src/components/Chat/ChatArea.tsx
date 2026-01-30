@@ -18,14 +18,24 @@ export function ChatArea() {
   const { getContextUsage, isCompacting } = useContextStore()
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const [showContextBar, setShowContextBar] = useState(false) // Hidden by default, click to show
+  const [userName, setUserName] = useState<string | null>(null)
 
   // Get context usage for current conversation
   const contextUsage = activeConversationId ? getContextUsage(activeConversationId) : null
 
-  // Auto-scroll to bottom when new messages arrive
+  // Load user name from soul preferences
+  useEffect(() => {
+    window.jelico.soul.getPreference('userName').then((result) => {
+      if (result?.value) {
+        setUserName(result.value as string)
+      }
+    }).catch(() => {})
+  }, [])
+
+  // Auto-scroll to bottom when new messages or tool calls arrive
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
-  }, [messages, streamingContent])
+  }, [messages, streamingContent, streamingToolCalls, streamingToolResults])
 
   // Handler for regenerating the last response
   const handleRegenerate = useCallback(async () => {
@@ -65,6 +75,7 @@ export function ChatArea() {
             streamingToolResults={isStreaming ? streamingToolResults : undefined}
             systemNotifications={systemNotifications}
             onRegenerate={handleRegenerate}
+            userName={userName || undefined}
           />
           <div ref={messagesEndRef} />
         </div>

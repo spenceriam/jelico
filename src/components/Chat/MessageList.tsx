@@ -22,6 +22,7 @@ interface MessageListProps {
   streamingToolResults?: ToolResult[]
   systemNotifications?: SystemNotification[]
   onRegenerate?: () => Promise<void>
+  userName?: string  // User's name for avatar
 }
 
 export function MessageList({
@@ -31,6 +32,7 @@ export function MessageList({
   streamingToolResults,
   systemNotifications = [],
   onRegenerate,
+  userName,
 }: MessageListProps) {
   const [isRegenerating, setIsRegenerating] = useState(false)
 
@@ -62,6 +64,7 @@ export function MessageList({
           isLastAssistantMessage={index === lastAssistantIndex}
           onRegenerate={index === lastAssistantIndex ? handleRegenerate : undefined}
           isRegenerating={isRegenerating}
+          userName={userName}
         />
       ))}
 
@@ -95,6 +98,7 @@ export function MessageList({
           isStreaming
           streamingToolCalls={streamingToolCalls}
           streamingToolResults={streamingToolResults}
+          userName={userName}
         />
       )}
     </div>

@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
-import { User, Bot, Copy, Check, FileText, Image, File } from 'lucide-react'
+import { Copy, Check, FileText, Image, File } from 'lucide-react'
 import { ToolCallDisplay } from './ToolCallDisplay'
 import { MessageActions } from './MessageActions'
 import { MermaidInline } from '../Canvas/MermaidViewer'
@@ -24,6 +24,31 @@ interface MessageProps {
   isLastAssistantMessage?: boolean
   onRegenerate?: () => void
   isRegenerating?: boolean
+  userName?: string  // User's name for avatar initial
+}
+
+// User avatar - shows first initial or fallback icon
+function UserAvatar({ name }: { name?: string }) {
+  const initial = name?.trim().charAt(0).toUpperCase()
+
+  return (
+    <div className="w-8 h-8 rounded-full bg-bg-elevated flex items-center justify-center flex-shrink-0">
+      {initial ? (
+        <span className="text-sm font-medium text-text-secondary">{initial}</span>
+      ) : (
+        <span className="text-sm font-medium text-text-muted">U</span>
+      )}
+    </div>
+  )
+}
+
+// AI avatar - "J" with accent outline
+function AIAvatar() {
+  return (
+    <div className="w-8 h-8 rounded-full border-2 border-accent bg-transparent flex items-center justify-center flex-shrink-0">
+      <span className="text-sm font-semibold text-accent">J</span>
+    </div>
+  )
 }
 
 // Format timestamp for display
@@ -50,6 +75,7 @@ export function Message({
   isLastAssistantMessage,
   onRegenerate,
   isRegenerating,
+  userName,
 }: MessageProps) {
   const [copied, setCopied] = useState(false)
   const isUser = message.role === 'user'
@@ -147,9 +173,7 @@ export function Message({
             </button>
           </div>
         </div>
-        <div className="w-8 h-8 rounded-full bg-bg-elevated flex items-center justify-center flex-shrink-0">
-          <User className="w-4 h-4 text-text-secondary" />
-        </div>
+        <UserAvatar name={userName} />
       </div>
     )
   }
@@ -161,9 +185,7 @@ export function Message({
       <div className="absolute right-0 top-1 opacity-0 group-hover:opacity-100 transition-opacity">
         <span className="text-xs text-text-muted">{timestamp}</span>
       </div>
-      <div className="w-8 h-8 rounded-full bg-accent/10 flex items-center justify-center flex-shrink-0">
-        <Bot className="w-4 h-4 text-accent" />
-      </div>
+      <AIAvatar />
 
       <div className="max-w-[80%]">
         <div className="prose prose-invert prose-sm max-w-none">
