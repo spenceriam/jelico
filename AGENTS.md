@@ -71,7 +71,7 @@ The Soul/Memory system should make Jelico increasingly personalized - it learns 
 ## Project overview
 Jelico is an AI Productivity Desktop built with Electron, React, TypeScript, and Vite. It provides a frictionless AI assistant experience with multi-provider support (Anthropic, OpenAI, Google), workspace management, conversation persistence, and a soul/memory system that learns user patterns and preferences over time.
 
-**Current Version:** 0.4.0
+**Current Version:** 0.5.0
 
 ## Development workflow discipline
 - **CRITICAL**: NEVER commit or push changes without explicit user approval
@@ -347,6 +347,63 @@ spawn_agent({
 - Research tasks (web search, documentation lookup)
 - Any task that would add bulk to main AI's context
 - Independent subtasks that can run concurrently
+
+## Speech Recognition (Local Whisper)
+
+Jelico includes local speech-to-text using OpenAI's Whisper models via transformers.js.
+
+### Architecture
+```
+[User speaks into microphone]
+        │
+        ▼
+[MicrophoneSettings / ChatInput]
+        │
+    MediaRecorder → WebM audio
+        │
+    AudioContext → decode to Float32Array (16kHz)
+        │
+        ▼
+[speechClient.ts]
+        │
+    Web Worker message
+        │
+        ▼
+[speech.worker.ts]
+        │
+    @xenova/transformers (WASM backend)
+        │
+    Whisper model inference
+        │
+        ▼
+[Transcription text returned]
+```
+
+### Key Design Decisions
+
+1. **Renderer Process, Not Main**: Speech runs in a Web Worker in the renderer (browser context) where WASM works natively, avoiding Node.js native module issues
+
+2. **WASM Backend**: Uses WebAssembly for cross-platform compatibility including Windows ARM64 (no native binaries required)
+
+3. **Separated Tests**:
+   - "Test Microphone" = record + playback (validates hardware)
+   - "Test Transcription" = record + transcribe (validates model)
+
+4. **Privacy First**: All processing is local - audio never leaves the device
+
+### Files
+- `src/workers/speech.worker.ts` - Web Worker running transformers.js
+- `src/lib/speechClient.ts` - Client API for managing the worker
+- `src/components/Settings/MicrophoneSettings.tsx` - Settings UI
+- `src/components/Chat/ChatInput.tsx` - Voice input in chat
+
+### Available Models
+- Xenova/whisper-tiny (39MB) - fastest
+- Xenova/whisper-base (74MB) - fast
+- Xenova/whisper-small (244MB) - medium
+- Xenova/whisper-medium (769MB) - slow
+
+Models are downloaded from Hugging Face on first use and cached in browser's IndexedDB.
 
 ## Tool calls and context management
 

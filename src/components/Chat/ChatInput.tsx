@@ -2,6 +2,7 @@ import { useState, useRef, useCallback, KeyboardEvent, useMemo, DragEvent, useEf
 import { Send, Square, Clock, Paperclip, Mic, MicOff, X, FileText, Image, File, Loader2 } from 'lucide-react'
 import { useChatStore, type MessageAttachment } from '../../stores/chat'
 import { useProviderStore } from '../../stores/providers'
+import { speechClient } from '../../lib/speechClient'
 
 // Detect if user is on macOS
 function isMac(): boolean {
@@ -202,9 +203,37 @@ export function ChatInput({ disabled, isStreaming, centered }: ChatInputProps) {
 
         try {
           const blob = new Blob(audioChunksRef.current, { type: 'audio/webm' })
-          const arrayBuffer = await blob.arrayBuffer()
 
-          const result = await window.jelico.speech.transcribe(arrayBuffer)
+          // Decode audio to Float32Array at 16kHz for Whisper
+          const audioContext = new AudioContext({ sampleRate: 16000 })
+          const arrayBuffer = await blob.arrayBuffer()
+          const audioBuffer = await audioContext.decodeAudioData(arrayBuffer)
+
+          // Get mono channel and resample if needed
+          const channelData = audioBuffer.getChannelData(0)
+          let audioData: Float32Array
+
+          if (audioBuffer.sampleRate !== 16000) {
+            const ratio = 16000 / audioBuffer.sampleRate
+            const newLength = Math.round(channelData.length * ratio)
+            audioData = new Float32Array(newLength)
+            for (let i = 0; i < newLength; i++) {
+              const srcIndex = i / ratio
+              const srcIndexFloor = Math.floor(srcIndex)
+              const srcIndexCeil = Math.min(srcIndexFloor + 1, channelData.length - 1)
+              const t = srcIndex - srcIndexFloor
+              audioData[i] = channelData[srcIndexFloor] * (1 - t) + channelData[srcIndexCeil] * t
+            }
+          } else {
+            audioData = channelData
+          }
+
+          await audioContext.close()
+
+          // Transcribe using the renderer-based speech client (WASM)
+          const result = await speechClient.transcribe(audioData, {
+            language: 'en',
+          })
 
           if (result.success && result.result?.text) {
             // APPEND to existing input (don't overwrite)
@@ -221,6 +250,7 @@ export function ChatInput({ disabled, isStreaming, centered }: ChatInputProps) {
             setRecordingError(result.error)
           }
         } catch (error: any) {
+          console.error('[ChatInput] Transcription error:', error)
           setRecordingError(error.message || 'Transcription failed')
         }
 

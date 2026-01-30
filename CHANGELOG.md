@@ -2,6 +2,24 @@
 
 All notable changes to Jelico will be documented in this file.
 
+## [0.5.0] - 2026-01-30
+
+### Added
+- **Cross-platform speech recognition**: Moved from Node.js native modules to Web Worker with WASM backend, enabling local Whisper on Windows ARM64 and all platforms
+- **Speech Web Worker**: New `src/workers/speech.worker.ts` runs transformers.js in browser context
+- **Speech Client API**: New `src/lib/speechClient.ts` provides clean interface for speech features
+- **Microphone test with playback**: Records 3 seconds and plays back to verify hardware works
+- **Transcription test with metrics**: Shows processing time, audio length, and realtime speed multiplier
+
+### Changed
+- **Separated mic test from transcription test**: Better UX flow - test hardware first, then test model
+- **Test Transcription section**: Only appears after downloading a model
+- **Recording duration**: Mic test uses 3 seconds, transcription test uses 5 seconds
+
+### Fixed
+- **Windows ARM64 speech recognition**: No longer requires native onnxruntime-node or sharp binaries
+- **Speech recognition privacy**: All processing remains fully local via WASM
+
 ## [0.3.11] - 2026-01-29
 
 ### Added

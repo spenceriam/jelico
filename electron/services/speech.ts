@@ -1,24 +1,34 @@
 import { app } from 'electron'
 import * as path from 'path'
 import * as fs from 'fs/promises'
-import * as os from 'os'
+import Module from 'module'
 
-// Check for known unsupported platforms
-const isUnsupportedPlatform = () => {
-  // Windows ARM64 has issues with sharp and onnxruntime native bindings
-  if (process.platform === 'win32' && os.arch() === 'arm64') {
-    return 'Windows ARM64 is not currently supported for local speech recognition due to native library limitations.'
+// Stub native modules that transformers.js tries to load
+// This forces it to use the WASM backend instead
+const originalLoad = (Module as any)._load
+;(Module as any)._load = function (request: string, parent: any, isMain: boolean) {
+  // Stub out native modules that don't exist on all platforms
+  if (request === 'sharp') {
+    // Return a minimal stub that won't crash but indicates it's unavailable
+    return {
+      __stubbed: true,
+      // Whisper doesn't use sharp for audio, so this should be fine
+    }
   }
-  return null
+  if (request === 'onnxruntime-node') {
+    // Force transformers.js to fall back to onnxruntime-web (WASM)
+    const error = new Error(`Cannot find module '${request}'`)
+    ;(error as any).code = 'MODULE_NOT_FOUND'
+    throw error
+  }
+  return originalLoad.call(this, request, parent, isMain)
 }
-
-const platformError = isUnsupportedPlatform()
 
 // Dynamic import for Transformers.js (ESM module)
 let pipeline: any = null
 let transcriber: any = null
 let isLoading = false
-let loadError: string | null = platformError
+let loadError: string | null = null
 
 // Model cache directory
 const MODELS_DIR = path.join(app.getPath('userData'), 'models')
@@ -51,16 +61,12 @@ interface TranscriptionProgress {
 
 /**
  * Initialize the Whisper pipeline
+ * Uses WASM backend for cross-platform compatibility (including Windows ARM64)
  */
 async function initializePipeline(
   modelId: WhisperModelId = currentModelId,
   onProgress?: (progress: TranscriptionProgress) => void
 ): Promise<void> {
-  // Check for unsupported platform first
-  if (platformError) {
-    throw new Error(platformError)
-  }
-
   if (transcriber && currentModelId === modelId) {
     return // Already loaded
   }
@@ -70,7 +76,7 @@ async function initializePipeline(
   }
 
   isLoading = true
-  loadError = platformError // Keep any platform error
+  loadError = null
 
   try {
     onProgress?.({ status: 'loading', message: 'Loading Whisper model...' })
@@ -80,20 +86,28 @@ async function initializePipeline(
 
     // Dynamic import of Transformers.js
     if (!pipeline) {
+      console.log('Initializing Transformers.js with WASM backend...')
       const transformers = await import('@xenova/transformers')
       pipeline = transformers.pipeline
 
-      // Configure for Electron/Node.js environment
+      // Configure for Electron/Node.js environment with WASM backend
       transformers.env.cacheDir = MODELS_DIR
       transformers.env.allowLocalModels = true
       transformers.env.allowRemoteModels = true
-
-      // Force WASM backend to avoid native binding issues in Electron
-      // This uses WebAssembly instead of native ONNX runtime
       transformers.env.useBrowserCache = false
+
+      // Configure WASM backend settings
+      // The module stub above forces onnxruntime-node to fail,
+      // so transformers.js should fall back to onnxruntime-web (WASM)
+      if (transformers.env.backends?.onnx?.wasm) {
+        // Use single thread for better compatibility
+        transformers.env.backends.onnx.wasm.numThreads = 1
+        console.log('WASM backend configured')
+      }
     }
 
     // Create the automatic speech recognition pipeline
+    console.log(`Loading Whisper model: ${modelId}`)
     transcriber = await pipeline('automatic-speech-recognition', modelId, {
       quantized: true, // Use quantized model for faster loading
       progress_callback: (progress: any) => {
@@ -103,25 +117,36 @@ async function initializePipeline(
             progress: progress.progress,
             message: `Downloading model: ${Math.round(progress.progress)}%`,
           })
+        } else if (progress.status === 'initiate') {
+          onProgress?.({
+            status: 'loading',
+            message: `Initializing: ${progress.name || 'model'}...`,
+          })
+        } else if (progress.status === 'download') {
+          onProgress?.({
+            status: 'loading',
+            message: `Downloading: ${progress.name || 'files'}...`,
+          })
         }
       },
     })
 
     currentModelId = modelId
-    console.log(`Whisper model loaded: ${modelId}`)
+    loadError = null
+    console.log(`Whisper model loaded successfully: ${modelId}`)
   } catch (error: any) {
     loadError = error.message
+    console.error('Failed to load Whisper model:', error)
 
-    // Provide helpful error messages for common issues
+    // Provide more context in error messages
     if (error.message.includes('sharp')) {
-      loadError = 'Speech recognition requires the "sharp" image library which is not available on this platform (Windows ARM64). ' +
-        'Local speech recognition is currently not supported on this system.'
+      loadError = `Sharp image library error (not required for audio): ${error.message}`
     } else if (error.message.includes('onnxruntime')) {
-      loadError = 'Speech recognition requires ONNX runtime which is not available on this platform. ' +
-        'Local speech recognition is currently not supported on this system.'
+      loadError = `ONNX runtime error: ${error.message}. The WASM backend may not be available.`
+    } else if (error.message.includes('fetch') || error.message.includes('network')) {
+      loadError = `Network error while downloading model: ${error.message}`
     }
 
-    console.error('Failed to load Whisper model:', error)
     throw new Error(loadError)
   } finally {
     isLoading = false
