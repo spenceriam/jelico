@@ -21,6 +21,17 @@ export interface ChangelogEntry {
 
 export const changelog: ChangelogEntry[] = [
   {
+    version: '0.6.6',
+    date: '2026-01-30',
+    changes: {
+      changed: [
+        'System prompt: AI must research/search before asking user questions',
+        'AI should use web_search when it doesn\'t know something, not ask the user',
+        'Only ask user for personal preferences, goals, and decisions they must make',
+      ],
+    },
+  },
+  {
     version: '0.6.5',
     date: '2026-01-30',
     changes: {
