@@ -9,7 +9,7 @@ import { ChatInput } from './ChatInput'
 import { ModeSelector } from '../ModeSelector/ModeSelector'
 import { WorkspaceSelector } from '../Workspace/WorkspaceSelector'
 import { ModelSelector } from '../Model/ModelSelector'
-import { ShimmerText } from '../StatusIndicators/ShimmerText'
+import { ShimmerText, BrailleLoader } from '../StatusIndicators'
 
 export function ChatArea() {
   const { messages, isStreaming, streamingContent, streamingToolCalls, streamingToolResults, systemNotifications, activeConversationId, regenerateLastResponse } = useChatStore()
@@ -73,12 +73,19 @@ export function ChatArea() {
       {/* Input area */}
       <div className="border-t border-border bg-bg-surface">
         <div className="max-w-3xl mx-auto p-4">
-          {/* Processing indicator - show during streaming, compacting, or other processing */}
+          {/* Processing indicator - sticky status at bottom, left-justified */}
           {(isStreaming || isCompacting || isProcessing) && (
-            <div className="flex justify-center mb-3">
+            <div className="flex items-center gap-2 mb-3">
+              <BrailleLoader className="text-accent" />
               <ShimmerText className="text-sm">
-                {isCompacting ? 'Compacting conversation...' :
-                 isStreaming ? (streamingToolCalls.length > 0 ? `Running ${streamingToolCalls.length} action(s)...` : 'Thinking...') :
+                {isCompacting ? 'Compacting...' :
+                 isStreaming ? (
+                   streamingToolCalls.length > 0
+                     ? (streamingToolCalls.some(tc => !streamingToolResults.find(r => r.toolCallId === tc.id))
+                         ? 'Executing...'
+                         : 'Wrapping up...')
+                     : 'Thinking...'
+                 ) :
                  processingMessage || 'Processing...'}
               </ShimmerText>
             </div>

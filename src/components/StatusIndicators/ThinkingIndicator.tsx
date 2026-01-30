@@ -1,5 +1,6 @@
 import { Bot } from 'lucide-react'
 import { ShimmerText } from './ShimmerText'
+import { BrailleLoader } from './BrailleLoader'
 
 interface ThinkingIndicatorProps {
   message?: string
@@ -7,8 +8,7 @@ interface ThinkingIndicatorProps {
 }
 
 /**
- * Claude Desktop-inspired thinking indicator
- * Shows Jelico's avatar with pulsing dots and subtle shimmer text
+ * Thinking indicator with braille spinner and shimmer text
  */
 export function ThinkingIndicator({ message = 'Thinking', className = '' }: ThinkingIndicatorProps) {
   return (
@@ -20,15 +20,11 @@ export function ThinkingIndicator({ message = 'Thinking', className = '' }: Thin
 
       {/* Content area */}
       <div className="flex items-center gap-2 py-2">
-        {/* Pulsing dots - subtle wave effect */}
-        <div className="flex items-center gap-1">
-          <div className="w-2 h-2 rounded-full bg-accent/70 animate-pulse-dot-1" />
-          <div className="w-2 h-2 rounded-full bg-accent/70 animate-pulse-dot-2" />
-          <div className="w-2 h-2 rounded-full bg-accent/70 animate-pulse-dot-3" />
-        </div>
+        {/* Braille spinner */}
+        <BrailleLoader className="text-accent" />
 
-        {/* Shimmer text - appears after a moment for polish */}
-        <ShimmerText className="text-sm text-text-muted ml-1">
+        {/* Shimmer text */}
+        <ShimmerText className="text-sm text-text-muted">
           {message}
         </ShimmerText>
       </div>
@@ -47,11 +43,7 @@ interface CompactIndicatorProps {
 export function CompactThinkingIndicator({ message, className = '' }: CompactIndicatorProps) {
   return (
     <div className={`flex items-center gap-2 ${className}`}>
-      <div className="flex items-center gap-0.5">
-        <div className="w-1.5 h-1.5 rounded-full bg-accent animate-pulse-dot-1" />
-        <div className="w-1.5 h-1.5 rounded-full bg-accent animate-pulse-dot-2" />
-        <div className="w-1.5 h-1.5 rounded-full bg-accent animate-pulse-dot-3" />
-      </div>
+      <BrailleLoader className="text-accent text-sm" />
       {message && (
         <ShimmerText className="text-xs text-text-muted">
           {message}
@@ -91,11 +83,7 @@ export function ToolProgressIndicator({
 
   return (
     <div className={`flex items-center gap-2 ${className}`}>
-      <div className="flex items-center gap-0.5">
-        <div className="w-1.5 h-1.5 rounded-full bg-accent animate-pulse-dot-1" />
-        <div className="w-1.5 h-1.5 rounded-full bg-accent animate-pulse-dot-2" />
-        <div className="w-1.5 h-1.5 rounded-full bg-accent animate-pulse-dot-3" />
-      </div>
+      <BrailleLoader className="text-accent text-sm" />
       <ShimmerText className="text-xs">
         {statusMessages[status]}{toolName && `: ${toolName}`}
       </ShimmerText>
