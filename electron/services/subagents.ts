@@ -721,8 +721,17 @@ async function runSubAgent(agentId: string): Promise<void> {
 
     // Accumulate the result using fullStream to handle text AND tool calls
     let fullText = ''
+    let eventCount = 0
     for await (const part of response.fullStream) {
       if (agent.status === 'dismissed') break
+
+      eventCount++
+      // Debug: log all event types to see what we're receiving
+      if (eventCount <= 10 || part.type === 'finish' || part.type === 'error') {
+        console.log(`[SubAgents] ${agent.name} stream event #${eventCount}: ${part.type}`,
+          part.type === 'text-delta' ? `"${(part as any).textDelta?.slice(0, 50)}..."` :
+          part.type === 'error' ? (part as any).error : '')
+      }
 
       switch (part.type) {
         case 'text-delta':
@@ -762,6 +771,11 @@ async function runSubAgent(agentId: string): Promise<void> {
     }
 
     if (agent.status === 'dismissed') return
+
+    console.log(`[SubAgents] ${agent.name} stream finished. Events: ${eventCount}, Text length: ${fullText.length}, Tool calls: ${agent.toolCalls.length}`)
+    if (fullText.length > 0) {
+      console.log(`[SubAgents] ${agent.name} result preview: "${fullText.slice(0, 200)}..."`)
+    }
 
     // Check if agent is asking a question
     const parsed = parseAgentResponse(fullText)
