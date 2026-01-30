@@ -728,9 +728,14 @@ async function runSubAgent(agentId: string): Promise<void> {
       eventCount++
       // Debug: log all event types to see what we're receiving
       if (eventCount <= 10 || part.type === 'finish' || part.type === 'error') {
-        console.log(`[SubAgents] ${agent.name} stream event #${eventCount}: ${part.type}`,
-          part.type === 'text-delta' ? `"${(part as any).textDelta?.slice(0, 50)}..."` :
-          part.type === 'error' ? (part as any).error : '')
+        if (part.type === 'text-delta') {
+          // Log full structure to find the right property
+          console.log(`[SubAgents] ${agent.name} stream event #${eventCount}: text-delta`,
+            JSON.stringify(part, null, 0).slice(0, 200))
+        } else {
+          console.log(`[SubAgents] ${agent.name} stream event #${eventCount}: ${part.type}`,
+            part.type === 'error' ? (part as any).error : '')
+        }
       }
 
       switch (part.type) {
