@@ -1,5 +1,5 @@
-import { useState, useEffect, useCallback } from 'react'
-import { Mic, Check, Download, Loader2, Volume2, MessageSquare } from 'lucide-react'
+import { useState, useEffect, useCallback, useRef } from 'react'
+import { Mic, Check, Download, Loader2, Volume2, MessageSquare, Play, Square } from 'lucide-react'
 import {
   speechClient,
   WHISPER_MODELS,
@@ -36,7 +36,9 @@ export function MicrophoneSettings() {
   // Microphone test state (audio playback only)
   const [isMicTesting, setIsMicTesting] = useState(false)
   const [micTestStatus, setMicTestStatus] = useState<string>('')
-  const [recordedAudioUrl, setRecordedAudioUrl] = useState<string | null>(null)
+  const [recordedBlob, setRecordedBlob] = useState<Blob | null>(null)
+  const [isPlaying, setIsPlaying] = useState(false)
+  const audioElementRef = useRef<HTMLAudioElement | null>(null)
 
   // Transcription test state
   const [isTranscribing, setIsTranscribing] = useState(false)
@@ -124,25 +126,28 @@ export function MicrophoneSettings() {
     // Language is passed at transcription time, no need to persist
   }, [])
 
-  // Cleanup recorded audio URL on unmount
+  // Cleanup audio element on unmount
   useEffect(() => {
     return () => {
-      if (recordedAudioUrl) {
-        URL.revokeObjectURL(recordedAudioUrl)
+      if (audioElementRef.current) {
+        audioElementRef.current.pause()
+        audioElementRef.current.src = ''
+        audioElementRef.current = null
       }
     }
-  }, [recordedAudioUrl])
+  }, [])
 
   /**
    * Test Microphone - Records audio and plays it back (no transcription)
    */
   const handleTestMicrophone = useCallback(async () => {
-    // Cleanup previous recording
-    if (recordedAudioUrl) {
-      URL.revokeObjectURL(recordedAudioUrl)
-      setRecordedAudioUrl(null)
+    // Stop any playing audio
+    if (audioElementRef.current) {
+      audioElementRef.current.pause()
+      audioElementRef.current = null
     }
-
+    setRecordedBlob(null)
+    setIsPlaying(false)
     setIsMicTesting(true)
     setMicTestStatus('Requesting microphone access...')
 
@@ -151,41 +156,66 @@ export function MicrophoneSettings() {
         audio: selectedDevice ? { deviceId: { exact: selectedDevice } } : true,
       })
 
-      setMicTestStatus('Recording... (3 seconds)')
+      setMicTestStatus('Recording... speak now (3 seconds)')
 
-      const mimeType = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
-        ? 'audio/webm;codecs=opus'
-        : MediaRecorder.isTypeSupported('audio/webm')
-          ? 'audio/webm'
-          : 'audio/ogg'
+      // Find supported mime type
+      const mimeTypes = [
+        'audio/webm;codecs=opus',
+        'audio/webm',
+        'audio/ogg;codecs=opus',
+        'audio/ogg',
+        'audio/mp4',
+      ]
+      const mimeType = mimeTypes.find(type => MediaRecorder.isTypeSupported(type)) || 'audio/webm'
+      console.log('[MicTest] Using mimeType:', mimeType)
 
       const mediaRecorder = new MediaRecorder(stream, { mimeType })
       const chunks: Blob[] = []
 
       mediaRecorder.ondataavailable = (e) => {
-        if (e.data.size > 0) chunks.push(e.data)
+        console.log('[MicTest] Data available, size:', e.data.size)
+        if (e.data.size > 0) {
+          chunks.push(e.data)
+        }
+      }
+
+      mediaRecorder.onerror = (e) => {
+        console.error('[MicTest] MediaRecorder error:', e)
+        setMicTestStatus('Recording error occurred')
+        setIsMicTesting(false)
       }
 
       mediaRecorder.onstop = () => {
+        console.log('[MicTest] Recording stopped, chunks:', chunks.length)
         stream.getTracks().forEach(track => track.stop())
 
         if (chunks.length === 0) {
-          setMicTestStatus('No audio recorded. Check your microphone.')
+          setMicTestStatus('No audio data captured. Check microphone permissions.')
           setIsMicTesting(false)
           return
         }
 
         const blob = new Blob(chunks, { type: mimeType })
-        const url = URL.createObjectURL(blob)
-        setRecordedAudioUrl(url)
-        setMicTestStatus('Recording complete! Click play to listen.')
+        console.log('[MicTest] Created blob, size:', blob.size, 'type:', blob.type)
+
+        if (blob.size === 0) {
+          setMicTestStatus('Recording was empty. Try speaking louder.')
+          setIsMicTesting(false)
+          return
+        }
+
+        setRecordedBlob(blob)
+        setMicTestStatus(`Recording complete (${(blob.size / 1024).toFixed(1)} KB). Click play to listen.`)
         setIsMicTesting(false)
       }
 
-      mediaRecorder.start()
+      // Start recording with timeslice to ensure ondataavailable fires
+      mediaRecorder.start(500) // Collect data every 500ms
+      console.log('[MicTest] Recording started')
 
       setTimeout(() => {
         if (mediaRecorder.state === 'recording') {
+          console.log('[MicTest] Stopping recording')
           mediaRecorder.stop()
         }
       }, 3000)
@@ -194,7 +224,58 @@ export function MicrophoneSettings() {
       setMicTestStatus(`Error: ${error.message}`)
       setIsMicTesting(false)
     }
-  }, [selectedDevice, recordedAudioUrl])
+  }, [selectedDevice])
+
+  /**
+   * Play the recorded audio
+   */
+  const handlePlayRecording = useCallback(() => {
+    if (!recordedBlob) return
+
+    // Stop if already playing
+    if (isPlaying && audioElementRef.current) {
+      audioElementRef.current.pause()
+      audioElementRef.current = null
+      setIsPlaying(false)
+      setMicTestStatus('Playback stopped.')
+      return
+    }
+
+    // Create new audio element and play
+    const url = URL.createObjectURL(recordedBlob)
+    const audio = new Audio(url)
+    audioElementRef.current = audio
+
+    audio.onplay = () => {
+      console.log('[MicTest] Playback started')
+      setIsPlaying(true)
+      setMicTestStatus('Playing...')
+    }
+
+    audio.onended = () => {
+      console.log('[MicTest] Playback ended')
+      URL.revokeObjectURL(url)
+      setIsPlaying(false)
+      setMicTestStatus('Playback complete. Your microphone is working!')
+      audioElementRef.current = null
+    }
+
+    audio.onerror = (e) => {
+      console.error('[MicTest] Playback error:', e)
+      URL.revokeObjectURL(url)
+      setIsPlaying(false)
+      setMicTestStatus('Playback failed. The audio format may not be supported.')
+      audioElementRef.current = null
+    }
+
+    audio.play().catch(err => {
+      console.error('[MicTest] Play failed:', err)
+      URL.revokeObjectURL(url)
+      setIsPlaying(false)
+      setMicTestStatus(`Playback error: ${err.message}`)
+      audioElementRef.current = null
+    })
+  }, [recordedBlob, isPlaying])
 
   /**
    * Decode audio blob to Float32Array at 16kHz (required by Whisper)
@@ -355,16 +436,30 @@ export function MicrophoneSettings() {
               ) : (
                 <Mic className="w-4 h-4" />
               )}
-              Test Microphone
+              {isMicTesting ? 'Recording...' : 'Test Microphone'}
             </button>
 
-            {recordedAudioUrl && (
-              <audio
-                src={recordedAudioUrl}
-                controls
-                preload="auto"
-                className="h-10"
-              />
+            {recordedBlob && (
+              <button
+                onClick={handlePlayRecording}
+                className={`flex items-center gap-2 px-4 py-2 rounded-lg transition-colors ${
+                  isPlaying
+                    ? 'bg-error/10 border border-error/30 text-error hover:bg-error/20'
+                    : 'bg-accent/10 border border-accent/30 text-accent hover:bg-accent/20'
+                }`}
+              >
+                {isPlaying ? (
+                  <>
+                    <Square className="w-4 h-4" />
+                    Stop
+                  </>
+                ) : (
+                  <>
+                    <Play className="w-4 h-4" />
+                    Play Recording
+                  </>
+                )}
+              </button>
             )}
           </div>
 
