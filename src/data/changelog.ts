@@ -21,6 +21,20 @@ export interface ChangelogEntry {
 
 export const changelog: ChangelogEntry[] = [
   {
+    version: '0.5.7',
+    date: '2026-01-30',
+    changes: {
+      added: [
+        'Mode switching tool - AI can now switch modes dynamically in Auto mode (Plan → Explore → Execute → Review)',
+        'Automatic acknowledgment injection - if AI jumps straight to tools, "I\'ll work through this" is shown',
+        'One-liner feedback after tool calls - AI reacts to each tool result, not just at the end',
+      ],
+      changed: [
+        'AI persona updated with mode switching workflow and tool reaction guidelines',
+      ],
+    },
+  },
+  {
     version: '0.5.6',
     date: '2026-01-30',
     changes: {

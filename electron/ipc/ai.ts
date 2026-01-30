@@ -188,13 +188,44 @@ function getBuiltInTools(
   toolTracker: Map<string, ToolExecution>,
   sendArtifact?: (artifact: any) => void,
   sendSpawnAgent?: (agent: any) => void,
-  sendUpdateArtifact?: (update: { id: string; updates: any }) => void
+  sendUpdateArtifact?: (update: { id: string; updates: any }) => void,
+  sendModeSwitch?: (fromMode: AgentMode, toMode: AgentMode, reason: string) => void
 ) {
   const canWrite = mode !== 'explore'
   const canExecute = mode === 'auto' || mode === 'execute' || mode === 'review'
   const canSpawnAgents = mode === 'auto' || mode === 'execute' || mode === 'plan'
 
   const tools: Record<string, any> = {}
+
+  // Mode switch tool - only available in Auto mode for dynamic mode transitions
+  if (mode === 'auto' && sendModeSwitch) {
+    tools.switch_mode = tool({
+      description: `Switch to a different operating mode. Use this in Auto mode to signal what type of work you're doing.
+
+WHEN TO SWITCH:
+- "plan" → When outlining your approach at the start (brief, 1-2 sentences)
+- "explore" → When reading files, searching, gathering information
+- "execute" → When writing files, running commands, creating artifacts
+- "review" → When summarizing results, providing final output
+
+WORKFLOW EXAMPLE:
+1. User asks multi-step task
+2. switch_mode("plan") → Brief acknowledgment of approach
+3. switch_mode("explore") → Read files, gather info
+4. switch_mode("execute") → Make changes, run commands
+5. switch_mode("review") → Summarize what was done
+
+Keep mode switches natural - don't switch for every tiny action.`,
+      parameters: z.object({
+        to_mode: z.enum(['plan', 'explore', 'execute', 'review']).describe('The mode to switch to'),
+        reason: z.string().describe('Brief reason for the switch (shown to user)'),
+      }),
+      execute: async ({ to_mode, reason }) => {
+        sendModeSwitch(mode, to_mode as AgentMode, reason)
+        return { success: true, switched_to: to_mode }
+      },
+    })
+  }
 
   // Spawn sub-agent tool - for parallel task execution (bi-directional)
   if (canSpawnAgents) {
@@ -940,7 +971,7 @@ When the user asks to modify, update, fix, or improve an existing artifact, use 
         model: modelId,
         workspacePath: params.workspacePath,
       }
-      const tools = getBuiltInTools(mode, streamContext, toolTracker, sendArtifact, sendSpawnAgent, sendUpdateArtifact)
+      const tools = getBuiltInTools(mode, streamContext, toolTracker, sendArtifact, sendSpawnAgent, sendUpdateArtifact, sendModeSwitch)
 
       // Build messages (without system prompt - we pass it separately to streamText)
       const messages = params.messages.map((m: any) => {
