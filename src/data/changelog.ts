@@ -21,6 +21,15 @@ export interface ChangelogEntry {
 
 export const changelog: ChangelogEntry[] = [
   {
+    version: '0.6.7',
+    date: '2026-01-30',
+    changes: {
+      fixed: [
+        'Textarea focus on conversation selection (increased delay, added mount focus)',
+      ],
+    },
+  },
+  {
     version: '0.6.6',
     date: '2026-01-30',
     changes: {

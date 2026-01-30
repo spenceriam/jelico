@@ -62,12 +62,20 @@ export function ChatInput({ disabled, isStreaming, centered }: ChatInputProps) {
   const { sendMessage, stopStreaming, messageQueue, activeConversationId } = useChatStore()
   const { activeProviderId, activeModel } = useProviderStore()
 
-  // Focus textarea when conversation changes (especially after deletion)
+  // Focus textarea on mount and when conversation changes
   useEffect(() => {
-    // Small delay to ensure DOM is ready after state change
+    // Longer delay to ensure DOM is fully ready after view transitions
     const timer = setTimeout(() => {
       textareaRef.current?.focus()
-    }, 50)
+    }, 100)
+    return () => clearTimeout(timer)
+  }, []) // Focus on mount
+
+  useEffect(() => {
+    // Focus when conversation changes (selection or deletion)
+    const timer = setTimeout(() => {
+      textareaRef.current?.focus()
+    }, 100)
     return () => clearTimeout(timer)
   }, [activeConversationId])
 
