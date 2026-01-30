@@ -41,6 +41,14 @@ const TOOL_LABELS: Record<string, string> = {
   get_agents_summary: 'Agents Summary',
 }
 
+// Tools that are "plumbing" and shouldn't be shown in the UI
+// These are internal operations that happen automatically
+const HIDDEN_TOOLS = new Set([
+  'wait_for_agent',      // Waiting is implicit - sub-agent panel shows status
+  'get_agent_status',    // Internal polling
+  'get_agents_summary',  // Internal status check
+])
+
 function formatToolArgs(args: Record<string, unknown> | undefined | null): string {
   // Handle undefined/null args
   if (!args || typeof args !== 'object') return '(no arguments)'
@@ -382,18 +390,21 @@ function SingleToolCall({
 }
 
 export function ToolCallDisplay({ toolCalls, toolResults = [], isStreaming }: ToolCallDisplayProps) {
-  if (toolCalls.length === 0) return null
+  // Filter out "plumbing" tools that users don't need to see
+  const visibleToolCalls = toolCalls.filter(tc => !HIDDEN_TOOLS.has(tc.name))
+
+  if (visibleToolCalls.length === 0) return null
 
   // Map results by toolCallId for easy lookup
   const resultsMap = new Map(toolResults.map(r => [r.toolCallId, r]))
 
-  // Count completed vs pending
-  const completedCount = toolCalls.filter(tc => resultsMap.has(tc.id)).length
-  const pendingCount = toolCalls.length - completedCount
+  // Count completed vs pending (only for visible tools)
+  const completedCount = visibleToolCalls.filter(tc => resultsMap.has(tc.id)).length
+  const pendingCount = visibleToolCalls.length - completedCount
   const allComplete = pendingCount === 0
 
   // Get current action description
-  const pendingTools = toolCalls.filter(tc => !resultsMap.has(tc.id))
+  const pendingTools = visibleToolCalls.filter(tc => !resultsMap.has(tc.id))
   const currentAction = pendingTools.length > 0
     ? TOOL_LABELS[pendingTools[0].name] || pendingTools[0].name
     : null
@@ -410,7 +421,7 @@ export function ToolCallDisplay({ toolCalls, toolResults = [], isStreaming }: To
               {pendingCount > 1 && <span className="text-text-muted">+{pendingCount - 1} more</span>}
             </span>
           ) : (
-            <span>Actions ({completedCount}/{toolCalls.length})</span>
+            <span>Actions ({completedCount}/{visibleToolCalls.length})</span>
           )}
         </div>
         {allComplete && (
@@ -421,7 +432,7 @@ export function ToolCallDisplay({ toolCalls, toolResults = [], isStreaming }: To
         )}
       </div>
 
-      {toolCalls.map((toolCall, index) => (
+      {visibleToolCalls.map((toolCall, index) => (
         <SingleToolCall
           key={toolCall.id || `tool-${index}`}
           toolCall={toolCall}
