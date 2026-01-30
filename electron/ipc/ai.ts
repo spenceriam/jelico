@@ -217,12 +217,12 @@ WORKFLOW EXAMPLE:
 
 Keep mode switches natural - don't switch for every tiny action.`,
       parameters: z.object({
-        to_mode: z.enum(['plan', 'explore', 'execute', 'review']).describe('The mode to switch to'),
+        mode: z.enum(['plan', 'explore', 'execute', 'review']).describe('The mode to switch to'),
         reason: z.string().describe('Brief reason for the switch (shown to user)'),
       }),
-      execute: async ({ to_mode, reason }) => {
-        sendModeSwitch(mode, to_mode as AgentMode, reason)
-        return { success: true, switched_to: to_mode }
+      execute: async ({ mode: targetMode, reason }) => {
+        sendModeSwitch(mode, targetMode as AgentMode, reason)
+        return { success: true, switched_to: targetMode }
       },
     })
   }
@@ -1068,30 +1068,9 @@ When the user asks to modify, update, fix, or improve an existing artifact, use 
           let sentTextBeforeTools = false
           let injectedAcknowledgment = false
 
-          // Harness enforcement: track tool completion for mandatory feedback
+          // Track tool completion for potential future todo/status integration
           let lastCompletedToolName: string | null = null
-          let textSentSinceLastResult = true // Start true so we don't inject before first tool
-
-          // Helper to inject tool feedback if AI didn't provide any
-          const injectToolFeedback = (toolName: string) => {
-            // Generate contextual feedback based on tool type
-            const feedbackMap: Record<string, string> = {
-              'read_file': '✓ File read.',
-              'write_file': '✓ File written.',
-              'list_directory': '✓ Directory listed.',
-              'search_files': '✓ Search complete.',
-              'execute_command': '✓ Command executed.',
-              'web_search': '✓ Search done.',
-              'web_fetch': '✓ Page fetched.',
-              'create_artifact': '✓ Artifact created.',
-              'update_artifact': '✓ Artifact updated.',
-              'spawn_agent': '✓ Agent spawned.',
-              'wait_for_agent': '✓ Agent complete.',
-              'switch_mode': '✓ Mode switched.',
-            }
-            const feedback = feedbackMap[toolName] || `✓ ${toolName} done.`
-            event.sender.send(`ai:chunk:${channelId}`, `\n${feedback}\n`)
-          }
+          let textSentSinceLastResult = true // Track if AI provided feedback
 
           for await (const part of result.fullStream) {
             if (abortController.signal.aborted) break
@@ -1118,12 +1097,6 @@ When the user asks to modify, update, fix, or improve an existing artifact, use 
                   injectedAcknowledgment = true
                 }
 
-                // HARNESS ENFORCEMENT: If AI didn't react to last tool, inject feedback
-                if (lastCompletedToolName && !textSentSinceLastResult) {
-                  injectToolFeedback(lastCompletedToolName)
-                  lastCompletedToolName = null
-                }
-
                 console.log('[AI] Tool call starting:', part.toolName)
                 toolTracker.set(part.toolCallId, {
                   id: part.toolCallId,
@@ -1147,12 +1120,6 @@ When the user asks to modify, update, fix, or improve an existing artifact, use 
                   const ack = "I'll work through this for you.\n\n"
                   event.sender.send(`ai:chunk:${channelId}`, ack)
                   injectedAcknowledgment = true
-                }
-
-                // HARNESS ENFORCEMENT: If AI didn't react to last tool, inject feedback
-                if (lastCompletedToolName && !textSentSinceLastResult) {
-                  injectToolFeedback(lastCompletedToolName)
-                  lastCompletedToolName = null
                 }
 
                 hadAnyToolCalls = true
@@ -1231,11 +1198,6 @@ When the user asks to modify, update, fix, or improve an existing artifact, use 
                 console.error('[AI] Stream error:', part.error)
                 break
             }
-          }
-
-          // HARNESS ENFORCEMENT: If AI ended without reacting to last tool, inject feedback
-          if (lastCompletedToolName && !textSentSinceLastResult) {
-            injectToolFeedback(lastCompletedToolName)
           }
 
           // Get usage stats
