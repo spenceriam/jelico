@@ -2,6 +2,15 @@
 
 All notable changes to Jelico will be documented in this file.
 
+## [0.5.1] - 2026-01-30
+
+### Fixed
+- **Speech worker CDN loading**: Transformers.js now loads from CDN via dynamic import, fixing bundling issues with Node.js module dependencies
+- **Lazy worker spawn**: Worker only spawns when user downloads a model or starts transcription, not on settings page mount
+- **Model download feedback**: Added timeout (5 min) and error tracking to prevent silent hangs
+- **CSP for audio playback**: Added `media-src 'self' blob:` to allow recorded audio playback
+- **Recording data capture**: Added timeslice to MediaRecorder for reliable data collection
+
 ## [0.5.0] - 2026-01-30
 
 ### Added
