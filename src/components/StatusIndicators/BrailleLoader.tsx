@@ -1,31 +1,14 @@
-import { useState, useEffect } from 'react'
-
-// Braille spinner frames - creates a "sand" animation effect
-const BRAILLE_FRAMES = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏']
-
 interface BrailleLoaderProps {
   className?: string
-  interval?: number // ms between frames
+  type?: 'circle' | 'fill' | 'bounce' | 'scroll'
 }
 
 /**
- * ASCII-style braille loading animation
- * Creates a spinning "sand" effect using braille characters
+ * CSS-based braille loading animation
+ * Uses Unicode braille patterns with CSS keyframe animations
  */
-export function BrailleLoader({ className = '', interval = 80 }: BrailleLoaderProps) {
-  const [frameIndex, setFrameIndex] = useState(0)
-
-  useEffect(() => {
-    const timer = setInterval(() => {
-      setFrameIndex((prev) => (prev + 1) % BRAILLE_FRAMES.length)
-    }, interval)
-
-    return () => clearInterval(timer)
-  }, [interval])
-
+export function BrailleLoader({ className = '', type = 'circle' }: BrailleLoaderProps) {
   return (
-    <span className={`font-mono ${className}`}>
-      {BRAILLE_FRAMES[frameIndex]}
-    </span>
+    <span className={`braille-loader braille-loader--${type} ${className}`} />
   )
 }

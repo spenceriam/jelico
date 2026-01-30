@@ -150,6 +150,82 @@
     animation: pulse-dot 1.4s ease-in-out infinite;
     animation-delay: 0.4s;
   }
+
+  /* Braille loader animations */
+  @keyframes braille-circle {
+    0% { content: '\2809'; }
+    16.66% { content: '\2818'; }
+    33.33% { content: '\2830'; }
+    50% { content: '\2824'; }
+    66.66% { content: '\2806'; }
+    83.33% { content: '\2803'; }
+  }
+
+  @keyframes braille-fill {
+    0% { content: '\2801'; }
+    16.66% { content: '\2809'; }
+    33.33% { content: '\280B'; }
+    50% { content: '\281B'; }
+    66.66% { content: '\281F'; }
+    83.33% { content: '\283F'; }
+  }
+
+  @keyframes braille-bounce {
+    0% { content: '\2809'; }
+    33.33% { content: '\281B'; }
+    66.66% { content: '\283F'; }
+    83.33% { content: '\281B'; }
+  }
+
+  @keyframes braille-scroll {
+    0% { content: '\2801'; }
+    16.66% { content: '\2808'; }
+    33.33% { content: '\2802'; }
+    50% { content: '\2810'; }
+    66.66% { content: '\2804'; }
+    83.33% { content: '\2820'; }
+  }
+
+  .braille-loader {
+    font-family: var(--font-mono);
+    position: relative;
+    display: inline-block;
+    width: 1em;
+    height: 1em;
+  }
+
+  .braille-loader::before {
+    content: '\283F';
+    opacity: 0.15;
+    position: absolute;
+  }
+
+  .braille-loader::after {
+    position: absolute;
+    animation-duration: 0.8s;
+    animation-iteration-count: infinite;
+    animation-timing-function: step-end;
+  }
+
+  .braille-loader--circle::after {
+    content: '\2809';
+    animation-name: braille-circle;
+  }
+
+  .braille-loader--fill::after {
+    content: '\2801';
+    animation-name: braille-fill;
+  }
+
+  .braille-loader--bounce::after {
+    content: '\2809';
+    animation-name: braille-bounce;
+  }
+
+  .braille-loader--scroll::after {
+    content: '\2801';
+    animation-name: braille-scroll;
+  }
 }
 
 @layer components {
