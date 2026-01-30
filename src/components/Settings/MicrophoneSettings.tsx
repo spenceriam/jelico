@@ -1,5 +1,5 @@
-import { useState, useEffect, useCallback, useRef } from 'react'
-import { Mic, Check, Download, Loader2, Volume2, Play, MessageSquare } from 'lucide-react'
+import { useState, useEffect, useCallback } from 'react'
+import { Mic, Check, Download, Loader2, Volume2, MessageSquare } from 'lucide-react'
 import {
   speechClient,
   WHISPER_MODELS,
@@ -37,7 +37,6 @@ export function MicrophoneSettings() {
   const [isMicTesting, setIsMicTesting] = useState(false)
   const [micTestStatus, setMicTestStatus] = useState<string>('')
   const [recordedAudioUrl, setRecordedAudioUrl] = useState<string | null>(null)
-  const audioRef = useRef<HTMLAudioElement | null>(null)
 
   // Transcription test state
   const [isTranscribing, setIsTranscribing] = useState(false)
@@ -196,15 +195,6 @@ export function MicrophoneSettings() {
       setIsMicTesting(false)
     }
   }, [selectedDevice, recordedAudioUrl])
-
-  /**
-   * Play recorded audio
-   */
-  const handlePlayRecording = useCallback(() => {
-    if (audioRef.current && recordedAudioUrl) {
-      audioRef.current.play()
-    }
-  }, [recordedAudioUrl])
 
   /**
    * Decode audio blob to Float32Array at 16kHz (required by Whisper)
@@ -369,13 +359,12 @@ export function MicrophoneSettings() {
             </button>
 
             {recordedAudioUrl && (
-              <button
-                onClick={handlePlayRecording}
-                className="flex items-center gap-2 px-4 py-2 bg-accent/10 border border-accent/30 rounded-lg text-accent hover:bg-accent/20 transition-colors"
-              >
-                <Play className="w-4 h-4" />
-                Play Recording
-              </button>
+              <audio
+                src={recordedAudioUrl}
+                controls
+                preload="auto"
+                className="h-10"
+              />
             )}
           </div>
 
@@ -389,10 +378,6 @@ export function MicrophoneSettings() {
             </div>
           )}
 
-          {/* Hidden audio element for playback */}
-          {recordedAudioUrl && (
-            <audio ref={audioRef} src={recordedAudioUrl} className="hidden" />
-          )}
         </div>
       </section>
 
