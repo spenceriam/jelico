@@ -1,14 +1,15 @@
 import { useState, useEffect } from 'react'
-import { X, Plus, Trash2, Check, AlertCircle, Settings as SettingsIcon, Zap, Database, Edit2, Loader2, Search, HardDrive, Mic, Key, Eye, EyeOff } from 'lucide-react'
+import { X, Plus, Trash2, Check, AlertCircle, Settings as SettingsIcon, Zap, Database, Edit2, Loader2, Search, HardDrive, Key, Eye, EyeOff } from 'lucide-react'
 import { useProviderStore } from '../../stores/providers'
 import { useUIStore } from '../../stores/ui'
 import { SkillManager } from '../Skills/SkillManager'
 import { useSkillStore } from '../../stores/skills'
 import { BackupSettings } from './BackupSettings'
 import { GeneralSettings } from './GeneralSettings'
-import { MicrophoneSettings } from './MicrophoneSettings'
+// MicrophoneSettings disabled - WASM crashes on Windows ARM64, will revisit later
+// import { MicrophoneSettings } from './MicrophoneSettings'
 
-type SettingsTab = 'general' | 'providers' | 'skills' | 'microphone' | 'backup'
+type SettingsTab = 'general' | 'providers' | 'skills' | 'backup'
 
 interface SettingsProps {
   onClose: () => void
@@ -192,17 +193,7 @@ export function Settings({ onClose }: SettingsProps) {
             <Zap className="w-4 h-4" />
             Skills
           </button>
-          <button
-            onClick={() => setActiveTab('microphone')}
-            className={`px-4 py-3 text-sm flex items-center gap-2 border-b-2 -mb-px transition-colors ${
-              activeTab === 'microphone'
-                ? 'border-accent text-accent'
-                : 'border-transparent text-text-muted hover:text-text-primary'
-            }`}
-          >
-            <Mic className="w-4 h-4" />
-            Microphone
-          </button>
+          {/* Microphone tab disabled - WASM crashes on Windows ARM64 */}
           <button
             onClick={() => setActiveTab('backup')}
             className={`px-4 py-3 text-sm flex items-center gap-2 border-b-2 -mb-px transition-colors ${
@@ -463,7 +454,7 @@ export function Settings({ onClose }: SettingsProps) {
 
           {activeTab === 'general' && <GeneralSettings />}
 
-          {activeTab === 'microphone' && <MicrophoneSettings />}
+          {/* Microphone settings disabled - WASM crashes on Windows ARM64 */}
 
           {activeTab === 'backup' && <BackupSettings />}
         </div>

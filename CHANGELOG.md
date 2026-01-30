@@ -2,6 +2,11 @@
 
 All notable changes to Jelico will be documented in this file.
 
+## [0.5.2] - 2026-01-30
+
+### Changed
+- **Speech-to-text temporarily disabled**: Hidden microphone settings tab and voice input button due to WASM crashes on Windows ARM64. The onnxruntime-web backend crashes with access violation during transcription. Will revisit when better ARM64 support is available.
+
 ## [0.5.1] - 2026-01-30
 
 ### Fixed

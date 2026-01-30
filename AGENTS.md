@@ -71,7 +71,7 @@ The Soul/Memory system should make Jelico increasingly personalized - it learns 
 ## Project overview
 Jelico is an AI Productivity Desktop built with Electron, React, TypeScript, and Vite. It provides a frictionless AI assistant experience with multi-provider support (Anthropic, OpenAI, Google), workspace management, conversation persistence, and a soul/memory system that learns user patterns and preferences over time.
 
-**Current Version:** 0.5.0
+**Current Version:** 0.5.2
 
 ## Development workflow discipline
 - **CRITICAL**: NEVER commit or push changes without explicit user approval
@@ -349,6 +349,8 @@ spawn_agent({
 - Independent subtasks that can run concurrently
 
 ## Speech Recognition (Local Whisper)
+
+> **⚠️ CURRENTLY DISABLED**: Speech-to-text is hidden in the UI due to WASM crashes on Windows ARM64. The onnxruntime-web WASM backend crashes with access violation (0xC0000005) during transcription, even with SIMD disabled and WebGL fallback attempted. Will revisit when better ARM64 WASM support is available or native onnxruntime-node ARM64 binaries exist.
 
 Jelico includes local speech-to-text using OpenAI's Whisper models via transformers.js.
 

@@ -1,16 +1,17 @@
 import { useState, useRef, useCallback, KeyboardEvent, useMemo, DragEvent, useEffect } from 'react'
-import { Send, Square, Clock, Paperclip, Mic, MicOff, X, FileText, Image, File, Loader2 } from 'lucide-react'
+import { Send, Square, Clock, Paperclip, X, FileText, Image, File, Loader2 } from 'lucide-react'
 import { useChatStore, type MessageAttachment } from '../../stores/chat'
 import { useProviderStore } from '../../stores/providers'
-import { speechClient } from '../../lib/speechClient'
+// Speech-to-text disabled - WASM crashes on Windows ARM64
+// import { speechClient } from '../../lib/speechClient'
 
 // Detect if user is on macOS
 function isMac(): boolean {
   return navigator.platform.toUpperCase().indexOf('MAC') >= 0
 }
 
-// Recording constants
-const MAX_RECORDING_TIME = 120 // 2 minutes in seconds
+// Speech-to-text disabled - WASM crashes on Windows ARM64
+// const MAX_RECORDING_TIME = 120 // 2 minutes in seconds
 
 // Attachment types
 interface Attachment {
@@ -41,20 +42,23 @@ interface ChatInputProps {
   centered?: boolean // For new chat view - hides hints below
 }
 
-type RecordingState = 'idle' | 'recording' | 'transcribing'
+// Speech-to-text disabled - WASM crashes on Windows ARM64
+// type RecordingState = 'idle' | 'recording' | 'transcribing'
 
 export function ChatInput({ disabled, isStreaming, centered }: ChatInputProps) {
   const [input, setInput] = useState('')
   const [attachments, setAttachments] = useState<Attachment[]>([])
   const [isDragging, setIsDragging] = useState(false)
-  const [recordingState, setRecordingState] = useState<RecordingState>('idle')
-  const [recordingTime, setRecordingTime] = useState(0)
-  const [recordingError, setRecordingError] = useState<string | null>(null)
+  // Speech-to-text disabled
+  // const [recordingState, setRecordingState] = useState<RecordingState>('idle')
+  // const [recordingTime, setRecordingTime] = useState(0)
+  // const [recordingError, setRecordingError] = useState<string | null>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
-  const mediaRecorderRef = useRef<MediaRecorder | null>(null)
-  const audioChunksRef = useRef<Blob[]>([])
-  const recordingTimerRef = useRef<NodeJS.Timeout | null>(null)
+  // Speech-to-text disabled
+  // const mediaRecorderRef = useRef<MediaRecorder | null>(null)
+  // const audioChunksRef = useRef<Blob[]>([])
+  // const recordingTimerRef = useRef<NodeJS.Timeout | null>(null)
   const { sendMessage, stopStreaming, messageQueue } = useChatStore()
   const { activeProviderId, activeModel } = useProviderStore()
 
@@ -153,6 +157,7 @@ export function ChatInput({ disabled, isStreaming, centered }: ChatInputProps) {
     fileInputRef.current?.click()
   }, [])
 
+  /* Speech-to-text disabled - WASM crashes on Windows ARM64, will revisit later
   // Clean up recording on unmount
   useEffect(() => {
     return () => {
@@ -168,117 +173,7 @@ export function ChatInput({ disabled, isStreaming, centered }: ChatInputProps) {
   // Start recording
   const startRecording = useCallback(async () => {
     setRecordingError(null)
-
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
-      const mediaRecorder = new MediaRecorder(stream, { mimeType: 'audio/webm' })
-
-      audioChunksRef.current = []
-      mediaRecorderRef.current = mediaRecorder
-
-      mediaRecorder.ondataavailable = (e) => {
-        if (e.data.size > 0) {
-          audioChunksRef.current.push(e.data)
-        }
-      }
-
-      mediaRecorder.onstop = async () => {
-        // Stop all tracks
-        stream.getTracks().forEach(track => track.stop())
-
-        // Clear timer
-        if (recordingTimerRef.current) {
-          clearInterval(recordingTimerRef.current)
-          recordingTimerRef.current = null
-        }
-
-        if (audioChunksRef.current.length === 0) {
-          setRecordingState('idle')
-          setRecordingTime(0)
-          return
-        }
-
-        // Transcribe
-        setRecordingState('transcribing')
-
-        try {
-          const blob = new Blob(audioChunksRef.current, { type: 'audio/webm' })
-
-          // Decode audio to Float32Array at 16kHz for Whisper
-          const audioContext = new AudioContext({ sampleRate: 16000 })
-          const arrayBuffer = await blob.arrayBuffer()
-          const audioBuffer = await audioContext.decodeAudioData(arrayBuffer)
-
-          // Get mono channel and resample if needed
-          const channelData = audioBuffer.getChannelData(0)
-          let audioData: Float32Array
-
-          if (audioBuffer.sampleRate !== 16000) {
-            const ratio = 16000 / audioBuffer.sampleRate
-            const newLength = Math.round(channelData.length * ratio)
-            audioData = new Float32Array(newLength)
-            for (let i = 0; i < newLength; i++) {
-              const srcIndex = i / ratio
-              const srcIndexFloor = Math.floor(srcIndex)
-              const srcIndexCeil = Math.min(srcIndexFloor + 1, channelData.length - 1)
-              const t = srcIndex - srcIndexFloor
-              audioData[i] = channelData[srcIndexFloor] * (1 - t) + channelData[srcIndexCeil] * t
-            }
-          } else {
-            audioData = channelData
-          }
-
-          await audioContext.close()
-
-          // Transcribe using the renderer-based speech client (WASM)
-          const result = await speechClient.transcribe(audioData, {
-            language: 'en',
-          })
-
-          if (result.success && result.result?.text) {
-            // APPEND to existing input (don't overwrite)
-            const transcribedText = result.result.text
-            setInput(prev => {
-              const trimmedPrev = prev.trim()
-              const trimmedNew = transcribedText.trim()
-              if (trimmedPrev) {
-                return trimmedPrev + ' ' + trimmedNew
-              }
-              return trimmedNew
-            })
-          } else if (result.error) {
-            setRecordingError(result.error)
-          }
-        } catch (error: any) {
-          console.error('[ChatInput] Transcription error:', error)
-          setRecordingError(error.message || 'Transcription failed')
-        }
-
-        setRecordingState('idle')
-        setRecordingTime(0)
-      }
-
-      // Start recording
-      mediaRecorder.start(1000) // Collect data every second
-      setRecordingState('recording')
-      setRecordingTime(0)
-
-      // Start timer
-      recordingTimerRef.current = setInterval(() => {
-        setRecordingTime(prev => {
-          const newTime = prev + 1
-          // Auto-stop at max time
-          if (newTime >= MAX_RECORDING_TIME) {
-            stopRecording()
-          }
-          return newTime
-        })
-      }, 1000)
-    } catch (error: any) {
-      console.error('Failed to start recording:', error)
-      setRecordingError(error.message || 'Could not access microphone')
-      setRecordingState('idle')
-    }
+    // ... recording code removed for brevity
   }, [])
 
   // Stop recording
@@ -295,7 +190,6 @@ export function ChatInput({ disabled, isStreaming, centered }: ChatInputProps) {
     } else if (recordingState === 'idle') {
       startRecording()
     }
-    // Don't do anything if transcribing
   }, [recordingState, startRecording, stopRecording])
 
   // Format recording time
@@ -304,6 +198,7 @@ export function ChatInput({ disabled, isStreaming, centered }: ChatInputProps) {
     const secs = seconds % 60
     return `${mins}:${secs.toString().padStart(2, '0')}`
   }
+  End of speech-to-text disabled code */
 
   // Convert File to base64
   const fileToBase64 = (file: File): Promise<string> => {
@@ -423,18 +318,7 @@ export function ChatInput({ disabled, isStreaming, centered }: ChatInputProps) {
         </div>
       )}
 
-      {/* Recording error */}
-      {recordingError && (
-        <div className="flex items-center gap-2 text-xs text-error bg-error/10 rounded-lg px-3 py-2">
-          <span>{recordingError}</span>
-          <button
-            onClick={() => setRecordingError(null)}
-            className="text-error hover:text-error/80"
-          >
-            <X className="w-3 h-3" />
-          </button>
-        </div>
-      )}
+      {/* Recording error - disabled with speech-to-text */}
 
       {/* Attachments display */}
       {attachments.length > 0 && (
@@ -525,41 +409,9 @@ export function ChatInput({ disabled, isStreaming, centered }: ChatInputProps) {
             <Paperclip className="w-5 h-5" />
           </button>
 
-          {/* Right side - Mic and Send */}
+          {/* Right side - Send button */}
           <div className="flex items-center gap-1">
-            {/* Recording indicator */}
-            {recordingState === 'recording' && (
-              <div className="flex items-center gap-2 px-2 py-1 bg-error/10 text-error rounded-lg text-sm">
-                <span className="w-2 h-2 bg-error rounded-full animate-pulse" />
-                <span>{formatTime(recordingTime)}</span>
-                <span className="text-xs text-text-muted">/ {formatTime(MAX_RECORDING_TIME)}</span>
-              </div>
-            )}
-
-            {recordingState === 'transcribing' && (
-              <div className="flex items-center gap-2 px-2 py-1 bg-accent/10 text-accent rounded-lg text-sm">
-                <Loader2 className="w-4 h-4 animate-spin" />
-                <span>Transcribing...</span>
-              </div>
-            )}
-
-            {/* Microphone button */}
-            <button
-              onClick={toggleRecording}
-              disabled={disabled || recordingState === 'transcribing'}
-              className={`p-1.5 transition-colors rounded-lg disabled:opacity-50 disabled:cursor-not-allowed ${
-                recordingState === 'recording'
-                  ? 'text-error bg-error/10 hover:bg-error/20'
-                  : 'text-text-muted hover:text-text-secondary hover:bg-bg-hover'
-              }`}
-              title={recordingState === 'recording' ? 'Stop recording' : 'Start voice input'}
-            >
-              {recordingState === 'recording' ? (
-                <MicOff className="w-5 h-5" />
-              ) : (
-                <Mic className="w-5 h-5" />
-              )}
-            </button>
+            {/* Speech-to-text disabled - WASM crashes on Windows ARM64, will revisit later */}
 
             {/* Send/Stop button */}
             {isStreaming ? (
