@@ -21,6 +21,19 @@ export interface ChangelogEntry {
 
 export const changelog: ChangelogEntry[] = [
   {
+    version: '0.5.6',
+    date: '2026-01-30',
+    changes: {
+      changed: [
+        'AI persona strengthened - acknowledgment requirement moved to top of system prompt',
+      ],
+      fixed: [
+        'Resize handle getting stuck when mouse released - listeners no longer re-added on width change',
+        'Canvas panel resize now sets proper cursor and disables text selection during drag',
+      ],
+    },
+  },
+  {
     version: '0.5.5',
     date: '2026-01-30',
     changes: {
