@@ -1,19 +1,39 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { Shield, ShieldCheck, ShieldX, AlertTriangle } from 'lucide-react'
 import { usePermissionStore, getToolDescription, type PermissionAction } from '../../stores/permissions'
 
 export function PermissionDialog() {
-  const { pendingRequest, grantPermission } = usePermissionStore()
+  const {
+    pendingRequest,
+    mainProcessRequest,
+    grantPermission,
+    respondToMainProcess,
+    setupMainProcessListener,
+  } = usePermissionStore()
   const [remember, setRemember] = useState(false)
 
-  if (!pendingRequest) return null
+  // Set up listener for main process permission requests
+  useEffect(() => {
+    const cleanup = setupMainProcessListener()
+    return cleanup
+  }, [setupMainProcessListener])
 
-  const handleGrant = (permission: PermissionAction) => {
-    grantPermission(permission, remember)
+  // Handle either type of request
+  const activeRequest = mainProcessRequest || pendingRequest
+  if (!activeRequest) return null
+
+  const isMainProcess = !!mainProcessRequest
+
+  const handleGrant = async (permission: PermissionAction) => {
+    if (isMainProcess) {
+      await respondToMainProcess(permission, remember)
+    } else {
+      grantPermission(permission, remember)
+    }
     setRemember(false)
   }
 
-  const description = getToolDescription(pendingRequest.toolName, pendingRequest.action)
+  const description = getToolDescription(activeRequest.toolName, activeRequest.action)
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-bg-void/80 backdrop-blur-sm">
@@ -35,16 +55,26 @@ export function PermissionDialog() {
             <AlertTriangle className="w-5 h-5 text-accent flex-shrink-0 mt-0.5" />
             <div>
               <p className="text-text-primary mb-1">{description}</p>
-              <p className="text-sm text-text-secondary">{pendingRequest.description}</p>
+              <p className="text-sm text-text-secondary">{activeRequest.description}</p>
             </div>
           </div>
 
           <div className="bg-bg-deep rounded-lg p-3 mb-4">
             <p className="text-xs text-text-muted mb-1">Tool</p>
-            <p className="text-sm font-mono text-text-secondary">{pendingRequest.toolName}</p>
+            <p className="text-sm font-mono text-text-secondary">{activeRequest.toolName}</p>
             <p className="text-xs text-text-muted mt-2 mb-1">Action</p>
-            <p className="text-sm font-mono text-text-secondary break-all">{pendingRequest.action}</p>
+            <p className="text-sm font-mono text-text-secondary break-all">{activeRequest.action}</p>
           </div>
+
+          {/* Preview (for main process requests) */}
+          {'preview' in activeRequest && activeRequest.preview && (
+            <div className="bg-bg-deep rounded-lg p-3 mb-4 max-h-40 overflow-y-auto">
+              <p className="text-xs text-text-muted mb-1">Preview</p>
+              <pre className="text-xs font-mono text-text-secondary whitespace-pre-wrap break-all">
+                {activeRequest.preview}
+              </pre>
+            </div>
+          )}
 
           {/* Remember checkbox */}
           <label className="flex items-center gap-2 text-sm text-text-secondary cursor-pointer">

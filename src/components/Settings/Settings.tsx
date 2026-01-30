@@ -1,15 +1,16 @@
 import { useState, useEffect } from 'react'
-import { X, Plus, Trash2, Check, AlertCircle, Settings as SettingsIcon, Zap, Database, Edit2, Loader2, Search, HardDrive, Key, Eye, EyeOff } from 'lucide-react'
+import { X, Plus, Trash2, Check, AlertCircle, Settings as SettingsIcon, Zap, Database, Edit2, Loader2, Search, HardDrive, Key, Eye, EyeOff, Shield } from 'lucide-react'
 import { useProviderStore } from '../../stores/providers'
 import { useUIStore } from '../../stores/ui'
 import { SkillManager } from '../Skills/SkillManager'
 import { useSkillStore } from '../../stores/skills'
 import { BackupSettings } from './BackupSettings'
 import { GeneralSettings } from './GeneralSettings'
+import { PermissionsSettings } from './PermissionsSettings'
 // MicrophoneSettings disabled - WASM crashes on Windows ARM64, will revisit later
 // import { MicrophoneSettings } from './MicrophoneSettings'
 
-type SettingsTab = 'general' | 'providers' | 'skills' | 'backup'
+type SettingsTab = 'general' | 'providers' | 'permissions' | 'skills' | 'backup'
 
 interface SettingsProps {
   onClose: () => void
@@ -181,6 +182,17 @@ export function Settings({ onClose }: SettingsProps) {
           >
             <Database className="w-4 h-4" />
             Providers
+          </button>
+          <button
+            onClick={() => setActiveTab('permissions')}
+            className={`px-4 py-3 text-sm flex items-center gap-2 border-b-2 -mb-px transition-colors ${
+              activeTab === 'permissions'
+                ? 'border-accent text-accent'
+                : 'border-transparent text-text-muted hover:text-text-primary'
+            }`}
+          >
+            <Shield className="w-4 h-4" />
+            Permissions
           </button>
           <button
             onClick={() => setActiveTab('skills')}
@@ -451,6 +463,8 @@ export function Settings({ onClose }: SettingsProps) {
           )}
 
           {activeTab === 'skills' && <SkillManager />}
+
+          {activeTab === 'permissions' && <PermissionsSettings />}
 
           {activeTab === 'general' && <GeneralSettings />}
 

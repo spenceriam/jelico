@@ -98,6 +98,32 @@ contextBridge.exposeInMainWorld('jelico', {
     deleteByWorkspace: (workspaceId: string) => ipcRenderer.invoke('permissions:deleteByWorkspace', workspaceId),
     clearOnce: () => ipcRenderer.invoke('permissions:clearOnce'),
     request: (request: any) => ipcRenderer.invoke('permissions:request', request),
+    // New permission checker methods
+    respond: (data: {
+      requestId: string
+      permission: 'allow_always' | 'allow_once' | 'deny'
+      remember: boolean
+      toolName: string
+      action: string
+      workspaceId?: string
+    }) => ipcRenderer.invoke('permission:respond', data),
+    getAllowAll: () => ipcRenderer.invoke('permission:getAllowAll'),
+    setAllowAll: (allow: boolean) => ipcRenderer.invoke('permission:setAllowAll', allow),
+    getSessionPermissions: () => ipcRenderer.invoke('permission:getSessionPermissions'),
+    clearSessionPermissions: () => ipcRenderer.invoke('permission:clearSessionPermissions'),
+    // Listen for permission requests from main process
+    onPermissionRequest: (callback: (request: {
+      requestId: string
+      toolName: string
+      action: string
+      description: string
+      preview?: string
+      workspaceId?: string
+    }) => void) => {
+      const handler = (_: any, request: any) => callback(request)
+      ipcRenderer.on('permission:request', handler)
+      return () => ipcRenderer.removeListener('permission:request', handler)
+    },
   },
   soul: {
     get: () => ipcRenderer.invoke('soul:get'),
@@ -193,6 +219,10 @@ contextBridge.exposeInMainWorld('jelico', {
     onSpawnAgent: (channelId: string, callback: (agent: any) => void) => {
       const handler = (_: any, agent: any) => callback(agent)
       ipcRenderer.on(`ai:spawnAgent:${channelId}`, handler)
+    },
+    onModeSwitch: (channelId: string, callback: (data: { fromMode: string; toMode: string; reason: string }) => void) => {
+      const handler = (_: any, data: any) => callback(data)
+      ipcRenderer.on(`ai:modeSwitch:${channelId}`, handler)
     },
     onAgentProgress: (channelId: string, callback: (update: { agentId: string; status: string; progress?: string; result?: string; error?: string }) => void) => {
       const handler = (_: any, update: any) => callback(update)

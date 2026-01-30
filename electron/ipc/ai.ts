@@ -1,4 +1,4 @@
-import { ipcMain } from 'electron'
+import { ipcMain, BrowserWindow } from 'electron'
 import { streamText, tool, stepCountIs } from 'ai'
 import { createAnthropic } from '@ai-sdk/anthropic'
 import { createOpenAI } from '@ai-sdk/openai'
@@ -7,6 +7,11 @@ import { z } from 'zod'
 import { providerDb } from '../services/database'
 import { keychainService } from '../services/keychain'
 import { getModeSystemPrompt, type AgentMode } from '../lib/modes'
+import {
+  checkPermission,
+  requestPermission,
+  classifyCommand,
+} from '../services/permissionChecker'
 import {
   spawnSubAgent,
   getSubAgentStatus,
@@ -677,6 +682,24 @@ Use this to read documentation, articles, or any web page content.`,
       }),
       execute: async ({ path, content }) => {
         try {
+          // Check permission before writing
+          const permCheck = await checkPermission('write_file', { path, content }, streamContext.workspacePath)
+          if (!permCheck.allowed && permCheck.reason === 'needs_approval') {
+            // Request permission from user
+            const result = await requestPermission({
+              toolName: 'write_file',
+              action: `Write to: ${path}`,
+              description: `The AI wants to write ${content.length} characters to this file.`,
+              preview: content.length > 500 ? content.slice(0, 500) + '\n...(truncated)' : content,
+              workspaceId: streamContext.workspacePath,
+            })
+            if (result.permission === 'deny') {
+              return { success: false, error: 'Permission denied by user' }
+            }
+          } else if (!permCheck.allowed) {
+            return { success: false, error: `Permission denied: ${permCheck.reason}` }
+          }
+
           const fs = await import('fs/promises')
           const pathModule = await import('path')
           // Ensure directory exists
@@ -700,6 +723,28 @@ Use this to read documentation, articles, or any web page content.`,
       }),
       execute: async ({ command, cwd }) => {
         try {
+          // Check permission - classifies command as safe/destructive/unknown
+          const permCheck = await checkPermission('execute_command', { command }, streamContext.workspacePath)
+
+          if (!permCheck.allowed && permCheck.reason === 'needs_approval') {
+            // Request permission from user for non-safe commands
+            const cmdClassification = classifyCommand(command)
+            const result = await requestPermission({
+              toolName: 'execute_command',
+              action: `Run command`,
+              description: cmdClassification === 'destructive'
+                ? '⚠️ This command may make destructive changes to your system.'
+                : 'The AI wants to run this command.',
+              preview: command,
+              workspaceId: streamContext.workspacePath,
+            })
+            if (result.permission === 'deny') {
+              return { success: false, error: 'Permission denied by user' }
+            }
+          } else if (!permCheck.allowed) {
+            return { success: false, error: `Permission denied: ${permCheck.reason}` }
+          }
+
           const { exec } = await import('child_process')
           const { promisify } = await import('util')
           const execAsync = promisify(exec)
@@ -881,6 +926,11 @@ When the user asks to modify, update, fix, or improve an existing artifact, use 
       // Spawn agent function
       const sendSpawnAgent = (agent: any) => {
         event.sender.send(`ai:spawnAgent:${channelId}`, agent)
+      }
+
+      // Mode switch function - for Auto mode transitions
+      const sendModeSwitch = (fromMode: AgentMode, toMode: AgentMode, reason: string) => {
+        event.sender.send(`ai:modeSwitch:${channelId}`, { fromMode, toMode, reason })
       }
 
       // Get tools based on mode

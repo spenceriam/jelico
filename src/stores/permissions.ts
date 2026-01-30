@@ -25,11 +25,22 @@ function rowToPermission(row: PermissionRecord): Permission {
   }
 }
 
+// Permission request from main process (tool execution)
+export interface MainProcessRequest {
+  requestId: string
+  toolName: string
+  action: string
+  description: string
+  preview?: string
+  workspaceId?: string
+}
+
 interface PendingRequest {
   id: string
   toolName: string
   action: string
   description: string
+  preview?: string
   workspaceId?: string
   resolve: (result: { permission: PermissionAction; remembered: boolean }) => void
 }
@@ -37,6 +48,9 @@ interface PendingRequest {
 interface PermissionStore {
   permissions: Permission[]
   pendingRequest: PendingRequest | null
+  mainProcessRequest: MainProcessRequest | null
+  allowAllSession: boolean
+  sessionPermissions: Array<{ key: string; permission: PermissionAction }>
   isLoading: boolean
 
   // Actions
@@ -52,11 +66,24 @@ interface PermissionStore {
   }) => Promise<Permission>
   deletePermission: (id: string) => Promise<void>
   clearOncePermissions: () => Promise<void>
+  // Main process permission handling
+  setMainProcessRequest: (request: MainProcessRequest | null) => void
+  respondToMainProcess: (permission: PermissionAction, remember: boolean) => Promise<void>
+  // Session settings
+  loadAllowAllSession: () => Promise<void>
+  setAllowAllSession: (allow: boolean) => Promise<void>
+  loadSessionPermissions: () => Promise<void>
+  clearSessionPermissions: () => Promise<void>
+  // Listener setup
+  setupMainProcessListener: () => () => void
 }
 
 export const usePermissionStore = create<PermissionStore>((set, get) => ({
   permissions: [],
   pendingRequest: null,
+  mainProcessRequest: null,
+  allowAllSession: false,
+  sessionPermissions: [],
   isLoading: false,
 
   loadPermissions: async (workspaceId) => {
@@ -150,6 +177,88 @@ export const usePermissionStore = create<PermissionStore>((set, get) => ({
       console.error('Failed to clear once permissions:', error)
       throw error
     }
+  },
+
+  // Handle permission request from main process (during tool execution)
+  setMainProcessRequest: (request) => {
+    set({ mainProcessRequest: request })
+  },
+
+  respondToMainProcess: async (permission, remember) => {
+    const { mainProcessRequest } = get()
+    if (!mainProcessRequest) return
+
+    try {
+      await window.jelico.permissions.respond({
+        requestId: mainProcessRequest.requestId,
+        permission,
+        remember,
+        toolName: mainProcessRequest.toolName,
+        action: mainProcessRequest.action,
+        workspaceId: mainProcessRequest.workspaceId,
+      })
+
+      // If remembering, also create local permission
+      if (remember && permission !== 'allow_once') {
+        await get().createPermission({
+          toolName: mainProcessRequest.toolName,
+          actionPattern: mainProcessRequest.action,
+          permission,
+          workspaceId: mainProcessRequest.workspaceId,
+        })
+      }
+    } catch (error) {
+      console.error('Failed to respond to main process:', error)
+    }
+
+    set({ mainProcessRequest: null })
+  },
+
+  // Session settings
+  loadAllowAllSession: async () => {
+    try {
+      const allow = await window.jelico.permissions.getAllowAll()
+      set({ allowAllSession: allow })
+    } catch (error) {
+      console.error('Failed to load allow all session:', error)
+    }
+  },
+
+  setAllowAllSession: async (allow) => {
+    try {
+      await window.jelico.permissions.setAllowAll(allow)
+      set({ allowAllSession: allow })
+    } catch (error) {
+      console.error('Failed to set allow all session:', error)
+      throw error
+    }
+  },
+
+  loadSessionPermissions: async () => {
+    try {
+      const perms = await window.jelico.permissions.getSessionPermissions()
+      set({ sessionPermissions: perms })
+    } catch (error) {
+      console.error('Failed to load session permissions:', error)
+    }
+  },
+
+  clearSessionPermissions: async () => {
+    try {
+      await window.jelico.permissions.clearSessionPermissions()
+      set({ sessionPermissions: [] })
+    } catch (error) {
+      console.error('Failed to clear session permissions:', error)
+      throw error
+    }
+  },
+
+  // Set up listener for permission requests from main process
+  setupMainProcessListener: () => {
+    const cleanup = window.jelico.permissions.onPermissionRequest((request) => {
+      get().setMainProcessRequest(request)
+    })
+    return cleanup
   },
 }))
 

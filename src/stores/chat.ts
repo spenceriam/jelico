@@ -97,6 +97,7 @@ interface ChatStore {
   error: string | null
   mode: AgentMode
   modeTransitioning: boolean
+  modeSwitchReason: string | null
   messageQueue: QueuedMessage[]
 
   // Actions
@@ -110,6 +111,7 @@ interface ChatStore {
   deleteConversation: (id: string) => Promise<void>
   setMode: (mode: AgentMode) => void
   setModeTransitioning: (transitioning: boolean) => void
+  handleModeSwitch: (fromMode: AgentMode, toMode: AgentMode, reason: string) => void
   clearError: () => void
   regenerateLastResponse: (providerId: string, model: string) => Promise<void>
   addSystemNotification: (notification: Omit<SystemNotification, 'id' | 'timestamp'>) => void
@@ -123,6 +125,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
   activeConversationId: null,
   messages: [],
   modeTransitioning: false,
+  modeSwitchReason: null,
   isStreaming: false,
   streamingContent: '',
   streamingToolCalls: [],
@@ -422,6 +425,11 @@ export const useChatStore = create<ChatStore>((set, get) => ({
       })
     })
 
+    // Handle mode switch events (Auto mode transitions)
+    window.jelico.ai.onModeSwitch(channelId, (data) => {
+      get().handleModeSwitch(data.fromMode as AgentMode, data.toMode as AgentMode, data.reason)
+    })
+
     // Handle agent progress updates
     window.jelico.ai.onAgentProgress(channelId, (update) => {
       // Map backend toolCalls (input/output) to frontend format (args/result)
@@ -702,6 +710,19 @@ export const useChatStore = create<ChatStore>((set, get) => ({
   setMode: (mode) => set({ mode }),
 
   setModeTransitioning: (transitioning) => set({ modeTransitioning: transitioning }),
+
+  handleModeSwitch: (_fromMode, toMode, reason) => {
+    const { modes } = require('../lib/modes') as { modes: Record<AgentMode, { name: string }> }
+    set({
+      mode: toMode,
+      modeTransitioning: true,
+      modeSwitchReason: `Switching to ${modes[toMode].name}: ${reason}`,
+    })
+    // Clear the transitioning state after animation
+    setTimeout(() => {
+      set({ modeTransitioning: false, modeSwitchReason: null })
+    }, 2000)
+  },
 
   clearError: () => set({ error: null }),
 

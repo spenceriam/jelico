@@ -59,6 +59,7 @@ interface Window {
       onToolCallUpdate: (channelId: string, callback: (update: ToolCallUpdateEvent) => void) => void
       onArtifact: (channelId: string, callback: (artifact: ArtifactEvent) => void) => void
       onSpawnAgent: (channelId: string, callback: (agent: SpawnAgentEvent) => void) => void
+      onModeSwitch: (channelId: string, callback: (data: ModeSwitchEvent) => void) => void
       onAgentProgress: (channelId: string, callback: (update: AgentProgressEvent) => void) => void
       onUpdateArtifact: (channelId: string, callback: (update: ArtifactUpdateEvent) => void) => void
       stopStream: (channelId: string) => void
@@ -113,6 +114,13 @@ interface Window {
       deleteByWorkspace: (workspaceId: string) => Promise<{ success: boolean }>
       clearOnce: () => Promise<{ success: boolean }>
       request: (request: PermissionRequest) => Promise<PermissionRequestResult>
+      // New permission checker methods
+      respond: (data: PermissionRespondData) => Promise<{ success: boolean }>
+      getAllowAll: () => Promise<boolean>
+      setAllowAll: (allow: boolean) => Promise<{ success: boolean }>
+      getSessionPermissions: () => Promise<Array<{ key: string; permission: PermissionAction }>>
+      clearSessionPermissions: () => Promise<{ success: boolean }>
+      onPermissionRequest: (callback: (request: MainProcessPermissionRequest) => void) => () => void
     }
     soul: {
       get: () => Promise<Soul>
@@ -270,6 +278,12 @@ interface SpawnAgentEvent {
   name: string
   task: string
   mode: 'auto' | 'explore' | 'execute' | 'plan' | 'review'
+}
+
+interface ModeSwitchEvent {
+  fromMode: 'auto' | 'explore' | 'execute' | 'plan' | 'review'
+  toMode: 'auto' | 'explore' | 'execute' | 'plan' | 'review'
+  reason: string
 }
 
 interface AgentProgressEvent {
@@ -475,6 +489,24 @@ interface PermissionRequest {
 interface PermissionRequestResult {
   permission: PermissionAction
   cancelled: boolean
+}
+
+interface PermissionRespondData {
+  requestId: string
+  permission: PermissionAction
+  remember: boolean
+  toolName: string
+  action: string
+  workspaceId?: string
+}
+
+interface MainProcessPermissionRequest {
+  requestId: string
+  toolName: string
+  action: string
+  description: string
+  preview?: string
+  workspaceId?: string
 }
 
 // Soul types

@@ -71,7 +71,7 @@ The Soul/Memory system should make Jelico increasingly personalized - it learns 
 ## Project overview
 Jelico is an AI Productivity Desktop built with Electron, React, TypeScript, and Vite. It provides a frictionless AI assistant experience with multi-provider support (Anthropic, OpenAI, Google), workspace management, conversation persistence, and a soul/memory system that learns user patterns and preferences over time.
 
-**Current Version:** 0.5.3
+**Current Version:** 0.5.5
 
 ## Development workflow discipline
 - **CRITICAL**: NEVER commit or push changes without explicit user approval
@@ -407,6 +407,44 @@ Jelico includes local speech-to-text using OpenAI's Whisper models via transform
 
 Models are downloaded from Hugging Face on first use and cached in browser's IndexedDB.
 
+## Permission System
+
+Jelico protects users from destructive AI actions with an approval workflow.
+
+**Permission Hierarchy:**
+1. DENY rules (always win)
+2. Session-scoped allows (cleared on Jelico close)
+3. Workspace-scoped allows (persisted per project)
+4. Global defaults (configurable in Settings)
+5. Built-in classifications (safe vs destructive)
+
+**Default Classifications:**
+| Action | Default |
+|--------|---------|
+| Read files | Auto-allow |
+| Web search/fetch | Auto-allow |
+| Spawn sub-agents | Auto-allow |
+| Write/create files | Ask first |
+| Modify/delete files | Ask first |
+| Shell (safe: git status, ls, npm run) | Auto-allow |
+| Shell (destructive: rm, kill, reset --hard) | Ask first |
+
+**Destructive Command Detection:**
+- File deletion: `rm`, `rmdir`, `unlink`, `del`
+- Git destructive: `reset --hard`, `clean -f`, `push --force`
+- Process control: `kill -9`, `pkill`, `taskkill /F`
+- Database: `DROP TABLE`, `TRUNCATE`
+
+**Settings > Permissions Tab:**
+- "Allow All (This Session)" toggle with warning
+- View session permissions
+- View workspace permissions
+
+**Files:**
+- `electron/services/permissionChecker.ts` - Core permission checking
+- `src/stores/permissions.ts` - Session permission state
+- `src/components/Settings/PermissionsSettings.tsx` - Settings UI
+
 ## Tool calls and context management
 
 **Tool Call Persistence:**
@@ -423,11 +461,23 @@ Models are downloaded from Hugging Face on first use and cached in browser's Ind
 
 ## Greeting system
 
-Time-aware, soulful greetings in ChatArea:
+800+ unique greeting combinations in ChatArea, designed to never repeat:
+
+**Structure:**
+- **Question greetings** (50+): Stand alone, no follow-up needed
+- **Statement greetings** (33): Paired with tone-matched follow-ups (27)
+- **Distribution**: 60% questions, 40% statements with follow-ups
+
+**Time periods:**
 - **Morning** (5am-12pm): Fresh, productive greetings
 - **Afternoon** (12pm-5pm): Check-in style greetings
 - **Evening** (5pm-9pm): Winding down but helpful
-- **Night** (9pm-5am): Generic soulful greetings (non-judgmental about late hours)
+- **Night** (9pm-5am): Calm/warm tone greetings (non-judgmental about late hours)
+
+**Tones** (for statement+follow-up pairs):
+- **Warm**: Welcoming, supportive
+- **Energetic**: Action-oriented, ready to build
+- **Calm**: Patient, no pressure
 
 Greetings personalize with user name when available from soul preferences.
 

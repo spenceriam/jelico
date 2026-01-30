@@ -21,6 +21,98 @@ export interface ChangelogEntry {
 
 export const changelog: ChangelogEntry[] = [
   {
+    version: '0.5.5',
+    date: '2026-01-30',
+    changes: {
+      added: [
+        'Permission system - AI now asks before destructive actions (file writes, dangerous commands)',
+        'Permissions Settings tab - configure "Allow All" session mode, view saved permissions',
+        'Message queue UI - sliding panel shows queued messages when sending during AI response',
+        'Mode switching display - status text shows when AI switches modes in Auto mode',
+        '800+ unique greeting combinations - questions stand alone, statements get tone-matched follow-ups',
+      ],
+      changed: [
+        'Greeting system completely rewritten for more natural, non-repetitive interactions',
+        'ModeSelector animates with ring effect during mode transitions',
+      ],
+    },
+  },
+  {
+    version: '0.5.4',
+    date: '2026-01-30',
+    changes: {
+      added: [
+        'Resizable artifact panels - drag to resize canvas panel width',
+        'Artifact versioning - artifacts show revision numbers (r1, r2, etc.)',
+        'Contextual status text - shows what tool is executing (Reading file, Running command, etc.)',
+      ],
+      fixed: [
+        'Artifact streaming now properly creates artifacts during response',
+        'Canvas panel respects saved width preference',
+      ],
+    },
+  },
+  {
+    version: '0.5.3',
+    date: '2026-01-30',
+    changes: {
+      added: [
+        'Braille loader animation - new animated dots indicator replacing spinner',
+        'Left-justified status text with contextual tool information',
+      ],
+      changed: [
+        'AI persona strengthened - must acknowledge before calling tools',
+        'Tool call display collapsed by default, click to expand',
+        'Context bar hidden by default, click percentage to show',
+      ],
+      fixed: [
+        'Avatar display for user and assistant messages',
+        'Auto-scroll to bottom on new messages',
+      ],
+    },
+  },
+  {
+    version: '0.5.2',
+    date: '2026-01-30',
+    changes: {
+      changed: [
+        'Speech-to-text disabled due to WASM crashes on Windows ARM64',
+        'AI persona improved - acknowledges user before executing tools',
+        'Sub-agent plumbing hidden from conversation display',
+      ],
+    },
+  },
+  {
+    version: '0.5.1',
+    date: '2026-01-30',
+    changes: {
+      fixed: [
+        'Speech worker loading from CDN with lazy initialization',
+        'CSP policy for WASM and CDN resources',
+        'Renderer crash handling - silent reload instead of error dialog',
+      ],
+    },
+  },
+  {
+    version: '0.5.0',
+    date: '2026-01-30',
+    changes: {
+      added: [
+        'Local speech recognition via Whisper WASM (currently disabled)',
+        'Speech worker running in renderer process for cross-platform compatibility',
+        'Multiple Whisper model options (tiny, base, small, medium)',
+      ],
+      changed: [
+        'Sidebar dividers cleaned up with consistent styling',
+        'Font matching across UI components',
+      ],
+      fixed: [
+        'Speech recognition platform detection for Windows ARM64',
+        'ONNX runtime issues with microphone recording',
+      ],
+    },
+  },
+  {
     version: '0.4.0',
     date: '2026-01-30',
     changes: {

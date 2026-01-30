@@ -12,7 +12,7 @@ import { ModelSelector } from '../Model/ModelSelector'
 import { ShimmerText, BrailleLoader } from '../StatusIndicators'
 
 export function ChatArea() {
-  const { messages, isStreaming, streamingContent, streamingToolCalls, streamingToolResults, systemNotifications, activeConversationId, regenerateLastResponse } = useChatStore()
+  const { messages, isStreaming, streamingContent, streamingToolCalls, streamingToolResults, systemNotifications, activeConversationId, regenerateLastResponse, modeSwitchReason, modeTransitioning } = useChatStore()
   const { activeProviderId, activeModel } = useProviderStore()
   const { isProcessing, processingMessage } = useUIStore()
   const { getContextUsage, isCompacting } = useContextStore()
@@ -85,11 +85,12 @@ export function ChatArea() {
       <div className="border-t border-border bg-bg-surface">
         <div className="max-w-3xl mx-auto p-4">
           {/* Processing indicator - sticky status at bottom, left-justified */}
-          {(isStreaming || isCompacting || isProcessing) && (
+          {(isStreaming || isCompacting || isProcessing || modeTransitioning) && (
             <div className="flex items-center gap-2 mb-3">
               <BrailleLoader className="text-accent" />
               <ShimmerText className="text-sm">
-                {isCompacting ? 'Compacting conversation...' :
+                {modeTransitioning && modeSwitchReason ? modeSwitchReason :
+                 isCompacting ? 'Compacting conversation...' :
                  isStreaming ? (() => {
                    // Find actively executing tools (have call but no result yet)
                    const executingTools = streamingToolCalls.filter(
@@ -217,83 +218,203 @@ export function ChatArea() {
 }
 
 // ============================================
-// Soulful Greeting System
+// Soulful Greeting System (800+ unique combinations)
 // ============================================
 
-// Time-aware greetings (gentle, non-judgmental)
-const MORNING_GREETINGS = [
-  "Fresh start. What's the plan?",
-  "New day. What are we building?",
-  "Morning. What's on the agenda?",
-  "Good morning. What shall we tackle?",
-  "Morning. What's calling for attention?",
-  "A new day. What matters most?",
-  "Morning. Ready when you are.",
-  "Rise and create. What's first?",
-]
+// Tone type for matching greetings with follow-ups
+type GreetingTone = 'warm' | 'energetic' | 'calm'
 
-const AFTERNOON_GREETINGS = [
-  "How's it going so far?",
-  "Afternoon. How can I help?",
-  "How's the day shaping up?",
-  "Afternoon. What are we working through?",
-  "What's on your mind this afternoon?",
-  "Midday check-in. What's next?",
-  "Afternoon. What needs attention?",
-  "How can I help move things forward?",
-]
+// ===========================================
+// QUESTION GREETINGS (stand alone, no follow-up)
+// ===========================================
 
-const EVENING_GREETINGS = [
-  "Evening. What's on your mind?",
-  "Evening. What shall we work on?",
-  "How can I help this evening?",
-  "What's worth finishing today?",
-  "Evening. What are you thinking about?",
-  "Settling in. What can we tackle?",
-  "Evening. Ready to help.",
-  "What's calling for your attention?",
-]
-
-// Generic soulful greetings (used late night 9pm-5am, or mixed in anytime)
-const SOULFUL_GREETINGS = [
-  // Warm/Present
-  "Good to have you here.",
-  "Glad you're back.",
-  "Here whenever you're ready.",
-  "Ready to think alongside you.",
-  // Thoughtful/Reflective
-  "What's on your mind?",
-  "What's calling for your attention?",
+const MORNING_QUESTIONS = [
+  "What's the plan for today?",
+  "What are we building today?",
+  "What's on the agenda?",
+  "What shall we tackle this morning?",
+  "What's calling for attention?",
+  "What matters most today?",
+  "What's first on the list?",
   "What are you thinking about?",
-  "What's worth exploring?",
+  "What's worth focusing on?",
+  "What brings you here this morning?",
+  "What's on your mind?",
+  "Ready to create something?",
+  "What shall we work on?",
+  "Where should we start?",
+  "What's the priority today?",
+]
+
+const AFTERNOON_QUESTIONS = [
+  "How's it going so far?",
+  "How can I help this afternoon?",
+  "How's the day shaping up?",
+  "What are we working through?",
+  "What's on your mind?",
+  "What's next on the list?",
+  "What needs attention?",
+  "How can I help move things forward?",
+  "What shall we tackle?",
+  "What's worth finishing?",
+  "Where were we?",
+  "What's the focus now?",
+]
+
+const EVENING_QUESTIONS = [
+  "What's on your mind this evening?",
+  "What shall we work on?",
+  "How can I help tonight?",
+  "What's worth finishing today?",
+  "What are you thinking about?",
+  "What can we tackle?",
+  "What needs wrapping up?",
+  "What's calling for attention?",
+  "Where should we focus?",
+  "What's the plan for tonight?",
+  "What brings you here?",
+]
+
+const GENERIC_QUESTIONS = [
+  "What's on your mind?",
+  "What are you working on?",
+  "What's the challenge?",
   "What shall we create?",
-  // Curious/Engaged
-  "Curious what you're working on.",
-  "What's caught your interest?",
-  "What's the challenge today?",
+  "What's worth exploring?",
+  "What caught your interest?",
   "What problem are we solving?",
-  // Encouraging/Grounded
-  "Let's make something happen.",
-  "Let's see what we can build.",
   "What matters to you right now?",
-  "Alright, what are we working on?",
-  "Let's get into it.",
-  "Let's figure this out together.",
+  "What are we figuring out?",
+  "What's brewing?",
+  "What's the goal?",
+  "Where do we start?",
+  "What needs doing?",
+  "What's next?",
+  "What are you curious about?",
+  "What shall we build?",
+  "What's the task at hand?",
+  "What are we making happen?",
 ]
 
-// Follow-up prompts (subtitle text)
-const FOLLOW_UP_PROMPTS = [
-  "I'm here to help with whatever you need.",
-  "Let's tackle something together.",
-  "What would you like to explore?",
-  "Ready to dive in whenever you are.",
-  "Let's see what we can figure out.",
-  "Take your time. I'm not going anywhere.",
-  "What can we build together?",
-  "I'm listening.",
+// ===========================================
+// STATEMENT GREETINGS (paired with follow-ups)
+// ===========================================
+
+const STATEMENT_GREETINGS: Record<GreetingTone, string[]> = {
+  warm: [
+    "Good to have you here.",
+    "Glad you're back.",
+    "Nice to see you.",
+    "Welcome back.",
+    "Here for you.",
+    "Good to be working together.",
+    "Always happy to help.",
+    "Right here with you.",
+    "At your service.",
+    "Happy to see you.",
+    "Pleased you're here.",
+  ],
+  energetic: [
+    "Let's make something happen.",
+    "Let's build something great.",
+    "Ready to dive in.",
+    "Let's get to work.",
+    "Time to create.",
+    "Let's figure this out.",
+    "Ready to tackle anything.",
+    "Let's do this.",
+    "Fired up and ready.",
+    "Let's make progress.",
+    "Ready for action.",
+  ],
+  calm: [
+    "Here whenever you're ready.",
+    "Take your time.",
+    "No rush at all.",
+    "Ready when you are.",
+    "Standing by.",
+    "Here to help.",
+    "At your pace.",
+    "Whenever you're ready.",
+    "I'm here.",
+    "Present and ready.",
+    "Listening.",
+  ],
+}
+
+// ===========================================
+// FOLLOW-UPS (statements only, tone-matched)
+// ===========================================
+
+const FOLLOW_UPS: Record<GreetingTone, string[]> = {
+  warm: [
+    "I'm here to help with whatever you need.",
+    "Let me know how I can assist.",
+    "Happy to work through anything together.",
+    "I've got your back.",
+    "Whatever you need, I'm here.",
+    "Looking forward to helping out.",
+    "Count on me.",
+    "Here to support you.",
+    "Together we'll figure it out.",
+  ],
+  energetic: [
+    "Let's tackle something together.",
+    "Ready to dive in whenever you are.",
+    "Let's see what we can accomplish.",
+    "Time to make things happen.",
+    "Let's push forward.",
+    "Ready to build.",
+    "Let's get moving.",
+    "Onward and upward.",
+    "Let's crush it.",
+  ],
+  calm: [
+    "Take your time. I'm not going anywhere.",
+    "I'm listening.",
+    "No pressure at all.",
+    "Whenever you're ready to begin.",
+    "I'll be right here.",
+    "Just let me know.",
+    "At your own pace.",
+    "I'm patient.",
+    "Ready to listen.",
+  ],
+}
+
+// ===========================================
+// TIME-AWARE STATEMENT GREETINGS
+// ===========================================
+
+const MORNING_STATEMENTS: Array<{ text: string; tone: GreetingTone }> = [
+  { text: "Good morning.", tone: 'warm' },
+  { text: "Morning.", tone: 'calm' },
+  { text: "Fresh start today.", tone: 'energetic' },
+  { text: "New day ahead.", tone: 'energetic' },
+  { text: "Rise and create.", tone: 'energetic' },
+  { text: "A new beginning.", tone: 'calm' },
 ]
 
-// Get time period
+const AFTERNOON_STATEMENTS: Array<{ text: string; tone: GreetingTone }> = [
+  { text: "Good afternoon.", tone: 'warm' },
+  { text: "Afternoon.", tone: 'calm' },
+  { text: "Midday energy.", tone: 'energetic' },
+  { text: "Keeping momentum.", tone: 'energetic' },
+  { text: "Steady progress.", tone: 'calm' },
+]
+
+const EVENING_STATEMENTS: Array<{ text: string; tone: GreetingTone }> = [
+  { text: "Good evening.", tone: 'warm' },
+  { text: "Evening.", tone: 'calm' },
+  { text: "Winding down the day.", tone: 'calm' },
+  { text: "Evening hours.", tone: 'calm' },
+  { text: "Still time to create.", tone: 'energetic' },
+]
+
+// ===========================================
+// GREETING SELECTION LOGIC
+// ===========================================
+
 type TimePeriod = 'morning' | 'afternoon' | 'evening' | 'night'
 
 function getTimePeriod(): TimePeriod {
@@ -304,60 +425,120 @@ function getTimePeriod(): TimePeriod {
   return 'night' // 9pm - 5am
 }
 
-// Get greeting pool based on time
-function getGreetingPool(period: TimePeriod): string[] {
-  switch (period) {
-    case 'morning':
-      return [...MORNING_GREETINGS, ...SOULFUL_GREETINGS.slice(0, 5)]
-    case 'afternoon':
-      return [...AFTERNOON_GREETINGS, ...SOULFUL_GREETINGS.slice(0, 5)]
-    case 'evening':
-      return [...EVENING_GREETINGS, ...SOULFUL_GREETINGS.slice(0, 5)]
-    case 'night':
-      // Late night: only use generic soulful greetings, no time references
-      return SOULFUL_GREETINGS
-  }
-}
-
-// Random selection helper
 function randomFrom<T>(arr: T[]): T {
   return arr[Math.floor(Math.random() * arr.length)]
 }
 
-// Build the greeting with optional name
-function buildGreeting(baseGreeting: string, userName: string | null): string {
-  // If greeting already feels complete (ends with punctuation and isn't a question to personalize)
-  const endsWithPunctuation = /[.!?]$/.test(baseGreeting)
+interface GreetingResult {
+  greeting: string
+  followUp: string | null  // null for question greetings
+  tone: GreetingTone | null
+}
 
+function selectGreeting(period: TimePeriod): GreetingResult {
+  // 60% chance of question greeting (no follow-up), 40% statement (with follow-up)
+  const useQuestion = Math.random() < 0.6
+
+  if (useQuestion) {
+    // Select a question greeting based on time period
+    let questionPool: string[]
+    switch (period) {
+      case 'morning':
+        questionPool = [...MORNING_QUESTIONS, ...GENERIC_QUESTIONS.slice(0, 8)]
+        break
+      case 'afternoon':
+        questionPool = [...AFTERNOON_QUESTIONS, ...GENERIC_QUESTIONS.slice(0, 8)]
+        break
+      case 'evening':
+        questionPool = [...EVENING_QUESTIONS, ...GENERIC_QUESTIONS.slice(0, 8)]
+        break
+      case 'night':
+        questionPool = GENERIC_QUESTIONS
+        break
+    }
+    return {
+      greeting: randomFrom(questionPool),
+      followUp: null,
+      tone: null,
+    }
+  } else {
+    // Select a statement greeting with matching follow-up
+    // Mix time-specific and generic statements
+    let statementPool: Array<{ text: string; tone: GreetingTone }>
+    switch (period) {
+      case 'morning':
+        statementPool = [
+          ...MORNING_STATEMENTS,
+          ...Object.entries(STATEMENT_GREETINGS).flatMap(([t, texts]) =>
+            texts.slice(0, 3).map(text => ({ text, tone: t as GreetingTone }))
+          ),
+        ]
+        break
+      case 'afternoon':
+        statementPool = [
+          ...AFTERNOON_STATEMENTS,
+          ...Object.entries(STATEMENT_GREETINGS).flatMap(([t, texts]) =>
+            texts.slice(0, 3).map(text => ({ text, tone: t as GreetingTone }))
+          ),
+        ]
+        break
+      case 'evening':
+        statementPool = [
+          ...EVENING_STATEMENTS,
+          ...Object.entries(STATEMENT_GREETINGS).flatMap(([t, texts]) =>
+            texts.slice(0, 3).map(text => ({ text, tone: t as GreetingTone }))
+          ),
+        ]
+        break
+      case 'night':
+        // Late night: use calm and warm tones primarily
+        statementPool = [
+          ...STATEMENT_GREETINGS.calm.map(text => ({ text, tone: 'calm' as GreetingTone })),
+          ...STATEMENT_GREETINGS.warm.map(text => ({ text, tone: 'warm' as GreetingTone })),
+        ]
+        break
+    }
+
+    const selected = randomFrom(statementPool)
+    const matchingFollowUp = randomFrom(FOLLOW_UPS[selected.tone])
+
+    return {
+      greeting: selected.text,
+      followUp: matchingFollowUp,
+      tone: selected.tone,
+    }
+  }
+}
+
+// Build the greeting with optional name personalization
+function buildGreeting(baseGreeting: string, userName: string | null, isQuestion: boolean): string {
   if (userName) {
     // Personalize based on greeting structure
     if (baseGreeting.startsWith("Good morning") ||
         baseGreeting.startsWith("Morning") ||
+        baseGreeting.startsWith("Good afternoon") ||
         baseGreeting.startsWith("Afternoon") ||
+        baseGreeting.startsWith("Good evening") ||
         baseGreeting.startsWith("Evening")) {
-      // "Morning. What's on the agenda?" -> "Morning, Spencer. What's on the agenda?"
-      return baseGreeting.replace(/^(Good morning|Morning|Afternoon|Evening)(\.|\,)?/, `$1, ${userName}.`)
+      // "Morning." -> "Morning, Spencer."
+      return baseGreeting.replace(/^(Good morning|Morning|Good afternoon|Afternoon|Good evening|Evening)(\.)?/, `$1, ${userName}.`)
     }
     if (baseGreeting.startsWith("Good to have you") ||
-        baseGreeting.startsWith("Glad you're back")) {
+        baseGreeting.startsWith("Glad you're back") ||
+        baseGreeting.startsWith("Nice to see you") ||
+        baseGreeting.startsWith("Welcome back") ||
+        baseGreeting.startsWith("Happy to see you")) {
       // "Good to have you here." -> "Good to have you here, Spencer."
       return baseGreeting.replace(/\.$/, `, ${userName}.`)
     }
-    if (baseGreeting === "Here whenever you're ready." ||
-        baseGreeting === "Ready to think alongside you.") {
-      return `Hey ${userName}. ${baseGreeting}`
+    if (isQuestion) {
+      // "What's on your mind?" -> "Spencer, what's on your mind?"
+      return `${userName}, ${baseGreeting.charAt(0).toLowerCase()}${baseGreeting.slice(1)}`
     }
-    // For questions or action statements, prepend name
-    if (!endsWithPunctuation || baseGreeting.endsWith('?')) {
-      return `${userName}, ${baseGreeting.toLowerCase()}`
-    }
+    // Default: prepend "Hey [name]."
     return `Hey ${userName}. ${baseGreeting}`
   }
 
-  // No name - use greeting as-is, but ensure warmth
-  if (baseGreeting === "Curious what you're working on.") {
-    return "I'm curious what you're working on."
-  }
   return baseGreeting
 }
 
@@ -370,14 +551,10 @@ function NewChatView({ disabled, isStreaming }: NewChatViewProps) {
   const { openSettings } = useUIStore()
   const [userName, setUserName] = useState<string | null>(null)
 
-  // Get random greeting and prompt (stable per component mount)
-  const { greeting, followUp } = useMemo(() => {
+  // Get random greeting (stable per component mount)
+  const greetingData = useMemo(() => {
     const period = getTimePeriod()
-    const pool = getGreetingPool(period)
-    return {
-      greeting: randomFrom(pool),
-      followUp: randomFrom(FOLLOW_UP_PROMPTS),
-    }
+    return selectGreeting(period)
   }, [])
 
   // Load user name from soul preferences
@@ -391,7 +568,8 @@ function NewChatView({ disabled, isStreaming }: NewChatViewProps) {
     })
   }, [])
 
-  const displayGreeting = buildGreeting(greeting, userName)
+  const isQuestion = greetingData.followUp === null
+  const displayGreeting = buildGreeting(greetingData.greeting, userName, isQuestion)
 
   return (
     <div className="text-center animate-fade-in space-y-8">
@@ -403,9 +581,11 @@ function NewChatView({ disabled, isStreaming }: NewChatViewProps) {
         <h1 className="font-display text-[32px] font-normal text-text-primary mb-3 tracking-tight">
           {displayGreeting}
         </h1>
-        <p className="text-text-secondary text-lg">
-          {followUp}
-        </p>
+        {greetingData.followUp && (
+          <p className="text-text-secondary text-lg">
+            {greetingData.followUp}
+          </p>
+        )}
       </div>
 
       {/* Mode selector */}

@@ -1,5 +1,5 @@
 import { useState, useRef, useCallback, KeyboardEvent, useMemo, DragEvent } from 'react'
-import { Send, Square, Clock, Paperclip, X, FileText, Image, File } from 'lucide-react'
+import { Send, Square, Clock, Paperclip, X, FileText, Image, File, ChevronUp, ChevronDown } from 'lucide-react'
 import { useChatStore, type MessageAttachment } from '../../stores/chat'
 import { useProviderStore } from '../../stores/providers'
 // Speech-to-text disabled - WASM crashes on Windows ARM64
@@ -297,6 +297,7 @@ export function ChatInput({ disabled, isStreaming, centered }: ChatInputProps) {
   }
 
   const queuedCount = messageQueue.length
+  const [queueExpanded, setQueueExpanded] = useState(false)
 
   return (
     <div className="space-y-2">
@@ -310,11 +311,55 @@ export function ChatInput({ disabled, isStreaming, centered }: ChatInputProps) {
         className="hidden"
       />
 
-      {/* Queued messages indicator */}
+      {/* Queued messages panel - slides up from bottom */}
       {queuedCount > 0 && (
-        <div className="flex items-center gap-2 text-xs text-text-muted px-1">
-          <Clock className="w-3 h-3" />
-          <span>{queuedCount} message{queuedCount > 1 ? 's' : ''} queued</span>
+        <div
+          className={`overflow-hidden transition-all duration-300 ease-out ${
+            queueExpanded ? 'max-h-48' : 'max-h-10'
+          }`}
+        >
+          {/* Header - always visible */}
+          <button
+            onClick={() => setQueueExpanded(!queueExpanded)}
+            className="w-full flex items-center justify-between gap-2 px-3 py-2 bg-bg-surface border border-border rounded-lg hover:border-border-strong transition-colors"
+          >
+            <div className="flex items-center gap-2 text-sm text-text-secondary">
+              <Clock className="w-4 h-4 text-accent" />
+              <span className="font-medium">{queuedCount} message{queuedCount > 1 ? 's' : ''} queued</span>
+              <span className="text-text-muted">· will send when ready</span>
+            </div>
+            {queueExpanded ? (
+              <ChevronDown className="w-4 h-4 text-text-muted" />
+            ) : (
+              <ChevronUp className="w-4 h-4 text-text-muted" />
+            )}
+          </button>
+
+          {/* Expanded queue list */}
+          {queueExpanded && (
+            <div className="mt-2 space-y-1.5 px-1 max-h-32 overflow-y-auto">
+              {messageQueue.map((msg, idx) => (
+                <div
+                  key={idx}
+                  className="flex items-start gap-2 p-2 bg-bg-elevated border border-border-subtle rounded-lg text-sm"
+                >
+                  <span className="flex-shrink-0 w-5 h-5 flex items-center justify-center bg-accent/20 text-accent text-xs font-medium rounded">
+                    {idx + 1}
+                  </span>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-text-secondary truncate">
+                      {msg.content || (msg.attachments?.length ? `${msg.attachments.length} attachment(s)` : 'Empty message')}
+                    </p>
+                    {msg.attachments && msg.attachments.length > 0 && msg.content && (
+                      <p className="text-xs text-text-muted mt-0.5">
+                        + {msg.attachments.length} attachment{msg.attachments.length > 1 ? 's' : ''}
+                      </p>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       )}
 
