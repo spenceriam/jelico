@@ -20,6 +20,7 @@ export default defineConfig({
                 '@xenova/transformers',
                 'onnxruntime-node',
                 'onnxruntime-web',
+                'sharp',
               ],
             },
           },

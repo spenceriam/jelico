@@ -1,12 +1,24 @@
 import { app } from 'electron'
 import * as path from 'path'
 import * as fs from 'fs/promises'
+import * as os from 'os'
+
+// Check for known unsupported platforms
+const isUnsupportedPlatform = () => {
+  // Windows ARM64 has issues with sharp and onnxruntime native bindings
+  if (process.platform === 'win32' && os.arch() === 'arm64') {
+    return 'Windows ARM64 is not currently supported for local speech recognition due to native library limitations.'
+  }
+  return null
+}
+
+const platformError = isUnsupportedPlatform()
 
 // Dynamic import for Transformers.js (ESM module)
 let pipeline: any = null
 let transcriber: any = null
 let isLoading = false
-let loadError: string | null = null
+let loadError: string | null = platformError
 
 // Model cache directory
 const MODELS_DIR = path.join(app.getPath('userData'), 'models')
@@ -44,6 +56,11 @@ async function initializePipeline(
   modelId: WhisperModelId = currentModelId,
   onProgress?: (progress: TranscriptionProgress) => void
 ): Promise<void> {
+  // Check for unsupported platform first
+  if (platformError) {
+    throw new Error(platformError)
+  }
+
   if (transcriber && currentModelId === modelId) {
     return // Already loaded
   }
@@ -53,7 +70,7 @@ async function initializePipeline(
   }
 
   isLoading = true
-  loadError = null
+  loadError = platformError // Keep any platform error
 
   try {
     onProgress?.({ status: 'loading', message: 'Loading Whisper model...' })
@@ -96,8 +113,12 @@ async function initializePipeline(
     loadError = error.message
 
     // Provide helpful error messages for common issues
-    if (error.message.includes('onnxruntime')) {
-      loadError = 'Speech recognition requires ONNX runtime. This feature may not work in all environments. Error: ' + error.message
+    if (error.message.includes('sharp')) {
+      loadError = 'Speech recognition requires the "sharp" image library which is not available on this platform (Windows ARM64). ' +
+        'Local speech recognition is currently not supported on this system.'
+    } else if (error.message.includes('onnxruntime')) {
+      loadError = 'Speech recognition requires ONNX runtime which is not available on this platform. ' +
+        'Local speech recognition is currently not supported on this system.'
     }
 
     console.error('Failed to load Whisper model:', error)
