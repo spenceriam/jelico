@@ -1,4 +1,4 @@
-import { useState, useRef, useCallback, KeyboardEvent, useMemo, DragEvent } from 'react'
+import { useState, useRef, useCallback, KeyboardEvent, useMemo, DragEvent, useEffect } from 'react'
 import { Send, Square, Clock, Paperclip, X, FileText, Image, File, ChevronUp, ChevronDown } from 'lucide-react'
 import { useChatStore, type MessageAttachment } from '../../stores/chat'
 import { useProviderStore } from '../../stores/providers'
@@ -59,8 +59,17 @@ export function ChatInput({ disabled, isStreaming, centered }: ChatInputProps) {
   // const mediaRecorderRef = useRef<MediaRecorder | null>(null)
   // const audioChunksRef = useRef<Blob[]>([])
   // const recordingTimerRef = useRef<NodeJS.Timeout | null>(null)
-  const { sendMessage, stopStreaming, messageQueue } = useChatStore()
+  const { sendMessage, stopStreaming, messageQueue, activeConversationId } = useChatStore()
   const { activeProviderId, activeModel } = useProviderStore()
+
+  // Focus textarea when conversation changes (especially after deletion)
+  useEffect(() => {
+    // Small delay to ensure DOM is ready after state change
+    const timer = setTimeout(() => {
+      textareaRef.current?.focus()
+    }, 50)
+    return () => clearTimeout(timer)
+  }, [activeConversationId])
 
   // OS-aware modifier key
   const modKey = useMemo(() => isMac() ? '⌘' : 'Ctrl', [])

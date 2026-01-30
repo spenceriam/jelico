@@ -21,6 +21,16 @@ export interface ChangelogEntry {
 
 export const changelog: ChangelogEntry[] = [
   {
+    version: '0.6.4',
+    date: '2026-01-30',
+    changes: {
+      fixed: [
+        'Textarea cursor now appears after deleting a conversation',
+        'Auto-focus input when conversation changes',
+      ],
+    },
+  },
+  {
     version: '0.6.3',
     date: '2026-01-30',
     changes: {
