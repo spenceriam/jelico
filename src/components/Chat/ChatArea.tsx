@@ -92,59 +92,49 @@ export function ChatArea() {
             onRegenerate={handleRegenerate}
             userName={userName || undefined}
           />
-          <div ref={messagesEndRef} />
-        </div>
-      </div>
 
-      {/* Input area */}
-      <div className="border-t border-border bg-bg-surface">
-        <div className="max-w-3xl mx-auto p-4">
-          {/* Processing indicator - sticky status at bottom, left-justified */}
+          {/* Status indicator - final row in chat view with braille animation */}
           {(isStreaming || isCompacting || isProcessing || modeTransitioning) && (
-            <div className="flex items-center gap-2 mb-3">
-              <BrailleLoader className="text-accent" />
-              <ShimmerText className="text-sm">
+            <div className="flex items-center gap-3 mt-4 py-3">
+              <BrailleLoader className="text-accent text-lg" />
+              <ShimmerText className="text-sm text-text-secondary">
                 {modeTransitioning && modeSwitchReason ? modeSwitchReason :
                  isCompacting ? 'Compacting conversation...' :
                  isStreaming ? (() => {
                    const now = Date.now()
 
-                   // Helper to shorten file paths
                    const getShortPath = (p: string) => {
                      const parts = p.split('/')
                      return parts.length > 2 ? `.../${parts.slice(-2).join('/')}` : p
                    }
 
-                   // Helper to get status text for a tool
                    const getToolStatus = (name: string, args: Record<string, unknown>, isComplete: boolean) => {
                      if (isComplete) {
-                       // Completion messages
                        switch (name) {
                          case 'read_file':
-                           return args.path ? `✓ Read ${getShortPath(String(args.path))}` : '✓ File read'
+                           return args.path ? `Read ${getShortPath(String(args.path))}` : 'File read'
                          case 'write_file':
-                           return args.path ? `✓ Wrote ${getShortPath(String(args.path))}` : '✓ File written'
+                           return args.path ? `Wrote ${getShortPath(String(args.path))}` : 'File written'
                          case 'execute_command':
-                           return '✓ Command executed'
+                           return 'Command executed'
                          case 'create_artifact':
-                           return args.title ? `✓ Created "${String(args.title).slice(0, 20)}"` : '✓ Artifact created'
+                           return args.title ? `Created "${String(args.title).slice(0, 20)}"` : 'Artifact created'
                          case 'spawn_agent':
-                           return args.name ? `✓ Spawned ${args.name}` : '✓ Agent spawned'
+                           return args.name ? `Spawned ${args.name}` : 'Agent spawned'
                          case 'wait_for_agent':
-                           return '✓ Agent complete'
+                           return 'Agent complete'
                          case 'switch_mode':
-                           return `✓ Switched to ${args.mode}`
+                           return `Switched to ${args.mode}`
                          case 'todo_write':
-                           return '✓ Task list updated'
+                           return 'Task list updated'
                          case 'todo_read':
-                           return '✓ Tasks loaded'
+                           return 'Tasks loaded'
                          case 'todo_check':
-                           return args.taskId ? `✓ Started task ${args.taskId}` : '✓ Task checked'
+                           return args.taskId ? `Started task ${args.taskId}` : 'Task checked'
                          default:
-                           return `✓ ${name} done`
+                           return `${name} done`
                        }
                      } else {
-                       // In-progress messages
                        switch (name) {
                          case 'read_file':
                            return args.path ? `Reading ${getShortPath(String(args.path))}` : 'Reading file...'
@@ -196,20 +186,17 @@ export function ChatArea() {
                      }
                    }
 
-                   // Find items still being displayed (not completed OR completed within MIN_STATUS_DISPLAY_MS)
                    const activeItems = statusDisplayQueue.filter(item => {
-                     if (!item.completedAt) return true // Still running
-                     return (now - item.completedAt) < MIN_STATUS_DISPLAY_MS // Recently completed
+                     if (!item.completedAt) return true
+                     return (now - item.completedAt) < MIN_STATUS_DISPLAY_MS
                    })
 
-                   // Show the most recent active item
                    if (activeItems.length > 0) {
                      const item = activeItems[activeItems.length - 1]
                      const isComplete = !!item.completedAt
                      return getToolStatus(item.toolName, item.args, isComplete)
                    }
 
-                   // Fallback: check lastCompletedTool for recent completion feedback
                    if (lastCompletedTool) {
                      const timeSinceCompletion = now - lastCompletedTool.completedAt
                      if (timeSinceCompletion < 1500) {
@@ -217,7 +204,6 @@ export function ChatArea() {
                      }
                    }
 
-                   // Default status based on streaming state
                    if (streamingToolCalls.length > 0) {
                      return 'Finishing up...'
                    }
@@ -228,6 +214,13 @@ export function ChatArea() {
             </div>
           )}
 
+          <div ref={messagesEndRef} />
+        </div>
+      </div>
+
+      {/* Input area */}
+      <div className="border-t border-border bg-bg-surface">
+        <div className="max-w-3xl mx-auto p-4">
           {/* Context usage indicator - hidden by default, click percentage to toggle bar */}
           {/* Show after first message (tokenCount > 0) or during active streaming */}
           {contextUsage && (contextUsage.tokenCount > 0 || isStreaming || messages.length > 0) && (

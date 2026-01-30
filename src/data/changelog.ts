@@ -21,6 +21,16 @@ export interface ChangelogEntry {
 
 export const changelog: ChangelogEntry[] = [
   {
+    version: '0.6.2',
+    date: '2026-01-30',
+    changes: {
+      fixed: [
+        'Status line now appears in chat view as final row (not in input area)',
+        'Braille animation displays inline with status text in message flow',
+      ],
+    },
+  },
+  {
     version: '0.6.1',
     date: '2026-01-30',
     changes: {
