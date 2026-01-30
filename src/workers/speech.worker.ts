@@ -25,9 +25,18 @@ async function loadTransformers() {
     pipeline = transformers.pipeline
     env = transformers.env
 
-    // Configure for browser environment
+    // Configure for browser environment with caching
     env.allowLocalModels = false
     env.allowRemoteModels = true
+    env.useBrowserCache = true  // Explicitly enable browser cache (Cache API)
+
+    // Log cache info
+    console.log('[SpeechWorker] Transformers.js config:', {
+      allowLocalModels: env.allowLocalModels,
+      allowRemoteModels: env.allowRemoteModels,
+      useBrowserCache: env.useBrowserCache,
+      cacheDir: env.cacheDir,
+    })
 
     transformersLoaded = true
     console.log('[SpeechWorker] Transformers.js loaded successfully')
@@ -101,6 +110,9 @@ async function initializePipeline(modelId: string, messageId: string): Promise<v
     transcriber = await pipeline('automatic-speech-recognition', modelId, {
       quantized: true,
       progress_callback: (progress: any) => {
+        // Log all progress events for debugging
+        console.log('[SpeechWorker] Progress:', progress.status, progress.name, progress.file, progress.progress)
+
         if (progress.status === 'progress') {
           const percent = Math.round(progress.progress || 0)
           postProgress(messageId, {
@@ -120,6 +132,13 @@ async function initializePipeline(modelId: string, messageId: string): Promise<v
           })
         } else if (progress.status === 'done') {
           console.log('[SpeechWorker] Model component loaded:', progress.name)
+        } else if (progress.status === 'cached') {
+          // Model loaded from cache
+          console.log('[SpeechWorker] Loaded from cache:', progress.name)
+          postProgress(messageId, {
+            status: 'loading',
+            message: `Loading from cache: ${progress.name || 'model'}...`,
+          })
         }
       },
     })
