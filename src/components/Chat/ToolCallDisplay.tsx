@@ -186,7 +186,7 @@ function SingleToolCall({
   const { selectArtifact, openCanvas, artifacts } = useArtifactStore()
 
   // Custom label for spawn_agent to show task inline
-  const label = toolCall.name === 'spawn_agent' && toolCall.args?.task
+  const label: string = (toolCall.name === 'spawn_agent' && !!toolCall.args?.task)
     ? `Sub-agent: ${String(toolCall.args.task).slice(0, 60)}${String(toolCall.args.task).length > 60 ? '...' : ''}`
     : (TOOL_LABELS[toolCall.name] || toolCall.name)
   const argDisplay = toolCall.name === 'spawn_agent' ? '' : formatToolArgs(toolCall.args)
@@ -256,7 +256,7 @@ function SingleToolCall({
       </button>
 
       {/* Artifact content streaming - show raw content while creating */}
-      {toolCall.name === 'create_artifact' && !hasResult && toolCall.args?.content && (
+      {toolCall.name === 'create_artifact' && !hasResult && !!toolCall.args?.content && (
         <div className="border-t border-border bg-bg-surface">
           {/* Title and type header */}
           <div className="px-3 py-2 flex items-center gap-2 border-b border-border/50">
@@ -264,7 +264,7 @@ function SingleToolCall({
             <span className="text-xs font-medium text-text-primary">
               {String(toolCall.args.title || 'Creating artifact...')}
             </span>
-            {toolCall.args.language && (
+            {!!toolCall.args.language && (
               <span className="text-xs text-text-muted">
                 {String(toolCall.args.language)}
               </span>
@@ -351,7 +351,7 @@ function SingleToolCall({
                             <CheckCircle className="w-3 h-3 text-green-500 flex-shrink-0" />
                             <span className="text-accent font-medium">{TOOL_LABELS[tc.name] || tc.name}</span>
                           </div>
-                          {(tc.args?.path || tc.args?.command || tc.args?.query) && (
+                          {!!(tc.args?.path || tc.args?.command || tc.args?.query) && (
                             <div className="text-xs text-text-muted mt-0.5 ml-5 truncate font-mono">
                               {String(tc.args?.path || tc.args?.command || tc.args?.query || '')}
                             </div>

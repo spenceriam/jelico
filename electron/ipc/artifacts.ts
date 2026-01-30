@@ -12,9 +12,19 @@ export function registerArtifactHandlers() {
     return artifactDb.get(id)
   })
 
-  // Get artifacts for a conversation
+  // Get artifacts for a conversation (returns latest revisions only)
   ipcMain.handle('artifacts:getByConversation', async (_, conversationId: string) => {
     return artifactDb.getByConversation(conversationId)
+  })
+
+  // Get all revisions of an artifact
+  ipcMain.handle('artifacts:getRevisions', async (_, baseArtifactId: string) => {
+    return artifactDb.getRevisions(baseArtifactId)
+  })
+
+  // Get the latest revision of an artifact
+  ipcMain.handle('artifacts:getLatestRevision', async (_, baseArtifactId: string) => {
+    return artifactDb.getLatestRevision(baseArtifactId)
   })
 
   // Create an artifact
@@ -25,11 +35,12 @@ export function registerArtifactHandlers() {
     content: string
     language?: string
     filePath?: string
+    baseArtifactId?: string
   }) => {
     return artifactDb.create(artifact)
   })
 
-  // Update an artifact
+  // Update an artifact (creates revision if content changes)
   ipcMain.handle('artifacts:update', async (_, id: string, updates: {
     conversationId?: string
     type?: string
@@ -41,7 +52,7 @@ export function registerArtifactHandlers() {
     return artifactDb.update(id, updates)
   })
 
-  // Delete an artifact
+  // Delete an artifact (and all its revisions)
   ipcMain.handle('artifacts:delete', async (_, id: string) => {
     artifactDb.delete(id)
     return { success: true }

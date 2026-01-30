@@ -1,4 +1,4 @@
-import { useEffect, useCallback } from 'react'
+import { useEffect, useCallback, useState, useRef } from 'react'
 import { PanelLeftClose, PanelLeftOpen } from 'lucide-react'
 import { useProviderStore } from './stores/providers'
 import { useChatStore } from './stores/chat'
@@ -18,6 +18,11 @@ import { Settings } from './components/Settings/Settings'
 import { PermissionDialog } from './components/Permissions/PermissionDialog'
 import { WelcomeScreen, type OnboardingProfile } from './components/Onboarding/WelcomeScreen'
 
+// Default and constraints for canvas panel width
+const DEFAULT_CANVAS_WIDTH = 500
+const MIN_CANVAS_WIDTH = 300
+const MAX_CANVAS_WIDTH = 800
+
 export default function App() {
   const { providers, loadProviders, isLoading } = useProviderStore()
   const { loadConversations, activeConversationId, messages, isStreaming } = useChatStore()
@@ -27,6 +32,11 @@ export default function App() {
   const { clearOncePermissions, loadPermissions } = usePermissionStore()
   const { loadFromStorage: loadTheme } = useThemeStore()
   const commandPalette = useCommandPalette()
+
+  // Resizable canvas panel state
+  const [canvasWidth, setCanvasWidth] = useState(DEFAULT_CANVAS_WIDTH)
+  const [isResizing, setIsResizing] = useState(false)
+  const resizeRef = useRef<{ startX: number; startWidth: number } | null>(null)
 
   useEffect(() => {
     loadProviders()
@@ -40,7 +50,50 @@ export default function App() {
 
     // Load and apply saved theme
     loadTheme()
+
+    // Load saved canvas width from localStorage
+    const savedWidth = localStorage.getItem('jelico-canvas-width')
+    if (savedWidth) {
+      const width = parseInt(savedWidth, 10)
+      if (width >= MIN_CANVAS_WIDTH && width <= MAX_CANVAS_WIDTH) {
+        setCanvasWidth(width)
+      }
+    }
   }, [])
+
+  // Handle resize drag
+  const handleResizeStart = useCallback((e: React.MouseEvent) => {
+    e.preventDefault()
+    setIsResizing(true)
+    resizeRef.current = { startX: e.clientX, startWidth: canvasWidth }
+  }, [canvasWidth])
+
+  useEffect(() => {
+    if (!isResizing) return
+
+    const handleMouseMove = (e: MouseEvent) => {
+      if (!resizeRef.current) return
+
+      // Moving left increases width, moving right decreases
+      const delta = resizeRef.current.startX - e.clientX
+      const newWidth = Math.min(MAX_CANVAS_WIDTH, Math.max(MIN_CANVAS_WIDTH, resizeRef.current.startWidth + delta))
+      setCanvasWidth(newWidth)
+    }
+
+    const handleMouseUp = () => {
+      setIsResizing(false)
+      // Save to localStorage
+      localStorage.setItem('jelico-canvas-width', String(canvasWidth))
+    }
+
+    document.addEventListener('mousemove', handleMouseMove)
+    document.addEventListener('mouseup', handleMouseUp)
+
+    return () => {
+      document.removeEventListener('mousemove', handleMouseMove)
+      document.removeEventListener('mouseup', handleMouseUp)
+    }
+  }, [isResizing, canvasWidth])
 
   // Handle onboarding completion - save profile to soul system
   const handleOnboardingComplete = useCallback(async (profile: OnboardingProfile) => {
@@ -111,7 +164,22 @@ export default function App() {
           <div className="flex-1 flex flex-col min-w-0">
             <ChatArea />
           </div>
-          {canvasOpen && <CanvasPanel />}
+          {canvasOpen && (
+            <>
+              {/* Resize handle */}
+              <div
+                className={`w-1 cursor-col-resize hover:bg-accent/50 transition-colors flex-shrink-0 ${
+                  isResizing ? 'bg-accent' : 'bg-transparent hover:bg-border'
+                }`}
+                onMouseDown={handleResizeStart}
+                title="Drag to resize"
+              />
+              {/* Canvas panel with dynamic width */}
+              <div style={{ width: canvasWidth }} className="flex-shrink-0">
+                <CanvasPanel />
+              </div>
+            </>
+          )}
         </div>
       </main>
 

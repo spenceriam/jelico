@@ -75,6 +75,8 @@ interface Window {
       update: (id: string, updates: Partial<ArtifactInput>) => Promise<ArtifactRow | null>
       delete: (id: string) => Promise<{ success: boolean }>
       deleteByConversation: (conversationId: string) => Promise<{ success: boolean }>
+      getRevisions: (baseArtifactId: string) => Promise<ArtifactRow[]>
+      getLatestRevision: (baseArtifactId: string) => Promise<ArtifactRow | null>
     }
     sandbox: {
       getPath: () => Promise<string>
@@ -383,6 +385,9 @@ interface ArtifactRow {
   file_path: string | null
   created_at: number
   updated_at: number
+  // Versioning fields (may be undefined in older records)
+  base_artifact_id?: string | null
+  revision?: number
 }
 
 interface ArtifactInput {
@@ -573,7 +578,7 @@ interface SpeechModelStatus {
 }
 
 interface TranscriptionProgress {
-  status: 'loading' | 'transcribing' | 'done'
+  status: 'loading' | 'transcribing' | 'done' | 'error'
   progress?: number
   message?: string
 }

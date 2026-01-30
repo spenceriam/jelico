@@ -50,6 +50,8 @@ contextBridge.exposeInMainWorld('jelico', {
     list: () => ipcRenderer.invoke('artifacts:list'),
     get: (id: string) => ipcRenderer.invoke('artifacts:get', id),
     getByConversation: (conversationId: string) => ipcRenderer.invoke('artifacts:getByConversation', conversationId),
+    getRevisions: (baseArtifactId: string) => ipcRenderer.invoke('artifacts:getRevisions', baseArtifactId),
+    getLatestRevision: (baseArtifactId: string) => ipcRenderer.invoke('artifacts:getLatestRevision', baseArtifactId),
     create: (artifact: any) => ipcRenderer.invoke('artifacts:create', artifact),
     update: (id: string, updates: any) => ipcRenderer.invoke('artifacts:update', id, updates),
     delete: (id: string) => ipcRenderer.invoke('artifacts:delete', id),

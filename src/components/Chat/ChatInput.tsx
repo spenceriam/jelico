@@ -1,5 +1,5 @@
-import { useState, useRef, useCallback, KeyboardEvent, useMemo, DragEvent, useEffect } from 'react'
-import { Send, Square, Clock, Paperclip, X, FileText, Image, File, Loader2 } from 'lucide-react'
+import { useState, useRef, useCallback, KeyboardEvent, useMemo, DragEvent } from 'react'
+import { Send, Square, Clock, Paperclip, X, FileText, Image, File } from 'lucide-react'
 import { useChatStore, type MessageAttachment } from '../../stores/chat'
 import { useProviderStore } from '../../stores/providers'
 // Speech-to-text disabled - WASM crashes on Windows ARM64

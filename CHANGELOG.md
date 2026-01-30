@@ -2,6 +2,20 @@
 
 All notable changes to Jelico will be documented in this file.
 
+## [0.5.4] - 2026-01-30
+
+### Added
+- **Resizable panels**: Chat and artifact pane boundary is now draggable to resize either panel (300-800px range, persisted to localStorage)
+- **Artifact versioning**: Revision tracking system (r1, r2, etc.) with dropdown selector in canvas header - only shows when multiple revisions exist
+- **Vertical scroll for artifacts**: Content uses scrollbar instead of scaling to fit
+
+### Changed
+- **Canvas panel**: Dynamic width instead of fixed, with resize handle between chat and canvas areas
+- **Artifact database schema**: Added `base_artifact_id` and `revision` fields for version tracking
+
+### Fixed
+- **TypeScript build errors**: Fixed unknown type issues in JSX conditional expressions
+
 ## [0.5.3] - 2026-01-30
 
 ### Added

@@ -12,9 +12,12 @@ export interface Artifact {
   filePath?: string
   createdAt: number
   updatedAt: number
+  // Versioning
+  baseArtifactId?: string  // null/undefined = this is the base version
+  revision: number          // 1 for base, 2+ for revisions
 }
 
-// Database row format
+// Database row format - must match electron/services/database.ts
 interface ArtifactRow {
   id: string
   conversation_id: string | null
@@ -25,6 +28,9 @@ interface ArtifactRow {
   file_path: string | null
   created_at: number
   updated_at: number
+  // Versioning fields (may be undefined in older records)
+  base_artifact_id?: string | null
+  revision?: number
 }
 
 // Convert database row to store format
@@ -39,32 +45,39 @@ function rowToArtifact(row: ArtifactRow): Artifact {
     filePath: row.file_path || undefined,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
+    baseArtifactId: row.base_artifact_id ?? undefined,
+    revision: row.revision ?? 1,
   }
 }
 
 interface ArtifactStore {
   artifacts: Artifact[]
   selectedArtifactId: string | null
+  selectedRevisionId: string | null  // Which revision to view (null = latest)
   canvasOpen: boolean
   isLoading: boolean
 
   // Actions
   loadArtifacts: () => Promise<void>
   loadArtifactsForConversation: (conversationId: string) => Promise<void>
-  addArtifact: (artifact: Omit<Artifact, 'id' | 'createdAt' | 'updatedAt'>) => Promise<Artifact>
+  addArtifact: (artifact: Omit<Artifact, 'id' | 'createdAt' | 'updatedAt' | 'revision'>) => Promise<Artifact>
   updateArtifact: (id: string, updates: Partial<Omit<Artifact, 'id' | 'createdAt'>>) => Promise<void>
   removeArtifact: (id: string) => Promise<void>
   selectArtifact: (id: string | null) => void
+  selectRevision: (revisionId: string | null) => void
+  getRevisions: (baseArtifactId: string) => Promise<Artifact[]>
   openCanvas: () => void
   closeCanvas: () => void
   toggleCanvas: () => void
   getArtifactsByConversation: (conversationId: string) => Artifact[]
+  getBaseArtifactId: (artifact: Artifact) => string
   clearConversationArtifacts: (conversationId: string) => Promise<void>
 }
 
 export const useArtifactStore = create<ArtifactStore>((set, get) => ({
   artifacts: [],
   selectedArtifactId: null,
+  selectedRevisionId: null,
   canvasOpen: false,
   isLoading: false,
 
@@ -169,8 +182,23 @@ export const useArtifactStore = create<ArtifactStore>((set, get) => ({
   selectArtifact: (id) => {
     set({
       selectedArtifactId: id,
+      selectedRevisionId: null,  // Reset to latest when selecting new artifact
       canvasOpen: id !== null,
     })
+  },
+
+  selectRevision: (revisionId) => {
+    set({ selectedRevisionId: revisionId })
+  },
+
+  getRevisions: async (baseArtifactId) => {
+    try {
+      const rows: ArtifactRow[] = await window.jelico.artifacts.getRevisions(baseArtifactId)
+      return rows.map(rowToArtifact)
+    } catch (error) {
+      console.error('Failed to get revisions:', error)
+      return []
+    }
   },
 
   openCanvas: () => set({ canvasOpen: true }),
@@ -179,6 +207,10 @@ export const useArtifactStore = create<ArtifactStore>((set, get) => ({
 
   getArtifactsByConversation: (conversationId) => {
     return get().artifacts.filter((a) => a.conversationId === conversationId)
+  },
+
+  getBaseArtifactId: (artifact) => {
+    return artifact.baseArtifactId || artifact.id
   },
 
   clearConversationArtifacts: async (conversationId) => {

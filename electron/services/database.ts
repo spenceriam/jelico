@@ -455,6 +455,9 @@ interface ArtifactRow {
   file_path: string | null
   created_at: number
   updated_at: number
+  // Versioning fields
+  base_artifact_id: string | null  // null = this is the base version
+  revision: number                  // 1 for base, 2+ for revisions
 }
 
 interface ArtifactInput {
@@ -464,6 +467,7 @@ interface ArtifactInput {
   content: string
   language?: string
   filePath?: string
+  baseArtifactId?: string  // For creating revisions
 }
 
 // Artifact operations
@@ -477,14 +481,51 @@ export const artifactDb = {
   },
 
   getByConversation(conversationId: string): ArtifactRow[] {
+    // Return only the latest revision of each base artifact
+    const artifacts = db.artifacts.filter(a => a.conversation_id === conversationId)
+
+    // Group by base_artifact_id (or own id if base)
+    const latestByBase = new Map<string, ArtifactRow>()
+    for (const a of artifacts) {
+      const baseId = a.base_artifact_id || a.id
+      const existing = latestByBase.get(baseId)
+      if (!existing || a.revision > existing.revision) {
+        latestByBase.set(baseId, a)
+      }
+    }
+
+    return [...latestByBase.values()].sort((a, b) => b.updated_at - a.updated_at)
+  },
+
+  // Get all revisions of an artifact (by base id)
+  getRevisions(baseArtifactId: string): ArtifactRow[] {
+    // Get the base artifact
+    const base = db.artifacts.find(a => a.id === baseArtifactId)
+    if (!base) return []
+
+    // Get all artifacts with this base_artifact_id OR the base itself
     return db.artifacts
-      .filter(a => a.conversation_id === conversationId)
-      .sort((a, b) => b.updated_at - a.updated_at)
+      .filter(a => a.id === baseArtifactId || a.base_artifact_id === baseArtifactId)
+      .sort((a, b) => a.revision - b.revision)  // Sort by revision ascending
+  },
+
+  // Get the latest revision of an artifact
+  getLatestRevision(baseArtifactId: string): ArtifactRow | null {
+    const revisions = this.getRevisions(baseArtifactId)
+    return revisions.length > 0 ? revisions[revisions.length - 1] : null
   },
 
   create(artifact: ArtifactInput): ArtifactRow {
     const now = Date.now()
     const id = uuid()
+
+    // Migrate existing artifacts without revision field
+    db.artifacts.forEach(a => {
+      if (a.revision === undefined) {
+        a.revision = 1
+        a.base_artifact_id = null
+      }
+    })
 
     const record: ArtifactRow = {
       id,
@@ -496,6 +537,8 @@ export const artifactDb = {
       file_path: artifact.filePath || null,
       created_at: now,
       updated_at: now,
+      base_artifact_id: artifact.baseArtifactId || null,
+      revision: artifact.baseArtifactId ? this.getNextRevision(artifact.baseArtifactId) : 1,
     }
 
     db.artifacts.push(record)
@@ -503,15 +546,52 @@ export const artifactDb = {
     return record
   },
 
+  // Get the next revision number for a base artifact
+  getNextRevision(baseArtifactId: string): number {
+    const revisions = this.getRevisions(baseArtifactId)
+    return revisions.length > 0 ? revisions[revisions.length - 1].revision + 1 : 2
+  },
+
+  // Create a new revision instead of updating in place
+  createRevision(baseArtifactId: string, updates: Partial<ArtifactInput>): ArtifactRow | null {
+    // Find the base artifact (could be original or need to find the true base)
+    let base = db.artifacts.find(a => a.id === baseArtifactId)
+    if (!base) return null
+
+    // If this artifact has a base, use that instead
+    const trueBaseId = base.base_artifact_id || base.id
+
+    // Get the latest revision to copy properties from
+    const latest = this.getLatestRevision(trueBaseId)
+    if (!latest) return null
+
+    return this.create({
+      conversationId: latest.conversation_id || undefined,
+      type: updates.type || latest.type,
+      title: updates.title || latest.title,
+      content: updates.content || latest.content,
+      language: updates.language || latest.language || undefined,
+      filePath: updates.filePath || latest.file_path || undefined,
+      baseArtifactId: trueBaseId,
+    })
+  },
+
+  // Update in place (for metadata changes only, not content)
   update(id: string, updates: Partial<ArtifactInput>): ArtifactRow | null {
     const index = db.artifacts.findIndex(a => a.id === id)
     if (index === -1) return null
 
     const artifact = db.artifacts[index]
+
+    // If content is changing, create a revision instead
+    if (updates.content !== undefined && updates.content !== artifact.content) {
+      return this.createRevision(id, updates)
+    }
+
+    // Otherwise update in place (title, metadata changes)
     if (updates.conversationId !== undefined) artifact.conversation_id = updates.conversationId || null
     if (updates.type !== undefined) artifact.type = updates.type
     if (updates.title !== undefined) artifact.title = updates.title
-    if (updates.content !== undefined) artifact.content = updates.content
     if (updates.language !== undefined) artifact.language = updates.language || null
     if (updates.filePath !== undefined) artifact.file_path = updates.filePath || null
     artifact.updated_at = Date.now()
@@ -521,7 +601,12 @@ export const artifactDb = {
   },
 
   delete(id: string): void {
-    db.artifacts = db.artifacts.filter(a => a.id !== id)
+    // Delete the artifact and all its revisions
+    const artifact = db.artifacts.find(a => a.id === id)
+    if (!artifact) return
+
+    const baseId = artifact.base_artifact_id || artifact.id
+    db.artifacts = db.artifacts.filter(a => a.id !== baseId && a.base_artifact_id !== baseId)
     saveDb()
   },
 

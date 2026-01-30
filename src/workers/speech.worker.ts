@@ -4,6 +4,21 @@
  * This enables cross-platform speech recognition including Windows ARM64
  */
 
+// Type declaration for CDN import
+declare module 'https://cdn.jsdelivr.net/npm/@xenova/transformers@2.17.2' {
+  export function pipeline(task: string, model: string, options?: unknown): Promise<unknown>
+  export const env: {
+    allowLocalModels: boolean
+    allowRemoteModels: boolean
+    useBrowserCache: boolean
+    backends?: {
+      onnx?: {
+        executionProviders?: string[]
+      }
+    }
+  }
+}
+
 // Dynamic import of transformers.js to avoid bundling issues
 // The library will be loaded from CDN at runtime
 let pipeline: any = null
@@ -55,13 +70,7 @@ async function loadTransformers() {
   }
 }
 
-// Types
-interface TranscriptionProgress {
-  status: 'loading' | 'transcribing' | 'done' | 'error'
-  progress?: number
-  message?: string
-}
-
+// Types (TranscriptionProgress is defined globally in vite-env.d.ts)
 interface WorkerMessage {
   type: 'init' | 'transcribe' | 'setModel' | 'getStatus'
   id: string

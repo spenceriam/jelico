@@ -1,4 +1,4 @@
-import { X, FileCode, FileText, Image, Presentation, ChevronLeft, ChevronRight, ChevronDown, File } from 'lucide-react'
+import { X, FileCode, FileText, Image, Presentation, ChevronLeft, ChevronRight, ChevronDown, File, History } from 'lucide-react'
 import { useState, useRef, useEffect } from 'react'
 import { useArtifactStore, type Artifact, type ArtifactType } from '../../stores/artifacts'
 import { useChatStore } from '../../stores/chat'
@@ -33,14 +33,21 @@ export function CanvasPanel() {
   const {
     artifacts,
     selectedArtifactId,
+    selectedRevisionId,
     canvasOpen,
     selectArtifact,
+    selectRevision,
+    getRevisions,
+    getBaseArtifactId,
     closeCanvas,
     removeArtifact,
   } = useArtifactStore()
   const { activeConversationId } = useChatStore()
   const [dropdownOpen, setDropdownOpen] = useState(false)
+  const [revisionDropdownOpen, setRevisionDropdownOpen] = useState(false)
+  const [revisions, setRevisions] = useState<Artifact[]>([])
   const dropdownRef = useRef<HTMLDivElement>(null)
+  const revisionDropdownRef = useRef<HTMLDivElement>(null)
 
   // Filter artifacts to current conversation
   const conversationArtifacts = activeConversationId
@@ -50,11 +57,29 @@ export function CanvasPanel() {
   const selectedArtifact = artifacts.find((a) => a.id === selectedArtifactId)
   const currentIndex = conversationArtifacts.findIndex((a) => a.id === selectedArtifactId)
 
-  // Close dropdown when clicking outside
+  // Load revisions when artifact changes
+  useEffect(() => {
+    if (selectedArtifact) {
+      const baseId = getBaseArtifactId(selectedArtifact)
+      getRevisions(baseId).then(setRevisions)
+    } else {
+      setRevisions([])
+    }
+  }, [selectedArtifact, getBaseArtifactId, getRevisions])
+
+  // Get the artifact to display (selected revision or latest)
+  const displayArtifact = selectedRevisionId
+    ? revisions.find(r => r.id === selectedRevisionId) || selectedArtifact
+    : selectedArtifact
+
+  // Close dropdowns when clicking outside
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
       if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
         setDropdownOpen(false)
+      }
+      if (revisionDropdownRef.current && !revisionDropdownRef.current.contains(event.target as Node)) {
+        setRevisionDropdownOpen(false)
       }
     }
     document.addEventListener('mousedown', handleClickOutside)
@@ -75,64 +100,117 @@ export function CanvasPanel() {
     }
   }
 
+  // Determine current viewing revision
+  const currentRevision = selectedRevisionId
+    ? revisions.find(r => r.id === selectedRevisionId)
+    : revisions[revisions.length - 1]  // Latest
+
+  const hasMultipleRevisions = revisions.length > 1
+
   return (
-    <div className="w-[500px] flex-shrink-0 border-l border-border bg-bg-surface flex flex-col">
+    <div className="w-full h-full bg-bg-surface flex flex-col overflow-hidden">
       {/* Header */}
-      <div className="h-14 flex items-center justify-between px-4 border-b border-border">
-        <div className="flex items-center gap-3 relative" ref={dropdownRef}>
-          {selectedArtifact && (
-            <>
-              {(() => {
-                const Icon = TYPE_ICONS[selectedArtifact.type] || DEFAULT_TYPE_ICON
-                return <Icon className="w-5 h-5 text-accent" />
-              })()}
-              <button
-                onClick={() => setDropdownOpen(!dropdownOpen)}
-                className="flex items-center gap-2 hover:bg-bg-hover rounded px-2 py-1 transition-colors"
-              >
-                <div className="text-left">
-                  <h3 className="text-sm font-medium text-text-primary">
-                    {selectedArtifact.title}
-                  </h3>
-                  <span className="text-xs text-text-muted">
-                    {TYPE_LABELS[selectedArtifact.type] || DEFAULT_TYPE_LABEL}
-                  </span>
-                </div>
-                {conversationArtifacts.length > 1 && (
-                  <ChevronDown className={`w-4 h-4 text-text-muted transition-transform ${dropdownOpen ? 'rotate-180' : ''}`} />
+      <div className="h-14 flex items-center justify-between px-4 border-b border-border flex-shrink-0">
+        <div className="flex items-center gap-2 min-w-0 flex-1">
+          {/* Artifact selector */}
+          <div className="flex items-center gap-2 relative min-w-0" ref={dropdownRef}>
+            {displayArtifact && (
+              <>
+                {(() => {
+                  const Icon = TYPE_ICONS[displayArtifact.type] || DEFAULT_TYPE_ICON
+                  return <Icon className="w-5 h-5 text-accent flex-shrink-0" />
+                })()}
+                <button
+                  onClick={() => setDropdownOpen(!dropdownOpen)}
+                  className="flex items-center gap-2 hover:bg-bg-hover rounded px-2 py-1 transition-colors min-w-0"
+                >
+                  <div className="text-left min-w-0">
+                    <h3 className="text-sm font-medium text-text-primary truncate">
+                      {displayArtifact.title}
+                    </h3>
+                    <span className="text-xs text-text-muted">
+                      {TYPE_LABELS[displayArtifact.type] || DEFAULT_TYPE_LABEL}
+                    </span>
+                  </div>
+                  {conversationArtifacts.length > 1 && (
+                    <ChevronDown className={`w-4 h-4 text-text-muted transition-transform flex-shrink-0 ${dropdownOpen ? 'rotate-180' : ''}`} />
+                  )}
+                </button>
+
+                {/* Artifact dropdown picker */}
+                {dropdownOpen && conversationArtifacts.length > 1 && (
+                  <div className="absolute top-full left-0 mt-1 w-64 bg-bg-elevated border border-border rounded-lg shadow-lg z-50 max-h-64 overflow-y-auto">
+                    {conversationArtifacts.map((artifact) => {
+                      const Icon = TYPE_ICONS[artifact.type] || DEFAULT_TYPE_ICON
+                      return (
+                        <button
+                          key={artifact.id}
+                          onClick={() => {
+                            selectArtifact(artifact.id)
+                            setDropdownOpen(false)
+                          }}
+                          className={`w-full flex items-center gap-3 px-3 py-2 text-left hover:bg-bg-hover transition-colors ${
+                            artifact.id === selectedArtifactId ? 'bg-bg-hover' : ''
+                          }`}
+                        >
+                          <Icon className="w-4 h-4 text-text-muted flex-shrink-0" />
+                          <div className="flex-1 min-w-0">
+                            <div className="text-sm text-text-primary truncate">{artifact.title}</div>
+                            <div className="text-xs text-text-muted">{TYPE_LABELS[artifact.type] || DEFAULT_TYPE_LABEL}</div>
+                          </div>
+                        </button>
+                      )
+                    })}
+                  </div>
                 )}
+              </>
+            )}
+            {!displayArtifact && (
+              <span className="text-sm text-text-muted">No artifact selected</span>
+            )}
+          </div>
+
+          {/* Revision selector - only show if multiple revisions exist */}
+          {hasMultipleRevisions && displayArtifact && (
+            <div className="relative flex-shrink-0" ref={revisionDropdownRef}>
+              <button
+                onClick={() => setRevisionDropdownOpen(!revisionDropdownOpen)}
+                className="flex items-center gap-1.5 px-2 py-1 text-xs bg-bg-elevated hover:bg-bg-hover rounded border border-border transition-colors"
+                title="View revision history"
+              >
+                <History className="w-3 h-3 text-text-muted" />
+                <span className="text-text-secondary">
+                  r{currentRevision?.revision || displayArtifact.revision}
+                </span>
+                <ChevronDown className={`w-3 h-3 text-text-muted transition-transform ${revisionDropdownOpen ? 'rotate-180' : ''}`} />
               </button>
 
-              {/* Dropdown picker */}
-              {dropdownOpen && conversationArtifacts.length > 1 && (
-                <div className="absolute top-full left-0 mt-1 w-64 bg-bg-elevated border border-border rounded-lg shadow-lg z-50 max-h-64 overflow-y-auto">
-                  {conversationArtifacts.map((artifact) => {
-                    const Icon = TYPE_ICONS[artifact.type] || DEFAULT_TYPE_ICON
-                    return (
-                      <button
-                        key={artifact.id}
-                        onClick={() => {
-                          selectArtifact(artifact.id)
-                          setDropdownOpen(false)
-                        }}
-                        className={`w-full flex items-center gap-3 px-3 py-2 text-left hover:bg-bg-hover transition-colors ${
-                          artifact.id === selectedArtifactId ? 'bg-bg-hover' : ''
-                        }`}
-                      >
-                        <Icon className="w-4 h-4 text-text-muted flex-shrink-0" />
-                        <div className="flex-1 min-w-0">
-                          <div className="text-sm text-text-primary truncate">{artifact.title}</div>
-                          <div className="text-xs text-text-muted">{TYPE_LABELS[artifact.type] || DEFAULT_TYPE_LABEL}</div>
-                        </div>
-                      </button>
-                    )
-                  })}
+              {/* Revision dropdown */}
+              {revisionDropdownOpen && (
+                <div className="absolute top-full right-0 mt-1 w-32 bg-bg-elevated border border-border rounded-lg shadow-lg z-50 max-h-48 overflow-y-auto">
+                  {revisions.map((rev) => (
+                    <button
+                      key={rev.id}
+                      onClick={() => {
+                        // Select null for latest, otherwise select the specific revision
+                        selectRevision(rev.id === revisions[revisions.length - 1].id ? null : rev.id)
+                        setRevisionDropdownOpen(false)
+                      }}
+                      className={`w-full flex items-center justify-between px-3 py-2 text-left hover:bg-bg-hover transition-colors ${
+                        (selectedRevisionId === rev.id || (!selectedRevisionId && rev.id === revisions[revisions.length - 1].id))
+                          ? 'bg-bg-hover'
+                          : ''
+                      }`}
+                    >
+                      <span className="text-sm text-text-primary">r{rev.revision}</span>
+                      {rev.id === revisions[revisions.length - 1].id && (
+                        <span className="text-xs text-accent">latest</span>
+                      )}
+                    </button>
+                  ))}
                 </div>
               )}
-            </>
-          )}
-          {!selectedArtifact && (
-            <span className="text-sm text-text-muted">No artifact selected</span>
+            </div>
           )}
         </div>
 
@@ -173,23 +251,26 @@ export function CanvasPanel() {
         </div>
       </div>
 
-      {/* Content */}
-      <div className="flex-1 overflow-hidden">
-        {selectedArtifact ? (
-          <ArtifactContent artifact={selectedArtifact} />
+      {/* Content - with vertical scroll */}
+      <div className="flex-1 overflow-y-auto overflow-x-hidden">
+        {displayArtifact ? (
+          <ArtifactContent artifact={displayArtifact} />
         ) : conversationArtifacts.length === 0 ? (
           <EmptyState />
         ) : null}
       </div>
 
       {/* Footer with actions */}
-      {selectedArtifact && (
-        <div className="px-4 py-2 border-t border-border flex items-center justify-between">
+      {displayArtifact && (
+        <div className="px-4 py-2 border-t border-border flex items-center justify-between flex-shrink-0">
           <span className="text-xs text-text-faint">
-            Created {new Date(selectedArtifact.createdAt).toLocaleTimeString()}
+            {hasMultipleRevisions && currentRevision && currentRevision.id !== revisions[revisions.length - 1].id ? (
+              <>Viewing r{currentRevision.revision} • </>
+            ) : null}
+            Created {new Date(displayArtifact.createdAt).toLocaleTimeString()}
           </span>
           <button
-            onClick={() => removeArtifact(selectedArtifact.id)}
+            onClick={() => selectedArtifact && removeArtifact(getBaseArtifactId(selectedArtifact))}
             className="text-xs text-text-muted hover:text-error transition-colors"
           >
             Delete
