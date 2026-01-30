@@ -14,7 +14,13 @@ export default defineConfig({
           build: {
             outDir: 'dist-electron',
             rollupOptions: {
-              external: ['better-sqlite3', 'keytar'],
+              external: [
+                'better-sqlite3',
+                'keytar',
+                '@xenova/transformers',
+                'onnxruntime-node',
+                'onnxruntime-web',
+              ],
             },
           },
         },

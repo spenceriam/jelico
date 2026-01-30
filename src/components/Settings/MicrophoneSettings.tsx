@@ -273,6 +273,12 @@ export function MicrophoneSettings() {
           </div>
         )}
 
+        {status?.error && (
+          <div className="mb-4 p-3 bg-error/10 border border-error/30 rounded-lg text-sm text-error">
+            <strong>Model Error:</strong> {status.error}
+          </div>
+        )}
+
         <div className="grid gap-2">
           {models.map((model) => {
             const isDownloaded = downloadedModels.has(model.id)

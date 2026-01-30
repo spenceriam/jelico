@@ -66,9 +66,14 @@ async function initializePipeline(
       const transformers = await import('@xenova/transformers')
       pipeline = transformers.pipeline
 
-      // Configure cache directory
+      // Configure for Electron/Node.js environment
       transformers.env.cacheDir = MODELS_DIR
       transformers.env.allowLocalModels = true
+      transformers.env.allowRemoteModels = true
+
+      // Force WASM backend to avoid native binding issues in Electron
+      // This uses WebAssembly instead of native ONNX runtime
+      transformers.env.useBrowserCache = false
     }
 
     // Create the automatic speech recognition pipeline
@@ -89,8 +94,14 @@ async function initializePipeline(
     console.log(`Whisper model loaded: ${modelId}`)
   } catch (error: any) {
     loadError = error.message
+
+    // Provide helpful error messages for common issues
+    if (error.message.includes('onnxruntime')) {
+      loadError = 'Speech recognition requires ONNX runtime. This feature may not work in all environments. Error: ' + error.message
+    }
+
     console.error('Failed to load Whisper model:', error)
-    throw error
+    throw new Error(loadError)
   } finally {
     isLoading = false
   }
