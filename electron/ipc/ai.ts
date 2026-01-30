@@ -1193,8 +1193,6 @@ When the user asks to modify, update, fix, or improve an existing artifact, use 
           // Track text generated after last tool result
           let textAfterLastToolResult = ''
           let hadAnyToolCalls = false
-          let sentTextBeforeTools = false
-          let injectedAcknowledgment = false
 
           // Track tool completion for potential future todo/status integration
           let lastCompletedToolName: string | null = null
@@ -1213,23 +1211,12 @@ When the user asks to modify, update, fix, or improve an existing artifact, use 
                 if (part.textDelta) {
                   event.sender.send(`ai:chunk:${channelId}`, part.textDelta)
                   textAfterLastToolResult += part.textDelta
-                  // Mark that we've sent text before any tools
-                  if (!hadAnyToolCalls) {
-                    sentTextBeforeTools = true
-                  }
                   // Mark that AI provided text since last tool result (harness tracking)
                   textSentSinceLastResult = true
                 }
                 break
 
               case 'tool-call-streaming-start':
-                // If this is the first tool call and no text was sent, inject acknowledgment
-                if (!hadAnyToolCalls && !sentTextBeforeTools && !injectedAcknowledgment) {
-                  const ack = "I'll work through this for you.\n\n"
-                  event.sender.send(`ai:chunk:${channelId}`, ack)
-                  injectedAcknowledgment = true
-                }
-
                 console.log('[AI] Tool call starting:', part.toolName)
                 toolTracker.set(part.toolCallId, {
                   id: part.toolCallId,
@@ -1247,14 +1234,6 @@ When the user asks to modify, update, fix, or improve an existing artifact, use 
                 break
 
               case 'tool-call':
-                // If this is the first tool call and no text was sent, inject acknowledgment
-                // (handles providers that skip streaming-start)
-                if (!hadAnyToolCalls && !sentTextBeforeTools && !injectedAcknowledgment) {
-                  const ack = "I'll work through this for you.\n\n"
-                  event.sender.send(`ai:chunk:${channelId}`, ack)
-                  injectedAcknowledgment = true
-                }
-
                 hadAnyToolCalls = true
 
                 const toolArgs = (part as any).input || (part as any).args || {}

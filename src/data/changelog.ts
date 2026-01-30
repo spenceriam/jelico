@@ -21,6 +21,18 @@ export interface ChangelogEntry {
 
 export const changelog: ChangelogEntry[] = [
   {
+    version: '0.6.3',
+    date: '2026-01-30',
+    changes: {
+      removed: [
+        'Fake "I\'ll work through this for you" fallback injection - AI MUST respond first naturally',
+      ],
+      fixed: [
+        'AI responses now show actual model behavior, not injected fallbacks',
+      ],
+    },
+  },
+  {
     version: '0.6.2',
     date: '2026-01-30',
     changes: {
