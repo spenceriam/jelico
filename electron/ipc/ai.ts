@@ -1068,6 +1068,31 @@ When the user asks to modify, update, fix, or improve an existing artifact, use 
           let sentTextBeforeTools = false
           let injectedAcknowledgment = false
 
+          // Harness enforcement: track tool completion for mandatory feedback
+          let lastCompletedToolName: string | null = null
+          let textSentSinceLastResult = true // Start true so we don't inject before first tool
+
+          // Helper to inject tool feedback if AI didn't provide any
+          const injectToolFeedback = (toolName: string) => {
+            // Generate contextual feedback based on tool type
+            const feedbackMap: Record<string, string> = {
+              'read_file': '✓ File read.',
+              'write_file': '✓ File written.',
+              'list_directory': '✓ Directory listed.',
+              'search_files': '✓ Search complete.',
+              'execute_command': '✓ Command executed.',
+              'web_search': '✓ Search done.',
+              'web_fetch': '✓ Page fetched.',
+              'create_artifact': '✓ Artifact created.',
+              'update_artifact': '✓ Artifact updated.',
+              'spawn_agent': '✓ Agent spawned.',
+              'wait_for_agent': '✓ Agent complete.',
+              'switch_mode': '✓ Mode switched.',
+            }
+            const feedback = feedbackMap[toolName] || `✓ ${toolName} done.`
+            event.sender.send(`ai:chunk:${channelId}`, `\n${feedback}\n`)
+          }
+
           for await (const part of result.fullStream) {
             if (abortController.signal.aborted) break
 
@@ -1080,6 +1105,8 @@ When the user asks to modify, update, fix, or improve an existing artifact, use 
                   if (!hadAnyToolCalls) {
                     sentTextBeforeTools = true
                   }
+                  // Mark that AI provided text since last tool result (harness tracking)
+                  textSentSinceLastResult = true
                 }
                 break
 
@@ -1089,6 +1116,12 @@ When the user asks to modify, update, fix, or improve an existing artifact, use 
                   const ack = "I'll work through this for you.\n\n"
                   event.sender.send(`ai:chunk:${channelId}`, ack)
                   injectedAcknowledgment = true
+                }
+
+                // HARNESS ENFORCEMENT: If AI didn't react to last tool, inject feedback
+                if (lastCompletedToolName && !textSentSinceLastResult) {
+                  injectToolFeedback(lastCompletedToolName)
+                  lastCompletedToolName = null
                 }
 
                 console.log('[AI] Tool call starting:', part.toolName)
@@ -1115,6 +1148,13 @@ When the user asks to modify, update, fix, or improve an existing artifact, use 
                   event.sender.send(`ai:chunk:${channelId}`, ack)
                   injectedAcknowledgment = true
                 }
+
+                // HARNESS ENFORCEMENT: If AI didn't react to last tool, inject feedback
+                if (lastCompletedToolName && !textSentSinceLastResult) {
+                  injectToolFeedback(lastCompletedToolName)
+                  lastCompletedToolName = null
+                }
+
                 hadAnyToolCalls = true
 
                 const toolArgs = (part as any).input || (part as any).args || {}
@@ -1170,6 +1210,11 @@ When the user asks to modify, update, fix, or improve an existing artifact, use 
                 // Reset text tracker - we want to know if text comes AFTER tool results
                 textAfterLastToolResult = ''
                 hadAnyToolCalls = true
+
+                // HARNESS ENFORCEMENT: Track this tool completion for mandatory feedback
+                // Store the tool name so we can inject feedback if AI doesn't provide any
+                lastCompletedToolName = exec?.name || 'tool'
+                textSentSinceLastResult = false
                 break
 
               case 'step-start':
@@ -1186,6 +1231,11 @@ When the user asks to modify, update, fix, or improve an existing artifact, use 
                 console.error('[AI] Stream error:', part.error)
                 break
             }
+          }
+
+          // HARNESS ENFORCEMENT: If AI ended without reacting to last tool, inject feedback
+          if (lastCompletedToolName && !textSentSinceLastResult) {
+            injectToolFeedback(lastCompletedToolName)
           }
 
           // Get usage stats

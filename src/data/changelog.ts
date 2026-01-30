@@ -21,6 +21,20 @@ export interface ChangelogEntry {
 
 export const changelog: ChangelogEntry[] = [
   {
+    version: '0.5.8',
+    date: '2026-01-30',
+    changes: {
+      added: [
+        'Harness-level tool feedback enforcement - Jelico now GUARANTEES feedback after every tool call',
+        'Contextual feedback injection (e.g., "✓ File read.", "✓ Command executed.")',
+      ],
+      changed: [
+        'Tool feedback no longer relies on AI compliance - harness injects if AI doesn\'t respond',
+        'Feedback triggers before next tool call starts AND at stream end',
+      ],
+    },
+  },
+  {
     version: '0.5.7',
     date: '2026-01-30',
     changes: {
