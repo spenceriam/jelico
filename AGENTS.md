@@ -71,7 +71,7 @@ The Soul/Memory system should make Jelico increasingly personalized - it learns 
 ## Project overview
 Jelico is an AI Productivity Desktop built with Electron, React, TypeScript, and Vite. It provides a frictionless AI assistant experience with multi-provider support (Anthropic, OpenAI, Google), workspace management, conversation persistence, and a soul/memory system that learns user patterns and preferences over time.
 
-**Current Version:** 0.3.5
+**Current Version:** 0.3.6
 
 ## Development workflow discipline
 - **CRITICAL**: NEVER commit or push changes without explicit user approval
@@ -339,6 +339,30 @@ Before marking work complete:
 - [ ] Database operations persist and reload correctly
 - [ ] Existing functionality not broken
 - [ ] New features work as expected
+
+## Capability Test Prompt
+
+Use this prompt to verify Jelico's core capabilities are working. Feed this to Jelico and verify each test passes:
+
+```
+Run these tests in order and report pass/fail for each:
+
+1. TERMINAL: Run `echo "TERMINAL_OK"` and confirm you see the output
+2. FILE READ: Read package.json and tell me the version number
+3. ARTIFACT TEXT: Create a text artifact with "Hello World"
+4. ARTIFACT MARKDOWN: Create a markdown artifact with a heading, bullet list, and code block
+5. ARTIFACT TABLE: Create a markdown table with 3 columns and 3 rows
+6. ARTIFACT HTML: Create an interactive HTML page with a button that increments a counter when clicked - I will verify the button works
+7. SUB-AGENT: Spawn a sub-agent to calculate 15 * 7 and report what result you received back
+
+At the end, give me a summary table: Test | Status | Notes
+```
+
+**Expected Results:**
+- Tests 1-6 should pass if baseline functionality works
+- Test 7 (sub-agents) verifies bi-directional agent communication
+- HTML test requires manual verification (click the button, counter should increment)
+- Sub-agent test should return "105" as the calculation result
 
 ## Environment variables
 No environment variables required for basic operation. AI provider API keys are stored in the database and managed via Settings UI.
