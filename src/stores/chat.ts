@@ -99,6 +99,7 @@ interface ChatStore {
   modeTransitioning: boolean
   modeSwitchReason: string | null
   messageQueue: QueuedMessage[]
+  lastCompletedTool: { name: string; args: Record<string, unknown>; completedAt: number } | null
 
   // Actions
   loadConversations: () => Promise<void>
@@ -126,6 +127,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
   messages: [],
   modeTransitioning: false,
   modeSwitchReason: null,
+  lastCompletedTool: null,
   isStreaming: false,
   streamingContent: '',
   streamingToolCalls: [],
@@ -359,9 +361,19 @@ export const useChatStore = create<ChatStore>((set, get) => ({
         const updatedToolCalls = state.streamingToolCalls.map((tc) =>
           completedIds.has(tc.id) ? { ...tc, status: 'complete' as const } : tc
         )
+
+        // Track the last completed tool for status line display
+        const lastResult = toolResults[toolResults.length - 1]
+        const completedToolCall = state.streamingToolCalls.find(tc => tc.id === lastResult?.toolCallId)
+
         return {
           streamingToolCalls: updatedToolCalls,
           streamingToolResults: [...state.streamingToolResults, ...toolResults],
+          lastCompletedTool: completedToolCall ? {
+            name: completedToolCall.name,
+            args: completedToolCall.args,
+            completedAt: Date.now(),
+          } : state.lastCompletedTool,
         }
       })
     })
@@ -517,6 +529,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
           streamingContent: '',
           streamingToolCalls: [],
           streamingToolResults: [],
+          lastCompletedTool: null,
         }))
 
         // Generate AI title after first exchange (2 messages: user + assistant)
@@ -563,6 +576,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
           streamingContent: '',
           streamingToolCalls: [],
           streamingToolResults: [],
+          lastCompletedTool: null,
           error: `Failed to save message: ${error}`,
         })
       }

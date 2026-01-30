@@ -21,6 +21,23 @@ export interface ChangelogEntry {
 
 export const changelog: ChangelogEntry[] = [
   {
+    version: '0.5.9',
+    date: '2026-01-30',
+    changes: {
+      added: [
+        'Status line completion feedback - shows "✓ Read package.json" briefly when tools complete',
+        'Contextual completion messages based on tool type and arguments',
+      ],
+      fixed: [
+        'Mode switch tool parameter name (was "to_mode", now "mode") - UI now updates correctly',
+        'Removed confusing checkmark text injection from message content',
+      ],
+      changed: [
+        'Tool completion feedback now appears in shimmer status line, not message text',
+      ],
+    },
+  },
+  {
     version: '0.5.8',
     date: '2026-01-30',
     changes: {

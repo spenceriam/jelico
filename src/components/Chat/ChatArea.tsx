@@ -12,7 +12,7 @@ import { ModelSelector } from '../Model/ModelSelector'
 import { ShimmerText, BrailleLoader } from '../StatusIndicators'
 
 export function ChatArea() {
-  const { messages, isStreaming, streamingContent, streamingToolCalls, streamingToolResults, systemNotifications, activeConversationId, regenerateLastResponse, modeSwitchReason, modeTransitioning } = useChatStore()
+  const { messages, isStreaming, streamingContent, streamingToolCalls, streamingToolResults, systemNotifications, activeConversationId, regenerateLastResponse, modeSwitchReason, modeTransitioning, lastCompletedTool } = useChatStore()
   const { activeProviderId, activeModel } = useProviderStore()
   const { isProcessing, processingMessage } = useUIStore()
   const { getContextUsage, isCompacting } = useContextStore()
@@ -96,6 +96,41 @@ export function ChatArea() {
                    const executingTools = streamingToolCalls.filter(
                      tc => !streamingToolResults.find(r => r.toolCallId === tc.id)
                    )
+
+                   // Helper to generate completion feedback
+                   const getCompletionFeedback = (name: string, args: Record<string, unknown>) => {
+                     const getShortPath = (p: string) => {
+                       const parts = p.split('/')
+                       return parts.length > 2 ? `.../${parts.slice(-2).join('/')}` : p
+                     }
+                     switch (name) {
+                       case 'read_file':
+                         return args.path ? `✓ Read ${getShortPath(String(args.path))}` : '✓ File read'
+                       case 'write_file':
+                         return args.path ? `✓ Wrote ${getShortPath(String(args.path))}` : '✓ File written'
+                       case 'execute_command':
+                         return '✓ Command executed'
+                       case 'create_artifact':
+                         return args.title ? `✓ Created "${String(args.title).slice(0, 20)}"` : '✓ Artifact created'
+                       case 'spawn_agent':
+                         return args.name ? `✓ Spawned ${args.name}` : '✓ Agent spawned'
+                       case 'wait_for_agent':
+                         return '✓ Agent complete'
+                       case 'switch_mode':
+                         return `✓ Switched to ${args.mode}`
+                       default:
+                         return `✓ ${name} done`
+                     }
+                   }
+
+                   // Show completion feedback briefly if no tools executing and recent completion
+                   if (executingTools.length === 0 && lastCompletedTool) {
+                     const timeSinceCompletion = Date.now() - lastCompletedTool.completedAt
+                     if (timeSinceCompletion < 1500) {
+                       return getCompletionFeedback(lastCompletedTool.name, lastCompletedTool.args)
+                     }
+                   }
+
                    if (executingTools.length > 0) {
                      const tool = executingTools[0]
                      const args = tool.args || {}
