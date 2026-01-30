@@ -2,6 +2,17 @@
 
 All notable changes to Jelico will be documented in this file.
 
+## [0.5.3] - 2026-01-30
+
+### Added
+- **Artifact content streaming**: Shows raw code/text in real-time while `create_artifact` tool is executing, before switching to the finished artifact view
+- **Contextual status messages**: Processing indicator now shows what the AI is actually doing with context from tool arguments (e.g., "Reading .../src/App.tsx", "Running: npm test...", "Creating: Login Component")
+
+### Changed
+- **Tool call display hierarchy**: Added visual indentation with vertical connector lines for better readability of tool parameters, results, and sub-agent activities
+- **Sub-agent panel**: Reorganized with hierarchical indentation showing Agent → Task → Actions → Result structure
+- **Status text variety**: Different status messages for each tool type and phase (Thinking → Responding → tool-specific → Finishing up)
+
 ## [0.5.2] - 2026-01-30
 
 ### Changed

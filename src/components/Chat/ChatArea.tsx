@@ -89,14 +89,68 @@ export function ChatArea() {
             <div className="flex items-center gap-2 mb-3">
               <BrailleLoader className="text-accent" />
               <ShimmerText className="text-sm">
-                {isCompacting ? 'Compacting...' :
-                 isStreaming ? (
-                   streamingToolCalls.length > 0
-                     ? (streamingToolCalls.some(tc => !streamingToolResults.find(r => r.toolCallId === tc.id))
-                         ? 'Executing...'
-                         : 'Wrapping up...')
-                     : 'Thinking...'
-                 ) :
+                {isCompacting ? 'Compacting conversation...' :
+                 isStreaming ? (() => {
+                   // Find actively executing tools (have call but no result yet)
+                   const executingTools = streamingToolCalls.filter(
+                     tc => !streamingToolResults.find(r => r.toolCallId === tc.id)
+                   )
+                   if (executingTools.length > 0) {
+                     const tool = executingTools[0]
+                     const args = tool.args || {}
+
+                     // Generate contextual status from tool + args
+                     const getShortPath = (p: string) => {
+                       const parts = p.split('/')
+                       return parts.length > 2 ? `.../${parts.slice(-2).join('/')}` : p
+                     }
+
+                     switch (tool.name) {
+                       case 'read_file':
+                         return args.path ? `Reading ${getShortPath(String(args.path))}` : 'Reading file...'
+                       case 'write_file':
+                         return args.path ? `Writing ${getShortPath(String(args.path))}` : 'Writing file...'
+                       case 'list_directory':
+                         return args.path ? `Exploring ${getShortPath(String(args.path))}` : 'Listing directory...'
+                       case 'search_files':
+                         return args.pattern ? `Searching for ${args.pattern}` : 'Searching files...'
+                       case 'execute_command': {
+                         const cmd = String(args.command || '')
+                         const shortCmd = cmd.length > 30 ? cmd.slice(0, 30) + '...' : cmd
+                         return shortCmd ? `Running: ${shortCmd}` : 'Running command...'
+                       }
+                       case 'web_search':
+                         return args.query ? `Searching: "${String(args.query).slice(0, 25)}..."` : 'Searching the web...'
+                       case 'web_fetch': {
+                         const url = String(args.url || '')
+                         try {
+                           const hostname = new URL(url).hostname
+                           return `Fetching from ${hostname}`
+                         } catch {
+                           return 'Fetching URL...'
+                         }
+                       }
+                       case 'create_artifact':
+                         return args.title ? `Creating: ${String(args.title).slice(0, 30)}` : 'Creating artifact...'
+                       case 'update_artifact':
+                         return args.title ? `Updating: ${String(args.title).slice(0, 30)}` : 'Updating artifact...'
+                       case 'spawn_agent':
+                         return args.name ? `Spawning ${args.name}` : 'Spawning sub-agent...'
+                       case 'wait_for_agent':
+                         return 'Waiting for sub-agent...'
+                       case 'get_agent_status':
+                         return 'Checking agent status...'
+                       case 'continue_agent':
+                         return 'Continuing agent...'
+                       default:
+                         return 'Working...'
+                     }
+                   }
+                   if (streamingToolCalls.length > 0) {
+                     return 'Finishing up...'
+                   }
+                   return streamingContent ? 'Responding...' : 'Thinking...'
+                 })() :
                  processingMessage || 'Processing...'}
               </ShimmerText>
             </div>
@@ -371,6 +425,16 @@ function NewChatView({ disabled, isStreaming }: NewChatViewProps) {
           <Settings className="w-5 h-5" />
         </button>
       </div>
+
+      {/* Processing indicator - show during first message send */}
+      {isStreaming && (
+        <div className="flex items-center justify-center gap-2 mb-4">
+          <BrailleLoader className="text-accent" />
+          <ShimmerText className="text-sm">
+            Starting conversation...
+          </ShimmerText>
+        </div>
+      )}
 
       {/* Chat input */}
       <div className="pt-4">
