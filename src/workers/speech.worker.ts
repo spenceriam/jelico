@@ -30,12 +30,22 @@ async function loadTransformers() {
     env.allowRemoteModels = true
     env.useBrowserCache = true  // Explicitly enable browser cache (Cache API)
 
-    // Log cache info
+    // Configure ONNX runtime for ARM64 compatibility
+    // Disable SIMD and multi-threading which can cause crashes on ARM64 emulation
+    if (env.backends?.onnx?.wasm) {
+      env.backends.onnx.wasm.simd = false      // Disable SIMD - often crashes on ARM64
+      env.backends.onnx.wasm.numThreads = 1    // Single thread - more stable
+      console.log('[SpeechWorker] WASM SIMD disabled, single-threaded mode')
+    }
+
+    // Log full config
     console.log('[SpeechWorker] Transformers.js config:', {
       allowLocalModels: env.allowLocalModels,
       allowRemoteModels: env.allowRemoteModels,
       useBrowserCache: env.useBrowserCache,
       cacheDir: env.cacheDir,
+      wasmSimd: env.backends?.onnx?.wasm?.simd,
+      wasmThreads: env.backends?.onnx?.wasm?.numThreads,
     })
 
     transformersLoaded = true
@@ -173,16 +183,23 @@ async function transcribe(
   postProgress(messageId, { status: 'transcribing', message: 'Transcribing audio...' })
 
   try {
-    console.log('[SpeechWorker] Starting transcription, audio length:', audioData.length)
+    console.log('[SpeechWorker] === TRANSCRIPTION START ===')
+    console.log('[SpeechWorker] Audio data length:', audioData.length)
+    console.log('[SpeechWorker] Audio duration (seconds):', audioData.length / 16000)
+    console.log('[SpeechWorker] Language:', language)
+    console.log('[SpeechWorker] Model:', modelId)
+    console.log('[SpeechWorker] Transcriber exists:', !!transcriber)
+    console.log('[SpeechWorker] Calling transcriber now...')
 
-    // Run transcription
+    // Run transcription - THIS IS WHERE THE CRASH LIKELY HAPPENS
     const result = await transcriber(audioData, {
       language,
       task: 'transcribe',
       return_timestamps: false,
     })
 
-    console.log('[SpeechWorker] Transcription result:', result)
+    console.log('[SpeechWorker] === TRANSCRIPTION COMPLETE ===')
+    console.log('[SpeechWorker] Result:', result)
 
     postProgress(messageId, { status: 'done', message: 'Transcription complete' })
 
