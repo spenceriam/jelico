@@ -129,7 +129,7 @@ export function HtmlViewer({ html }: HtmlViewerProps) {
             key={refreshKey}
             srcDoc={sandboxedHtml}
             className="w-full h-full border-0 bg-white"
-            sandbox="allow-scripts allow-same-origin"
+            sandbox="allow-scripts allow-same-origin allow-forms allow-modals allow-popups"
             title="HTML Preview"
           />
         ) : (

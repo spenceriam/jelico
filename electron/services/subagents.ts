@@ -247,9 +247,18 @@ export async function spawnSubAgent(params: {
 
   activeAgents.set(agentId, agent)
 
+  console.log(`[SubAgents] Spawning agent: ${params.name} (${agentId})`)
+  console.log(`[SubAgents] Task: ${params.task.slice(0, 100)}...`)
+  console.log(`[SubAgents] Provider: ${params.providerId}, Model: ${params.model}`)
+
   // Start the agent asynchronously
   runSubAgent(agentId)
+    .then(() => {
+      console.log(`[SubAgents] Agent ${params.name} runSubAgent completed`)
+    })
     .catch((error) => {
+      console.error(`[SubAgents] Agent ${params.name} FAILED:`, error.message)
+      console.error(`[SubAgents] Error stack:`, error.stack?.split('\n').slice(0, 5).join('\n'))
       const agent = activeAgents.get(agentId)
       if (agent && agent.status !== 'dismissed') {
         agent.status = 'failed'
@@ -638,8 +647,19 @@ Returns instant answers, related topics, and web results.`,
  * Run a sub-agent (internal)
  */
 async function runSubAgent(agentId: string): Promise<void> {
+  console.log(`[SubAgents] runSubAgent called for: ${agentId}`)
+
   const agent = activeAgents.get(agentId)
-  if (!agent || agent.status === 'dismissed') return
+  if (!agent) {
+    console.error(`[SubAgents] Agent not found: ${agentId}`)
+    return
+  }
+  if (agent.status === 'dismissed') {
+    console.log(`[SubAgents] Agent already dismissed: ${agentId}`)
+    return
+  }
+
+  console.log(`[SubAgents] Agent ${agent.name} starting execution...`)
 
   // Mark as running
   agent.status = 'running'
@@ -650,11 +670,16 @@ async function runSubAgent(agentId: string): Promise<void> {
   // Get provider config and API key
   const providerConfig = providerDb.get(agent.providerId)
   if (!providerConfig) {
+    console.error(`[SubAgents] Provider not found: ${agent.providerId}`)
     throw new Error(`Provider not found: ${agent.providerId}`)
   }
+  console.log(`[SubAgents] Provider config found: ${providerConfig.type}`)
 
   const apiKey = await keychainService.getApiKey(agent.providerId)
+  console.log(`[SubAgents] API key retrieved: ${apiKey ? 'yes' : 'no'}`)
+
   const client = getProviderClient(providerConfig, apiKey)
+  console.log(`[SubAgents] Provider client created`)
 
   // Create abort controller
   const abortController = new AbortController()
@@ -675,6 +700,9 @@ async function runSubAgent(agentId: string): Promise<void> {
 
     console.log(`[SubAgents] ${agent.name} starting with ${Object.keys(tools).length} tools:`, Object.keys(tools))
 
+    console.log(`[SubAgents] ${agent.name} calling streamText with model: ${agent.model}`)
+    console.log(`[SubAgents] ${agent.name} message count: ${agent.messages.length}`)
+
     // Stream response
     // IMPORTANT: Use .chat() to get Chat Completions API endpoint
     // Using client(model) defaults to Responses API which doesn't support
@@ -687,6 +715,8 @@ async function runSubAgent(agentId: string): Promise<void> {
       maxSteps: 5, // Allow up to 5 tool call steps per agent run
       abortSignal: abortController.signal,
     })
+
+    console.log(`[SubAgents] ${agent.name} streamText returned, processing stream...`)
 
     // Accumulate the result using fullStream to handle text AND tool calls
     let fullText = ''
