@@ -1,11 +1,11 @@
 import { useState } from 'react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
-import { User, Bot, Copy, Check } from 'lucide-react'
+import { User, Bot, Copy, Check, FileText, Image, File } from 'lucide-react'
 import { ToolCallDisplay } from './ToolCallDisplay'
 import { MessageActions } from './MessageActions'
 import { MermaidInline } from '../Canvas/MermaidViewer'
-import type { ToolCall, ToolResult, MessageUsage } from '../../stores/chat'
+import type { ToolCall, ToolResult, MessageUsage, MessageAttachment } from '../../stores/chat'
 
 interface MessageProps {
   message: {
@@ -16,6 +16,7 @@ interface MessageProps {
     toolCalls?: ToolCall[]
     toolResults?: ToolResult[]
     usage?: MessageUsage
+    attachments?: MessageAttachment[]
   }
   isStreaming?: boolean
   streamingToolCalls?: ToolCall[]
@@ -52,14 +53,57 @@ export function Message({
     }
   }
 
+  // Get icon for attachment type
+  const getAttachmentIcon = (type: string) => {
+    switch (type) {
+      case 'image': return Image
+      case 'text': return FileText
+      default: return File
+    }
+  }
+
   // User messages - actions OUTSIDE the bubble
   if (isUser) {
+    const hasContent = message.content && message.content.trim().length > 0
+    const hasAttachments = message.attachments && message.attachments.length > 0
+
     return (
       <div className="flex gap-4 justify-end group">
         <div className="max-w-[80%] flex flex-col items-end">
           {/* Message bubble */}
           <div className="rounded-2xl px-4 py-3 bg-bg-elevated text-text-primary">
-            <p className="whitespace-pre-wrap">{message.content}</p>
+            {/* Show attachments first */}
+            {hasAttachments && (
+              <div className={`space-y-2 ${hasContent ? 'mb-3' : ''}`}>
+                {message.attachments!.map((att) => {
+                  const IconComponent = getAttachmentIcon(att.type)
+                  const isTextAttachment = att.type === 'text' && att.data
+
+                  return (
+                    <div key={att.id} className="text-sm">
+                      <div className="flex items-center gap-2 text-text-muted mb-1">
+                        <IconComponent className="w-4 h-4" />
+                        <span>{att.name}</span>
+                      </div>
+                      {/* Show text content for pasted text */}
+                      {isTextAttachment && (
+                        <pre className="text-xs bg-bg-deep rounded-lg p-3 overflow-x-auto whitespace-pre-wrap font-mono text-text-secondary max-h-60 overflow-y-auto">
+                          {att.data}
+                        </pre>
+                      )}
+                    </div>
+                  )
+                })}
+              </div>
+            )}
+            {/* Show text content */}
+            {hasContent && (
+              <p className="whitespace-pre-wrap">{message.content}</p>
+            )}
+            {/* Show placeholder if completely empty (shouldn't happen) */}
+            {!hasContent && !hasAttachments && (
+              <p className="text-text-muted italic">Empty message</p>
+            )}
           </div>
           {/* Actions OUTSIDE and BELOW the bubble */}
           <div className="mt-1 opacity-0 group-hover:opacity-100 transition-opacity">

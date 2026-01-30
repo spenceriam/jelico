@@ -2,6 +2,11 @@
 
 All notable changes to Jelico will be documented in this file.
 
+## [0.3.7] - 2026-01-29
+
+### Fixed
+- **Pasted content not displayed in user messages**: User message bubbles now show attached/pasted content instead of appearing blank when only attachments were sent
+
 ## [0.3.6] - 2026-01-29
 
 ### Fixed
