@@ -17,7 +17,7 @@ export function ChatArea() {
   const { isProcessing, processingMessage } = useUIStore()
   const { getContextUsage, isCompacting } = useContextStore()
   const messagesEndRef = useRef<HTMLDivElement>(null)
-  const [showContextBar, setShowContextBar] = useState(true) // Always show by default
+  const [showContextBar, setShowContextBar] = useState(false) // Hidden by default, click to show
 
   // Get context usage for current conversation
   const contextUsage = activeConversationId ? getContextUsage(activeConversationId) : null
@@ -84,17 +84,18 @@ export function ChatArea() {
             </div>
           )}
 
-          {/* Context usage indicator - bar on left, percentage on right, click to toggle bar */}
+          {/* Context usage indicator - hidden by default, click percentage to toggle bar */}
           {/* Show after first message (tokenCount > 0) or during active streaming */}
           {contextUsage && (contextUsage.tokenCount > 0 || isStreaming || messages.length > 0) && (
             <div className="mb-3">
               <button
                 onClick={() => setShowContextBar(!showContextBar)}
-                className="w-full flex items-center gap-3 text-xs text-text-muted hover:text-text-secondary transition-colors"
+                className="w-full flex items-center gap-3 text-xs text-text-muted hover:text-text-secondary transition-colors group"
+                title={showContextBar ? 'Hide context window bar' : 'Show context window bar'}
               >
-                {/* Progress bar - left side, thicker, always visible when toggled on */}
+                {/* Progress bar - taller, only visible when toggled on */}
                 {showContextBar && (
-                  <div className="flex-1 h-2 bg-bg-deep rounded-full overflow-hidden">
+                  <div className="flex-1 h-3 bg-bg-deep rounded-full overflow-hidden">
                     <div
                       className={`h-full transition-all duration-300 ${
                         contextUsage.shouldWarn ? 'bg-warning' : 'bg-accent'
@@ -103,7 +104,13 @@ export function ChatArea() {
                     />
                   </div>
                 )}
-                {!showContextBar && <div className="flex-1" />}
+                {!showContextBar && (
+                  <div className="flex-1 flex items-center">
+                    <span className="opacity-0 group-hover:opacity-100 transition-opacity text-text-muted">
+                      Show context window
+                    </span>
+                  </div>
+                )}
 
                 {/* Right side: icons and percentage */}
                 <div className="flex items-center gap-2">

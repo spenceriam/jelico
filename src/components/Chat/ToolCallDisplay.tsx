@@ -390,6 +390,8 @@ function SingleToolCall({
 }
 
 export function ToolCallDisplay({ toolCalls, toolResults = [], isStreaming }: ToolCallDisplayProps) {
+  const [collapsed, setCollapsed] = useState(false)
+
   // Filter out "plumbing" tools that users don't need to see
   const visibleToolCalls = toolCalls.filter(tc => !HIDDEN_TOOLS.has(tc.name))
 
@@ -398,40 +400,45 @@ export function ToolCallDisplay({ toolCalls, toolResults = [], isStreaming }: To
   // Map results by toolCallId for easy lookup
   const resultsMap = new Map(toolResults.map(r => [r.toolCallId, r]))
 
-  // Count completed vs pending (only for visible tools)
-  const completedCount = visibleToolCalls.filter(tc => resultsMap.has(tc.id)).length
-  const pendingCount = visibleToolCalls.length - completedCount
-  const allComplete = pendingCount === 0
+  // Check if all tools are complete (for collapsing at end of turn)
+  const allComplete = visibleToolCalls.every(tc => resultsMap.has(tc.id))
 
-  // Get current action description
-  const pendingTools = visibleToolCalls.filter(tc => !resultsMap.has(tc.id))
-  const currentAction = pendingTools.length > 0
-    ? TOOL_LABELS[pendingTools[0].name] || pendingTools[0].name
-    : null
-
-  return (
-    <div className="space-y-2 my-3">
-      {/* Header with status */}
-      <div className="flex items-center justify-between">
-        <div className="text-xs text-text-muted uppercase tracking-wider">
-          {isStreaming && !allComplete ? (
-            <span className="flex items-center gap-2">
-              <Loader2 className="w-3 h-3 animate-spin text-accent" />
-              <span className="text-accent">{currentAction}</span>
-              {pendingCount > 1 && <span className="text-text-muted">+{pendingCount - 1} more</span>}
-            </span>
+  // If streaming is done and all complete, show collapsed view
+  if (!isStreaming && allComplete && visibleToolCalls.length > 0) {
+    return (
+      <div className="my-3">
+        <button
+          onClick={() => setCollapsed(!collapsed)}
+          className="flex items-center gap-2 text-xs text-text-muted hover:text-text-secondary transition-colors"
+        >
+          {collapsed ? (
+            <ChevronRight className="w-3 h-3" />
           ) : (
-            <span>Actions ({completedCount}/{visibleToolCalls.length})</span>
+            <ChevronDown className="w-3 h-3" />
           )}
-        </div>
-        {allComplete && (
-          <span className="text-xs text-success flex items-center gap-1">
-            <CheckCircle className="w-3 h-3" />
-            Complete
-          </span>
+          <span>Executed {visibleToolCalls.length} action{visibleToolCalls.length !== 1 ? 's' : ''}</span>
+          <CheckCircle className="w-3 h-3 text-success" />
+        </button>
+
+        {!collapsed && (
+          <div className="space-y-2 mt-2">
+            {visibleToolCalls.map((toolCall, index) => (
+              <SingleToolCall
+                key={toolCall.id || `tool-${index}`}
+                toolCall={toolCall}
+                result={resultsMap.get(toolCall.id)}
+                isStreaming={false}
+              />
+            ))}
+          </div>
         )}
       </div>
+    )
+  }
 
+  // While streaming or incomplete, show tool calls directly (no header)
+  return (
+    <div className="space-y-2 my-3">
       {visibleToolCalls.map((toolCall, index) => (
         <SingleToolCall
           key={toolCall.id || `tool-${index}`}
