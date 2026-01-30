@@ -1259,4 +1259,50 @@ Be concise but informative. The user needs to understand what happened.`,
       console.log(`[AI] Dismissed ${dismissed} sub-agent(s) for stopped stream`)
     }
   })
+
+  // Generate conversation title from first exchange
+  ipcMain.handle('ai:generateTitle', async (_, params: {
+    providerId: string
+    model: string
+    userMessage: string
+    assistantMessage: string
+  }) => {
+    try {
+      const providerConfig = providerDb.get(params.providerId)
+      if (!providerConfig) {
+        return { success: false, error: 'Provider not found' }
+      }
+
+      const apiKey = await keychainService.getApiKey(params.providerId)
+      if (!apiKey && providerConfig.type !== 'ollama' && providerConfig.type !== 'local') {
+        return { success: false, error: 'API key not found' }
+      }
+
+      const provider = getProviderInstance(providerConfig, apiKey || '')
+
+      // Use a quick non-streaming call for title generation
+      const { generateText } = await import('ai')
+
+      const result = await generateText({
+        model: provider.chat(params.model),
+        messages: [
+          {
+            role: 'system',
+            content: 'Generate a short, descriptive title (3-6 words) for this conversation. Return ONLY the title, no quotes or explanation.',
+          },
+          {
+            role: 'user',
+            content: `User: ${params.userMessage.slice(0, 500)}\n\nAssistant: ${params.assistantMessage.slice(0, 500)}`,
+          },
+        ],
+        maxTokens: 20,
+      })
+
+      const title = result.text.trim().replace(/^["']|["']$/g, '') // Remove quotes if present
+      return { success: true, title }
+    } catch (error: any) {
+      console.error('[AI] Title generation error:', error.message)
+      return { success: false, error: error.message }
+    }
+  })
 }

@@ -2,6 +2,15 @@
 
 All notable changes to Jelico will be documented in this file.
 
+## [0.3.10] - 2026-01-29
+
+### Added
+- **AI-generated conversation titles**: After first exchange, AI generates a meaningful title based on the conversation content
+
+### Fixed
+- **Blank chat titles**: Placeholder shows "Pasted text..." or "Image prompt..." while AI title is generated
+- Added debug logging to diagnose sub-agent text-delta structure
+
 ## [0.3.9] - 2026-01-29
 
 ### Fixed

@@ -215,5 +215,8 @@ contextBridge.exposeInMainWorld('jelico', {
       ipcRenderer.removeAllListeners(`ai:agentProgress:${channelId}`)
       ipcRenderer.removeAllListeners(`ai:updateArtifact:${channelId}`)
     },
+    generateTitle: (params: { providerId: string; model: string; userMessage: string; assistantMessage: string }): Promise<{ success: boolean; title?: string; error?: string }> => {
+      return ipcRenderer.invoke('ai:generateTitle', params)
+    },
   },
 })
