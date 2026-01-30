@@ -85,6 +85,15 @@ export interface SystemNotification {
   timestamp: number
 }
 
+// Status display item for graceful UX
+interface StatusDisplayItem {
+  id: string
+  toolName: string
+  args: Record<string, unknown>
+  startedAt: number
+  completedAt?: number
+}
+
 interface ChatStore {
   conversations: Conversation[]
   activeConversationId: string | null
@@ -101,6 +110,8 @@ interface ChatStore {
   modeSwitchReason: string | null
   messageQueue: QueuedMessage[]
   lastCompletedTool: { name: string; args: Record<string, unknown>; completedAt: number } | null
+  // Status display queue for graceful UX - ensures each status shows for minimum time
+  statusDisplayQueue: StatusDisplayItem[]
 
   // Actions
   loadConversations: () => Promise<void>
@@ -138,6 +149,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
   error: null,
   mode: 'auto' as AgentMode,
   messageQueue: [],
+  statusDisplayQueue: [],
 
   loadConversations: async () => {
     set({ isLoading: true })
@@ -178,6 +190,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
         streamingContent: '',
         streamingToolCalls: [],
         streamingToolResults: [],
+        statusDisplayQueue: [],
         error: null,
       })
       return
@@ -283,6 +296,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
       streamingContent: '',
       streamingToolCalls: [],
       streamingToolResults: [],
+      statusDisplayQueue: [],
     })
 
     // Get workspace path for context
@@ -348,14 +362,27 @@ export const useChatStore = create<ChatStore>((set, get) => ({
     // Handle tool calls - ai.ts now sends pre-formatted { id, name, args }
     window.jelico.ai.onToolCalls(channelId, (toolCalls) => {
       console.log('[Chat Store] Received tool calls:', toolCalls)
+      const now = Date.now()
       set((state) => ({
         streamingToolCalls: [...state.streamingToolCalls, ...toolCalls],
+        // Add to status display queue for graceful UX
+        statusDisplayQueue: [
+          ...state.statusDisplayQueue,
+          ...toolCalls.map(tc => ({
+            id: tc.id,
+            toolName: tc.name,
+            args: tc.args,
+            startedAt: now,
+          })),
+        ],
       }))
     })
 
     // Handle tool results - ai.ts now sends pre-formatted { toolCallId, result }
     window.jelico.ai.onToolResults(channelId, (toolResults) => {
       console.log('[Chat Store] Received tool results:', toolResults)
+      const now = Date.now()
+
       set((state) => {
         // Update tool call statuses to 'complete' when their results arrive
         const completedIds = new Set(toolResults.map(r => r.toolCallId))
@@ -367,13 +394,22 @@ export const useChatStore = create<ChatStore>((set, get) => ({
         const lastResult = toolResults[toolResults.length - 1]
         const completedToolCall = state.streamingToolCalls.find(tc => tc.id === lastResult?.toolCallId)
 
+        // Update status display queue - mark items as completed but keep for minimum display time
+        const updatedQueue = state.statusDisplayQueue.map(item => {
+          if (completedIds.has(item.id) && !item.completedAt) {
+            return { ...item, completedAt: now }
+          }
+          return item
+        })
+
         return {
           streamingToolCalls: updatedToolCalls,
           streamingToolResults: [...state.streamingToolResults, ...toolResults],
+          statusDisplayQueue: updatedQueue,
           lastCompletedTool: completedToolCall ? {
             name: completedToolCall.name,
             args: completedToolCall.args,
-            completedAt: Date.now(),
+            completedAt: now,
           } : state.lastCompletedTool,
         }
       })
@@ -535,6 +571,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
           streamingContent: '',
           streamingToolCalls: [],
           streamingToolResults: [],
+          statusDisplayQueue: [],
           lastCompletedTool: null,
         }))
 
@@ -582,6 +619,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
           streamingContent: '',
           streamingToolCalls: [],
           streamingToolResults: [],
+          statusDisplayQueue: [],
           lastCompletedTool: null,
           error: `Failed to save message: ${error}`,
         })
@@ -651,6 +689,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
         streamingContent: '',
         streamingToolCalls: [],
         streamingToolResults: [],
+        statusDisplayQueue: [],
         error: error,
       })
 
@@ -688,6 +727,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
       streamingContent: '',
       streamingToolCalls: [],
       streamingToolResults: [],
+      statusDisplayQueue: [],
     })
   },
 
@@ -717,6 +757,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
           streamingContent: '',
           streamingToolCalls: [],
           streamingToolResults: [],
+          statusDisplayQueue: [],
           error: null,
         })
       } else {

@@ -196,9 +196,11 @@
     font-family: var(--font-mono);
     display: inline-block;
     line-height: 1;
+    font-size: 0; /* Hide fallback text */
   }
 
   .braille-loader::after {
+    font-size: 1rem; /* Restore size for pseudo-element */
     animation-iteration-count: infinite;
     animation-timing-function: step-end;
   }
