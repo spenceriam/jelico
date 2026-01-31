@@ -200,6 +200,7 @@ function getBuiltInTools(
     providerId: string
     model: string
     workspacePath?: string
+    resetActivityTimeout?: () => void  // Allows blocking tools to keep stream alive
   },
   toolTracker: Map<string, ToolExecution>,
   sendArtifact?: (artifact: any) => void,
@@ -428,30 +429,46 @@ IMPORTANT: Always call this after spawn_agent to get results.`,
       }),
       execute: async ({ agent_id, timeout_seconds }) => {
         const timeoutMs = (timeout_seconds || 60) * 1000
-        const result = await waitForSubAgent(agent_id, timeoutMs)
 
-        if (result.timedOut) {
-          return {
-            success: false,
-            timed_out: true,
-            error: `Agent did not respond within ${timeout_seconds || 60} seconds`,
-          }
+        // Keep the main stream alive while waiting by resetting activity timeout
+        // This prevents the stream from timing out while blocked on wait_for_agent
+        let keepAliveInterval: NodeJS.Timeout | null = null
+        if (streamContext.resetActivityTimeout) {
+          keepAliveInterval = setInterval(() => {
+            streamContext.resetActivityTimeout?.()
+          }, 10000) // Reset every 10 seconds
         }
 
-        if (result.hasQuestion) {
-          return {
-            success: true,
-            has_question: true,
-            question: result.question?.question,
-            question_context: result.question?.context,
-            message: 'Agent is waiting for your response. Use continue_agent to provide clarification.',
-          }
-        }
+        try {
+          const result = await waitForSubAgent(agent_id, timeoutMs)
 
-        return {
-          success: result.success,
-          result: result.result,
-          error: result.error,
+          if (result.timedOut) {
+            return {
+              success: false,
+              timed_out: true,
+              error: `Agent did not respond within ${timeout_seconds || 60} seconds`,
+            }
+          }
+
+          if (result.hasQuestion) {
+            return {
+              success: true,
+              has_question: true,
+              question: result.question?.question,
+              question_context: result.question?.context,
+              message: 'Agent is waiting for your response. Use continue_agent to provide clarification.',
+            }
+          }
+
+          return {
+            success: result.success,
+            result: result.result,
+            error: result.error,
+          }
+        } finally {
+          if (keepAliveInterval) {
+            clearInterval(keepAliveInterval)
+          }
         }
       },
     })
@@ -1211,6 +1228,7 @@ When the user asks to modify, update, fix, or improve an existing artifact, use 
         providerId: params.providerId,
         model: modelId,
         workspacePath: params.workspacePath,
+        resetActivityTimeout, // Allow blocking tools like wait_for_agent to keep stream alive
       }
       const tools = getBuiltInTools(mode, streamContext, toolTracker, sendArtifact, sendSpawnAgent, sendUpdateArtifact, sendModeSwitch, sendTodos, getTodos)
 
@@ -1305,6 +1323,7 @@ When the user asks to modify, update, fix, or improve an existing artifact, use 
 
           // Track text generated after last tool result
           let textAfterLastToolResult = ''
+          let totalStreamedTextLength = 0  // Track total text sent to prevent duplicate sending
           let hadAnyToolCalls = false
 
           // Track tool completion for potential future todo/status integration
@@ -1340,6 +1359,7 @@ When the user asks to modify, update, fix, or improve an existing artifact, use 
                 if (textChunk) {
                   event.sender.send(`ai:chunk:${channelId}`, textChunk)
                   textAfterLastToolResult += textChunk
+                  totalStreamedTextLength += textChunk.length  // Track total to prevent duplicate sending
                   // Mark that AI provided text since last tool result (harness tracking)
                   textSentSinceLastResult = true
                 }
@@ -1693,7 +1713,8 @@ When the user asks to modify, update, fix, or improve an existing artifact, use 
 
           // Get final text from result (fallback if streaming didn't capture it)
           const finalText = await result.text
-          if (finalText && textAfterLastToolResult.length === 0) {
+          // Only send if NO text was streamed at all (prevents duplicate sending on timeout)
+          if (finalText && totalStreamedTextLength === 0) {
             console.log('[AI] Text not streamed, using final result:', finalText.slice(0, 100) + '...')
             event.sender.send(`ai:chunk:${channelId}`, finalText)
             textAfterLastToolResult = finalText

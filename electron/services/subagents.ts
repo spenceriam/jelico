@@ -98,11 +98,30 @@ const progressListeners = new Map<string, Set<ProgressCallback>>()
 type GlobalProgressCallback = (agentId: string, agent: SubAgentRecord) => void
 let globalProgressCallback: GlobalProgressCallback | null = null
 
+// Throttle tracking for progress updates (prevent IPC flooding)
+const lastProgressUpdate = new Map<string, number>()
+const PROGRESS_THROTTLE_MS = 500  // Only send progress updates every 500ms per agent
+
 /**
  * Set global progress callback for IPC forwarding
  */
 export function setGlobalProgressCallback(callback: GlobalProgressCallback | null) {
   globalProgressCallback = callback
+}
+
+/**
+ * Check if enough time has passed to send another progress update
+ */
+function shouldSendProgressUpdate(agentId: string, forceImportant: boolean = false): boolean {
+  if (forceImportant) return true  // Always send important updates (status changes)
+
+  const now = Date.now()
+  const lastUpdate = lastProgressUpdate.get(agentId) || 0
+  if (now - lastUpdate >= PROGRESS_THROTTLE_MS) {
+    lastProgressUpdate.set(agentId, now)
+    return true
+  }
+  return false
 }
 
 // Track active parent streams (for orphan detection)
@@ -899,7 +918,8 @@ async function runSubAgent(agentId: string): Promise<void> {
             fullText += textContent
             agent.progress = fullText
             agent.lastActivityAt = Date.now()
-            notifyProgress(agentId, agent)
+            // Use throttled notification for text progress to prevent IPC flooding
+            notifyProgress(agentId, agent, false)
           }
           break
 
@@ -1511,11 +1531,15 @@ export function getSubAgentsSummary(parentStreamId: string): string {
 }
 
 // Progress notification helpers
-function notifyProgress(agentId: string, agent: SubAgentRecord) {
-  // Notify per-agent listeners
+// isImportant: true for status changes, false for text progress (throttled)
+function notifyProgress(agentId: string, agent: SubAgentRecord, isImportant: boolean = true) {
+  // Throttle non-important updates (text progress) to prevent IPC flooding
+  if (!isImportant && !shouldSendProgressUpdate(agentId, false)) {
+    return  // Skip this update, too soon after last one
+  }
+
+  // Notify per-agent listeners (always, for waitForSubAgent to work)
   const listeners = progressListeners.get(agentId)
-  const listenerCount = listeners?.size || 0
-  console.log(`[SubAgents] notifyProgress: ${agent.name} status=${agent.status}, listeners=${listenerCount}, hasGlobalCallback=${!!globalProgressCallback}`)
 
   if (listeners) {
     for (const listener of listeners) {

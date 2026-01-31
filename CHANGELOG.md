@@ -2,6 +2,13 @@
 
 All notable changes to Jelico will be documented in this file.
 
+## [0.7.5] - 2026-01-31
+
+### Fixed
+- **Inactivity timeout during wait_for_agent**: Main stream no longer times out while waiting for sub-agent. The `wait_for_agent` tool now keeps the activity timeout alive by resetting it every 10 seconds.
+- **Excessive progress notifications**: Sub-agent text-delta events are now throttled to max 1 update per 500ms, preventing IPC flooding that caused UI glitches.
+- **Duplicate text on timeout**: Fixed issue where streamed text was sent again after stream timeout/abort.
+
 ## [0.7.4] - 2026-01-31
 
 ### Changed
