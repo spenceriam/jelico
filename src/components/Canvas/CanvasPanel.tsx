@@ -352,67 +352,46 @@ function EmptyState() {
   )
 }
 
-// Shows content as it's being streamed/generated
+// Shows code as it's being streamed - always shows raw code, never live preview
+// The live preview is shown via ArtifactContent once streaming completes
 function StreamingPreview({ preview }: { preview: { type?: string; title?: string; content: string } }) {
-  const contentRef = useRef<HTMLDivElement>(null)
+  const preRef = useRef<HTMLPreElement>(null)
 
   // Auto-scroll to bottom as content streams
   useEffect(() => {
-    if (contentRef.current) {
-      contentRef.current.scrollTop = contentRef.current.scrollHeight
+    if (preRef.current) {
+      preRef.current.scrollTop = preRef.current.scrollHeight
     }
   }, [preview.content])
 
-  // Render based on type
-  if (preview.type === 'html') {
-    return (
-      <div className="h-full flex flex-col">
-        <div className="px-3 py-2 bg-bg-elevated border-b border-border flex items-center gap-2">
-          <div className="w-2 h-2 rounded-full bg-accent animate-pulse" />
-          <span className="text-xs text-text-muted">Live Preview</span>
-        </div>
-        <iframe
-          srcDoc={preview.content}
-          className="flex-1 w-full bg-white"
-          sandbox="allow-scripts allow-same-origin"
-          title="Streaming HTML Preview"
-        />
-      </div>
-    )
+  // Get language hint for syntax highlighting indicator
+  const getLanguageLabel = () => {
+    if (preview.type === 'html') return 'HTML'
+    if (preview.type === 'svg') return 'SVG'
+    if (preview.type === 'mermaid') return 'Mermaid'
+    if (preview.type === 'code') return 'Code'
+    return 'Content'
   }
 
-  if (preview.type === 'code') {
-    return (
-      <div className="h-full flex flex-col">
-        <div className="px-3 py-2 bg-bg-elevated border-b border-border flex items-center gap-2">
-          <div className="w-2 h-2 rounded-full bg-accent animate-pulse" />
-          <span className="text-xs text-text-muted">Generating Code...</span>
-        </div>
-        <pre
-          ref={contentRef}
-          className="flex-1 overflow-auto p-4 bg-bg-deep text-sm font-mono text-text-primary whitespace-pre-wrap"
-        >
-          {preview.content}
-          <span className="inline-block w-2 h-4 bg-accent animate-pulse ml-0.5" />
-        </pre>
-      </div>
-    )
-  }
-
-  // Default text/document view
+  // Always show raw code streaming - preview comes after completion
   return (
     <div className="h-full flex flex-col">
-      <div className="px-3 py-2 bg-bg-elevated border-b border-border flex items-center gap-2">
-        <div className="w-2 h-2 rounded-full bg-accent animate-pulse" />
-        <span className="text-xs text-text-muted">Generating Content...</span>
+      <div className="px-3 py-2 bg-bg-elevated border-b border-border flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <div className="w-2 h-2 rounded-full bg-accent animate-pulse" />
+          <span className="text-xs text-text-muted">Generating {getLanguageLabel()}...</span>
+        </div>
+        <span className="text-xs text-text-faint font-mono">
+          {(preview.content.length / 1024).toFixed(1)} KB
+        </span>
       </div>
-      <div
-        ref={contentRef}
-        className="flex-1 overflow-auto p-4 text-sm text-text-primary whitespace-pre-wrap"
+      <pre
+        ref={preRef}
+        className="flex-1 overflow-auto p-4 bg-bg-deep text-sm font-mono text-text-primary whitespace-pre-wrap"
       >
         {preview.content}
         <span className="inline-block w-2 h-4 bg-accent animate-pulse ml-0.5" />
-      </div>
+      </pre>
     </div>
   )
 }
