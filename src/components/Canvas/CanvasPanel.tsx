@@ -271,7 +271,7 @@ export function CanvasPanel() {
       {/* Content - with vertical scroll */}
       <div className="flex-1 overflow-y-auto overflow-x-hidden">
         {streamingPreview ? (
-          <StreamingPreview preview={streamingPreview} />
+          <StreamingArtifactContent preview={streamingPreview} />
         ) : displayArtifact ? (
           <ArtifactContent artifact={displayArtifact} />
         ) : conversationArtifacts.length === 0 ? (
@@ -352,46 +352,39 @@ function EmptyState() {
   )
 }
 
-// Shows code as it's being streamed - always shows raw code, never live preview
-// The live preview is shown via ArtifactContent once streaming completes
-function StreamingPreview({ preview }: { preview: { type?: string; title?: string; content: string } }) {
-  const preRef = useRef<HTMLPreElement>(null)
-
-  // Auto-scroll to bottom as content streams
-  useEffect(() => {
-    if (preRef.current) {
-      preRef.current.scrollTop = preRef.current.scrollHeight
-    }
-  }, [preview.content])
-
-  // Get language hint for syntax highlighting indicator
-  const getLanguageLabel = () => {
-    if (preview.type === 'html') return 'HTML'
-    if (preview.type === 'svg') return 'SVG'
-    if (preview.type === 'mermaid') return 'Mermaid'
-    if (preview.type === 'code') return 'Code'
-    return 'Content'
+// Uses the normal artifact viewers but in streaming mode
+function StreamingArtifactContent({ preview }: { preview: { type?: string; title?: string; content: string } }) {
+  // Route to the appropriate viewer with streaming flag
+  if (preview.type === 'html' || preview.type === 'svg') {
+    return <HtmlViewer html={preview.content} isStreaming />
   }
 
-  // Always show raw code streaming - preview comes after completion
+  if (preview.type === 'code') {
+    return (
+      <CodeViewer
+        code={preview.content}
+        language="text"
+        title={preview.title || 'Generating...'}
+        isStreaming
+      />
+    )
+  }
+
+  if (preview.type === 'mermaid') {
+    return <MermaidViewer content={preview.content} title={preview.title} isStreaming />
+  }
+
+  if (preview.type === 'document') {
+    return <DocumentViewer content={preview.content} isStreaming />
+  }
+
+  // Default: treat as code
   return (
-    <div className="h-full flex flex-col">
-      <div className="px-3 py-2 bg-bg-elevated border-b border-border flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <div className="w-2 h-2 rounded-full bg-accent animate-pulse" />
-          <span className="text-xs text-text-muted">Generating {getLanguageLabel()}...</span>
-        </div>
-        <span className="text-xs text-text-faint font-mono">
-          {(preview.content.length / 1024).toFixed(1)} KB
-        </span>
-      </div>
-      <pre
-        ref={preRef}
-        className="flex-1 overflow-auto p-4 bg-bg-deep text-sm font-mono text-text-primary whitespace-pre-wrap"
-      >
-        {preview.content}
-        <span className="inline-block w-2 h-4 bg-accent animate-pulse ml-0.5" />
-      </pre>
-    </div>
+    <CodeViewer
+      code={preview.content}
+      language="text"
+      title={preview.title || 'Generating...'}
+      isStreaming
+    />
   )
 }

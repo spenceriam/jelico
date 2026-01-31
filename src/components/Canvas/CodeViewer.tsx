@@ -1,15 +1,24 @@
 import { Highlight, themes } from 'prism-react-renderer'
 import { Copy, Check, Download } from 'lucide-react'
-import { useState } from 'react'
+import { useState, useRef, useEffect } from 'react'
 
 interface CodeViewerProps {
   code: string
   language: string
   title?: string
+  isStreaming?: boolean
 }
 
-export function CodeViewer({ code, language, title }: CodeViewerProps) {
+export function CodeViewer({ code, language, title, isStreaming = false }: CodeViewerProps) {
   const [copied, setCopied] = useState(false)
+  const codeContainerRef = useRef<HTMLDivElement>(null)
+
+  // Auto-scroll during streaming
+  useEffect(() => {
+    if (isStreaming && codeContainerRef.current) {
+      codeContainerRef.current.scrollTop = codeContainerRef.current.scrollHeight
+    }
+  }, [code, isStreaming])
 
   const handleCopy = async () => {
     await navigator.clipboard.writeText(code)
@@ -34,6 +43,12 @@ export function CodeViewer({ code, language, title }: CodeViewerProps) {
       {/* Toolbar */}
       <div className="flex items-center justify-between px-4 py-2 border-b border-border bg-bg-surface">
         <div className="flex items-center gap-2">
+          {isStreaming && (
+            <div className="flex items-center gap-1.5 pr-2 border-r border-border">
+              <div className="w-2 h-2 rounded-full bg-accent animate-pulse" />
+              <span className="text-xs text-accent">Generating...</span>
+            </div>
+          )}
           <span className="text-xs font-mono text-text-muted uppercase">{language}</span>
           {title && (
             <>
@@ -61,7 +76,7 @@ export function CodeViewer({ code, language, title }: CodeViewerProps) {
       </div>
 
       {/* Code content */}
-      <div className="flex-1 overflow-auto">
+      <div ref={codeContainerRef} className="flex-1 overflow-auto">
         <Highlight theme={themes.nightOwl} code={code.trim()} language={language}>
           {({ className, style, tokens, getLineProps, getTokenProps }) => (
             <pre
@@ -80,6 +95,9 @@ export function CodeViewer({ code, language, title }: CodeViewerProps) {
                         const tokenProps = getTokenProps({ token })
                         return <span key={j} {...tokenProps} />
                       })}
+                      {isStreaming && i === tokens.length - 1 && (
+                        <span className="inline-block w-2 h-4 bg-accent animate-pulse ml-0.5" />
+                      )}
                     </span>
                   </div>
                 )

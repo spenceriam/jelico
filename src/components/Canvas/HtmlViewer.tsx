@@ -1,14 +1,31 @@
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect, useRef } from 'react'
 import { RefreshCw, ExternalLink, Code, Eye, Copy, Check } from 'lucide-react'
 
 interface HtmlViewerProps {
   html: string
+  isStreaming?: boolean
 }
 
-export function HtmlViewer({ html }: HtmlViewerProps) {
-  const [view, setView] = useState<'preview' | 'source'>('preview')
+export function HtmlViewer({ html, isStreaming = false }: HtmlViewerProps) {
+  // Default to source view when streaming, preview when complete
+  const [view, setView] = useState<'preview' | 'source'>(isStreaming ? 'source' : 'preview')
+
+  // Switch to preview when streaming completes
+  useEffect(() => {
+    if (!isStreaming) {
+      setView('preview')
+    }
+  }, [isStreaming])
   const [copied, setCopied] = useState(false)
   const [refreshKey, setRefreshKey] = useState(0)
+  const sourceRef = useRef<HTMLPreElement>(null)
+
+  // Auto-scroll source view during streaming
+  useEffect(() => {
+    if (isStreaming && view === 'source' && sourceRef.current) {
+      sourceRef.current.scrollTop = sourceRef.current.scrollHeight
+    }
+  }, [html, isStreaming, view])
 
   // Check if the content is already a complete HTML document
   const isCompleteDocument = html.trim().toLowerCase().startsWith('<!doctype') ||
@@ -66,7 +83,14 @@ export function HtmlViewer({ html }: HtmlViewerProps) {
     <div className="h-full flex flex-col">
       {/* Toolbar */}
       <div className="flex items-center justify-between px-4 py-2 border-b border-border bg-bg-surface">
-        <div className="flex items-center gap-1">
+        <div className="flex items-center gap-2">
+          {isStreaming && (
+            <div className="flex items-center gap-1.5 pr-2 border-r border-border">
+              <div className="w-2 h-2 rounded-full bg-accent animate-pulse" />
+              <span className="text-xs text-accent">Generating...</span>
+            </div>
+          )}
+          <div className="flex items-center gap-1">
           <button
             onClick={() => setView('preview')}
             className={`
@@ -91,6 +115,7 @@ export function HtmlViewer({ html }: HtmlViewerProps) {
             <Code className="w-3 h-3" />
             Source
           </button>
+          </div>
         </div>
 
         <div className="flex items-center gap-1">
@@ -133,8 +158,14 @@ export function HtmlViewer({ html }: HtmlViewerProps) {
             title="HTML Preview"
           />
         ) : (
-          <pre className="h-full overflow-auto p-4 text-sm font-mono text-text-secondary bg-bg-deep">
+          <pre
+            ref={sourceRef}
+            className="h-full overflow-auto p-4 text-sm font-mono text-text-secondary bg-bg-deep"
+          >
             {html}
+            {isStreaming && (
+              <span className="inline-block w-2 h-4 bg-accent animate-pulse ml-0.5" />
+            )}
           </pre>
         )}
       </div>

@@ -33,11 +33,27 @@ mermaid.initialize({
 interface MermaidViewerProps {
   content: string
   title?: string
+  isStreaming?: boolean
 }
 
-export function MermaidViewer({ content, title }: MermaidViewerProps) {
-  const [view, setView] = useState<'diagram' | 'source'>('diagram')
+export function MermaidViewer({ content, title, isStreaming = false }: MermaidViewerProps) {
+  const [view, setView] = useState<'diagram' | 'source'>(isStreaming ? 'source' : 'diagram')
   const [copied, setCopied] = useState(false)
+  const sourceRef = useRef<HTMLPreElement>(null)
+
+  // Switch to diagram when streaming completes
+  useEffect(() => {
+    if (!isStreaming) {
+      setView('diagram')
+    }
+  }, [isStreaming])
+
+  // Auto-scroll during streaming
+  useEffect(() => {
+    if (isStreaming && view === 'source' && sourceRef.current) {
+      sourceRef.current.scrollTop = sourceRef.current.scrollHeight
+    }
+  }, [content, isStreaming, view])
   const [svgContent, setSvgContent] = useState<string>('')
   const [error, setError] = useState<string | null>(null)
   const containerRef = useRef<HTMLDivElement>(null)
@@ -84,7 +100,14 @@ export function MermaidViewer({ content, title }: MermaidViewerProps) {
     <div className="h-full flex flex-col">
       {/* Toolbar */}
       <div className="flex items-center justify-between px-4 py-2 border-b border-border bg-bg-surface">
-        <div className="flex items-center gap-1">
+        <div className="flex items-center gap-2">
+          {isStreaming && (
+            <div className="flex items-center gap-1.5 pr-2 border-r border-border">
+              <div className="w-2 h-2 rounded-full bg-accent animate-pulse" />
+              <span className="text-xs text-accent">Generating...</span>
+            </div>
+          )}
+          <div className="flex items-center gap-1">
           <button
             onClick={() => setView('diagram')}
             className={`
@@ -109,6 +132,7 @@ export function MermaidViewer({ content, title }: MermaidViewerProps) {
             <Code className="w-3 h-3" />
             Source
           </button>
+          </div>
         </div>
 
         <div className="flex items-center gap-1">
@@ -163,8 +187,14 @@ export function MermaidViewer({ content, title }: MermaidViewerProps) {
             )}
           </div>
         ) : (
-          <pre className="h-full overflow-auto p-4 text-sm font-mono text-text-secondary">
+          <pre
+            ref={sourceRef}
+            className="h-full overflow-auto p-4 text-sm font-mono text-text-secondary"
+          >
             {content}
+            {isStreaming && (
+              <span className="inline-block w-2 h-4 bg-accent animate-pulse ml-0.5" />
+            )}
           </pre>
         )}
       </div>
