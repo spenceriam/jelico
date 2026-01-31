@@ -1392,34 +1392,50 @@ When the user asks to modify, update, fix, or improve an existing artifact, use 
               case 'tool-input-start': {
                 // Reset accumulator when a new tool input starts
                 accumulatedToolInput = ''
-                // Log the full event to debug what we're receiving
-                if (DEBUG_API_REQUESTS) {
-                  console.log('[AI] tool-input-start full event:', JSON.stringify(part, null, 2))
-                }
+                // ALWAYS log to debug cross-provider issues
+                console.log('[AI] tool-input-start - ALL PROPERTIES:')
+                console.log('[AI]   Full event JSON:', JSON.stringify(part, null, 2))
                 break
               }
 
               case 'tool-input-end': {
+                // ALWAYS log to debug cross-provider issues
+                console.log('[AI] tool-input-end - ALL PROPERTIES:')
+                console.log('[AI]   Full event JSON:', JSON.stringify(part, null, 2))
+                console.log('[AI]   Accumulated input length:', accumulatedToolInput.length)
+                console.log('[AI]   Accumulated input preview:', accumulatedToolInput.slice(0, 500))
+
                 // Check if the tool-input-end event includes the full input
-                const endInput = (part as any).input || (part as any).args || (part as any).arguments || (part as any).toolInput
-                if (DEBUG_API_REQUESTS) {
-                  console.log('[AI] tool-input-end full event:', JSON.stringify(part, null, 2))
-                  console.log('[AI] tool-input-end extracted input:', endInput)
-                  console.log('[AI] Accumulated input so far:', accumulatedToolInput.slice(0, 200))
-                }
+                const anyPart = part as any
+                const endInput = anyPart.input || anyPart.args || anyPart.arguments || anyPart.toolInput || anyPart.function?.arguments
+                console.log('[AI]   Extracted endInput:', endInput)
+
                 // If we got input in the end event, use it (some providers send all at once)
                 if (endInput && typeof endInput === 'string' && endInput.trim()) {
                   accumulatedToolInput = endInput
+                  console.log('[AI]   Used string endInput')
                 } else if (endInput && typeof endInput === 'object' && Object.keys(endInput).length > 0) {
                   // If it's already an object, stringify it for consistency
                   accumulatedToolInput = JSON.stringify(endInput)
+                  console.log('[AI]   Used object endInput, stringified')
                 }
                 break
               }
 
               case 'tool-input-delta': {
                 // Track and accumulate tool input for providers that stream args separately
-                const inputDelta = (part as any).inputTextDelta || (part as any).delta || ''
+                const anyPart = part as any
+                const inputDelta = anyPart.inputTextDelta || anyPart.delta || anyPart.argsTextDelta || ''
+
+                // Log first delta and every 10th to track what we're receiving
+                if (toolInputCharCount === 0 || toolInputCharCount % 1000 < inputDelta.length) {
+                  console.log('[AI] tool-input-delta received:')
+                  console.log('[AI]   inputTextDelta:', anyPart.inputTextDelta)
+                  console.log('[AI]   delta:', anyPart.delta)
+                  console.log('[AI]   argsTextDelta:', anyPart.argsTextDelta)
+                  console.log('[AI]   Full event:', JSON.stringify(part, null, 2))
+                }
+
                 accumulatedToolInput += inputDelta
                 toolInputCharCount += inputDelta.length
 
@@ -1482,10 +1498,22 @@ When the user asks to modify, update, fix, or improve an existing artifact, use 
               case 'tool-call': {
                 hadAnyToolCalls = true
 
-                // Log full event for debugging
-                if (DEBUG_API_REQUESTS) {
-                  console.log('[AI] tool-call full event:', JSON.stringify(part, null, 2))
-                }
+                // ALWAYS log full event to diagnose argument issues across providers
+                console.log('[AI] tool-call event - ALL PROPERTIES:')
+                console.log('[AI]   type:', part.type)
+                console.log('[AI]   toolCallId:', part.toolCallId)
+                console.log('[AI]   toolName:', part.toolName)
+                console.log('[AI]   args:', part.args)
+                console.log('[AI]   args type:', typeof part.args)
+                console.log('[AI]   args keys:', part.args ? Object.keys(part.args) : 'N/A')
+                // Check all possible property names
+                const anyPart = part as any
+                console.log('[AI]   (any).input:', anyPart.input)
+                console.log('[AI]   (any).arguments:', anyPart.arguments)
+                console.log('[AI]   (any).parameters:', anyPart.parameters)
+                console.log('[AI]   (any).function:', anyPart.function)
+                console.log('[AI]   (any).function?.arguments:', anyPart.function?.arguments)
+                console.log('[AI]   Full part JSON:', JSON.stringify(part, null, 2))
 
                 // Validate and extract properties with fallbacks
                 const tcToolCallId = part.toolCallId || (part as any).id
@@ -1497,7 +1525,8 @@ When the user asks to modify, update, fix, or improve an existing artifact, use 
                 }
 
                 // Get args from multiple sources - different providers put them in different places
-                let toolArgs = (part as any).input || (part as any).args || (part as any).arguments || (part as any).parameters || part.args
+                // Also check function.arguments which is OpenAI's format
+                let toolArgs = part.args || (part as any).input || (part as any).arguments || (part as any).parameters || (part as any).function?.arguments
 
                 // Also check if args is a string that needs parsing
                 if (typeof toolArgs === 'string' && toolArgs.trim()) {
