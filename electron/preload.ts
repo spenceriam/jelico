@@ -240,6 +240,19 @@ contextBridge.exposeInMainWorld('jelico', {
       const handler = (_: any, progress: any) => callback(progress)
       ipcRenderer.on(`ai:toolInputProgress:${channelId}`, handler)
     },
+    // Reasoning/thinking events for thinking models (Kimi K2.5, o1, o3, etc.)
+    onReasoning: (channelId: string, callback: (data: { content: string; type: string }) => void) => {
+      const handler = (_: any, data: any) => callback(data)
+      ipcRenderer.on(`ai:reasoning:${channelId}`, handler)
+    },
+    onReasoningStart: (channelId: string, callback: () => void) => {
+      const handler = () => callback()
+      ipcRenderer.on(`ai:reasoningStart:${channelId}`, handler)
+    },
+    onReasoningEnd: (channelId: string, callback: () => void) => {
+      const handler = () => callback()
+      ipcRenderer.on(`ai:reasoningEnd:${channelId}`, handler)
+    },
     stopStream: (channelId: string) => {
       ipcRenderer.send('ai:stop', channelId)
     },
@@ -256,6 +269,9 @@ contextBridge.exposeInMainWorld('jelico', {
       ipcRenderer.removeAllListeners(`ai:updateArtifact:${channelId}`)
       ipcRenderer.removeAllListeners(`ai:todos:${channelId}`)
       ipcRenderer.removeAllListeners(`ai:toolInputProgress:${channelId}`)
+      ipcRenderer.removeAllListeners(`ai:reasoning:${channelId}`)
+      ipcRenderer.removeAllListeners(`ai:reasoningStart:${channelId}`)
+      ipcRenderer.removeAllListeners(`ai:reasoningEnd:${channelId}`)
     },
     generateTitle: (params: { providerId: string; model: string; userMessage: string; assistantMessage: string }): Promise<{ success: boolean; title?: string; error?: string }> => {
       return ipcRenderer.invoke('ai:generateTitle', params)

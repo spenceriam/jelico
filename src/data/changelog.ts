@@ -21,6 +21,31 @@ export interface ChangelogEntry {
 
 export const changelog: ChangelogEntry[] = [
   {
+    version: '0.6.12',
+    date: '2026-01-30',
+    changes: {
+      added: [
+        'Reasoning/thinking block support for thinking models (Kimi K2.5, o1, o3, etc.)',
+        'onReasoning, onReasoningStart, onReasoningEnd IPC events for thinking model UI',
+        'isReasoning and reasoningContent state in chat store',
+      ],
+      fixed: [
+        'Text property fallbacks - now checks text, textDelta, content, chunk',
+        'Tool property null checks - validates toolCallId, toolName before use',
+        'Tool args property fallbacks - checks input, args, arguments, parameters',
+        'Tool result property fallbacks - checks output, result, content',
+        'Token usage parsing - supports snake_case (prompt_tokens, completion_tokens)',
+        'Token usage parsing - supports Google AI fields (promptTokenCount, candidatesTokenCount)',
+        'Sub-agent streaming - same fixes applied (text fallbacks, null checks, tool-error)',
+        'Sub-agent reasoning blocks - logged but not exposed to UI',
+      ],
+      changed: [
+        'All tool event handlers now use block scope with proper variable naming',
+        'Unknown token usage formats now logged for debugging',
+      ],
+    },
+  },
+  {
     version: '0.6.11',
     date: '2026-01-30',
     changes: {

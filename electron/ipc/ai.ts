@@ -1251,13 +1251,43 @@ When the user asks to modify, update, fix, or improve an existing artifact, use 
             switch (part.type) {
               case 'text-delta':
                 // AI SDK provides text as 'text' property, not 'textDelta'
-                const textChunk = (part as any).text || (part as any).textDelta
+                // Some providers may use 'content' or 'chunk'
+                const textChunk = (part as any).text || (part as any).textDelta || (part as any).content || (part as any).chunk
                 if (textChunk) {
                   event.sender.send(`ai:chunk:${channelId}`, textChunk)
                   textAfterLastToolResult += textChunk
                   // Mark that AI provided text since last tool result (harness tracking)
                   textSentSinceLastResult = true
                 }
+                break
+
+              // Handle reasoning/thinking blocks from thinking models (Kimi K2.5, o1, o3, etc.)
+              case 'reasoning':
+              case 'reasoning-delta':
+              case 'thinking':
+              case 'thinking-delta': {
+                const reasoningContent = (part as any).text || (part as any).content || (part as any).thinking || (part as any).reasoning || ''
+                if (reasoningContent) {
+                  // Send reasoning to UI - it can decide whether to show it
+                  event.sender.send(`ai:reasoning:${channelId}`, {
+                    content: reasoningContent,
+                    type: part.type,
+                  })
+                }
+                break
+              }
+
+              // Handle reasoning start/end events
+              case 'reasoning-start':
+              case 'thinking-start':
+                event.sender.send(`ai:reasoningStart:${channelId}`, {})
+                break
+
+              case 'reasoning-end':
+              case 'thinking-end':
+              case 'reasoning-finish':
+              case 'thinking-finish':
+                event.sender.send(`ai:reasoningEnd:${channelId}`, {})
                 break
 
               case 'tool-input-start':
@@ -1287,39 +1317,58 @@ When the user asks to modify, update, fix, or improve an existing artifact, use 
                 break
               }
 
-              case 'tool-call-streaming-start':
-                console.log('[AI] Tool call starting:', part.toolName)
+              case 'tool-call-streaming-start': {
+                // Validate required properties
+                const toolCallId = part.toolCallId || (part as any).id
+                const toolName = part.toolName || (part as any).name || 'unknown_tool'
+
+                if (!toolCallId) {
+                  console.warn('[AI] tool-call-streaming-start missing toolCallId:', part)
+                  break
+                }
+
+                console.log('[AI] Tool call starting:', toolName)
                 // Track this as the current tool receiving input
-                currentToolInputId = part.toolCallId
-                currentToolInputName = part.toolName
+                currentToolInputId = toolCallId
+                currentToolInputName = toolName
                 toolInputCharCount = 0
 
-                toolTracker.set(part.toolCallId, {
-                  id: part.toolCallId,
-                  name: part.toolName,
+                toolTracker.set(toolCallId, {
+                  id: toolCallId,
+                  name: toolName,
                   args: {},
                   startTime: Date.now(),
                 })
                 event.sender.send(`ai:toolCalls:${channelId}`, [{
-                  id: part.toolCallId,
-                  name: part.toolName,
+                  id: toolCallId,
+                  name: toolName,
                   args: {},
                   status: 'starting',
                 }])
                 hadAnyToolCalls = true
                 break
+              }
 
-              case 'tool-call':
+              case 'tool-call': {
                 hadAnyToolCalls = true
 
+                // Validate and extract properties with fallbacks
+                const tcToolCallId = part.toolCallId || (part as any).id
+                const tcToolName = part.toolName || (part as any).name || 'unknown_tool'
+
+                if (!tcToolCallId) {
+                  console.warn('[AI] tool-call missing toolCallId:', part)
+                  break
+                }
+
                 // Get args from the event, or parse from accumulated input if empty
-                let toolArgs = (part as any).input || (part as any).args
+                let toolArgs = (part as any).input || (part as any).args || (part as any).arguments || (part as any).parameters
 
                 // If args are empty/undefined but we accumulated input, parse it
                 if ((!toolArgs || Object.keys(toolArgs).length === 0) && accumulatedToolInput.trim()) {
                   try {
                     toolArgs = JSON.parse(accumulatedToolInput)
-                    console.log('[AI] Parsed tool args from accumulated input:', part.toolName, toolArgs)
+                    console.log('[AI] Parsed tool args from accumulated input:', tcToolName, toolArgs)
                   } catch (e) {
                     console.warn('[AI] Failed to parse accumulated tool input:', e)
                     toolArgs = {}
@@ -1333,15 +1382,15 @@ When the user asks to modify, update, fix, or improve an existing artifact, use 
                 toolInputCharCount = 0
                 accumulatedToolInput = ''
 
-                console.log('[AI] Tool call ready:', part.toolName, toolArgs)
+                console.log('[AI] Tool call ready:', tcToolName, toolArgs)
 
-                const existingExec = toolTracker.get(part.toolCallId)
+                const existingExec = toolTracker.get(tcToolCallId)
                 if (existingExec) {
                   existingExec.args = toolArgs
                 } else {
-                  toolTracker.set(part.toolCallId, {
-                    id: part.toolCallId,
-                    name: part.toolName,
+                  toolTracker.set(tcToolCallId, {
+                    id: tcToolCallId,
+                    name: tcToolName,
                     args: toolArgs,
                     startTime: Date.now(),
                   })
@@ -1349,36 +1398,44 @@ When the user asks to modify, update, fix, or improve an existing artifact, use 
 
                 if (existingExec) {
                   event.sender.send(`ai:toolCallUpdate:${channelId}`, {
-                    id: part.toolCallId,
-                    name: part.toolName,
+                    id: tcToolCallId,
+                    name: tcToolName,
                     args: toolArgs,
                     status: 'executing',
                   })
                 } else {
                   console.log('[AI] Tool call without streaming-start, sending as new')
                   event.sender.send(`ai:toolCalls:${channelId}`, [{
-                    id: part.toolCallId,
-                    name: part.toolName,
+                    id: tcToolCallId,
+                    name: tcToolName,
                     args: toolArgs,
                     status: 'executing',
                   }])
                 }
                 break
+              }
 
-              case 'tool-result':
-                const toolResult = (part as any).output || (part as any).result
-                console.log('[AI] Tool result:', part.toolCallId,
+              case 'tool-result': {
+                const trToolCallId = part.toolCallId || (part as any).id
+                const toolResult = (part as any).output || (part as any).result || (part as any).content
+
+                if (!trToolCallId) {
+                  console.warn('[AI] tool-result missing toolCallId:', part)
+                  break
+                }
+
+                console.log('[AI] Tool result:', trToolCallId,
                   typeof toolResult === 'object' ? JSON.stringify(toolResult).slice(0, 100) : toolResult)
 
                 // Update tracker with result
-                const exec = toolTracker.get(part.toolCallId)
+                const exec = toolTracker.get(trToolCallId)
                 if (exec) {
                   exec.result = toolResult
                   exec.endTime = Date.now()
                 }
 
                 event.sender.send(`ai:toolResults:${channelId}`, [{
-                  toolCallId: part.toolCallId,
+                  toolCallId: trToolCallId,
                   result: toolResult,
                 }])
 
@@ -1391,6 +1448,7 @@ When the user asks to modify, update, fix, or improve an existing artifact, use 
                 lastCompletedToolName = exec?.name || 'tool'
                 textSentSinceLastResult = false
                 break
+              }
 
               case 'step-start':
                 if (DEBUG_API_REQUESTS) console.log('[AI] Step starting')
@@ -1402,15 +1460,26 @@ When the user asks to modify, update, fix, or improve an existing artifact, use 
                 }
                 break
 
-              case 'tool-error':
+              case 'tool-error': {
                 // Tool execution failed - log the error details
-                const toolError = (part as any).error
-                const errorMessage = toolError?.message || toolError || 'Tool execution failed'
-                console.error('[AI] Tool error:', part.toolCallId, errorMessage)
-                console.error('[AI] Full tool error:', JSON.stringify(toolError, null, 2))
+                const teToolCallId = part.toolCallId || (part as any).id
+                const toolError = (part as any).error || (part as any).message
+                const errorMessage = typeof toolError === 'object'
+                  ? (toolError?.message || JSON.stringify(toolError))
+                  : (toolError || 'Tool execution failed')
+
+                console.error('[AI] Tool error:', teToolCallId || 'unknown', errorMessage)
+                if (toolError && typeof toolError === 'object') {
+                  console.error('[AI] Full tool error:', JSON.stringify(toolError, null, 2))
+                }
+
+                if (!teToolCallId) {
+                  console.warn('[AI] tool-error missing toolCallId:', part)
+                  break
+                }
 
                 // Update tracker with error
-                const errorExec = toolTracker.get(part.toolCallId)
+                const errorExec = toolTracker.get(teToolCallId)
                 if (errorExec) {
                   errorExec.result = { error: errorMessage }
                   errorExec.endTime = Date.now()
@@ -1418,11 +1487,12 @@ When the user asks to modify, update, fix, or improve an existing artifact, use 
 
                 // Send error result to UI so tool shows as complete (with error)
                 event.sender.send(`ai:toolResults:${channelId}`, [{
-                  toolCallId: part.toolCallId,
+                  toolCallId: teToolCallId,
                   result: { error: errorMessage },
                 }])
                 hadAnyToolCalls = true
                 break
+              }
 
               case 'error':
                 console.error('[AI] Stream error:', part.error)
@@ -1447,13 +1517,36 @@ When the user asks to modify, update, fix, or improve an existing artifact, use 
           if (typeof usage === 'string') {
             try {
               usageObj = JSON.parse(usage)
-            } catch {
+            } catch (e) {
+              console.warn('[AI] Failed to parse usage string:', e)
               usageObj = {}
             }
           }
 
-          let promptTokens = usageObj?.promptTokens || usageObj?.inputTokens || 0
-          let completionTokens = usageObj?.completionTokens || usageObj?.outputTokens || 0
+          // Extract token counts with comprehensive field name support
+          // Different providers use different naming conventions
+          let promptTokens =
+            usageObj?.promptTokens ||      // Vercel AI SDK standard
+            usageObj?.prompt_tokens ||     // OpenAI/snake_case
+            usageObj?.inputTokens ||       // Alternative
+            usageObj?.input_tokens ||      // Snake_case alternative
+            usageObj?.promptTokenCount ||  // Google AI
+            usageObj?.prompt ||            // Custom providers
+            0
+
+          let completionTokens =
+            usageObj?.completionTokens ||  // Vercel AI SDK standard
+            usageObj?.completion_tokens || // OpenAI/snake_case
+            usageObj?.outputTokens ||      // Alternative
+            usageObj?.output_tokens ||     // Snake_case alternative
+            usageObj?.candidatesTokenCount || // Google AI
+            usageObj?.completion ||        // Custom providers
+            0
+
+          // Log if we couldn't parse tokens but had usage data
+          if (promptTokens === 0 && completionTokens === 0 && usage && Object.keys(usageObj || {}).length > 0) {
+            console.warn('[AI] Could not extract token counts from usage:', usageObj)
+          }
 
           // Check for running sub-agents that weren't waited for
           const activeAgents = getSubAgentsForStream(channelId)

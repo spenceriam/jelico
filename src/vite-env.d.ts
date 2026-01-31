@@ -64,6 +64,10 @@ interface Window {
       onUpdateArtifact: (channelId: string, callback: (update: ArtifactUpdateEvent) => void) => void
       onTodos: (channelId: string, callback: (todos: TodoTask[]) => void) => void
       onToolInputProgress: (channelId: string, callback: (progress: { toolName: string; charCount: number }) => void) => void
+      // Reasoning/thinking events for thinking models (Kimi K2.5, o1, o3, etc.)
+      onReasoning: (channelId: string, callback: (data: ReasoningEvent) => void) => void
+      onReasoningStart: (channelId: string, callback: () => void) => void
+      onReasoningEnd: (channelId: string, callback: () => void) => void
       stopStream: (channelId: string) => void
       removeListeners: (channelId: string) => void
       generateTitle: (params: GenerateTitleParams) => Promise<GenerateTitleResult>
@@ -292,6 +296,11 @@ interface TodoTask {
   id: string
   text: string
   status: 'pending' | 'in_progress' | 'done'
+}
+
+interface ReasoningEvent {
+  content: string
+  type: 'reasoning' | 'reasoning-delta' | 'thinking' | 'thinking-delta'
 }
 
 interface AgentProgressEvent {

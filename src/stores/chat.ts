@@ -122,6 +122,9 @@ interface ChatStore {
   statusDisplayQueue: StatusDisplayItem[]
   // Tool input progress - shown when AI is generating large tool inputs (like artifacts)
   toolInputProgress: { toolName: string; charCount: number } | null
+  // Reasoning/thinking state for thinking models (Kimi K2.5, o1, o3, etc.)
+  isReasoning: boolean
+  reasoningContent: string
 
   // Actions
   loadConversations: () => Promise<void>
@@ -162,6 +165,8 @@ export const useChatStore = create<ChatStore>((set, get) => ({
   messageQueue: [],
   statusDisplayQueue: [],
   toolInputProgress: null,
+  isReasoning: false,
+  reasoningContent: '',
 
   loadConversations: async () => {
     set({ isLoading: true })
@@ -205,6 +210,8 @@ export const useChatStore = create<ChatStore>((set, get) => ({
         streamingSegments: [],
         statusDisplayQueue: [],
         toolInputProgress: null,
+        isReasoning: false,
+        reasoningContent: '',
         error: null,
       })
       return
@@ -313,6 +320,8 @@ export const useChatStore = create<ChatStore>((set, get) => ({
       streamingSegments: [],
       statusDisplayQueue: [],
       toolInputProgress: null,
+      isReasoning: false,
+      reasoningContent: '',
     })
 
     // Get workspace path for context
@@ -555,6 +564,22 @@ export const useChatStore = create<ChatStore>((set, get) => ({
       set({ toolInputProgress: progress })
     })
 
+    // Handle reasoning/thinking events for thinking models (Kimi K2.5, o1, o3, etc.)
+    window.jelico.ai.onReasoningStart(channelId, () => {
+      set({ isReasoning: true, reasoningContent: '' })
+    })
+
+    window.jelico.ai.onReasoning(channelId, (data) => {
+      set((state) => ({
+        reasoningContent: state.reasoningContent + data.content,
+      }))
+    })
+
+    window.jelico.ai.onReasoningEnd(channelId, () => {
+      set({ isReasoning: false })
+      // Note: reasoningContent is preserved until stream ends so UI can display it
+    })
+
     // Handle stream end
     window.jelico.ai.onStreamEnd(channelId, async (stats) => {
       window.jelico.ai.removeListeners(channelId)
@@ -625,6 +650,8 @@ export const useChatStore = create<ChatStore>((set, get) => ({
           streamingSegments: [],
           statusDisplayQueue: [],
           toolInputProgress: null,
+          isReasoning: false,
+          reasoningContent: '',
           lastCompletedTool: null,
         }))
 
@@ -675,6 +702,8 @@ export const useChatStore = create<ChatStore>((set, get) => ({
           streamingSegments: [],
           statusDisplayQueue: [],
           lastCompletedTool: null,
+          isReasoning: false,
+          reasoningContent: '',
           error: `Failed to save message: ${error}`,
         })
       }
@@ -745,6 +774,8 @@ export const useChatStore = create<ChatStore>((set, get) => ({
         streamingToolResults: [],
         streamingSegments: [],
         statusDisplayQueue: [],
+        isReasoning: false,
+        reasoningContent: '',
         error: error,
       })
 
@@ -785,6 +816,8 @@ export const useChatStore = create<ChatStore>((set, get) => ({
       streamingSegments: [],
       statusDisplayQueue: [],
       toolInputProgress: null,
+      isReasoning: false,
+      reasoningContent: '',
     })
   },
 

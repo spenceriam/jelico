@@ -771,8 +771,8 @@ async function runSubAgent(agentId: string): Promise<void> {
 
       switch (part.type) {
         case 'text-delta':
-          // AI SDK may use 'text' or 'textDelta' depending on version/config
-          const textContent = (part as any).text || part.textDelta
+          // AI SDK may use 'text', 'textDelta', 'content', or 'chunk' depending on provider
+          const textContent = (part as any).text || (part as any).textDelta || (part as any).content || (part as any).chunk
           if (textContent) {
             fullText += textContent
             agent.progress = fullText
@@ -781,30 +781,77 @@ async function runSubAgent(agentId: string): Promise<void> {
           }
           break
 
-        case 'tool-call':
+        // Handle reasoning/thinking blocks from thinking models
+        case 'reasoning':
+        case 'reasoning-delta':
+        case 'thinking':
+        case 'thinking-delta':
+          // For sub-agents, we just log reasoning - don't expose to UI
+          const reasoningContent = (part as any).text || (part as any).content || (part as any).thinking || (part as any).reasoning || ''
+          if (reasoningContent) {
+            console.log(`[SubAgents] ${agent.name} reasoning: ${reasoningContent.slice(0, 100)}...`)
+            agent.lastActivityAt = Date.now()
+          }
+          break
+
+        case 'tool-call': {
           // Track tool calls made by this agent
-          const toolArgs = (part as any).input || (part as any).args || {}
+          const tcToolCallId = part.toolCallId || (part as any).id
+          const tcToolName = part.toolName || (part as any).name || 'unknown_tool'
+          const toolArgs = (part as any).input || (part as any).args || (part as any).arguments || (part as any).parameters || {}
+
+          if (!tcToolCallId) {
+            console.warn(`[SubAgents] ${agent.name} tool-call missing toolCallId`)
+            break
+          }
+
           agent.toolCalls.push({
-            id: part.toolCallId,
-            name: part.toolName,
+            id: tcToolCallId,
+            name: tcToolName,
             input: toolArgs,
           })
-          console.log(`[SubAgents] ${agent.name} calling tool: ${part.toolName}`)
+          console.log(`[SubAgents] ${agent.name} calling tool: ${tcToolName}`)
           agent.lastActivityAt = Date.now()
           notifyProgress(agentId, agent)
           break
+        }
 
-        case 'tool-result':
+        case 'tool-result': {
           // Update tool call with output
-          const toolResult = (part as any).output || (part as any).result
-          const toolCall = agent.toolCalls.find(tc => tc.id === part.toolCallId)
+          const trToolCallId = part.toolCallId || (part as any).id
+          const toolResult = (part as any).output || (part as any).result || (part as any).content
+
+          if (!trToolCallId) {
+            console.warn(`[SubAgents] ${agent.name} tool-result missing toolCallId`)
+            break
+          }
+
+          const toolCall = agent.toolCalls.find(tc => tc.id === trToolCallId)
           if (toolCall) {
             toolCall.output = toolResult
           }
-          console.log(`[SubAgents] ${agent.name} tool result for: ${part.toolCallId}`)
+          console.log(`[SubAgents] ${agent.name} tool result for: ${trToolCallId}`)
           agent.lastActivityAt = Date.now()
           notifyProgress(agentId, agent)
           break
+        }
+
+        case 'tool-error': {
+          const teToolCallId = part.toolCallId || (part as any).id
+          const toolError = (part as any).error || (part as any).message
+          const errorMsg = typeof toolError === 'object' ? (toolError?.message || JSON.stringify(toolError)) : (toolError || 'Tool error')
+          console.error(`[SubAgents] ${agent.name} tool error: ${teToolCallId || 'unknown'}`, errorMsg)
+
+          if (teToolCallId) {
+            const toolCall = agent.toolCalls.find(tc => tc.id === teToolCallId)
+            if (toolCall) {
+              toolCall.output = { error: errorMsg }
+            }
+          }
+          agent.lastActivityAt = Date.now()
+          notifyProgress(agentId, agent)
+          break
+        }
       }
     }
 
