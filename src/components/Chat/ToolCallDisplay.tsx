@@ -244,16 +244,30 @@ export function SingleToolCallDisplay({
           {argDisplay || statusText}
         </span>
 
-        {/* Status indicator */}
-        {isInProgress && (
-          <Loader2 className="w-4 h-4 text-accent animate-spin flex-shrink-0" />
+        {/* Status indicator - for spawn_agent, show sub-agent status instead of tool completion */}
+        {toolCall.name === 'spawn_agent' && subAgent ? (
+          // Show sub-agent status
+          subAgent.status === 'running' || subAgent.status === 'pending' ? (
+            <Loader2 className="w-4 h-4 text-accent animate-spin flex-shrink-0" />
+          ) : subAgent.status === 'completed' ? (
+            <CheckCircle className="w-4 h-4 text-green-500 flex-shrink-0" />
+          ) : subAgent.status === 'failed' ? (
+            <XCircle className="w-4 h-4 text-error flex-shrink-0" />
+          ) : null
+        ) : (
+          // Normal tool status
+          <>
+            {isInProgress && (
+              <Loader2 className="w-4 h-4 text-accent animate-spin flex-shrink-0" />
+            )}
+            {hasResult && !formattedResult?.isError && (
+              <CheckCircle className="w-4 h-4 text-green-500 flex-shrink-0" />
+            )}
+            {(hasResult && formattedResult?.isError) || status === 'error' ? (
+              <XCircle className="w-4 h-4 text-error flex-shrink-0" />
+            ) : null}
+          </>
         )}
-        {hasResult && !formattedResult?.isError && (
-          <CheckCircle className="w-4 h-4 text-green-500 flex-shrink-0" />
-        )}
-        {(hasResult && formattedResult?.isError) || status === 'error' ? (
-          <XCircle className="w-4 h-4 text-error flex-shrink-0" />
-        ) : null}
       </button>
 
       {/* Artifact content streaming - show raw content while creating */}
