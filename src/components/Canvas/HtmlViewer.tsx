@@ -1,5 +1,5 @@
-import { useState, useMemo, useEffect, useRef } from 'react'
-import { RefreshCw, ExternalLink, Edit3, Eye, Copy, Check, Save, GitCompare } from 'lucide-react'
+import { useState, useMemo, useEffect, useRef, useCallback } from 'react'
+import { RefreshCw, ExternalLink, Edit3, Eye, Copy, Check, GitCompare, AlertCircle, CheckCircle } from 'lucide-react'
 import { DiffViewer } from './DiffViewer'
 
 interface HtmlViewerProps {
@@ -8,11 +8,73 @@ interface HtmlViewerProps {
   onSave?: (content: string) => void
 }
 
+// Validate HTML using DOMParser
+function validateHtml(content: string): { valid: boolean; errors: string[] } {
+  const errors: string[] = []
+
+  try {
+    const parser = new DOMParser()
+    const doc = parser.parseFromString(content, 'text/html')
+
+    // Check for parser errors
+    const parserErrors = doc.querySelectorAll('parsererror')
+    if (parserErrors.length > 0) {
+      parserErrors.forEach(err => {
+        errors.push(err.textContent || 'HTML parsing error')
+      })
+    }
+
+    // Check for common issues
+    const scripts = doc.querySelectorAll('script')
+    scripts.forEach(script => {
+      const scriptContent = script.textContent || ''
+      // Basic JS syntax check - look for obvious errors
+      if (scriptContent.includes('function') || scriptContent.includes('const') || scriptContent.includes('let')) {
+        try {
+          // Try to parse as a function to catch syntax errors
+          new Function(scriptContent)
+        } catch (e: any) {
+          errors.push(`JavaScript error: ${e.message}`)
+        }
+      }
+    })
+
+    return { valid: errors.length === 0, errors }
+  } catch (e: any) {
+    return { valid: false, errors: [e.message] }
+  }
+}
+
+// Debounce hook
+function useDebounce<T>(value: T, delay: number): T {
+  const [debouncedValue, setDebouncedValue] = useState<T>(value)
+
+  useEffect(() => {
+    const handler = setTimeout(() => {
+      setDebouncedValue(value)
+    }, delay)
+
+    return () => {
+      clearTimeout(handler)
+    }
+  }, [value, delay])
+
+  return debouncedValue
+}
+
 export function HtmlViewer({ html, isStreaming = false, onSave }: HtmlViewerProps) {
   // Default to editor view when streaming, preview when complete
   const [view, setView] = useState<'preview' | 'editor' | 'diff'>(isStreaming ? 'editor' : 'preview')
   const [editedContent, setEditedContent] = useState(html)
   const [hasChanges, setHasChanges] = useState(false)
+  const [validation, setValidation] = useState<{ valid: boolean; errors: string[] }>({ valid: true, errors: [] })
+  const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle')
+
+  // Track the last saved content to avoid duplicate saves
+  const lastSavedRef = useRef(html)
+
+  // Debounce content changes for auto-save (1 second delay)
+  const debouncedContent = useDebounce(editedContent, 1000)
 
   // Switch to preview when streaming completes
   useEffect(() => {
@@ -25,7 +87,35 @@ export function HtmlViewer({ html, isStreaming = false, onSave }: HtmlViewerProp
   useEffect(() => {
     setEditedContent(html)
     setHasChanges(false)
+    lastSavedRef.current = html
+    setValidation({ valid: true, errors: [] })
+    setSaveStatus('idle')
   }, [html])
+
+  // Auto-save when debounced content changes
+  useEffect(() => {
+    // Skip if no changes or same as last saved
+    if (debouncedContent === lastSavedRef.current || !onSave || isStreaming) {
+      return
+    }
+
+    // Validate before saving
+    const result = validateHtml(debouncedContent)
+    setValidation(result)
+
+    if (result.valid) {
+      setSaveStatus('saving')
+      onSave(debouncedContent)
+      lastSavedRef.current = debouncedContent
+      setHasChanges(false)
+      setSaveStatus('saved')
+
+      // Reset status after a moment
+      setTimeout(() => setSaveStatus('idle'), 2000)
+    } else {
+      setSaveStatus('error')
+    }
+  }, [debouncedContent, onSave, isStreaming])
 
   const [copied, setCopied] = useState(false)
   const [refreshKey, setRefreshKey] = useState(0)
@@ -41,14 +131,8 @@ export function HtmlViewer({ html, isStreaming = false, onSave }: HtmlViewerProp
 
   const handleContentChange = (newContent: string) => {
     setEditedContent(newContent)
-    setHasChanges(newContent !== html)
-  }
-
-  const handleSave = () => {
-    if (onSave && hasChanges) {
-      onSave(editedContent)
-      setHasChanges(false)
-    }
+    setHasChanges(newContent !== lastSavedRef.current)
+    setSaveStatus('idle')
   }
 
   // Use editedContent for preview (so edits are reflected)
@@ -160,44 +244,77 @@ export function HtmlViewer({ html, isStreaming = false, onSave }: HtmlViewerProp
           </div>
         </div>
 
-        <div className="flex items-center gap-1">
-          {view === 'preview' && (
-            <>
-              <button
-                onClick={handleRefresh}
-                className="p-1.5 text-text-muted hover:text-text-primary hover:bg-bg-hover rounded transition-colors"
-                title="Refresh preview"
-              >
-                <RefreshCw className="w-4 h-4" />
-              </button>
-              <button
-                onClick={handleOpenExternal}
-                className="p-1.5 text-text-muted hover:text-text-primary hover:bg-bg-hover rounded transition-colors"
-                title="Open in new window"
-              >
-                <ExternalLink className="w-4 h-4" />
-              </button>
-            </>
+        <div className="flex items-center gap-2">
+          {/* Save/validation status */}
+          {(view === 'editor' || view === 'diff') && !isStreaming && (
+            <div className="flex items-center gap-1.5 text-xs">
+              {saveStatus === 'saving' && (
+                <span className="text-text-muted">Saving...</span>
+              )}
+              {saveStatus === 'saved' && (
+                <span className="flex items-center gap-1 text-green-400">
+                  <CheckCircle className="w-3 h-3" />
+                  Saved
+                </span>
+              )}
+              {saveStatus === 'error' && (
+                <span className="flex items-center gap-1 text-red-400">
+                  <AlertCircle className="w-3 h-3" />
+                  Invalid
+                </span>
+              )}
+              {hasChanges && saveStatus === 'idle' && (
+                <span className="text-text-muted">Unsaved changes</span>
+              )}
+            </div>
           )}
-          {(view === 'editor' || view === 'diff') && hasChanges && onSave && (
+
+          <div className="flex items-center gap-1">
+            {view === 'preview' && (
+              <>
+                <button
+                  onClick={handleRefresh}
+                  className="p-1.5 text-text-muted hover:text-text-primary hover:bg-bg-hover rounded transition-colors"
+                  title="Refresh preview"
+                >
+                  <RefreshCw className="w-4 h-4" />
+                </button>
+                <button
+                  onClick={handleOpenExternal}
+                  className="p-1.5 text-text-muted hover:text-text-primary hover:bg-bg-hover rounded transition-colors"
+                  title="Open in new window"
+                >
+                  <ExternalLink className="w-4 h-4" />
+                </button>
+              </>
+            )}
             <button
-              onClick={handleSave}
-              className="flex items-center gap-1 px-2 py-1 text-xs bg-accent text-bg-base rounded hover:bg-accent-bright transition-colors"
-              title="Save changes"
+              onClick={handleCopy}
+              className="p-1.5 text-text-muted hover:text-text-primary hover:bg-bg-hover rounded transition-colors"
+              title="Copy HTML"
             >
-              <Save className="w-3 h-3" />
-              Save
+              {copied ? <Check className="w-4 h-4 text-green-500" /> : <Copy className="w-4 h-4" />}
             </button>
-          )}
-          <button
-            onClick={handleCopy}
-            className="p-1.5 text-text-muted hover:text-text-primary hover:bg-bg-hover rounded transition-colors"
-            title="Copy HTML"
-          >
-            {copied ? <Check className="w-4 h-4 text-green-500" /> : <Copy className="w-4 h-4" />}
-          </button>
+          </div>
         </div>
       </div>
+
+      {/* Validation errors */}
+      {!validation.valid && validation.errors.length > 0 && (
+        <div className="px-4 py-2 bg-red-500/10 border-b border-red-500/30">
+          <div className="flex items-start gap-2">
+            <AlertCircle className="w-4 h-4 text-red-400 flex-shrink-0 mt-0.5" />
+            <div className="text-xs text-red-300">
+              <div className="font-medium mb-1">Validation errors (changes not saved):</div>
+              <ul className="list-disc list-inside space-y-0.5">
+                {validation.errors.map((error, idx) => (
+                  <li key={idx}>{error}</li>
+                ))}
+              </ul>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Content */}
       <div className="flex-1 overflow-hidden bg-white">
