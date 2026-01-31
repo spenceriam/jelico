@@ -426,10 +426,10 @@ If has_question is true, respond using continue_agent to keep the agent working.
 IMPORTANT: Always call this after spawn_agent to get results.`,
       parameters: z.object({
         agent_id: z.string().describe('The ID of the agent to wait for (from spawn_agent result)'),
-        timeout_seconds: z.number().optional().describe('Maximum seconds to wait (default: 60)'),
+        timeout_seconds: z.number().optional().describe('Maximum seconds to wait (default: 300)'),
       }),
       execute: async ({ agent_id, timeout_seconds }) => {
-        const timeoutMs = (timeout_seconds || 60) * 1000
+        const timeoutMs = (timeout_seconds || 300) * 1000
 
         // Keep the main stream alive while waiting by resetting activity timeout
         // This prevents the stream from timing out while blocked on wait_for_agent
@@ -447,7 +447,7 @@ IMPORTANT: Always call this after spawn_agent to get results.`,
             return {
               success: false,
               timed_out: true,
-              error: `Agent did not respond within ${timeout_seconds || 60} seconds`,
+              error: `Agent did not respond within ${timeout_seconds || 300} seconds`,
             }
           }
 

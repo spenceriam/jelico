@@ -2,6 +2,11 @@
 
 All notable changes to Jelico will be documented in this file.
 
+## [0.7.7] - 2026-01-31
+
+### Changed
+- **Increased wait_for_agent timeout**: Default timeout increased from 60 seconds to 300 seconds (5 minutes) to allow complex artifact generation to complete without premature timeout.
+
 ## [0.7.6] - 2026-01-31
 
 ### Fixed
