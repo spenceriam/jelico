@@ -1,5 +1,6 @@
 import { useState, useMemo, useEffect, useRef } from 'react'
-import { RefreshCw, ExternalLink, Edit3, Eye, Copy, Check, Save } from 'lucide-react'
+import { RefreshCw, ExternalLink, Edit3, Eye, Copy, Check, Save, GitCompare } from 'lucide-react'
+import { DiffViewer } from './DiffViewer'
 
 interface HtmlViewerProps {
   html: string
@@ -9,7 +10,7 @@ interface HtmlViewerProps {
 
 export function HtmlViewer({ html, isStreaming = false, onSave }: HtmlViewerProps) {
   // Default to editor view when streaming, preview when complete
-  const [view, setView] = useState<'preview' | 'editor'>(isStreaming ? 'editor' : 'preview')
+  const [view, setView] = useState<'preview' | 'editor' | 'diff'>(isStreaming ? 'editor' : 'preview')
   const [editedContent, setEditedContent] = useState(html)
   const [hasChanges, setHasChanges] = useState(false)
 
@@ -142,6 +143,20 @@ export function HtmlViewer({ html, isStreaming = false, onSave }: HtmlViewerProp
             Editor
             {hasChanges && <span className="w-1.5 h-1.5 rounded-full bg-accent" />}
           </button>
+          {hasChanges && (
+            <button
+              onClick={() => setView('diff')}
+              className={`
+                flex items-center gap-1.5 px-2 py-1 text-xs rounded
+                ${view === 'diff'
+                  ? 'bg-bg-elevated text-text-primary'
+                  : 'text-text-muted hover:text-text-secondary'}
+              `}
+            >
+              <GitCompare className="w-3 h-3" />
+              Diff
+            </button>
+          )}
           </div>
         </div>
 
@@ -164,7 +179,7 @@ export function HtmlViewer({ html, isStreaming = false, onSave }: HtmlViewerProp
               </button>
             </>
           )}
-          {view === 'editor' && hasChanges && onSave && (
+          {(view === 'editor' || view === 'diff') && hasChanges && onSave && (
             <button
               onClick={handleSave}
               className="flex items-center gap-1 px-2 py-1 text-xs bg-accent text-bg-base rounded hover:bg-accent-bright transition-colors"
@@ -194,6 +209,11 @@ export function HtmlViewer({ html, isStreaming = false, onSave }: HtmlViewerProp
             sandbox="allow-scripts allow-same-origin allow-forms allow-modals allow-popups"
             title="HTML Preview"
           />
+        ) : view === 'diff' ? (
+          // Diff view showing changes
+          <div className="h-full overflow-auto bg-bg-deep">
+            <DiffViewer original={html} modified={editedContent} />
+          </div>
         ) : isStreaming ? (
           // Read-only streaming view
           <pre
