@@ -120,6 +120,8 @@ interface ChatStore {
   lastCompletedTool: { name: string; args: Record<string, unknown>; completedAt: number } | null
   // Status display queue for graceful UX - ensures each status shows for minimum time
   statusDisplayQueue: StatusDisplayItem[]
+  // Tool input progress - shown when AI is generating large tool inputs (like artifacts)
+  toolInputProgress: { toolName: string; charCount: number } | null
 
   // Actions
   loadConversations: () => Promise<void>
@@ -159,6 +161,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
   mode: 'auto' as AgentMode,
   messageQueue: [],
   statusDisplayQueue: [],
+  toolInputProgress: null,
 
   loadConversations: async () => {
     set({ isLoading: true })
@@ -201,6 +204,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
         streamingToolResults: [],
         streamingSegments: [],
         statusDisplayQueue: [],
+        toolInputProgress: null,
         error: null,
       })
       return
@@ -308,6 +312,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
       streamingToolResults: [],
       streamingSegments: [],
       statusDisplayQueue: [],
+      toolInputProgress: null,
     })
 
     // Get workspace path for context
@@ -545,6 +550,11 @@ export const useChatStore = create<ChatStore>((set, get) => ({
       useTodoStore.getState().setTodos(todos)
     })
 
+    // Handle tool input progress (for large artifacts)
+    window.jelico.ai.onToolInputProgress(channelId, (progress) => {
+      set({ toolInputProgress: progress })
+    })
+
     // Handle stream end
     window.jelico.ai.onStreamEnd(channelId, async (stats) => {
       window.jelico.ai.removeListeners(channelId)
@@ -614,6 +624,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
           streamingToolResults: [],
           streamingSegments: [],
           statusDisplayQueue: [],
+          toolInputProgress: null,
           lastCompletedTool: null,
         }))
 
@@ -773,6 +784,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
       streamingToolResults: [],
       streamingSegments: [],
       statusDisplayQueue: [],
+      toolInputProgress: null,
     })
   },
 

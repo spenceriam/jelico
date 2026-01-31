@@ -16,7 +16,7 @@ import { TodoPanel } from '../Todo/TodoPanel'
 const MIN_STATUS_DISPLAY_MS = 600
 
 export function ChatArea() {
-  const { messages, isStreaming, streamingContent, streamingToolCalls, streamingToolResults, streamingSegments, systemNotifications, activeConversationId, regenerateLastResponse, modeSwitchReason, modeTransitioning, lastCompletedTool, statusDisplayQueue } = useChatStore()
+  const { messages, isStreaming, streamingContent, streamingToolCalls, streamingToolResults, streamingSegments, systemNotifications, activeConversationId, regenerateLastResponse, modeSwitchReason, modeTransitioning, lastCompletedTool, statusDisplayQueue, toolInputProgress } = useChatStore()
   const { activeProviderId, activeModel } = useProviderStore()
   const { isProcessing, processingMessage } = useUIStore()
   const { getContextUsage, isCompacting } = useContextStore()
@@ -204,10 +204,26 @@ export function ChatArea() {
                      }
                    }
 
+                   // Show tool input progress (for large artifacts being generated)
+                   if (toolInputProgress) {
+                     const { toolName, charCount } = toolInputProgress
+                     const kbSize = (charCount / 1024).toFixed(1)
+                     switch (toolName) {
+                       case 'create_artifact':
+                         return `Generating artifact... (${kbSize}KB)`
+                       case 'update_artifact':
+                         return `Updating artifact... (${kbSize}KB)`
+                       case 'write_file':
+                         return `Writing file... (${kbSize}KB)`
+                       default:
+                         return `Generating ${toolName}... (${kbSize}KB)`
+                     }
+                   }
+
                    if (streamingToolCalls.length > 0) {
                      return 'Finishing up...'
                    }
-                   return streamingContent ? 'Responding...' : 'Thinking...'
+                   return streamingContent ? 'Responding...' : 'Processing...'
                  })() :
                  processingMessage || 'Processing...'}
               </ShimmerText>

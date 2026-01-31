@@ -236,6 +236,10 @@ contextBridge.exposeInMainWorld('jelico', {
       const handler = (_: any, todos: any[]) => callback(todos)
       ipcRenderer.on(`ai:todos:${channelId}`, handler)
     },
+    onToolInputProgress: (channelId: string, callback: (progress: { toolName: string; charCount: number }) => void) => {
+      const handler = (_: any, progress: any) => callback(progress)
+      ipcRenderer.on(`ai:toolInputProgress:${channelId}`, handler)
+    },
     stopStream: (channelId: string) => {
       ipcRenderer.send('ai:stop', channelId)
     },
@@ -251,6 +255,7 @@ contextBridge.exposeInMainWorld('jelico', {
       ipcRenderer.removeAllListeners(`ai:agentProgress:${channelId}`)
       ipcRenderer.removeAllListeners(`ai:updateArtifact:${channelId}`)
       ipcRenderer.removeAllListeners(`ai:todos:${channelId}`)
+      ipcRenderer.removeAllListeners(`ai:toolInputProgress:${channelId}`)
     },
     generateTitle: (params: { providerId: string; model: string; userMessage: string; assistantMessage: string }): Promise<{ success: boolean; title?: string; error?: string }> => {
       return ipcRenderer.invoke('ai:generateTitle', params)

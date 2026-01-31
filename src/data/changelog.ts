@@ -21,6 +21,25 @@ export interface ChangelogEntry {
 
 export const changelog: ChangelogEntry[] = [
   {
+    version: '0.6.9',
+    date: '2026-01-30',
+    changes: {
+      added: [
+        'Tool input progress display - shows "Generating artifact... (X.XKB)" during large tool inputs',
+        'Activity-based timeout - stream won\'t timeout if there\'s ongoing activity',
+      ],
+      changed: [
+        'Status text "Thinking..." renamed to "Processing..." (clearer for non-thinking models)',
+        'Increased max stream timeout to 5 minutes for large artifacts',
+        'Activity timeout resets on every stream event (30 second inactivity limit)',
+      ],
+      fixed: [
+        'Large artifact generation (HTML, etc.) no longer times out during streaming',
+        'Tool input streaming properly tracked for progress display',
+      ],
+    },
+  },
+  {
     version: '0.6.8',
     date: '2026-01-30',
     changes: {

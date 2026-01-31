@@ -39,8 +39,11 @@ const activeStreams = new Map<string, AbortController>()
 // Debug flag - controlled by environment
 const DEBUG_API_REQUESTS = process.env.DEBUG_AI === 'true' || process.env.NODE_ENV === 'development'
 
-// Streaming timeout in ms (2 minutes)
-const STREAM_TIMEOUT_MS = 120000
+// Streaming timeout in ms (5 minutes for large artifacts)
+const STREAM_TIMEOUT_MS = 300000
+
+// Activity timeout - reset on any stream activity (30 seconds)
+const ACTIVITY_TIMEOUT_MS = 30000
 
 // Max retries for transient errors
 const MAX_RETRIES = 2
@@ -981,9 +984,20 @@ export function registerAIHandlers() {
     // Register this stream as active (for sub-agent orphan detection)
     registerParentStream(channelId)
 
-    // Set up timeout
-    const timeoutId = setTimeout(() => {
-      console.warn('[AI] Stream timeout - aborting after', STREAM_TIMEOUT_MS, 'ms')
+    // Set up activity-based timeout (resets on any stream activity)
+    let activityTimeoutId: NodeJS.Timeout
+    const resetActivityTimeout = () => {
+      clearTimeout(activityTimeoutId)
+      activityTimeoutId = setTimeout(() => {
+        console.warn('[AI] Stream inactivity timeout - no activity for', ACTIVITY_TIMEOUT_MS, 'ms')
+        abortController.abort()
+      }, ACTIVITY_TIMEOUT_MS)
+    }
+    resetActivityTimeout()
+
+    // Also set a hard maximum timeout
+    const maxTimeoutId = setTimeout(() => {
+      console.warn('[AI] Stream max timeout - aborting after', STREAM_TIMEOUT_MS, 'ms')
       abortController.abort()
     }, STREAM_TIMEOUT_MS)
 
@@ -1198,13 +1212,24 @@ When the user asks to modify, update, fix, or improve an existing artifact, use 
           let lastCompletedToolName: string | null = null
           let textSentSinceLastResult = true // Track if AI provided feedback
 
+          // Track current tool receiving input (for progress display)
+          let currentToolInputId: string | null = null
+          let currentToolInputName: string | null = null
+          let toolInputCharCount = 0
+          let lastToolInputUpdate = 0
+
           for await (const part of result.fullStream) {
             if (abortController.signal.aborted) break
 
-            // Debug: log all event types
+            // Reset activity timeout on any stream event
+            resetActivityTimeout()
+
+            // Debug: log all event types (throttle tool-input-delta to avoid spam)
             if (DEBUG_API_REQUESTS) {
               const textContent = (part as any).text || (part as any).textDelta
-              console.log('[AI] Stream event:', part.type, part.type === 'text-delta' && textContent ? `"${textContent.slice(0, 50)}..."` : '')
+              if (part.type !== 'tool-input-delta') {
+                console.log('[AI] Stream event:', part.type, part.type === 'text-delta' && textContent ? `"${textContent.slice(0, 50)}..."` : '')
+              }
             }
 
             switch (part.type) {
@@ -1219,8 +1244,34 @@ When the user asks to modify, update, fix, or improve an existing artifact, use 
                 }
                 break
 
+              case 'tool-input-delta': {
+                // Track tool input progress for large artifacts
+                const inputDelta = (part as any).inputTextDelta || (part as any).delta || ''
+                toolInputCharCount += inputDelta.length
+
+                // Send progress update every 500ms or 1000 chars to avoid flooding
+                const now = Date.now()
+                if (now - lastToolInputUpdate > 500 || toolInputCharCount % 1000 < inputDelta.length) {
+                  lastToolInputUpdate = now
+                  // Find the tool name from tracker if we have it
+                  const toolName = currentToolInputName ||
+                    (currentToolInputId ? toolTracker.get(currentToolInputId)?.name : null) ||
+                    'artifact'
+                  event.sender.send(`ai:toolInputProgress:${channelId}`, {
+                    toolName,
+                    charCount: toolInputCharCount,
+                  })
+                }
+                break
+              }
+
               case 'tool-call-streaming-start':
                 console.log('[AI] Tool call starting:', part.toolName)
+                // Track this as the current tool receiving input
+                currentToolInputId = part.toolCallId
+                currentToolInputName = part.toolName
+                toolInputCharCount = 0
+
                 toolTracker.set(part.toolCallId, {
                   id: part.toolCallId,
                   name: part.toolName,
@@ -1238,6 +1289,10 @@ When the user asks to modify, update, fix, or improve an existing artifact, use 
 
               case 'tool-call':
                 hadAnyToolCalls = true
+                // Clear tool input tracking - the tool is now complete
+                currentToolInputId = null
+                currentToolInputName = null
+                toolInputCharCount = 0
 
                 const toolArgs = (part as any).input || (part as any).args || {}
                 console.log('[AI] Tool call ready:', part.toolName, toolArgs)
@@ -1472,7 +1527,8 @@ Be concise but informative. The user needs to understand what happened.`,
         event.sender.send(`ai:error:${channelId}`, error.message || 'Unknown error')
       }
     } finally {
-      clearTimeout(timeoutId)
+      clearTimeout(activityTimeoutId)
+      clearTimeout(maxTimeoutId)
       activeStreams.delete(channelId)
 
       // Clear global progress callback

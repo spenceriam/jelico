@@ -63,6 +63,7 @@ interface Window {
       onAgentProgress: (channelId: string, callback: (update: AgentProgressEvent) => void) => void
       onUpdateArtifact: (channelId: string, callback: (update: ArtifactUpdateEvent) => void) => void
       onTodos: (channelId: string, callback: (todos: TodoTask[]) => void) => void
+      onToolInputProgress: (channelId: string, callback: (progress: { toolName: string; charCount: number }) => void) => void
       stopStream: (channelId: string) => void
       removeListeners: (channelId: string) => void
       generateTitle: (params: GenerateTitleParams) => Promise<GenerateTitleResult>
