@@ -1203,14 +1203,17 @@ When the user asks to modify, update, fix, or improve an existing artifact, use 
 
             // Debug: log all event types
             if (DEBUG_API_REQUESTS) {
-              console.log('[AI] Stream event:', part.type, part.type === 'text-delta' ? `"${(part as any).textDelta?.slice(0, 50)}..."` : '')
+              const textContent = (part as any).text || (part as any).textDelta
+              console.log('[AI] Stream event:', part.type, part.type === 'text-delta' && textContent ? `"${textContent.slice(0, 50)}..."` : '')
             }
 
             switch (part.type) {
               case 'text-delta':
-                if (part.textDelta) {
-                  event.sender.send(`ai:chunk:${channelId}`, part.textDelta)
-                  textAfterLastToolResult += part.textDelta
+                // AI SDK provides text as 'text' property, not 'textDelta'
+                const textChunk = (part as any).text || (part as any).textDelta
+                if (textChunk) {
+                  event.sender.send(`ai:chunk:${channelId}`, textChunk)
+                  textAfterLastToolResult += textChunk
                   // Mark that AI provided text since last tool result (harness tracking)
                   textSentSinceLastResult = true
                 }

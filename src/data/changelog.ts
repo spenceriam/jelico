@@ -21,6 +21,17 @@ export interface ChangelogEntry {
 
 export const changelog: ChangelogEntry[] = [
   {
+    version: '0.6.8',
+    date: '2026-01-30',
+    changes: {
+      fixed: [
+        'Text streaming now works properly - AI SDK uses "text" property not "textDelta"',
+        'Text now streams in real-time instead of appearing all at once at the end',
+        'OpenRouter models (and all providers) now stream correctly',
+      ],
+    },
+  },
+  {
     version: '0.6.7',
     date: '2026-01-30',
     changes: {
