@@ -21,6 +21,20 @@ export interface ChangelogEntry {
 
 export const changelog: ChangelogEntry[] = [
   {
+    version: '0.6.14',
+    date: '2026-01-30',
+    changes: {
+      removed: [
+        'switch_mode tool - was causing AI to get distracted instead of doing tasks',
+        'Mode is now set by user only, not auto-switched by AI',
+      ],
+      fixed: [
+        'Timeout now shows clear error: "Model stopped responding" instead of silent failure',
+        'Inactivity timeout (30s) and max timeout (5min) both notify user with helpful message',
+      ],
+    },
+  },
+  {
     version: '0.6.13',
     date: '2026-01-30',
     changes: {

@@ -274,35 +274,8 @@ function getBuiltInTools(
 
   const tools: Record<string, any> = {}
 
-  // Mode switch tool - only available in Auto mode for dynamic mode transitions
-  if (mode === 'auto' && sendModeSwitch) {
-    tools.switch_mode = tool({
-      description: `Switch to a different operating mode. Use this in Auto mode to signal what type of work you're doing.
-
-WHEN TO SWITCH:
-- "plan" → When outlining your approach at the start (brief, 1-2 sentences)
-- "explore" → When reading files, searching, gathering information
-- "execute" → When writing files, running commands, creating artifacts
-- "review" → When summarizing results, providing final output
-
-WORKFLOW EXAMPLE:
-1. User asks multi-step task
-2. switch_mode("plan") → Brief acknowledgment of approach
-3. switch_mode("explore") → Read files, gather info
-4. switch_mode("execute") → Make changes, run commands
-5. switch_mode("review") → Summarize what was done
-
-Keep mode switches natural - don't switch for every tiny action.`,
-      parameters: z.object({
-        mode: z.enum(['plan', 'explore', 'execute', 'review']).describe('The mode to switch to'),
-        reason: z.string().describe('Brief reason for the switch (shown to user)'),
-      }),
-      execute: async ({ mode: targetMode, reason }) => {
-        sendModeSwitch(mode, targetMode as AgentMode, reason)
-        return { success: true, switched_to: targetMode }
-      },
-    })
-  }
+  // Note: switch_mode tool removed - was causing AI to get distracted
+  // instead of doing the actual task. Mode is now set by user only.
 
   // Todo tools - for tracking multi-step task progress
   // Always available - helps AI show work plan to user
@@ -1060,12 +1033,16 @@ export function registerAIHandlers() {
     // Register this stream as active (for sub-agent orphan detection)
     registerParentStream(channelId)
 
+    // Track timeout reason for better error messaging
+    let timeoutReason: 'inactivity' | 'max' | null = null
+
     // Set up activity-based timeout (resets on any stream activity)
     let activityTimeoutId: NodeJS.Timeout
     const resetActivityTimeout = () => {
       clearTimeout(activityTimeoutId)
       activityTimeoutId = setTimeout(() => {
         console.warn('[AI] Stream inactivity timeout - no activity for', ACTIVITY_TIMEOUT_MS, 'ms')
+        timeoutReason = 'inactivity'
         abortController.abort()
       }, ACTIVITY_TIMEOUT_MS)
     }
@@ -1074,6 +1051,7 @@ export function registerAIHandlers() {
     // Also set a hard maximum timeout
     const maxTimeoutId = setTimeout(() => {
       console.warn('[AI] Stream max timeout - aborting after', STREAM_TIMEOUT_MS, 'ms')
+      timeoutReason = 'max'
       abortController.abort()
     }, STREAM_TIMEOUT_MS)
 
@@ -1719,7 +1697,15 @@ Be concise but informative. The user needs to understand what happened.`,
           lastError = error
 
           if (error.name === 'AbortError') {
-            // User cancelled - don't retry
+            // Check if this was a timeout-triggered abort
+            if (timeoutReason === 'inactivity') {
+              console.warn('[AI] Stream aborted due to inactivity timeout')
+              event.sender.send(`ai:error:${channelId}`, 'Model stopped responding. The AI may be overloaded or the request was too complex. Please try again.')
+            } else if (timeoutReason === 'max') {
+              console.warn('[AI] Stream aborted due to max timeout')
+              event.sender.send(`ai:error:${channelId}`, 'Request timed out after 5 minutes. Please try a simpler request.')
+            }
+            // User cancelled or timeout - don't retry
             break
           }
 
