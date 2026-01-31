@@ -395,7 +395,8 @@ PREFER sub-agents for: reading multiple files, research tasks, any work that wou
 The sub-agent can ask you questions via [QUESTION] or request capabilities via [REQUEST].
 Returns an agent_id that you can use to track the agent.
 
-CRITICAL: After spawning, you MUST call wait_for_agent before finishing your response.`,
+CRITICAL: After spawning, you MUST call wait_for_agent before finishing your response.
+You MUST provide the task parameter.`,
       parameters: z.object({
         name: z.string().optional().describe('A short name for the agent (e.g., "Test Runner", "Code Reviewer"). Auto-generated if not provided.'),
         task: z.string().describe('The detailed task description for the agent'),
@@ -405,6 +406,14 @@ CRITICAL: After spawning, you MUST call wait_for_agent before finishing your res
         siblingContext: z.string().optional().describe('Info about other agents working in parallel (e.g., "Agent B is researching API docs"). Helps agents understand the bigger picture.'),
       }),
       execute: async ({ name, task, mode: agentMode, siblingContext }) => {
+        // CRITICAL: Validate required parameters
+        if (!task) {
+          console.error('[AI] spawn_agent called without task')
+          return {
+            success: false,
+            error: 'Missing required parameter: task. You MUST provide a task description when calling spawn_agent.',
+          }
+        }
         // Auto-generate name if not provided
         const agentName = name || `Agent-${Date.now().toString(36).slice(-4)}`
         // Spawn the sub-agent using the service
@@ -591,7 +600,9 @@ Types:
 - document: Markdown document
 - html: HTML content for preview
 - svg: SVG graphics
-- mermaid: Mermaid diagram syntax`,
+- mermaid: Mermaid diagram syntax
+
+IMPORTANT: You MUST provide all required parameters (type, title, content). Do not call this tool with empty arguments.`,
     parameters: z.object({
       type: z.enum(['code', 'document', 'html', 'svg', 'mermaid']).describe('The type of artifact'),
       title: z.string().describe('A short, descriptive title'),
@@ -599,6 +610,19 @@ Types:
       language: z.string().optional().describe('For code artifacts: the programming language (e.g., javascript, python)'),
     }).passthrough(), // Allow extra fields from models
     execute: async ({ type, title, content, language }) => {
+      // CRITICAL: Validate required parameters - never execute with empty args
+      if (!type || !title || !content) {
+        const missing = []
+        if (!type) missing.push('type')
+        if (!title) missing.push('title')
+        if (!content) missing.push('content')
+        console.error('[AI] create_artifact called with missing required parameters:', missing)
+        return {
+          success: false,
+          error: `Missing required parameters: ${missing.join(', ')}. You MUST provide type, title, and content when calling create_artifact.`,
+        }
+      }
+
       if (sendArtifact) {
         sendArtifact({ type, title, content, language })
       }
@@ -611,7 +635,9 @@ Types:
   tools.update_artifact = tool({
     description: `Update an existing artifact in the Canvas panel.
 Use this to modify, improve, or fix content in an artifact that already exists.
-You must know the artifact ID from the existing artifacts context.`,
+You must know the artifact ID from the existing artifacts context.
+
+IMPORTANT: You MUST provide id and content parameters. Do not call this tool with empty arguments.`,
     parameters: z.object({
       id: z.string().describe('The ID of the artifact to update'),
       title: z.string().optional().describe('New title (if changing)'),
@@ -619,6 +645,17 @@ You must know the artifact ID from the existing artifacts context.`,
       language: z.string().optional().describe('For code artifacts: the programming language (if changing)'),
     }),
     execute: async ({ id, title, content, language }) => {
+      // CRITICAL: Validate required parameters
+      if (!id || !content) {
+        const missing = []
+        if (!id) missing.push('id')
+        if (!content) missing.push('content')
+        console.error('[AI] update_artifact called with missing required parameters:', missing)
+        return {
+          success: false,
+          error: `Missing required parameters: ${missing.join(', ')}. You MUST provide id and content when calling update_artifact.`,
+        }
+      }
       if (sendUpdateArtifact) {
         sendUpdateArtifact({ id, updates: { title, content, language } })
       }
@@ -628,11 +665,15 @@ You must know the artifact ID from the existing artifacts context.`,
 
   // Read file tool - always available
   tools.read_file = tool({
-    description: 'Read the contents of a file at the specified path',
+    description: 'Read the contents of a file at the specified path. You MUST provide the path parameter.',
     parameters: z.object({
       path: z.string().describe('The file path to read'),
     }),
     execute: async ({ path }) => {
+      if (!path) {
+        console.error('[AI] read_file called without path')
+        return { success: false, error: 'Missing required parameter: path. You MUST provide a file path to read.' }
+      }
       try {
         const fs = await import('fs/promises')
         const content = await fs.readFile(path, 'utf-8')
@@ -874,12 +915,23 @@ Use this to read documentation, articles, or any web page content.`,
   // Write file tool - only if canWrite
   if (canWrite) {
     tools.write_file = tool({
-      description: 'Write content to a file at the specified path',
+      description: 'Write content to a file at the specified path. You MUST provide both path and content parameters.',
       parameters: z.object({
         path: z.string().describe('The file path to write to'),
         content: z.string().describe('The content to write'),
       }),
       execute: async ({ path, content }) => {
+        // CRITICAL: Validate required parameters
+        if (!path || content === undefined || content === null) {
+          const missing = []
+          if (!path) missing.push('path')
+          if (content === undefined || content === null) missing.push('content')
+          console.error('[AI] write_file called with missing required parameters:', missing)
+          return {
+            success: false,
+            error: `Missing required parameters: ${missing.join(', ')}. You MUST provide path and content when calling write_file.`,
+          }
+        }
         try {
           // Check permission before writing
           const permCheck = await checkPermission('write_file', { path, content }, streamContext.workspacePath)
@@ -915,12 +967,20 @@ Use this to read documentation, articles, or any web page content.`,
   // Execute command tool - only if canExecute
   if (canExecute) {
     tools.execute_command = tool({
-      description: 'Execute a shell command',
+      description: 'Execute a shell command. You MUST provide the command parameter.',
       parameters: z.object({
         command: z.string().describe('The command to execute'),
         cwd: z.string().optional().describe('Working directory for the command'),
       }),
       execute: async ({ command, cwd }) => {
+        // CRITICAL: Validate required parameters
+        if (!command) {
+          console.error('[AI] execute_command called without command')
+          return {
+            success: false,
+            error: 'Missing required parameter: command. You MUST provide a command to execute.',
+          }
+        }
         try {
           // Check permission - classifies command as safe/destructive/unknown
           const permCheck = await checkPermission('execute_command', { command }, streamContext.workspacePath)
@@ -1329,10 +1389,33 @@ When the user asks to modify, update, fix, or improve an existing artifact, use 
                 event.sender.send(`ai:reasoningEnd:${channelId}`, {})
                 break
 
-              case 'tool-input-start':
+              case 'tool-input-start': {
                 // Reset accumulator when a new tool input starts
                 accumulatedToolInput = ''
+                // Log the full event to debug what we're receiving
+                if (DEBUG_API_REQUESTS) {
+                  console.log('[AI] tool-input-start full event:', JSON.stringify(part, null, 2))
+                }
                 break
+              }
+
+              case 'tool-input-end': {
+                // Check if the tool-input-end event includes the full input
+                const endInput = (part as any).input || (part as any).args || (part as any).arguments || (part as any).toolInput
+                if (DEBUG_API_REQUESTS) {
+                  console.log('[AI] tool-input-end full event:', JSON.stringify(part, null, 2))
+                  console.log('[AI] tool-input-end extracted input:', endInput)
+                  console.log('[AI] Accumulated input so far:', accumulatedToolInput.slice(0, 200))
+                }
+                // If we got input in the end event, use it (some providers send all at once)
+                if (endInput && typeof endInput === 'string' && endInput.trim()) {
+                  accumulatedToolInput = endInput
+                } else if (endInput && typeof endInput === 'object' && Object.keys(endInput).length > 0) {
+                  // If it's already an object, stringify it for consistency
+                  accumulatedToolInput = JSON.stringify(endInput)
+                }
+                break
+              }
 
               case 'tool-input-delta': {
                 // Track and accumulate tool input for providers that stream args separately
@@ -1399,6 +1482,11 @@ When the user asks to modify, update, fix, or improve an existing artifact, use 
               case 'tool-call': {
                 hadAnyToolCalls = true
 
+                // Log full event for debugging
+                if (DEBUG_API_REQUESTS) {
+                  console.log('[AI] tool-call full event:', JSON.stringify(part, null, 2))
+                }
+
                 // Validate and extract properties with fallbacks
                 const tcToolCallId = part.toolCallId || (part as any).id
                 const tcToolName = part.toolName || (part as any).name || 'unknown_tool'
@@ -1408,8 +1496,19 @@ When the user asks to modify, update, fix, or improve an existing artifact, use 
                   break
                 }
 
-                // Get args from the event, or parse from accumulated input if empty
-                let toolArgs = (part as any).input || (part as any).args || (part as any).arguments || (part as any).parameters
+                // Get args from multiple sources - different providers put them in different places
+                let toolArgs = (part as any).input || (part as any).args || (part as any).arguments || (part as any).parameters || part.args
+
+                // Also check if args is a string that needs parsing
+                if (typeof toolArgs === 'string' && toolArgs.trim()) {
+                  try {
+                    toolArgs = JSON.parse(toolArgs)
+                    console.log('[AI] Parsed string tool args:', tcToolName, toolArgs)
+                  } catch (e) {
+                    console.warn('[AI] Failed to parse string tool args:', e)
+                    toolArgs = {}
+                  }
+                }
 
                 // If args are empty/undefined but we accumulated input, parse it
                 if ((!toolArgs || Object.keys(toolArgs).length === 0) && accumulatedToolInput.trim()) {
@@ -1418,9 +1517,22 @@ When the user asks to modify, update, fix, or improve an existing artifact, use 
                     console.log('[AI] Parsed tool args from accumulated input:', tcToolName, toolArgs)
                   } catch (e) {
                     console.warn('[AI] Failed to parse accumulated tool input:', e)
+                    console.warn('[AI] Accumulated input was:', accumulatedToolInput.slice(0, 500))
                     toolArgs = {}
                   }
                 }
+
+                // Also check accumulatedToolInputByCallId map
+                const storedInput = accumulatedToolInputByCallId.get(tcToolCallId)
+                if ((!toolArgs || Object.keys(toolArgs).length === 0) && storedInput?.trim()) {
+                  try {
+                    toolArgs = JSON.parse(storedInput)
+                    console.log('[AI] Parsed tool args from stored input:', tcToolName, toolArgs)
+                  } catch (e) {
+                    console.warn('[AI] Failed to parse stored tool input:', e)
+                  }
+                }
+
                 toolArgs = toolArgs || {}
 
                 // Clear tool input tracking - the tool is now complete
@@ -1428,6 +1540,7 @@ When the user asks to modify, update, fix, or improve an existing artifact, use 
                 currentToolInputName = null
                 toolInputCharCount = 0
                 accumulatedToolInput = ''
+                accumulatedToolInputByCallId.delete(tcToolCallId)
 
                 console.log('[AI] Tool call ready:', tcToolName, toolArgs)
 

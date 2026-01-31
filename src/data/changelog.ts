@@ -21,6 +21,19 @@ export interface ChangelogEntry {
 
 export const changelog: ChangelogEntry[] = [
   {
+    version: '0.6.15',
+    date: '2026-01-30',
+    changes: {
+      fixed: [
+        'CRITICAL: Tool calls with empty/missing arguments now return errors instead of executing',
+        'create_artifact, update_artifact, write_file, execute_command, spawn_agent validate required params',
+        'Added debug logging for tool-input-start/end events to trace argument streaming issues',
+        'Better handling of tool-input-end event which may contain full args (provider-dependent)',
+        'Tools now return clear error messages: "Missing required parameters: X, Y, Z"',
+      ],
+    },
+  },
+  {
     version: '0.6.14',
     date: '2026-01-30',
     changes: {
