@@ -1,6 +1,6 @@
 import { useRef, useEffect, useCallback } from 'react'
 import Editor, { OnMount, OnChange } from '@monaco-editor/react'
-import type { editor } from 'monaco-editor'
+import type { editor, Uri } from 'monaco-editor'
 
 interface MonacoEditorProps {
   value: string
@@ -86,7 +86,9 @@ export function MonacoEditor({
 
     // Listen for validation markers
     if (onValidation) {
-      monaco.editor.onDidChangeMarkers(([uri]) => {
+      monaco.editor.onDidChangeMarkers((uris: readonly Uri[]) => {
+        const uri = uris[0]
+        if (!uri) return
         const model = editor.getModel()
         if (model && uri.toString() === model.uri.toString()) {
           const markers = monaco.editor.getModelMarkers({ resource: uri })

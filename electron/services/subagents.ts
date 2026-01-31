@@ -740,10 +740,26 @@ IMPORTANT: You MUST provide all required parameters (type, title, content).`,
 
         console.log(`[SubAgents] ${agentContext.agentName} created artifact: "${title}" (${type})`)
 
+        // Return content summary for main AI to review
+        // Truncate if very long, but include enough for meaningful review
+        const maxPreviewLength = 5000
+        const contentPreview = content.length > maxPreviewLength
+          ? content.slice(0, maxPreviewLength) + '\n\n... [truncated, full content in Canvas]'
+          : content
+
         return {
           success: true,
-          message: `Artifact "${title}" created successfully`,
+          message: `Artifact "${title}" created successfully and is now visible in the Canvas.`,
+          artifact: {
+            type,
+            title,
+            language,
+            contentLength: content.length,
+            // Include content for main AI to review
+            content: contentPreview,
+          },
           warnings: validation.warnings.length > 0 ? validation.warnings : undefined,
+          reviewReminder: 'Please review this artifact for correctness, completeness, and quality before reporting success to the user.',
         }
       },
     })
@@ -1167,6 +1183,35 @@ Your task: ${task}
 - Be concise and direct in your response
 - Provide actionable results that can be used by the orchestrating AI
 - Summarize findings rather than dumping raw data
+
+## Artifact Creation (IMPORTANT)
+
+When your task involves creating content for display (code, HTML, documents, diagrams), use the \`create_artifact\` tool:
+
+**Supported artifact types:**
+- \`code\`: Code snippets or files (specify \`language\` parameter)
+- \`html\`: HTML content for interactive preview (include CSS/JS inline)
+- \`document\`: Markdown documents
+- \`svg\`: SVG graphics
+- \`mermaid\`: Mermaid diagram syntax
+
+**Best practices:**
+- For HTML: Create self-contained documents with embedded CSS and JavaScript
+- For code: Use appropriate language identifiers
+- For mermaid: Use the correct diagram type for the concept
+- Always provide meaningful titles
+
+**Review workflow:**
+Your artifacts will be reviewed by the main AI for quality assurance. After creating an artifact:
+1. The artifact is displayed in the Canvas panel
+2. The main AI will review it visually and check the code
+3. If issues are found, you may receive feedback via \`continue_agent\`
+4. Address any feedback and update the artifact as needed
+
+Include a brief summary of what you created in your response to help the main AI review:
+- What the artifact does/contains
+- Key features or sections
+- Any limitations or known issues
 
 ## Communication with Main AI
 

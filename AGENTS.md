@@ -72,7 +72,7 @@ The Soul/Memory system should make Jelico increasingly personalized - it learns 
 ## Project overview
 Jelico is an AI Productivity Desktop built with Electron, React, TypeScript, and Vite. It provides a frictionless AI assistant experience with multi-provider support (Anthropic, OpenAI, Google), workspace management, conversation persistence, and a soul/memory system that learns user patterns and preferences over time.
 
-**Current Version:** 0.6.7
+**Current Version:** 0.7.0
 
 ## Development workflow discipline
 - **CRITICAL**: NEVER commit or push changes without explicit user approval
@@ -315,8 +315,24 @@ Jelico uses a bi-directional sub-agent system for parallel task execution.
 Sub-agents automatically get a subset of tools based on mode:
 - `read_file`, `list_directory`, `search_files` (always)
 - `web_search`, `web_fetch` (always)
+- `create_artifact` (always) - creates artifacts that stream to Canvas
 - `write_file`, `execute_command` (if mode allows)
 - NO agent management tools (prevents recursion)
+
+### Sub-Agent Artifact Creation
+Sub-agents can create artifacts that appear in the Canvas panel:
+- Content streams in real-time as the sub-agent generates it
+- Main AI reviews artifacts for quality and can request fixes
+- Multiple artifacts queue up (first gets preview, others wait)
+
+**Workflow:**
+1. Main AI delegates artifact creation to sub-agent
+2. Sub-agent calls `create_artifact` tool
+3. Content streams to Canvas (shows in Editor tab)
+4. When complete, switches to Preview tab
+5. Main AI reviews artifact (visual + code)
+6. If issues found, main AI uses `continue_agent` to request fixes
+7. Sub-agent updates artifact, repeat until quality is met
 
 ### Communication Patterns
 **Sub-agent asking a question:**

@@ -2,6 +2,22 @@
 
 All notable changes to Jelico will be documented in this file.
 
+## [0.7.0] - 2026-01-31
+
+### Added
+- **Sub-agent artifact creation**: Sub-agents can now create artifacts that stream to Canvas in real-time
+- **Monaco Editor**: Replaced textarea with Monaco Editor for all code/HTML editing with syntax highlighting, auto-complete, and inline validation
+- **AI artifact validation**: Backend validation (HTML structure, JS syntax, Mermaid diagram types) before artifact creation
+- **Auto-save with validation**: Edits auto-save after 1 second debounce, blocked if Monaco reports errors
+- **Diff view**: See line-by-line changes between original and edited artifact content
+- **Artifact streaming preview**: Watch artifact content stream in as AI generates it, then switch to preview
+- **Sub-agent review workflow**: Main AI validates sub-agent artifacts and can request fixes via continue_agent
+
+### Changed
+- **Source tab renamed to Editor**: Reflects that content is now editable
+- **Sub-agent system prompt**: Now includes instructions for artifact creation and review process
+- **Main AI system prompt**: Instructs delegation of artifact creation to sub-agents for context efficiency
+
 ## [0.5.4] - 2026-01-30
 
 ### Added
