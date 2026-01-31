@@ -2,6 +2,16 @@
 
 All notable changes to Jelico will be documented in this file.
 
+## [0.7.4] - 2026-01-31
+
+### Changed
+- **Removed duplicate "Generating" indicators**: Canvas header already shows generating state, so removed redundant indicators from:
+  - MonacoEditor overlay
+  - HtmlViewer toolbar
+  - CodeViewer toolbar
+  - MermaidViewer toolbar
+  - DocumentViewer toolbar
+
 ## [0.7.3] - 2026-01-31
 
 ### Changed

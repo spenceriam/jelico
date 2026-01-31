@@ -168,15 +168,7 @@ export function MonacoEditor({
   const monacoLanguage = getMonacoLanguage(language)
 
   return (
-    <div className="h-full w-full relative">
-      {/* Generating indicator overlay */}
-      {isStreaming && (
-        <div className="absolute top-2 right-2 z-10 flex items-center gap-2 px-2 py-1 bg-bg-elevated/90 rounded text-xs text-accent border border-accent/30">
-          <div className="w-2 h-2 rounded-full bg-accent animate-pulse" />
-          Generating...
-        </div>
-      )}
-
+    <div className="h-full w-full">
       <Editor
         height="100%"
         language={monacoLanguage}

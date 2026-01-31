@@ -47,14 +47,7 @@ export function DocumentViewer({ content, isStreaming = false }: DocumentViewerP
     <div className="h-full flex flex-col">
       {/* Toolbar */}
       <div className="flex items-center justify-between px-4 py-2 border-b border-border bg-bg-surface">
-        <div className="flex items-center gap-2">
-          {isStreaming && (
-            <div className="flex items-center gap-1.5 pr-2 border-r border-border">
-              <div className="w-2 h-2 rounded-full bg-accent animate-pulse" />
-              <span className="text-xs text-accent">Generating</span>
-            </div>
-          )}
-          <div className="flex items-center gap-1">
+        <div className="flex items-center gap-1">
           <button
             onClick={() => setView('rendered')}
             className={`
@@ -79,7 +72,6 @@ export function DocumentViewer({ content, isStreaming = false }: DocumentViewerP
             <Edit3 className="w-3 h-3" />
             Editor
           </button>
-          </div>
         </div>
 
         <div className="flex items-center gap-1">
