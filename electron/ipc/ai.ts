@@ -29,6 +29,7 @@ import {
   getAgentLimit,
   increaseAgentLimit,
 } from '../services/subagents'
+import { validateArtifact } from '../services/artifactValidator'
 
 // Start orphan cleanup on module load
 startOrphanCleanup()
@@ -623,10 +624,30 @@ IMPORTANT: You MUST provide all required parameters (type, title, content). Do n
         }
       }
 
+      // Validate artifact content before creating
+      const validation = validateArtifact(type, content, language)
+      if (!validation.valid) {
+        console.error('[AI] Artifact validation failed:', validation.errors)
+        return {
+          success: false,
+          error: `Artifact validation failed:\n${validation.errors.join('\n')}\n\nPlease fix these issues and try again.`,
+          validationErrors: validation.errors,
+        }
+      }
+
+      // Log warnings but still create
+      if (validation.warnings.length > 0) {
+        console.warn('[AI] Artifact validation warnings:', validation.warnings)
+      }
+
       if (sendArtifact) {
         sendArtifact({ type, title, content, language })
       }
-      return { success: true, message: `Artifact "${title}" created successfully` }
+      return {
+        success: true,
+        message: `Artifact "${title}" created successfully`,
+        warnings: validation.warnings.length > 0 ? validation.warnings : undefined,
+      }
     },
   })
 
@@ -637,29 +658,52 @@ IMPORTANT: You MUST provide all required parameters (type, title, content). Do n
 Use this to modify, improve, or fix content in an artifact that already exists.
 You must know the artifact ID from the existing artifacts context.
 
-IMPORTANT: You MUST provide id and content parameters. Do not call this tool with empty arguments.`,
+IMPORTANT: You MUST provide id, type, and content parameters. Do not call this tool with empty arguments.`,
     parameters: z.object({
       id: z.string().describe('The ID of the artifact to update'),
+      type: z.enum(['code', 'document', 'html', 'svg', 'mermaid']).describe('The type of artifact (needed for validation)'),
       title: z.string().optional().describe('New title (if changing)'),
       content: z.string().describe('The updated content'),
       language: z.string().optional().describe('For code artifacts: the programming language (if changing)'),
     }),
-    execute: async ({ id, title, content, language }) => {
+    execute: async ({ id, type, title, content, language }) => {
       // CRITICAL: Validate required parameters
-      if (!id || !content) {
+      if (!id || !content || !type) {
         const missing = []
         if (!id) missing.push('id')
+        if (!type) missing.push('type')
         if (!content) missing.push('content')
         console.error('[AI] update_artifact called with missing required parameters:', missing)
         return {
           success: false,
-          error: `Missing required parameters: ${missing.join(', ')}. You MUST provide id and content when calling update_artifact.`,
+          error: `Missing required parameters: ${missing.join(', ')}. You MUST provide id, type, and content when calling update_artifact.`,
         }
       }
+
+      // Validate artifact content before updating
+      const validation = validateArtifact(type, content, language)
+      if (!validation.valid) {
+        console.error('[AI] Artifact update validation failed:', validation.errors)
+        return {
+          success: false,
+          error: `Artifact validation failed:\n${validation.errors.join('\n')}\n\nPlease fix these issues and try again.`,
+          validationErrors: validation.errors,
+        }
+      }
+
+      // Log warnings but still update
+      if (validation.warnings.length > 0) {
+        console.warn('[AI] Artifact update validation warnings:', validation.warnings)
+      }
+
       if (sendUpdateArtifact) {
         sendUpdateArtifact({ id, updates: { title, content, language } })
       }
-      return { success: true, message: `Artifact "${id}" updated successfully` }
+      return {
+        success: true,
+        message: `Artifact "${id}" updated successfully`,
+        warnings: validation.warnings.length > 0 ? validation.warnings : undefined,
+      }
     },
   })
 
