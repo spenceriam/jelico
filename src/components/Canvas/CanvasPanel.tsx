@@ -180,7 +180,7 @@ export function CanvasPanel() {
                     {streamingPreview.title || 'Generating...'}
                   </h3>
                   <span className="text-xs text-accent">
-                    Generating {(streamingPreview.content.length / 1024).toFixed(1)}KB...
+                    Generating...
                   </span>
                 </div>
               </div>

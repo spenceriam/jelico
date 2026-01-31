@@ -2,6 +2,11 @@
 
 All notable changes to Jelico will be documented in this file.
 
+## [0.7.3] - 2026-01-31
+
+### Changed
+- **Streaming preview header**: Removed file size display ("Generating X KB...") - now just shows "Generating..."
+
 ## [0.7.2] - 2026-01-31
 
 ### Added
