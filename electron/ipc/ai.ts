@@ -1392,8 +1392,20 @@ When the user asks to modify, update, fix, or improve an existing artifact, use 
               case 'tool-input-start': {
                 // Reset accumulator when a new tool input starts
                 accumulatedToolInput = ''
-                // ALWAYS log to debug cross-provider issues
-                console.log('[AI] tool-input-start - ALL PROPERTIES:')
+                toolInputCharCount = 0
+
+                // IMPORTANT: Capture tool name and ID from this event - some providers
+                // don't send tool-call-streaming-start, only tool-input-start
+                const startToolName = (part as any).toolName || (part as any).name
+                const startToolId = (part as any).id || (part as any).toolCallId
+                if (startToolName) {
+                  currentToolInputName = startToolName
+                }
+                if (startToolId) {
+                  currentToolInputId = startToolId
+                }
+
+                console.log('[AI] tool-input-start - captured:', { toolName: startToolName, toolId: startToolId })
                 console.log('[AI]   Full event JSON:', JSON.stringify(part, null, 2))
                 break
               }
@@ -1456,6 +1468,11 @@ When the user asks to modify, update, fix, or improve an existing artifact, use 
                   if (toolName === 'create_artifact' && accumulatedToolInput.length > 50) {
                     const preview = extractPartialArtifactContent(accumulatedToolInput)
                     if (preview) {
+                      console.log('[AI] Sending artifact preview:', {
+                        type: preview.type,
+                        title: preview.title,
+                        contentLength: preview.content.length,
+                      })
                       event.sender.send(`ai:artifactPreview:${channelId}`, preview)
                     }
                   }
