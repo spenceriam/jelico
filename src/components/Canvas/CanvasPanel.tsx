@@ -301,6 +301,12 @@ export function CanvasPanel() {
 }
 
 function ArtifactContent({ artifact }: { artifact: Artifact }) {
+  const { updateArtifact } = useArtifactStore()
+
+  const handleSave = async (content: string) => {
+    await updateArtifact(artifact.id, { content })
+  }
+
   switch (artifact.type) {
     case 'code':
       return (
@@ -313,7 +319,7 @@ function ArtifactContent({ artifact }: { artifact: Artifact }) {
     case 'document':
       return <DocumentViewer content={artifact.content} />
     case 'html':
-      return <HtmlViewer html={artifact.content} />
+      return <HtmlViewer html={artifact.content} onSave={handleSave} />
     case 'svg':
       return (
         <div className="h-full flex items-center justify-center p-4 bg-bg-deep">

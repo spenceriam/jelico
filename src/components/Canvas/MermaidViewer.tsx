@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import mermaid from 'mermaid'
-import { Copy, Check, Download, Eye, Code, RefreshCw } from 'lucide-react'
+import { Copy, Check, Download, Eye, Edit3, RefreshCw } from 'lucide-react'
 
 // Initialize mermaid with dark theme
 mermaid.initialize({
@@ -129,8 +129,8 @@ export function MermaidViewer({ content, title, isStreaming = false }: MermaidVi
                 : 'text-text-muted hover:text-text-secondary'}
             `}
           >
-            <Code className="w-3 h-3" />
-            Source
+            <Edit3 className="w-3 h-3" />
+            Editor
           </button>
           </div>
         </div>

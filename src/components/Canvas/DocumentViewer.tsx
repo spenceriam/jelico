@@ -1,6 +1,6 @@
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
-import { Copy, Check, Download, Eye, Code } from 'lucide-react'
+import { Copy, Check, Download, Eye, Edit3 } from 'lucide-react'
 import { useState, useRef, useEffect } from 'react'
 
 interface DocumentViewerProps {
@@ -76,8 +76,8 @@ export function DocumentViewer({ content, isStreaming = false }: DocumentViewerP
                 : 'text-text-muted hover:text-text-secondary'}
             `}
           >
-            <Code className="w-3 h-3" />
-            Source
+            <Edit3 className="w-3 h-3" />
+            Editor
           </button>
           </div>
         </div>

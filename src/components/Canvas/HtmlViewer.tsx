@@ -1,14 +1,17 @@
 import { useState, useMemo, useEffect, useRef } from 'react'
-import { RefreshCw, ExternalLink, Code, Eye, Copy, Check } from 'lucide-react'
+import { RefreshCw, ExternalLink, Edit3, Eye, Copy, Check, Save } from 'lucide-react'
 
 interface HtmlViewerProps {
   html: string
   isStreaming?: boolean
+  onSave?: (content: string) => void
 }
 
-export function HtmlViewer({ html, isStreaming = false }: HtmlViewerProps) {
-  // Default to source view when streaming, preview when complete
-  const [view, setView] = useState<'preview' | 'source'>(isStreaming ? 'source' : 'preview')
+export function HtmlViewer({ html, isStreaming = false, onSave }: HtmlViewerProps) {
+  // Default to editor view when streaming, preview when complete
+  const [view, setView] = useState<'preview' | 'editor'>(isStreaming ? 'editor' : 'preview')
+  const [editedContent, setEditedContent] = useState(html)
+  const [hasChanges, setHasChanges] = useState(false)
 
   // Switch to preview when streaming completes
   useEffect(() => {
@@ -16,25 +19,48 @@ export function HtmlViewer({ html, isStreaming = false }: HtmlViewerProps) {
       setView('preview')
     }
   }, [isStreaming])
+
+  // Sync edited content when html prop changes (new artifact or streaming)
+  useEffect(() => {
+    setEditedContent(html)
+    setHasChanges(false)
+  }, [html])
+
   const [copied, setCopied] = useState(false)
   const [refreshKey, setRefreshKey] = useState(0)
-  const sourceRef = useRef<HTMLPreElement>(null)
+  const editorRef = useRef<HTMLTextAreaElement>(null)
+  const streamingRef = useRef<HTMLPreElement>(null)
 
-  // Auto-scroll source view during streaming
+  // Auto-scroll during streaming
   useEffect(() => {
-    if (isStreaming && view === 'source' && sourceRef.current) {
-      sourceRef.current.scrollTop = sourceRef.current.scrollHeight
+    if (isStreaming && view === 'editor' && streamingRef.current) {
+      streamingRef.current.scrollTop = streamingRef.current.scrollHeight
     }
   }, [html, isStreaming, view])
 
+  const handleContentChange = (newContent: string) => {
+    setEditedContent(newContent)
+    setHasChanges(newContent !== html)
+  }
+
+  const handleSave = () => {
+    if (onSave && hasChanges) {
+      onSave(editedContent)
+      setHasChanges(false)
+    }
+  }
+
+  // Use editedContent for preview (so edits are reflected)
+  const displayContent = view === 'preview' ? editedContent : html
+
   // Check if the content is already a complete HTML document
-  const isCompleteDocument = html.trim().toLowerCase().startsWith('<!doctype') ||
-    html.trim().toLowerCase().startsWith('<html')
+  const isCompleteDocument = displayContent.trim().toLowerCase().startsWith('<!doctype') ||
+    displayContent.trim().toLowerCase().startsWith('<html')
 
   // Use the HTML as-is if it's a complete document, otherwise wrap it
   // Memoize to avoid recalculating on every render
   const sandboxedHtml = useMemo(() => {
-    if (isCompleteDocument) return html
+    if (isCompleteDocument) return displayContent
 
     return `<!DOCTYPE html>
 <html>
@@ -56,13 +82,13 @@ export function HtmlViewer({ html, isStreaming = false }: HtmlViewerProps) {
   </style>
 </head>
 <body>
-  ${html}
+  ${displayContent}
 </body>
 </html>`
-  }, [html, isCompleteDocument])
+  }, [displayContent, isCompleteDocument])
 
   const handleCopy = async () => {
-    await navigator.clipboard.writeText(html)
+    await navigator.clipboard.writeText(editedContent)
     setCopied(true)
     setTimeout(() => setCopied(false), 2000)
   }
@@ -104,16 +130,17 @@ export function HtmlViewer({ html, isStreaming = false }: HtmlViewerProps) {
             Preview
           </button>
           <button
-            onClick={() => setView('source')}
+            onClick={() => setView('editor')}
             className={`
               flex items-center gap-1.5 px-2 py-1 text-xs rounded
-              ${view === 'source'
+              ${view === 'editor'
                 ? 'bg-bg-elevated text-text-primary'
                 : 'text-text-muted hover:text-text-secondary'}
             `}
           >
-            <Code className="w-3 h-3" />
-            Source
+            <Edit3 className="w-3 h-3" />
+            Editor
+            {hasChanges && <span className="w-1.5 h-1.5 rounded-full bg-accent" />}
           </button>
           </div>
         </div>
@@ -137,6 +164,16 @@ export function HtmlViewer({ html, isStreaming = false }: HtmlViewerProps) {
               </button>
             </>
           )}
+          {view === 'editor' && hasChanges && onSave && (
+            <button
+              onClick={handleSave}
+              className="flex items-center gap-1 px-2 py-1 text-xs bg-accent text-bg-base rounded hover:bg-accent-bright transition-colors"
+              title="Save changes"
+            >
+              <Save className="w-3 h-3" />
+              Save
+            </button>
+          )}
           <button
             onClick={handleCopy}
             className="p-1.5 text-text-muted hover:text-text-primary hover:bg-bg-hover rounded transition-colors"
@@ -157,16 +194,24 @@ export function HtmlViewer({ html, isStreaming = false }: HtmlViewerProps) {
             sandbox="allow-scripts allow-same-origin allow-forms allow-modals allow-popups"
             title="HTML Preview"
           />
-        ) : (
+        ) : isStreaming ? (
+          // Read-only streaming view
           <pre
-            ref={sourceRef}
+            ref={streamingRef}
             className="h-full overflow-auto p-4 text-sm font-mono text-text-secondary bg-bg-deep"
           >
             {html}
-            {isStreaming && (
-              <span className="inline-block w-2 h-4 bg-accent animate-pulse ml-0.5" />
-            )}
+            <span className="inline-block w-2 h-4 bg-accent animate-pulse ml-0.5" />
           </pre>
+        ) : (
+          // Editable editor view
+          <textarea
+            ref={editorRef}
+            value={editedContent}
+            onChange={(e) => handleContentChange(e.target.value)}
+            className="w-full h-full p-4 text-sm font-mono text-text-secondary bg-bg-deep border-0 resize-none focus:outline-none focus:ring-1 focus:ring-accent"
+            spellCheck={false}
+          />
         )}
       </div>
     </div>
