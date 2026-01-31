@@ -245,3 +245,51 @@ export const useArtifactStore = create<ArtifactStore>((set, get) => ({
     set({ streamingPreview: null })
   },
 }))
+
+// Set up global listeners for sub-agent artifacts
+// Call this once when the app initializes
+let listenersInitialized = false
+
+export function initArtifactListeners() {
+  if (listenersInitialized) return
+  listenersInitialized = true
+
+  // Listen for sub-agent artifact creation
+  window.jelico.ai.onSubAgentArtifact(async (artifact) => {
+    console.log(`[Artifacts] Received artifact from sub-agent ${artifact.agentName}: "${artifact.title}"`)
+
+    // Get the active conversation ID
+    const { useChatStore } = await import('./chat')
+    const conversationId = useChatStore.getState().activeConversationId
+
+    if (!conversationId) {
+      console.warn('[Artifacts] No active conversation for sub-agent artifact')
+      return
+    }
+
+    // Add the artifact to the store
+    await useArtifactStore.getState().addArtifact({
+      conversationId,
+      type: artifact.type as any,
+      title: artifact.title,
+      content: artifact.content,
+      language: artifact.language,
+    })
+
+    // Clear streaming preview since artifact is now complete
+    useArtifactStore.getState().clearStreamingPreview()
+  })
+
+  // Listen for sub-agent artifact preview streaming
+  window.jelico.ai.onSubAgentArtifactPreview((preview) => {
+    useArtifactStore.getState().setStreamingPreview(preview)
+  })
+
+  // Listen for artifact status updates (multiple artifacts generating)
+  window.jelico.ai.onArtifactStatus((status) => {
+    // Could update a status indicator in the store if needed
+    console.log(`[Artifacts] Status: ${status.count} artifacts generating`, status.titles)
+  })
+
+  console.log('[Artifacts] Global listeners initialized')
+}

@@ -66,6 +66,12 @@ interface Window {
       onToolInputProgress: (channelId: string, callback: (progress: { toolName: string; charCount: number }) => void) => void
       // Artifact preview streaming - shows content as it's being generated
       onArtifactPreview: (channelId: string, callback: (preview: ArtifactPreviewEvent) => void) => void
+      // Sub-agent artifact creation (artifact completed, add to store)
+      onSubAgentArtifact: (callback: (artifact: { type: string; title: string; content: string; language?: string; agentId: string; agentName: string }) => void) => () => void
+      // Sub-agent artifact preview streaming
+      onSubAgentArtifactPreview: (callback: (preview: ArtifactPreviewEvent) => void) => () => void
+      // Multiple artifacts status (for status line)
+      onArtifactStatus: (callback: (status: { count: number; titles: string[]; activeTitle?: string }) => void) => () => void
       // Reasoning/thinking events for thinking models (Kimi K2.5, o1, o3, etc.)
       onReasoning: (channelId: string, callback: (data: ReasoningEvent) => void) => void
       onReasoningStart: (channelId: string, callback: () => void) => void

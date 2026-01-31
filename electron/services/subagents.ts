@@ -20,6 +20,9 @@ import { randomUUID } from 'crypto'
 import { z } from 'zod'
 import { providerDb } from './database'
 import { keychainService } from './keychain'
+import { validateArtifact } from './artifactValidator'
+import { artifactStreamManager } from './artifactStreamManager'
+import { extractPartialArtifactContent } from './artifactUtils'
 
 // Configuration
 const ORPHAN_CHECK_INTERVAL_MS = 60 * 1000 // Check for orphans every minute
@@ -442,10 +445,29 @@ function parseAgentResponse(text: string): { isQuestion: boolean; question?: Sub
 }
 
 /**
- * Get tools for sub-agents
- * Sub-agents get read/search/web tools but NOT agent management or artifact tools
+ * Callback for sending artifacts to the main window
  */
-function getSubAgentTools(mode: string, workspacePath?: string) {
+type SendArtifactCallback = (artifact: {
+  type: string
+  title: string
+  content: string
+  language?: string
+}) => void
+
+/**
+ * Get tools for sub-agents
+ * Sub-agents can create artifacts, read/search files, web tools
+ * They do NOT get agent management tools (can't spawn sub-sub-agents)
+ */
+function getSubAgentTools(
+  mode: string,
+  workspacePath?: string,
+  agentContext?: {
+    agentId: string
+    agentName: string
+    sendArtifact?: SendArtifactCallback
+  }
+) {
   const canWrite = mode !== 'explore'
   const canExecute = mode === 'auto' || mode === 'execute' || mode === 'review'
 
@@ -666,6 +688,67 @@ Returns instant answers, related topics, and web results.`,
     })
   }
 
+  // Artifact creation tool - available to all sub-agents
+  if (agentContext?.sendArtifact) {
+    tools.create_artifact = tool({
+      description: `Create an artifact to display in the Canvas panel.
+Use this for creating substantial content like:
+- code: Code snippets or files
+- document: Markdown documents
+- html: HTML content for preview
+- svg: SVG graphics
+- mermaid: Mermaid diagram syntax
+
+IMPORTANT: You MUST provide all required parameters (type, title, content).`,
+      parameters: z.object({
+        type: z.enum(['code', 'document', 'html', 'svg', 'mermaid']).describe('The type of artifact'),
+        title: z.string().describe('A short, descriptive title'),
+        content: z.string().describe('The artifact content'),
+        language: z.string().optional().describe('For code artifacts: the programming language'),
+      }),
+      execute: async ({ type, title, content, language }) => {
+        // Validate required parameters
+        if (!type || !title || !content) {
+          const missing = []
+          if (!type) missing.push('type')
+          if (!title) missing.push('title')
+          if (!content) missing.push('content')
+          return {
+            success: false,
+            error: `Missing required parameters: ${missing.join(', ')}`,
+          }
+        }
+
+        // Validate artifact content
+        const validation = validateArtifact(type, content, language)
+        if (!validation.valid) {
+          console.error(`[SubAgents] ${agentContext.agentName} artifact validation failed:`, validation.errors)
+          return {
+            success: false,
+            error: `Artifact validation failed:\n${validation.errors.join('\n')}\n\nPlease fix these issues and try again.`,
+            validationErrors: validation.errors,
+          }
+        }
+
+        // Log warnings but still create
+        if (validation.warnings.length > 0) {
+          console.warn(`[SubAgents] ${agentContext.agentName} artifact warnings:`, validation.warnings)
+        }
+
+        // Send artifact to main window
+        agentContext.sendArtifact({ type, title, content, language })
+
+        console.log(`[SubAgents] ${agentContext.agentName} created artifact: "${title}" (${type})`)
+
+        return {
+          success: true,
+          message: `Artifact "${title}" created successfully`,
+          warnings: validation.warnings.length > 0 ? validation.warnings : undefined,
+        }
+      },
+    })
+  }
+
   return tools
 }
 
@@ -727,8 +810,29 @@ async function runSubAgent(agentId: string): Promise<void> {
   }
 
   try {
+    // Import BrowserWindow for IPC to renderer
+    const { BrowserWindow } = await import('electron')
+
+    // Create artifact callback that sends to renderer via IPC
+    const sendArtifact: SendArtifactCallback = (artifact) => {
+      const win = BrowserWindow.getFocusedWindow() || BrowserWindow.getAllWindows()[0]
+      if (win) {
+        // Send artifact to be added to the store
+        win.webContents.send('ai:artifact:fromSubAgent', {
+          ...artifact,
+          agentId,
+          agentName: agent.name,
+        })
+        console.log(`[SubAgents] ${agent.name} sent artifact "${artifact.title}" to renderer`)
+      }
+    }
+
     // Get tools for this sub-agent based on its mode
-    const tools = getSubAgentTools(agent.mode, agent.workspacePath)
+    const tools = getSubAgentTools(agent.mode, agent.workspacePath, {
+      agentId,
+      agentName: agent.name,
+      sendArtifact,
+    })
 
     console.log(`[SubAgents] ${agent.name} starting with ${Object.keys(tools).length} tools:`, Object.keys(tools))
 
@@ -753,6 +857,8 @@ async function runSubAgent(agentId: string): Promise<void> {
     // Accumulate the result using fullStream to handle text AND tool calls
     let fullText = ''
     let eventCount = 0
+    let currentToolInput = '' // Accumulated tool input for artifact preview
+
     for await (const part of response.fullStream) {
       if (agent.status === 'dismissed') break
 
@@ -793,6 +899,53 @@ async function runSubAgent(agentId: string): Promise<void> {
             agent.lastActivityAt = Date.now()
           }
           break
+
+        // Handle tool input streaming for artifact preview
+        case 'tool-input-start': {
+          const startToolName = (part as any).toolName || (part as any).name
+          if (startToolName === 'create_artifact') {
+            // Request preview lock from artifact stream manager
+            const hasLock = artifactStreamManager.requestPreview(agentId, agent.name)
+            if (hasLock) {
+              console.log(`[SubAgents] ${agent.name} acquired artifact preview lock`)
+            } else {
+              console.log(`[SubAgents] ${agent.name} creating artifact in background (another agent has preview)`)
+            }
+            // Reset accumulated input for this artifact
+            currentToolInput = ''
+          }
+          agent.lastActivityAt = Date.now()
+          break
+        }
+
+        case 'tool-input-delta': {
+          const anyPart = part as any
+          const inputDelta = anyPart.inputTextDelta || anyPart.delta || anyPart.argsTextDelta || ''
+
+          if (inputDelta) {
+            currentToolInput += inputDelta
+
+            // If this agent has preview lock, stream the artifact content
+            if (artifactStreamManager.hasPreviewLock(agentId) && currentToolInput.length > 50) {
+              const preview = extractPartialArtifactContent(currentToolInput)
+              if (preview) {
+                artifactStreamManager.sendPreview(agentId, preview)
+              }
+            }
+          }
+          agent.lastActivityAt = Date.now()
+          break
+        }
+
+        case 'tool-input-end': {
+          // Release preview lock when artifact tool completes
+          const nextStream = artifactStreamManager.releasePreview(agentId)
+          if (nextStream) {
+            console.log(`[SubAgents] Preview auto-switching to ${nextStream.agentName}`)
+          }
+          agent.lastActivityAt = Date.now()
+          break
+        }
 
         case 'tool-call': {
           // Track tool calls made by this agent

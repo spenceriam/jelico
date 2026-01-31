@@ -245,6 +245,24 @@ contextBridge.exposeInMainWorld('jelico', {
       const handler = (_: any, preview: any) => callback(preview)
       ipcRenderer.on(`ai:artifactPreview:${channelId}`, handler)
     },
+    // Sub-agent artifact creation (artifact completed, add to store)
+    onSubAgentArtifact: (callback: (artifact: { type: string; title: string; content: string; language?: string; agentId: string; agentName: string }) => void) => {
+      const handler = (_: any, artifact: any) => callback(artifact)
+      ipcRenderer.on('ai:artifact:fromSubAgent', handler)
+      return () => ipcRenderer.removeListener('ai:artifact:fromSubAgent', handler)
+    },
+    // Sub-agent artifact preview streaming
+    onSubAgentArtifactPreview: (callback: (preview: { type?: string; title?: string; content: string }) => void) => {
+      const handler = (_: any, preview: any) => callback(preview)
+      ipcRenderer.on('ai:artifactPreview:subagent', handler)
+      return () => ipcRenderer.removeListener('ai:artifactPreview:subagent', handler)
+    },
+    // Multiple artifacts status (for status line)
+    onArtifactStatus: (callback: (status: { count: number; titles: string[]; activeTitle?: string }) => void) => {
+      const handler = (_: any, status: any) => callback(status)
+      ipcRenderer.on('artifact:status', handler)
+      return () => ipcRenderer.removeListener('artifact:status', handler)
+    },
     // Reasoning/thinking events for thinking models (Kimi K2.5, o1, o3, etc.)
     onReasoning: (channelId: string, callback: (data: { content: string; type: string }) => void) => {
       const handler = (_: any, data: any) => callback(data)
