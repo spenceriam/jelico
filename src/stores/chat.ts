@@ -555,6 +555,12 @@ export const useChatStore = create<ChatStore>((set, get) => ({
         toolCalls: mappedToolCalls,
         completedAt: update.status === 'completed' || update.status === 'failed' ? Date.now() : undefined,
       })
+
+      // Clear streaming preview when sub-agent completes or fails
+      // This handles cases where the sub-agent finishes without creating an artifact
+      if (update.status === 'completed' || update.status === 'failed') {
+        useArtifactStore.getState().clearStreamingPreview()
+      }
     })
 
     // Handle todo updates from AI

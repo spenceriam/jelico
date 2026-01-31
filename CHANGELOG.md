@@ -2,6 +2,17 @@
 
 All notable changes to Jelico will be documented in this file.
 
+## [0.7.1] - 2026-01-31
+
+### Fixed
+- **Sub-agent completion**: Canvas "Generating" indicator now clears when sub-agent completes without creating an artifact
+- **Monaco Editor theme**: Custom Jelico dark theme applied correctly (was showing default light theme)
+- **spawn_agent status indicator**: Now shows sub-agent status (running/completed/failed) instead of tool completion status
+
+### Changed
+- **"Streaming" renamed to "Generating"**: All UI text now uses "Generating" terminology consistently
+- **Sub-agent panel collapsed by default**: Task details start collapsed and can be expanded by user
+
 ## [0.7.0] - 2026-01-31
 
 ### Added
