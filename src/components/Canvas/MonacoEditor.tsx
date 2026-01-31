@@ -1,5 +1,5 @@
 import { useRef, useEffect, useCallback } from 'react'
-import Editor, { OnMount, OnChange } from '@monaco-editor/react'
+import Editor, { OnMount, OnChange, BeforeMount } from '@monaco-editor/react'
 import type { editor, Uri } from 'monaco-editor'
 
 interface MonacoEditorProps {
@@ -9,6 +9,9 @@ interface MonacoEditorProps {
   onChange?: (value: string) => void
   onValidation?: (markers: editor.IMarkerData[]) => void
 }
+
+// Custom Jelico dark theme for Monaco
+const JELICO_THEME_NAME = 'jelico-dark'
 
 // Map our artifact types to Monaco language IDs
 function getMonacoLanguage(language: string): string {
@@ -65,6 +68,45 @@ export function MonacoEditor({
 }: MonacoEditorProps) {
   const editorRef = useRef<editor.IStandaloneCodeEditor | null>(null)
   const monacoRef = useRef<typeof import('monaco-editor') | null>(null)
+
+  // Define custom theme before editor mounts
+  const handleBeforeMount: BeforeMount = useCallback((monaco) => {
+    // Define Jelico dark theme matching the app's color scheme
+    monaco.editor.defineTheme(JELICO_THEME_NAME, {
+      base: 'vs-dark',
+      inherit: true,
+      rules: [
+        { token: 'comment', foreground: '6b6660', fontStyle: 'italic' },
+        { token: 'keyword', foreground: 'd4a574' },
+        { token: 'string', foreground: '98c379' },
+        { token: 'number', foreground: 'd19a66' },
+        { token: 'type', foreground: 'e5c07b' },
+        { token: 'function', foreground: '61afef' },
+        { token: 'variable', foreground: 'e8e6e3' },
+        { token: 'tag', foreground: 'd4a574' },
+        { token: 'attribute.name', foreground: 'd19a66' },
+        { token: 'attribute.value', foreground: '98c379' },
+      ],
+      colors: {
+        'editor.background': '#0d0d10',
+        'editor.foreground': '#e8e6e3',
+        'editor.lineHighlightBackground': '#1a1a2020',
+        'editor.selectionBackground': '#d4a57440',
+        'editor.inactiveSelectionBackground': '#d4a57420',
+        'editorLineNumber.foreground': '#4a4844',
+        'editorLineNumber.activeForeground': '#6b6660',
+        'editorCursor.foreground': '#d4a574',
+        'editor.selectionHighlightBackground': '#d4a57420',
+        'editorIndentGuide.background': '#2a2926',
+        'editorIndentGuide.activeBackground': '#3a3936',
+        'editorBracketMatch.background': '#d4a57440',
+        'editorBracketMatch.border': '#d4a574',
+        'scrollbarSlider.background': '#2a292680',
+        'scrollbarSlider.hoverBackground': '#3a393680',
+        'scrollbarSlider.activeBackground': '#4a494680',
+      },
+    })
+  }, [])
 
   // Handle editor mount
   const handleEditorMount: OnMount = useCallback((editor, monaco) => {
@@ -140,8 +182,9 @@ export function MonacoEditor({
         language={monacoLanguage}
         value={value}
         onChange={handleChange}
+        beforeMount={handleBeforeMount}
         onMount={handleEditorMount}
-        theme="vs-dark"
+        theme={JELICO_THEME_NAME}
         options={{
           readOnly: isStreaming,
           minimap: { enabled: false },
@@ -152,7 +195,7 @@ export function MonacoEditor({
           automaticLayout: true,
           wordWrap: 'on',
           tabSize: 2,
-          // Disable some features during streaming for performance
+          // Disable some features during generating for performance
           ...(isStreaming ? {
             quickSuggestions: false,
             parameterHints: { enabled: false },
