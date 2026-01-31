@@ -240,6 +240,11 @@ contextBridge.exposeInMainWorld('jelico', {
       const handler = (_: any, progress: any) => callback(progress)
       ipcRenderer.on(`ai:toolInputProgress:${channelId}`, handler)
     },
+    // Artifact preview streaming - shows content as it's being generated
+    onArtifactPreview: (channelId: string, callback: (preview: { type?: string; title?: string; content: string }) => void) => {
+      const handler = (_: any, preview: any) => callback(preview)
+      ipcRenderer.on(`ai:artifactPreview:${channelId}`, handler)
+    },
     // Reasoning/thinking events for thinking models (Kimi K2.5, o1, o3, etc.)
     onReasoning: (channelId: string, callback: (data: { content: string; type: string }) => void) => {
       const handler = (_: any, data: any) => callback(data)
@@ -272,6 +277,7 @@ contextBridge.exposeInMainWorld('jelico', {
       ipcRenderer.removeAllListeners(`ai:reasoning:${channelId}`)
       ipcRenderer.removeAllListeners(`ai:reasoningStart:${channelId}`)
       ipcRenderer.removeAllListeners(`ai:reasoningEnd:${channelId}`)
+      ipcRenderer.removeAllListeners(`ai:artifactPreview:${channelId}`)
     },
     generateTitle: (params: { providerId: string; model: string; userMessage: string; assistantMessage: string }): Promise<{ success: boolean; title?: string; error?: string }> => {
       return ipcRenderer.invoke('ai:generateTitle', params)

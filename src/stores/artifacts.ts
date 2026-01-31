@@ -56,6 +56,8 @@ interface ArtifactStore {
   selectedRevisionId: string | null  // Which revision to view (null = latest)
   canvasOpen: boolean
   isLoading: boolean
+  // Streaming preview - shown in Canvas while artifact is being generated
+  streamingPreview: { type?: string; title?: string; content: string } | null
 
   // Actions
   loadArtifacts: () => Promise<void>
@@ -72,6 +74,9 @@ interface ArtifactStore {
   getArtifactsByConversation: (conversationId: string) => Artifact[]
   getBaseArtifactId: (artifact: Artifact) => string
   clearConversationArtifacts: (conversationId: string) => Promise<void>
+  // Streaming preview methods
+  setStreamingPreview: (preview: { type?: string; title?: string; content: string } | null) => void
+  clearStreamingPreview: () => void
 }
 
 export const useArtifactStore = create<ArtifactStore>((set, get) => ({
@@ -80,6 +85,7 @@ export const useArtifactStore = create<ArtifactStore>((set, get) => ({
   selectedRevisionId: null,
   canvasOpen: false,
   isLoading: false,
+  streamingPreview: null,
 
   loadArtifacts: async () => {
     set({ isLoading: true })
@@ -224,5 +230,18 @@ export const useArtifactStore = create<ArtifactStore>((set, get) => ({
       console.error('Failed to clear conversation artifacts:', error)
       throw error
     }
+  },
+
+  // Streaming preview - opens Canvas and shows content as it's being generated
+  setStreamingPreview: (preview) => {
+    set({
+      streamingPreview: preview,
+      canvasOpen: true, // Auto-open canvas when streaming starts
+      selectedArtifactId: null, // Deselect any existing artifact to show preview
+    })
+  },
+
+  clearStreamingPreview: () => {
+    set({ streamingPreview: null })
   },
 }))

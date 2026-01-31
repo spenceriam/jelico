@@ -21,6 +21,23 @@ export interface ChangelogEntry {
 
 export const changelog: ChangelogEntry[] = [
   {
+    version: '0.6.13',
+    date: '2026-01-30',
+    changes: {
+      added: [
+        'Live artifact streaming - Canvas opens and shows content as it\'s being generated',
+        'StreamingPreview component with auto-scroll and typing cursor animation',
+        'HTML artifacts render live in iframe as they stream',
+        'Code artifacts show with syntax-aware preview during generation',
+      ],
+      changed: [
+        'Canvas auto-opens when artifact generation starts',
+        'Streaming preview clears when actual artifact is created',
+        'Status text still shows "Generating artifact... (X.XKB)" in chat view',
+      ],
+    },
+  },
+  {
     version: '0.6.12',
     date: '2026-01-30',
     changes: {

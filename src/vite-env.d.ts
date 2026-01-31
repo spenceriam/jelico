@@ -64,6 +64,8 @@ interface Window {
       onUpdateArtifact: (channelId: string, callback: (update: ArtifactUpdateEvent) => void) => void
       onTodos: (channelId: string, callback: (todos: TodoTask[]) => void) => void
       onToolInputProgress: (channelId: string, callback: (progress: { toolName: string; charCount: number }) => void) => void
+      // Artifact preview streaming - shows content as it's being generated
+      onArtifactPreview: (channelId: string, callback: (preview: ArtifactPreviewEvent) => void) => void
       // Reasoning/thinking events for thinking models (Kimi K2.5, o1, o3, etc.)
       onReasoning: (channelId: string, callback: (data: ReasoningEvent) => void) => void
       onReasoningStart: (channelId: string, callback: () => void) => void
@@ -301,6 +303,12 @@ interface TodoTask {
 interface ReasoningEvent {
   content: string
   type: 'reasoning' | 'reasoning-delta' | 'thinking' | 'thinking-delta'
+}
+
+interface ArtifactPreviewEvent {
+  type?: string
+  title?: string
+  content: string
 }
 
 interface AgentProgressEvent {

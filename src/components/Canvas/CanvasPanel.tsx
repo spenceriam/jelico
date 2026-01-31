@@ -41,6 +41,7 @@ export function CanvasPanel() {
     getBaseArtifactId,
     closeCanvas,
     removeArtifact,
+    streamingPreview,
   } = useArtifactStore()
   const { activeConversationId } = useChatStore()
   const [dropdownOpen, setDropdownOpen] = useState(false)
@@ -165,8 +166,24 @@ export function CanvasPanel() {
                 )}
               </>
             )}
-            {!displayArtifact && (
+            {!displayArtifact && !streamingPreview && (
               <span className="text-sm text-text-muted">No artifact selected</span>
+            )}
+            {streamingPreview && !displayArtifact && (
+              <div className="flex items-center gap-2">
+                {(() => {
+                  const Icon = streamingPreview.type ? (TYPE_ICONS[streamingPreview.type as ArtifactType] || DEFAULT_TYPE_ICON) : FileCode
+                  return <Icon className="w-5 h-5 text-accent flex-shrink-0 animate-pulse" />
+                })()}
+                <div className="text-left min-w-0">
+                  <h3 className="text-sm font-medium text-text-primary truncate">
+                    {streamingPreview.title || 'Generating...'}
+                  </h3>
+                  <span className="text-xs text-accent">
+                    Streaming {(streamingPreview.content.length / 1024).toFixed(1)}KB...
+                  </span>
+                </div>
+              </div>
             )}
           </div>
 
@@ -253,7 +270,9 @@ export function CanvasPanel() {
 
       {/* Content - with vertical scroll */}
       <div className="flex-1 overflow-y-auto overflow-x-hidden">
-        {displayArtifact ? (
+        {streamingPreview ? (
+          <StreamingPreview preview={streamingPreview} />
+        ) : displayArtifact ? (
           <ArtifactContent artifact={displayArtifact} />
         ) : conversationArtifacts.length === 0 ? (
           <EmptyState />
@@ -328,6 +347,71 @@ function EmptyState() {
         <p className="text-xs text-text-muted max-w-48">
           Artifacts created during the conversation will appear here
         </p>
+      </div>
+    </div>
+  )
+}
+
+// Shows content as it's being streamed/generated
+function StreamingPreview({ preview }: { preview: { type?: string; title?: string; content: string } }) {
+  const contentRef = useRef<HTMLDivElement>(null)
+
+  // Auto-scroll to bottom as content streams
+  useEffect(() => {
+    if (contentRef.current) {
+      contentRef.current.scrollTop = contentRef.current.scrollHeight
+    }
+  }, [preview.content])
+
+  // Render based on type
+  if (preview.type === 'html') {
+    return (
+      <div className="h-full flex flex-col">
+        <div className="px-3 py-2 bg-bg-elevated border-b border-border flex items-center gap-2">
+          <div className="w-2 h-2 rounded-full bg-accent animate-pulse" />
+          <span className="text-xs text-text-muted">Live Preview</span>
+        </div>
+        <iframe
+          srcDoc={preview.content}
+          className="flex-1 w-full bg-white"
+          sandbox="allow-scripts allow-same-origin"
+          title="Streaming HTML Preview"
+        />
+      </div>
+    )
+  }
+
+  if (preview.type === 'code') {
+    return (
+      <div className="h-full flex flex-col">
+        <div className="px-3 py-2 bg-bg-elevated border-b border-border flex items-center gap-2">
+          <div className="w-2 h-2 rounded-full bg-accent animate-pulse" />
+          <span className="text-xs text-text-muted">Generating Code...</span>
+        </div>
+        <pre
+          ref={contentRef}
+          className="flex-1 overflow-auto p-4 bg-bg-deep text-sm font-mono text-text-primary whitespace-pre-wrap"
+        >
+          {preview.content}
+          <span className="inline-block w-2 h-4 bg-accent animate-pulse ml-0.5" />
+        </pre>
+      </div>
+    )
+  }
+
+  // Default text/document view
+  return (
+    <div className="h-full flex flex-col">
+      <div className="px-3 py-2 bg-bg-elevated border-b border-border flex items-center gap-2">
+        <div className="w-2 h-2 rounded-full bg-accent animate-pulse" />
+        <span className="text-xs text-text-muted">Generating Content...</span>
+      </div>
+      <div
+        ref={contentRef}
+        className="flex-1 overflow-auto p-4 text-sm text-text-primary whitespace-pre-wrap"
+      >
+        {preview.content}
+        <span className="inline-block w-2 h-4 bg-accent animate-pulse ml-0.5" />
       </div>
     </div>
   )

@@ -488,6 +488,9 @@ export const useChatStore = create<ChatStore>((set, get) => ({
     // Handle artifacts
     window.jelico.ai.onArtifact(channelId, async (artifact) => {
       try {
+        // Clear streaming preview since actual artifact is now ready
+        useArtifactStore.getState().clearStreamingPreview()
+
         const newArtifact = await useArtifactStore.getState().addArtifact({
           conversationId: conversationId!,
           type: artifact.type,
@@ -578,6 +581,12 @@ export const useChatStore = create<ChatStore>((set, get) => ({
     window.jelico.ai.onReasoningEnd(channelId, () => {
       set({ isReasoning: false })
       // Note: reasoningContent is preserved until stream ends so UI can display it
+    })
+
+    // Handle artifact preview streaming - show content in Canvas as it's being generated
+    window.jelico.ai.onArtifactPreview(channelId, (preview) => {
+      // Send directly to artifact store - Canvas will show the streaming content
+      useArtifactStore.getState().setStreamingPreview(preview)
     })
 
     // Handle stream end

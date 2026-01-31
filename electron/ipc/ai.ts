@@ -49,6 +49,67 @@ const STREAM_TIMEOUT_MS = 300000
 // Activity timeout - reset on any stream activity (30 seconds)
 const ACTIVITY_TIMEOUT_MS = 30000
 
+/**
+ * Extract partial artifact content from streaming JSON.
+ * The JSON format is: {"type":"html","title":"...","content":"..."}
+ * We try to extract the content field as it streams for live preview.
+ */
+function extractPartialArtifactContent(partialJson: string): {
+  type?: string
+  title?: string
+  content: string
+} | null {
+  try {
+    // Try to extract type
+    const typeMatch = partialJson.match(/"type"\s*:\s*"([^"]+)"/)
+    const type = typeMatch?.[1]
+
+    // Try to extract title
+    const titleMatch = partialJson.match(/"title"\s*:\s*"([^"]+)"/)
+    const title = titleMatch?.[1]
+
+    // Find where content starts
+    const contentStart = partialJson.search(/"content"\s*:\s*"/)
+    if (contentStart === -1) return null
+
+    // Find the opening quote after "content":
+    const quoteIndex = partialJson.indexOf('"', contentStart + 10)
+    if (quoteIndex === -1) return null
+
+    // Extract everything after the opening quote
+    // Handle escaped characters in JSON string
+    let content = ''
+    let i = quoteIndex + 1
+    while (i < partialJson.length) {
+      const char = partialJson[i]
+      if (char === '\\' && i + 1 < partialJson.length) {
+        // Handle escape sequences
+        const nextChar = partialJson[i + 1]
+        switch (nextChar) {
+          case 'n': content += '\n'; break
+          case 't': content += '\t'; break
+          case 'r': content += '\r'; break
+          case '"': content += '"'; break
+          case '\\': content += '\\'; break
+          default: content += nextChar
+        }
+        i += 2
+      } else if (char === '"') {
+        // End of content string (unescaped quote)
+        break
+      } else {
+        content += char
+        i++
+      }
+    }
+
+    return { type, title, content }
+  } catch (e) {
+    // Parsing failed - that's okay, content is still streaming
+    return null
+  }
+}
+
 // Max retries for transient errors
 const MAX_RETRIES = 2
 const RETRY_DELAY_MS = 1000
@@ -1313,6 +1374,14 @@ When the user asks to modify, update, fix, or improve an existing artifact, use 
                     toolName,
                     charCount: toolInputCharCount,
                   })
+
+                  // Stream artifact content preview for create_artifact tool
+                  if (toolName === 'create_artifact' && accumulatedToolInput.length > 50) {
+                    const preview = extractPartialArtifactContent(accumulatedToolInput)
+                    if (preview) {
+                      event.sender.send(`ai:artifactPreview:${channelId}`, preview)
+                    }
+                  }
                 }
                 break
               }
