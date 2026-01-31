@@ -1055,6 +1055,7 @@ async function runSubAgent(agentId: string): Promise<void> {
       agent.result = fullText
       agent.completedAt = Date.now()
       agent.lastActivityAt = Date.now()
+      console.log(`[SubAgents] ${agent.name} completed, notifying progress listeners`)
       notifyProgress(agentId, agent)
     }
 
@@ -1513,6 +1514,9 @@ export function getSubAgentsSummary(parentStreamId: string): string {
 function notifyProgress(agentId: string, agent: SubAgentRecord) {
   // Notify per-agent listeners
   const listeners = progressListeners.get(agentId)
+  const listenerCount = listeners?.size || 0
+  console.log(`[SubAgents] notifyProgress: ${agent.name} status=${agent.status}, listeners=${listenerCount}, hasGlobalCallback=${!!globalProgressCallback}`)
+
   if (listeners) {
     for (const listener of listeners) {
       try {
@@ -1530,6 +1534,8 @@ function notifyProgress(agentId: string, agent: SubAgentRecord) {
     } catch (e) {
       console.error('Error in global progress callback:', e)
     }
+  } else if (agent.status === 'completed' || agent.status === 'failed') {
+    console.warn(`[SubAgents] WARNING: No global callback when agent ${agent.name} finished!`)
   }
 }
 

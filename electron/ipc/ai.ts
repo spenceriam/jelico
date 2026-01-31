@@ -1103,6 +1103,7 @@ export function registerAIHandlers() {
     setGlobalProgressCallback((agentId, agent) => {
       // Only forward if this agent belongs to this stream
       if (agent.parentStreamId === channelId) {
+        console.log(`[AI] Forwarding agent progress: ${agent.name} status=${agent.status}`)
         event.sender.send(`ai:agentProgress:${channelId}`, {
           agentId,
           status: agent.status,
@@ -1740,6 +1741,7 @@ When the user asks to modify, update, fix, or improve an existing artifact, use 
 
           // Check for running sub-agents that weren't waited for
           const activeAgents = getSubAgentsForStream(channelId)
+          console.log(`[AI] Sub-agents for this stream: ${activeAgents.length}`, activeAgents.map(a => `${a.name}:${a.status}`))
           const runningAgents = activeAgents.filter(a => a.status === 'running' || a.status === 'pending')
 
           // If there are running agents, wait for them

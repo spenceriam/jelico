@@ -2,6 +2,14 @@
 
 All notable changes to Jelico will be documented in this file.
 
+## [0.7.2] - 2026-01-31
+
+### Added
+- **Debug logging for sub-agents**: Added comprehensive logging for sub-agent lifecycle events to diagnose completion issues
+  - Logs when progress events are forwarded to frontend
+  - Logs agent status at stream finish
+  - Warns if global callback is missing when agent completes
+
 ## [0.7.1] - 2026-01-31
 
 ### Fixed
