@@ -1212,11 +1212,12 @@ When the user asks to modify, update, fix, or improve an existing artifact, use 
           let lastCompletedToolName: string | null = null
           let textSentSinceLastResult = true // Track if AI provided feedback
 
-          // Track current tool receiving input (for progress display)
+          // Track current tool receiving input (for progress display AND accumulation)
           let currentToolInputId: string | null = null
           let currentToolInputName: string | null = null
           let toolInputCharCount = 0
           let lastToolInputUpdate = 0
+          let accumulatedToolInput = '' // Accumulate the actual tool input JSON
 
           for await (const part of result.fullStream) {
             if (abortController.signal.aborted) break
@@ -1244,9 +1245,15 @@ When the user asks to modify, update, fix, or improve an existing artifact, use 
                 }
                 break
 
+              case 'tool-input-start':
+                // Reset accumulator when a new tool input starts
+                accumulatedToolInput = ''
+                break
+
               case 'tool-input-delta': {
-                // Track tool input progress for large artifacts
+                // Track and accumulate tool input for providers that stream args separately
                 const inputDelta = (part as any).inputTextDelta || (part as any).delta || ''
+                accumulatedToolInput += inputDelta
                 toolInputCharCount += inputDelta.length
 
                 // Send progress update every 500ms or 1000 chars to avoid flooding
@@ -1289,12 +1296,28 @@ When the user asks to modify, update, fix, or improve an existing artifact, use 
 
               case 'tool-call':
                 hadAnyToolCalls = true
+
+                // Get args from the event, or parse from accumulated input if empty
+                let toolArgs = (part as any).input || (part as any).args
+
+                // If args are empty/undefined but we accumulated input, parse it
+                if ((!toolArgs || Object.keys(toolArgs).length === 0) && accumulatedToolInput.trim()) {
+                  try {
+                    toolArgs = JSON.parse(accumulatedToolInput)
+                    console.log('[AI] Parsed tool args from accumulated input:', part.toolName, toolArgs)
+                  } catch (e) {
+                    console.warn('[AI] Failed to parse accumulated tool input:', e)
+                    toolArgs = {}
+                  }
+                }
+                toolArgs = toolArgs || {}
+
                 // Clear tool input tracking - the tool is now complete
                 currentToolInputId = null
                 currentToolInputName = null
                 toolInputCharCount = 0
+                accumulatedToolInput = ''
 
-                const toolArgs = (part as any).input || (part as any).args || {}
                 console.log('[AI] Tool call ready:', part.toolName, toolArgs)
 
                 const existingExec = toolTracker.get(part.toolCallId)

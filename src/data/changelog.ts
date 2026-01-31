@@ -21,6 +21,17 @@ export interface ChangelogEntry {
 
 export const changelog: ChangelogEntry[] = [
   {
+    version: '0.6.10',
+    date: '2026-01-30',
+    changes: {
+      fixed: [
+        'Tool arguments now work when streamed via tool-input-delta (fixes web_search {}, create_artifact {} with undefined values)',
+        'Accumulated tool input is parsed as JSON when tool-call event has empty args',
+        'Compatible with models that stream tool arguments separately (Kimi K2.5, etc.)',
+      ],
+    },
+  },
+  {
     version: '0.6.9',
     date: '2026-01-30',
     changes: {
