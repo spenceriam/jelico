@@ -106,7 +106,7 @@ export function CodeViewer({ code, language, title, isStreaming = false, onSave 
           {isStreaming && (
             <div className="flex items-center gap-1.5 pr-2 border-r border-border">
               <div className="w-2 h-2 rounded-full bg-accent animate-pulse" />
-              <span className="text-xs text-accent">Generating...</span>
+              <span className="text-xs text-accent">Generating</span>
             </div>
           )}
           <span className="text-xs font-mono text-text-muted uppercase">{language}</span>

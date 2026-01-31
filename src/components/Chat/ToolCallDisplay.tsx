@@ -296,125 +296,122 @@ export function SingleToolCallDisplay({
       {/* Sub-agent activity panel - shown under spawn_agent calls */}
       {toolCall.name === 'spawn_agent' && subAgent && (
         <div className="border-t border-border bg-bg-surface">
-          {/* Agent header - first level */}
-          <div className="py-2">
-            <div className="flex items-start">
-              <div className="w-6 flex-shrink-0 flex justify-center">
-                <Bot className="w-4 h-4 text-accent" />
-              </div>
-              <div className="flex-1 pl-2 pr-3">
-                <div className="flex items-center gap-2">
-                  <span className="font-medium text-text-primary text-sm">{subAgent.name}</span>
-                  <span className={`px-2 py-0.5 rounded text-xs font-medium ${
-                    subAgent.status === 'running' ? 'bg-accent/20 text-accent animate-pulse' :
-                    subAgent.status === 'completed' ? 'bg-green-500/20 text-green-500' :
-                    subAgent.status === 'failed' ? 'bg-error/20 text-error' :
-                    'bg-bg-elevated text-text-muted'
-                  }`}>
-                    {subAgent.status === 'running' ? 'Working...' : subAgent.status}
-                  </span>
-                </div>
-              </div>
-            </div>
+          {/* Agent header - always visible, shows status */}
+          <div className="px-3 py-2 flex items-center gap-2">
+            <Bot className="w-4 h-4 text-accent flex-shrink-0" />
+            <span className="font-medium text-text-primary text-sm">{subAgent.name}</span>
+            <span className={`px-2 py-0.5 rounded text-xs font-medium ${
+              subAgent.status === 'running' ? 'bg-accent/20 text-accent animate-pulse' :
+              subAgent.status === 'completed' ? 'bg-green-500/20 text-green-500' :
+              subAgent.status === 'failed' ? 'bg-error/20 text-error' :
+              'bg-bg-elevated text-text-muted'
+            }`}>
+              {subAgent.status === 'running' ? 'Working...' : subAgent.status}
+            </span>
           </div>
 
-          {/* Task - indented under agent */}
-          <div className="py-2 border-t border-border/50">
-            <div className="flex items-start">
-              <div className="w-6 flex-shrink-0 flex justify-center pt-0.5">
-                <div className="w-px h-full bg-border" />
-              </div>
-              <div className="flex-1 pl-2 pr-3">
-                <div className="text-[10px] uppercase tracking-wider text-text-muted mb-1">Task</div>
-                <div className="text-xs text-text-secondary">{subAgent.task}</div>
-              </div>
-            </div>
-          </div>
-
-          {/* Sub-agent's tool calls - indented under agent */}
-          {subAgent.toolCalls && subAgent.toolCalls.length > 0 && (
-            <div className="py-2 border-t border-border/50">
-              <div className="flex items-start">
-                <div className="w-6 flex-shrink-0 flex justify-center pt-0.5">
-                  <div className="w-px h-full bg-border" />
+          {/* Expanded details - only show when user expands */}
+          {expanded && (
+            <>
+              {/* Task - indented under agent */}
+              <div className="py-2 border-t border-border/50">
+                <div className="flex items-start">
+                  <div className="w-6 flex-shrink-0 flex justify-center pt-0.5">
+                    <div className="w-px h-full bg-border" />
+                  </div>
+                  <div className="flex-1 pl-2 pr-3">
+                    <div className="text-[10px] uppercase tracking-wider text-text-muted mb-1">Task</div>
+                    <div className="text-xs text-text-secondary">{subAgent.task}</div>
+                  </div>
                 </div>
-                <div className="flex-1 pl-2 pr-3">
-                  <div className="text-[10px] uppercase tracking-wider text-text-muted mb-2">Actions</div>
-                  <div className="space-y-2">
-                    {subAgent.toolCalls.map((tc, idx) => (
-                      <div key={tc.id || idx} className="flex items-start">
-                        {/* Nested indent line */}
-                        <div className="w-4 flex-shrink-0 flex justify-center pt-0.5">
-                          <div className="w-px h-full bg-border/50" />
-                        </div>
-                        <div className="flex-1 pl-2">
-                          <div className="flex items-center gap-2 text-xs">
-                            <CheckCircle className="w-3 h-3 text-green-500 flex-shrink-0" />
-                            <span className="text-accent font-medium">{TOOL_LABELS[tc.name] || tc.name}</span>
-                          </div>
-                          {!!(tc.args?.path || tc.args?.command || tc.args?.query) && (
-                            <div className="text-xs text-text-muted mt-0.5 ml-5 truncate font-mono">
-                              {String(tc.args?.path || tc.args?.command || tc.args?.query || '')}
+              </div>
+
+              {/* Sub-agent's tool calls - indented under agent */}
+              {subAgent.toolCalls && subAgent.toolCalls.length > 0 && (
+                <div className="py-2 border-t border-border/50">
+                  <div className="flex items-start">
+                    <div className="w-6 flex-shrink-0 flex justify-center pt-0.5">
+                      <div className="w-px h-full bg-border" />
+                    </div>
+                    <div className="flex-1 pl-2 pr-3">
+                      <div className="text-[10px] uppercase tracking-wider text-text-muted mb-2">Actions</div>
+                      <div className="space-y-2">
+                        {subAgent.toolCalls.map((tc, idx) => (
+                          <div key={tc.id || idx} className="flex items-start">
+                            {/* Nested indent line */}
+                            <div className="w-4 flex-shrink-0 flex justify-center pt-0.5">
+                              <div className="w-px h-full bg-border/50" />
                             </div>
-                          )}
-                        </div>
+                            <div className="flex-1 pl-2">
+                              <div className="flex items-center gap-2 text-xs">
+                                <CheckCircle className="w-3 h-3 text-green-500 flex-shrink-0" />
+                                <span className="text-accent font-medium">{TOOL_LABELS[tc.name] || tc.name}</span>
+                              </div>
+                              {!!(tc.args?.path || tc.args?.command || tc.args?.query) && (
+                                <div className="text-xs text-text-muted mt-0.5 ml-5 truncate font-mono">
+                                  {String(tc.args?.path || tc.args?.command || tc.args?.query || '')}
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        ))}
                       </div>
-                    ))}
+                    </div>
                   </div>
                 </div>
-              </div>
-            </div>
-          )}
+              )}
 
-          {/* Live progress while running - indented */}
-          {subAgent.status === 'running' && subAgent.progress && (
-            <div className="py-2 border-t border-border/50">
-              <div className="flex items-start">
-                <div className="w-6 flex-shrink-0 flex justify-center">
-                  <Loader2 className="w-3 h-3 animate-spin text-accent" />
-                </div>
-                <div className="flex-1 pl-2 pr-3">
-                  <div className="text-[10px] uppercase tracking-wider text-text-muted mb-1">Output</div>
-                  <div className="text-xs text-text-secondary font-mono bg-bg-deep rounded p-2 max-h-32 overflow-y-auto whitespace-pre-wrap">
-                    {subAgent.progress}
+              {/* Live progress while running - indented */}
+              {subAgent.status === 'running' && subAgent.progress && (
+                <div className="py-2 border-t border-border/50">
+                  <div className="flex items-start">
+                    <div className="w-6 flex-shrink-0 flex justify-center">
+                      <Loader2 className="w-3 h-3 animate-spin text-accent" />
+                    </div>
+                    <div className="flex-1 pl-2 pr-3">
+                      <div className="text-[10px] uppercase tracking-wider text-text-muted mb-1">Output</div>
+                      <div className="text-xs text-text-secondary font-mono bg-bg-deep rounded p-2 max-h-32 overflow-y-auto whitespace-pre-wrap">
+                        {subAgent.progress}
+                      </div>
+                    </div>
                   </div>
                 </div>
-              </div>
-            </div>
-          )}
+              )}
 
-          {/* Final result - indented */}
-          {subAgent.status === 'completed' && subAgent.result && (
-            <div className="py-2 border-t border-border/50">
-              <div className="flex items-start">
-                <div className="w-6 flex-shrink-0 flex justify-center">
-                  <CheckCircle className="w-3.5 h-3.5 text-green-500" />
-                </div>
-                <div className="flex-1 pl-2 pr-3">
-                  <div className="text-[10px] uppercase tracking-wider text-green-500 mb-1">Result</div>
-                  <div className="text-sm text-text-primary bg-bg-deep rounded p-2 max-h-40 overflow-y-auto whitespace-pre-wrap">
-                    {subAgent.result}
+              {/* Final result - indented */}
+              {subAgent.status === 'completed' && subAgent.result && (
+                <div className="py-2 border-t border-border/50">
+                  <div className="flex items-start">
+                    <div className="w-6 flex-shrink-0 flex justify-center">
+                      <CheckCircle className="w-3.5 h-3.5 text-green-500" />
+                    </div>
+                    <div className="flex-1 pl-2 pr-3">
+                      <div className="text-[10px] uppercase tracking-wider text-green-500 mb-1">Result</div>
+                      <div className="text-sm text-text-primary bg-bg-deep rounded p-2 max-h-40 overflow-y-auto whitespace-pre-wrap">
+                        {subAgent.result}
+                      </div>
+                    </div>
                   </div>
                 </div>
-              </div>
-            </div>
-          )}
+              )}
 
-          {/* Error message - indented */}
-          {subAgent.status === 'failed' && subAgent.error && (
-            <div className="py-2 border-t border-border/50">
-              <div className="flex items-start">
-                <div className="w-6 flex-shrink-0 flex justify-center">
-                  <XCircle className="w-3.5 h-3.5 text-error" />
-                </div>
-                <div className="flex-1 pl-2 pr-3">
-                  <div className="text-[10px] uppercase tracking-wider text-error mb-1">Error</div>
-                  <div className="text-xs text-error bg-error/10 rounded p-2">
-                    {subAgent.error}
+              {/* Error message - indented */}
+              {subAgent.status === 'failed' && subAgent.error && (
+                <div className="py-2 border-t border-border/50">
+                  <div className="flex items-start">
+                    <div className="w-6 flex-shrink-0 flex justify-center">
+                      <XCircle className="w-3.5 h-3.5 text-error" />
+                    </div>
+                    <div className="flex-1 pl-2 pr-3">
+                      <div className="text-[10px] uppercase tracking-wider text-error mb-1">Error</div>
+                      <div className="text-xs text-error bg-error/10 rounded p-2">
+                        {subAgent.error}
+                      </div>
+                    </div>
                   </div>
                 </div>
-              </div>
-            </div>
+              )}
+            </>
           )}
         </div>
       )}

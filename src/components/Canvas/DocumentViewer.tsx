@@ -51,7 +51,7 @@ export function DocumentViewer({ content, isStreaming = false }: DocumentViewerP
           {isStreaming && (
             <div className="flex items-center gap-1.5 pr-2 border-r border-border">
               <div className="w-2 h-2 rounded-full bg-accent animate-pulse" />
-              <span className="text-xs text-accent">Generating...</span>
+              <span className="text-xs text-accent">Generating</span>
             </div>
           )}
           <div className="flex items-center gap-1">

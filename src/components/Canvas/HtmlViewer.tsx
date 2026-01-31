@@ -157,7 +157,7 @@ export function HtmlViewer({ html, isStreaming = false, onSave }: HtmlViewerProp
           {isStreaming && (
             <div className="flex items-center gap-1.5 pr-2 border-r border-border">
               <div className="w-2 h-2 rounded-full bg-accent animate-pulse" />
-              <span className="text-xs text-accent">Generating...</span>
+              <span className="text-xs text-accent">Generating</span>
             </div>
           )}
           <div className="flex items-center gap-1">
@@ -284,7 +284,7 @@ export function HtmlViewer({ html, isStreaming = false, onSave }: HtmlViewerProp
       )}
 
       {/* Content */}
-      <div className="flex-1 overflow-hidden bg-white">
+      <div className="flex-1 overflow-hidden">
         {view === 'preview' ? (
           <iframe
             key={refreshKey}
@@ -299,7 +299,7 @@ export function HtmlViewer({ html, isStreaming = false, onSave }: HtmlViewerProp
             <DiffViewer original={html} modified={editedContent} />
           </div>
         ) : (
-          // Monaco Editor - handles both streaming (read-only) and editing modes
+          // Monaco Editor - handles both generating (read-only) and editing modes
           <MonacoEditor
             value={isStreaming ? html : editedContent}
             language="html"
