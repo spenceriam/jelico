@@ -39,6 +39,10 @@ const activeStreams = new Map<string, AbortController>()
 // Debug flag - controlled by environment
 const DEBUG_API_REQUESTS = process.env.DEBUG_AI === 'true' || process.env.NODE_ENV === 'development'
 
+// Store accumulated tool input by toolCallId - needed because some providers stream args
+// via tool-input-delta but don't populate the final tool-call args (SDK bug workaround)
+const accumulatedToolInputByCallId = new Map<string, string>()
+
 // Streaming timeout in ms (5 minutes for large artifacts)
 const STREAM_TIMEOUT_MS = 300000
 
@@ -559,7 +563,7 @@ Types:
       title: z.string().describe('A short, descriptive title'),
       content: z.string().describe('The artifact content'),
       language: z.string().optional().describe('For code artifacts: the programming language (e.g., javascript, python)'),
-    }),
+    }).passthrough(), // Allow extra fields from models
     execute: async ({ type, title, content, language }) => {
       if (sendArtifact) {
         sendArtifact({ type, title, content, language })
@@ -650,9 +654,20 @@ You must know the artifact ID from the existing artifacts context.`,
 Returns search results with titles, snippets, and URLs.
 Use this to find current information, documentation, or answers to questions.`,
     parameters: z.object({
-      query: z.string().describe('The search query'),
-    }),
-    execute: async ({ query }) => {
+      query: z.string().optional().describe('The search query'),
+      // Some models send "queries" as an array instead of "query" as a string
+      queries: z.array(z.string()).optional().describe('Alternative: array of search queries'),
+    }).passthrough(),
+    execute: async (args) => {
+      // Handle both "query" (string) and "queries" (array) parameters
+      let query = args.query
+      if (!query && args.queries && args.queries.length > 0) {
+        query = args.queries[0] // Use first query from array
+        console.log('[web_search] Using first query from queries array:', query)
+      }
+      if (!query) {
+        return { success: false, error: 'No search query provided' }
+      }
       try {
         // Try DuckDuckGo instant answer first
         const encodedQuery = encodeURIComponent(query)
@@ -1385,6 +1400,28 @@ When the user asks to modify, update, fix, or improve an existing artifact, use 
                 if (DEBUG_API_REQUESTS) {
                   console.log('[AI] Step finished:', part.finishReason, 'isContinued:', (part as any).isContinued)
                 }
+                break
+
+              case 'tool-error':
+                // Tool execution failed - log the error details
+                const toolError = (part as any).error
+                const errorMessage = toolError?.message || toolError || 'Tool execution failed'
+                console.error('[AI] Tool error:', part.toolCallId, errorMessage)
+                console.error('[AI] Full tool error:', JSON.stringify(toolError, null, 2))
+
+                // Update tracker with error
+                const errorExec = toolTracker.get(part.toolCallId)
+                if (errorExec) {
+                  errorExec.result = { error: errorMessage }
+                  errorExec.endTime = Date.now()
+                }
+
+                // Send error result to UI so tool shows as complete (with error)
+                event.sender.send(`ai:toolResults:${channelId}`, [{
+                  toolCallId: part.toolCallId,
+                  result: { error: errorMessage },
+                }])
+                hadAnyToolCalls = true
                 break
 
               case 'error':

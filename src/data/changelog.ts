@@ -21,6 +21,21 @@ export interface ChangelogEntry {
 
 export const changelog: ChangelogEntry[] = [
   {
+    version: '0.6.11',
+    date: '2026-01-30',
+    changes: {
+      fixed: [
+        'Tool error handling - tool-error events now logged and sent to UI',
+        'web_search accepts both "query" (string) and "queries" (array) parameters',
+        'create_artifact allows extra model fields via passthrough (e.g., artifact_id)',
+        'Zod schemas now use passthrough() to handle model-specific extra parameters',
+      ],
+      added: [
+        'accumulatedToolInputByCallId map for cross-request tool input storage',
+      ],
+    },
+  },
+  {
     version: '0.6.10',
     date: '2026-01-30',
     changes: {
