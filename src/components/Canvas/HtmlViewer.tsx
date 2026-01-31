@@ -1,48 +1,13 @@
 import { useState, useMemo, useEffect, useRef, useCallback } from 'react'
 import { RefreshCw, ExternalLink, Edit3, Eye, Copy, Check, GitCompare, AlertCircle, CheckCircle } from 'lucide-react'
 import { DiffViewer } from './DiffViewer'
+import { MonacoEditor } from './MonacoEditor'
+import type { editor } from 'monaco-editor'
 
 interface HtmlViewerProps {
   html: string
   isStreaming?: boolean
   onSave?: (content: string) => void
-}
-
-// Validate HTML using DOMParser
-function validateHtml(content: string): { valid: boolean; errors: string[] } {
-  const errors: string[] = []
-
-  try {
-    const parser = new DOMParser()
-    const doc = parser.parseFromString(content, 'text/html')
-
-    // Check for parser errors
-    const parserErrors = doc.querySelectorAll('parsererror')
-    if (parserErrors.length > 0) {
-      parserErrors.forEach(err => {
-        errors.push(err.textContent || 'HTML parsing error')
-      })
-    }
-
-    // Check for common issues
-    const scripts = doc.querySelectorAll('script')
-    scripts.forEach(script => {
-      const scriptContent = script.textContent || ''
-      // Basic JS syntax check - look for obvious errors
-      if (scriptContent.includes('function') || scriptContent.includes('const') || scriptContent.includes('let')) {
-        try {
-          // Try to parse as a function to catch syntax errors
-          new Function(scriptContent)
-        } catch (e: any) {
-          errors.push(`JavaScript error: ${e.message}`)
-        }
-      }
-    })
-
-    return { valid: errors.length === 0, errors }
-  } catch (e: any) {
-    return { valid: false, errors: [e.message] }
-  }
 }
 
 // Debounce hook
@@ -67,7 +32,7 @@ export function HtmlViewer({ html, isStreaming = false, onSave }: HtmlViewerProp
   const [view, setView] = useState<'preview' | 'editor' | 'diff'>(isStreaming ? 'editor' : 'preview')
   const [editedContent, setEditedContent] = useState(html)
   const [hasChanges, setHasChanges] = useState(false)
-  const [validation, setValidation] = useState<{ valid: boolean; errors: string[] }>({ valid: true, errors: [] })
+  const [monacoErrors, setMonacoErrors] = useState<editor.IMarkerData[]>([])
   const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle')
 
   // Track the last saved content to avoid duplicate saves
@@ -88,22 +53,21 @@ export function HtmlViewer({ html, isStreaming = false, onSave }: HtmlViewerProp
     setEditedContent(html)
     setHasChanges(false)
     lastSavedRef.current = html
-    setValidation({ valid: true, errors: [] })
+    setMonacoErrors([])
     setSaveStatus('idle')
   }, [html])
 
-  // Auto-save when debounced content changes
+  // Auto-save when debounced content changes (only if no Monaco errors)
   useEffect(() => {
     // Skip if no changes or same as last saved
     if (debouncedContent === lastSavedRef.current || !onSave || isStreaming) {
       return
     }
 
-    // Validate before saving
-    const result = validateHtml(debouncedContent)
-    setValidation(result)
+    // Check Monaco validation errors (only errors, not warnings)
+    const hasErrors = monacoErrors.some(m => m.severity === 8) // 8 = Error
 
-    if (result.valid) {
+    if (!hasErrors) {
       setSaveStatus('saving')
       onSave(debouncedContent)
       lastSavedRef.current = debouncedContent
@@ -115,25 +79,20 @@ export function HtmlViewer({ html, isStreaming = false, onSave }: HtmlViewerProp
     } else {
       setSaveStatus('error')
     }
-  }, [debouncedContent, onSave, isStreaming])
+  }, [debouncedContent, onSave, isStreaming, monacoErrors])
 
   const [copied, setCopied] = useState(false)
   const [refreshKey, setRefreshKey] = useState(0)
-  const editorRef = useRef<HTMLTextAreaElement>(null)
-  const streamingRef = useRef<HTMLPreElement>(null)
 
-  // Auto-scroll during streaming
-  useEffect(() => {
-    if (isStreaming && view === 'editor' && streamingRef.current) {
-      streamingRef.current.scrollTop = streamingRef.current.scrollHeight
-    }
-  }, [html, isStreaming, view])
-
-  const handleContentChange = (newContent: string) => {
+  const handleContentChange = useCallback((newContent: string) => {
     setEditedContent(newContent)
     setHasChanges(newContent !== lastSavedRef.current)
     setSaveStatus('idle')
-  }
+  }, [])
+
+  const handleValidation = useCallback((markers: editor.IMarkerData[]) => {
+    setMonacoErrors(markers)
+  }, [])
 
   // Use editedContent for preview (so edits are reflected)
   const displayContent = view === 'preview' ? editedContent : html
@@ -299,17 +258,25 @@ export function HtmlViewer({ html, isStreaming = false, onSave }: HtmlViewerProp
         </div>
       </div>
 
-      {/* Validation errors */}
-      {!validation.valid && validation.errors.length > 0 && (
+      {/* Monaco validation errors (only show errors, not warnings) */}
+      {monacoErrors.filter(m => m.severity === 8).length > 0 && (
         <div className="px-4 py-2 bg-red-500/10 border-b border-red-500/30">
           <div className="flex items-start gap-2">
             <AlertCircle className="w-4 h-4 text-red-400 flex-shrink-0 mt-0.5" />
             <div className="text-xs text-red-300">
               <div className="font-medium mb-1">Validation errors (changes not saved):</div>
               <ul className="list-disc list-inside space-y-0.5">
-                {validation.errors.map((error, idx) => (
-                  <li key={idx}>{error}</li>
-                ))}
+                {monacoErrors
+                  .filter(m => m.severity === 8)
+                  .slice(0, 5)
+                  .map((error, idx) => (
+                    <li key={idx}>
+                      Line {error.startLineNumber}: {error.message}
+                    </li>
+                  ))}
+                {monacoErrors.filter(m => m.severity === 8).length > 5 && (
+                  <li>...and {monacoErrors.filter(m => m.severity === 8).length - 5} more errors</li>
+                )}
               </ul>
             </div>
           </div>
@@ -331,23 +298,14 @@ export function HtmlViewer({ html, isStreaming = false, onSave }: HtmlViewerProp
           <div className="h-full overflow-auto bg-bg-deep">
             <DiffViewer original={html} modified={editedContent} />
           </div>
-        ) : isStreaming ? (
-          // Read-only streaming view
-          <pre
-            ref={streamingRef}
-            className="h-full overflow-auto p-4 text-sm font-mono text-text-secondary bg-bg-deep"
-          >
-            {html}
-            <span className="inline-block w-2 h-4 bg-accent animate-pulse ml-0.5" />
-          </pre>
         ) : (
-          // Editable editor view
-          <textarea
-            ref={editorRef}
-            value={editedContent}
-            onChange={(e) => handleContentChange(e.target.value)}
-            className="w-full h-full p-4 text-sm font-mono text-text-secondary bg-bg-deep border-0 resize-none focus:outline-none focus:ring-1 focus:ring-accent"
-            spellCheck={false}
+          // Monaco Editor - handles both streaming (read-only) and editing modes
+          <MonacoEditor
+            value={isStreaming ? html : editedContent}
+            language="html"
+            isStreaming={isStreaming}
+            onChange={handleContentChange}
+            onValidation={handleValidation}
           />
         )}
       </div>

@@ -314,6 +314,7 @@ function ArtifactContent({ artifact }: { artifact: Artifact }) {
           code={artifact.content}
           language={artifact.language || 'text'}
           title={artifact.title}
+          onSave={handleSave}
         />
       )
     case 'document':
