@@ -2,6 +2,11 @@
 
 All notable changes to Jelico will be documented in this file.
 
+## [0.7.6] - 2026-01-31
+
+### Fixed
+- **Stop button now cancels running sub-agents**: When user clicks stop, running sub-agents are immediately cancelled instead of continuing in background.
+
 ## [0.7.5] - 2026-01-31
 
 ### Fixed

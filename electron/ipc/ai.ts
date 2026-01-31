@@ -21,6 +21,7 @@ import {
   continueSubAgent,
   dismissSubAgent,
   dismissAgentsForStream,
+  cancelAgentsForStream,
   registerParentStream,
   unregisterParentStream,
   startOrphanCleanup,
@@ -1921,16 +1922,24 @@ Be concise but informative. The user needs to understand what happened.`,
 
   // Stop streaming
   ipcMain.on('ai:stop', (_, channelId: string) => {
+    console.log(`[AI] Stop requested for stream ${channelId}`)
+
     const controller = activeStreams.get(channelId)
     if (controller) {
       controller.abort()
       activeStreams.delete(channelId)
     }
 
+    // Cancel running sub-agents immediately when user stops
+    const cancelled = cancelAgentsForStream(channelId)
+    if (cancelled > 0) {
+      console.log(`[AI] Cancelled ${cancelled} running sub-agent(s) for stopped stream`)
+    }
+
     // Unregister parent stream
     unregisterParentStream(channelId)
 
-    // Dismiss completed sub-agents - running ones get grace period
+    // Dismiss completed sub-agents
     const dismissed = dismissAgentsForStream(channelId)
     if (dismissed > 0) {
       console.log(`[AI] Dismissed ${dismissed} sub-agent(s) for stopped stream`)

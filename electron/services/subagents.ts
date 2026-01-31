@@ -1472,6 +1472,23 @@ export function cancelSubAgent(agentId: string): boolean {
 }
 
 /**
+ * Cancel all running agents for a parent stream
+ * Called when user explicitly stops - cancels running agents immediately
+ */
+export function cancelAgentsForStream(parentStreamId: string): number {
+  let cancelled = 0
+
+  for (const [id, agent] of activeAgents.entries()) {
+    if (agent.parentStreamId === parentStreamId && agent.status === 'running') {
+      cancelSubAgent(id)
+      cancelled++
+    }
+  }
+
+  return cancelled
+}
+
+/**
  * Dismiss all agents for a parent stream
  * Called when the parent stream ends - gives agents grace period before actual cleanup
  */
