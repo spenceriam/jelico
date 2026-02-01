@@ -2,6 +2,29 @@
 
 All notable changes to Jelico will be documented in this file.
 
+## [0.7.25] - 2026-02-01
+
+### Fixed
+- **Monaco editor blank during streaming**
+  - Throttled auto-scroll to every 100ms to prevent layout thrashing
+  - Use `revealLineNearTop` instead of `revealLine` to keep content visible
+  - Fixes the "disappearing content" issue during rapid artifact streaming
+
+- **Sub-agent premature completion after report_progress**
+  - Clarified in tool description that reporting is NOT task completion
+  - Changed return from `success: true` to `reported: true`
+  - Added explicit instruction to continue working after reporting
+  - Prevents models from stopping after first progress report
+
+### Added
+- **Sidebar QoL improvements**
+  - Hover tooltip showing conversation created date
+  - Auto-expand artifact tree for active conversation
+  - Left accent bar indicator for active chat selection
+
+### Note
+- Right-click context menu already works natively in prompt box (no changes needed)
+
 ## [0.7.24] - 2026-02-01
 
 ### Changed
