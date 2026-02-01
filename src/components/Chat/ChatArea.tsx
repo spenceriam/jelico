@@ -112,54 +112,85 @@ export function ChatArea() {
 
                      const getToolStatus = (name: string, args: Record<string, unknown>, isComplete: boolean) => {
                        if (isComplete) {
+                         // Completed status - brief flash after tool finishes
                          switch (name) {
                            case 'read_file':
                              return args.path ? `Read ${getShortPath(String(args.path))}` : 'File read'
                            case 'write_file':
                              return args.path ? `Wrote ${getShortPath(String(args.path))}` : 'File written'
+                           case 'list_directory':
+                             return args.path ? `Explored ${getShortPath(String(args.path))}` : 'Directory explored'
+                           case 'search_files':
+                             return 'Search complete'
                            case 'execute_command':
-                             return 'Command executed'
+                             return 'Command complete'
+                           case 'web_search':
+                             return 'Search complete'
+                           case 'web_fetch': {
+                             const url = String(args.url || '')
+                             try {
+                               const hostname = new URL(url).hostname
+                               return `Fetched ${hostname}`
+                             } catch {
+                               return 'Page fetched'
+                             }
+                           }
                            case 'create_artifact':
-                             return args.title ? `Created "${String(args.title).slice(0, 20)}"` : 'Artifact created'
+                             return args.title ? `Created: ${String(args.title).slice(0, 25)}` : 'Artifact created'
+                           case 'update_artifact':
+                             return args.title ? `Updated: ${String(args.title).slice(0, 25)}` : 'Artifact updated'
                            case 'spawn_agent':
-                             return args.name ? `Spawned ${args.name}` : 'Agent spawned'
+                             return args.name ? `Started: ${args.name}` : 'Sub-agent started'
                            case 'wait_for_agent':
-                             return 'Agent complete'
+                             return 'Sub-agent complete'
+                           case 'get_agent_status':
+                             return 'Status checked'
+                           case 'continue_agent':
+                             return 'Sub-agent resumed'
+                           case 'cancel_agent':
+                             return 'Sub-agent cancelled'
+                           case 'dismiss_agent':
+                             return 'Sub-agent dismissed'
+                           case 'get_agents_summary':
+                             return 'Agents reviewed'
                            case 'switch_mode':
-                             return `Switched to ${args.mode}`
+                             return args.mode ? `Switched to ${args.mode}` : 'Mode switched'
                            case 'todo_write':
-                             return 'Task list updated'
+                             return 'Tasks updated'
                            case 'todo_read':
                              return 'Tasks loaded'
                            case 'todo_check':
-                             return args.taskId ? `Started task ${args.taskId}` : 'Task checked'
+                             return 'Task checked'
+                           case 'ask_user_question':
+                             return 'Question sent'
                            default:
-                             return `${name} done`
+                             return 'Done'
                          }
                        } else {
+                         // In-progress status - while tool is running
                          switch (name) {
                            case 'read_file':
                              return args.path ? `Reading ${getShortPath(String(args.path))}` : 'Reading file...'
                            case 'write_file':
                              return args.path ? `Writing ${getShortPath(String(args.path))}` : 'Writing file...'
                            case 'list_directory':
-                             return args.path ? `Exploring ${getShortPath(String(args.path))}` : 'Listing directory...'
+                             return args.path ? `Exploring ${getShortPath(String(args.path))}` : 'Exploring directory...'
                            case 'search_files':
-                             return args.pattern ? `Searching for ${args.pattern}` : 'Searching files...'
+                             return args.pattern ? `Searching for "${args.pattern}"` : 'Searching files...'
                            case 'execute_command': {
                              const cmd = String(args.command || '')
                              const shortCmd = cmd.length > 30 ? cmd.slice(0, 30) + '...' : cmd
                              return shortCmd ? `Running: ${shortCmd}` : 'Running command...'
                            }
                            case 'web_search':
-                             return args.query ? `Searching: "${String(args.query).slice(0, 25)}..."` : 'Searching the web...'
+                             return args.query ? `Searching: "${String(args.query).slice(0, 25)}"` : 'Searching the web...'
                            case 'web_fetch': {
                              const url = String(args.url || '')
                              try {
                                const hostname = new URL(url).hostname
-                               return `Fetching from ${hostname}`
+                               return `Fetching ${hostname}`
                              } catch {
-                               return 'Fetching URL...'
+                               return 'Fetching page...'
                              }
                            }
                            case 'create_artifact':
@@ -167,23 +198,31 @@ export function ChatArea() {
                            case 'update_artifact':
                              return args.title ? `Updating: ${String(args.title).slice(0, 30)}` : 'Updating artifact...'
                            case 'spawn_agent':
-                             return args.name ? `Spawning ${args.name}` : 'Spawning sub-agent...'
+                             return args.name ? `Starting sub-agent: ${args.name}` : 'Starting sub-agent...'
                            case 'wait_for_agent':
                              return 'Waiting for sub-agent...'
                            case 'get_agent_status':
-                             return 'Checking agent status...'
+                             return 'Checking sub-agent...'
                            case 'continue_agent':
-                             return 'Continuing agent...'
-                           case 'todo_write':
-                             return 'Updating task list...'
-                           case 'todo_read':
-                             return 'Reading tasks...'
-                           case 'todo_check':
-                             return args.taskId ? `Starting task ${args.taskId}...` : 'Checking task...'
+                             return 'Resuming sub-agent...'
+                           case 'cancel_agent':
+                             return 'Cancelling sub-agent...'
+                           case 'dismiss_agent':
+                             return 'Dismissing sub-agent...'
+                           case 'get_agents_summary':
+                             return 'Reviewing sub-agents...'
                            case 'switch_mode':
                              return args.mode ? `Switching to ${args.mode} mode...` : 'Switching mode...'
+                           case 'todo_write':
+                             return 'Updating tasks...'
+                           case 'todo_read':
+                             return 'Loading tasks...'
+                           case 'todo_check':
+                             return 'Checking task...'
+                           case 'ask_user_question':
+                             return 'Asking for input...'
                            default:
-                             return `Running ${name}...`
+                             return 'Working...'
                          }
                        }
                      }
@@ -206,19 +245,20 @@ export function ChatArea() {
                        }
                      }
 
-                     // Show tool input progress (for large artifacts being generated)
+                     // Show tool input progress (for large content being generated)
                      if (toolInputProgress) {
-                       const { toolName, charCount } = toolInputProgress
-                       const kbSize = (charCount / 1024).toFixed(1)
+                       const { toolName } = toolInputProgress
                        switch (toolName) {
                          case 'create_artifact':
-                           return `Generating artifact... (${kbSize}KB)`
+                           return 'Generating artifact...'
                          case 'update_artifact':
-                           return `Updating artifact... (${kbSize}KB)`
+                           return 'Updating artifact...'
                          case 'write_file':
-                           return `Writing file... (${kbSize}KB)`
+                           return 'Writing file...'
+                         case 'execute_command':
+                           return 'Running command...'
                          default:
-                           return `Generating ${toolName}... (${kbSize}KB)`
+                           return 'Generating...'
                        }
                      }
 
