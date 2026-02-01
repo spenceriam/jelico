@@ -964,7 +964,12 @@ IMPORTANT: You MUST provide all required parameters (type, title, content).`,
   // Allows sub-agent to self-report status updates to the main AI and user
   if (agentContext) {
     tools.report_progress = tool({
-      description: `Report your current progress to the main AI and user.
+      description: `Report your current progress to the main AI and user. THIS IS ONLY A STATUS UPDATE - you must continue working on your task after calling this.
+
+## IMPORTANT
+- This tool ONLY reports status - it does NOT complete your task
+- After calling this, you MUST continue with your actual work
+- Your task is NOT done until you've created/delivered your output
 
 ## When to Use
 Call this tool at natural checkpoints:
@@ -973,15 +978,11 @@ Call this tool at natural checkpoints:
 - Before a potentially long-running operation
 - Every 2-3 tool calls for complex tasks
 
-## Why It Matters
-- The user sees your progress in real-time
-- The main AI knows you're still working (not stuck)
-- Prevents the appearance of a "runaway" process
-
-## Best Practices
-- Keep messages brief and informative (1-2 sentences)
-- Describe WHAT you're doing, not technical details
-- Use phase to categorize your work stage`,
+## Example Flow
+1. report_progress("Starting HTML structure", "setup")
+2. ... continue working, use create_artifact, etc ...
+3. report_progress("Adding interactivity", "building")
+4. ... continue until task is actually complete ...`,
       parameters: z.object({
         message: z.string().describe('Brief description of what you are currently doing (e.g., "Building the navigation component")'),
         phase: z.string().optional().describe('Optional work phase (e.g., "setup", "building", "testing", "finishing")'),
@@ -1011,8 +1012,8 @@ Call this tool at natural checkpoints:
         console.log(`[SubAgents] ${agent.displayName} progress: ${phase ? `[${phase}] ` : ''}${message}`)
 
         return {
-          success: true,
-          message: 'Progress reported. Continue with your task.',
+          reported: true,
+          note: 'Status update received. NOW CONTINUE WORKING - your task is not complete until you deliver the actual output (create artifact, write file, etc.)',
         }
       },
     })

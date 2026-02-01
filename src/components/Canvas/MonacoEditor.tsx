@@ -147,13 +147,21 @@ export function MonacoEditor({
     }
   }, [isStreaming])
 
-  // Auto-scroll to bottom during streaming
+  // Auto-scroll to bottom during streaming (throttled to avoid layout thrashing)
+  const lastScrollRef = useRef(0)
   useEffect(() => {
     if (isStreaming && editorRef.current) {
+      const now = Date.now()
+      // Throttle scrolls to every 100ms to prevent layout thrashing
+      if (now - lastScrollRef.current < 100) return
+      lastScrollRef.current = now
+
       const model = editorRef.current.getModel()
       if (model) {
         const lineCount = model.getLineCount()
-        editorRef.current.revealLine(lineCount)
+        // Use revealLineNearTop to keep content visible at the bottom
+        // with some context above, preventing the "disappearing content" issue
+        editorRef.current.revealLineNearTop(Math.max(1, lineCount - 5))
       }
     }
   }, [value, isStreaming])
