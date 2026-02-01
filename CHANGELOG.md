@@ -2,6 +2,34 @@
 
 All notable changes to Jelico will be documented in this file.
 
+## [0.7.24] - 2026-02-01
+
+### Changed
+- **User-friendly status text for all tool calls**
+  - No more raw tool names shown in status line (e.g., "Running cancel_agent...")
+  - All tools now have human-readable in-progress and completed messages
+  - Default fallback changed from "Running {name}..." to "Working..."
+  - Default completed fallback changed from "{name} done" to "Done"
+
+- **Shimmer animation scoped to status line only**
+  - Removed shimmer/pulse from sub-agent sections
+  - Removed animate-pulse from Canvas streaming indicators
+  - Only the main status line shimmers during AI turn
+
+- **Elapsed time shows whole seconds only**
+  - Changed from "5.3s" to "5s" format
+  - No milliseconds or decimals displayed
+
+### Fixed
+- **Agent limit errors now handled gracefully**
+  - `spawn_agent` catches `AGENT_LIMIT_EXCEEDED` error
+  - Returns actionable suggestion instead of crashing
+  - Main AI can explain limit to user and request permission
+
+- **[REQUEST] marker now functional**
+  - Sub-agents can use `[REQUEST]` to ask for capabilities
+  - Was documented but not actually parsed - now added to clarification markers
+
 ## [0.7.23] - 2026-02-01
 
 ### Added
