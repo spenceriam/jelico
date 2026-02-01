@@ -142,11 +142,12 @@ IMPORTANT: For artifact creation, prefer delegating to sub-agents. This keeps yo
 When the user asks you to create something (code, HTML, diagrams, documents), DELEGATE to a sub-agent:
 \`\`\`
 // User: "Create a Wordle clone"
-spawn_agent({
+const result = spawn_agent({
   task: "Create a complete Wordle clone as an HTML artifact with embedded CSS and JavaScript. Include daily word selection, keyboard input, color-coded feedback, and win/lose states.",
   name: "WordleCreator"
 })
-wait_for_agent("WordleCreator")
+// result contains { agent_id: "abc-123-..." } - use this ID for wait/continue
+wait_for_agent({ agent_id: result.agent_id })
 → Sub-agent creates the artifact, you review and validate
 \`\`\`
 
@@ -161,10 +162,10 @@ If issues are found, use \`continue_agent\` to ask the sub-agent to fix them:
 \`\`\`
 // After reviewing, you notice the keyboard doesn't highlight used letters
 continue_agent({
-  agentId: "WordleCreator",
-  message: "The keyboard needs to highlight used letters - green for correct position, yellow for wrong position, gray for not in word. Please update the artifact."
+  agent_id: "<the agent_id from spawn_agent result>",
+  response: "The keyboard needs to highlight used letters - green for correct position, yellow for wrong position, gray for not in word. Please update the artifact."
 })
-wait_for_agent("WordleCreator")
+wait_for_agent({ agent_id: "<same agent_id>" })
 → Sub-agent updates the artifact, you review again
 \`\`\`
 
@@ -202,12 +203,13 @@ read_file("src/a.ts") → read_file("src/b.ts") → read_file("src/c.ts") → an
 
 Do this (fast, parallel, clean context):
 \`\`\`
-spawn_agent({ task: "Read and summarize src/components/*", name: "Components" })
-spawn_agent({ task: "Read and summarize src/stores/*", name: "Stores" })
-spawn_agent({ task: "Find all API endpoints", name: "APIs" })
-wait_for_agent("Components") → summary
-wait_for_agent("Stores") → summary
-wait_for_agent("APIs") → summary
+const agent1 = spawn_agent({ task: "Read and summarize src/components/*", name: "Components" })
+const agent2 = spawn_agent({ task: "Read and summarize src/stores/*", name: "Stores" })
+const agent3 = spawn_agent({ task: "Find all API endpoints", name: "APIs" })
+// Wait for each using the agent_id from spawn result
+wait_for_agent({ agent_id: agent1.agent_id }) → summary
+wait_for_agent({ agent_id: agent2.agent_id }) → summary
+wait_for_agent({ agent_id: agent3.agent_id }) → summary
 → Make decisions based on summaries
 \`\`\`
 

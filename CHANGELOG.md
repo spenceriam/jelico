@@ -2,6 +2,12 @@
 
 All notable changes to Jelico will be documented in this file.
 
+## [0.7.11] - 2026-01-31
+
+### Fixed
+- **System prompt sub-agent examples**: Fixed examples that showed `wait_for_agent("AgentName")` - should use `{ agent_id: result.agent_id }`. This was teaching models incorrect API usage.
+- **continue_agent example**: Fixed parameter name from `agentId` to `agent_id` and `message` to `response`.
+
 ## [0.7.10] - 2026-01-31
 
 ### Fixed
