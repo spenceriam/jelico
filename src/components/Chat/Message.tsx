@@ -2,7 +2,7 @@ import { useState } from 'react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { Copy, Check, FileText, Image, File } from 'lucide-react'
-import { ToolCallDisplay, SingleToolCallDisplay } from './ToolCallDisplay'
+import { ToolCallDisplay, SingleToolCallDisplay, HIDDEN_TOOLS } from './ToolCallDisplay'
 import { MessageActions } from './MessageActions'
 import { MermaidInline } from '../Canvas/MermaidViewer'
 import type { ToolCall, ToolResult, MessageUsage, MessageAttachment, StreamingSegment } from '../../stores/chat'
@@ -303,7 +303,8 @@ export function Message({
                   const toolCall = toolCalls?.find(tc => tc.id === segment.toolCallId)
                   const toolResult = toolResults?.find(tr => tr.toolCallId === segment.toolCallId)
 
-                  if (!toolCall) return null
+                  // Skip hidden tools (wait_for_agent, get_agent_status, etc.)
+                  if (!toolCall || HIDDEN_TOOLS.has(toolCall.name)) return null
 
                   return (
                     <SingleToolCallDisplay

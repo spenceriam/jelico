@@ -44,7 +44,7 @@ const TOOL_LABELS: Record<string, string> = {
 
 // Tools that are "plumbing" and shouldn't be shown in the UI
 // These are internal operations that happen automatically
-const HIDDEN_TOOLS = new Set([
+export const HIDDEN_TOOLS = new Set([
   'wait_for_agent',      // Waiting is implicit - sub-agent panel shows status
   'get_agent_status',    // Internal polling
   'get_agents_summary',  // Internal status check

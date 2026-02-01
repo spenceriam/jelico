@@ -2,6 +2,11 @@
 
 All notable changes to Jelico will be documented in this file.
 
+## [0.7.9] - 2026-01-31
+
+### Changed
+- **Hidden wait_for_agent from chat**: The `wait_for_agent` tool call is now hidden from the message stream. The status bar already shows "Waiting for sub-agent..." during this time, so the tool card was redundant.
+
 ## [0.7.8] - 2026-01-31
 
 ### Fixed
