@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { Plus, Settings, Trash2, FileCode, FileText, Presentation, Image, ChevronDown, ChevronRight, File } from 'lucide-react'
 import { useChatStore } from '../../stores/chat'
 import { useUIStore } from '../../stores/ui'
@@ -15,12 +15,44 @@ const ARTIFACT_ICONS: Record<ArtifactType, React.ComponentType<{ className?: str
 // Fallback icon for unknown artifact types
 const DEFAULT_ARTIFACT_ICON = File
 
+// Format date for tooltip
+function formatCreatedDate(timestamp: number): string {
+  const date = new Date(timestamp)
+  const now = new Date()
+  const isToday = date.toDateString() === now.toDateString()
+  const yesterday = new Date(now)
+  yesterday.setDate(yesterday.getDate() - 1)
+  const isYesterday = date.toDateString() === yesterday.toDateString()
+
+  const timeStr = date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+
+  if (isToday) {
+    return `Created today at ${timeStr}`
+  } else if (isYesterday) {
+    return `Created yesterday at ${timeStr}`
+  } else {
+    return `Created ${date.toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' })} at ${timeStr}`
+  }
+}
+
 export function Sidebar() {
   const { conversations, activeConversationId, setActiveConversation, deleteConversation } = useChatStore()
   const { sidebarCollapsed, openSettings } = useUIStore()
   const { artifacts, selectArtifact, openCanvas } = useArtifactStore()
   // Track which conversations have their artifact trees expanded
   const [expandedConversations, setExpandedConversations] = useState<Set<string>>(new Set())
+
+  // Auto-expand artifact tree for active conversation
+  useEffect(() => {
+    if (activeConversationId) {
+      setExpandedConversations(prev => {
+        if (prev.has(activeConversationId)) return prev
+        const next = new Set(prev)
+        next.add(activeConversationId)
+        return next
+      })
+    }
+  }, [activeConversationId])
 
   // Get artifacts grouped by conversation
   const getArtifactsForConversation = (convId: string) =>
@@ -99,11 +131,12 @@ export function Sidebar() {
                   {/* Conversation entry */}
                   <div
                     onClick={() => setActiveConversation(conv.id)}
+                    title={formatCreatedDate(conv.createdAt)}
                     className={`
                       w-full flex items-center gap-2 px-3 py-2 text-sm rounded-lg transition-colors group cursor-pointer
                       ${isActive
-                        ? 'bg-bg-elevated text-text-primary'
-                        : 'text-text-secondary hover:text-text-primary hover:bg-bg-hover'}
+                        ? 'bg-bg-elevated text-text-primary border-l-2 border-accent'
+                        : 'text-text-secondary hover:text-text-primary hover:bg-bg-hover border-l-2 border-transparent'}
                     `}
                   >
                     {/* Expand/collapse toggle for artifacts */}
