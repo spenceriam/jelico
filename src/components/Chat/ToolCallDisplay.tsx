@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect } from 'react'
 import {
   ChevronDown,
   ChevronRight,
@@ -49,37 +49,6 @@ export const HIDDEN_TOOLS = new Set([
   'get_agent_status',    // Internal polling
   'get_agents_summary',  // Internal status check
 ])
-
-function formatToolArgs(args: Record<string, unknown> | undefined | null): string {
-  // Handle undefined/null args
-  if (!args || typeof args !== 'object') return '(no arguments)'
-
-  // Show the primary argument nicely based on tool type
-  if (args.path) return String(args.path)
-  if (args.command) return String(args.command)
-  if (args.query) return String(args.query)
-  if (args.url) return String(args.url)
-  if (args.title) return String(args.title)
-  // Agent-related: show name and task preview
-  if (args.name && args.task) return `${args.name}: ${String(args.task).slice(0, 40)}${String(args.task).length > 40 ? '...' : ''}`
-  if (args.name) return String(args.name)
-  // Agent ID for status/wait/continue/dismiss
-  if (args.agent_id) return `Agent: ${String(args.agent_id).slice(0, 8)}...`
-  // Task description
-  if (args.task) return String(args.task).slice(0, 50) + (String(args.task).length > 50 ? '...' : '')
-  // Response for continue_agent
-  if (args.response) return `"${String(args.response).slice(0, 40)}${String(args.response).length > 40 ? '...' : ''}"`
-  // File patterns
-  if (args.pattern) return `${args.directory || '.'}/${args.pattern}`
-  // Content preview
-  if (args.content) return `${String(args.content).slice(0, 30)}...`
-  // Artifact type
-  if (args.type) return String(args.type)
-
-  // Fallback to JSON
-  const jsonStr = JSON.stringify(args, null, 2)
-  return jsonStr === '{}' ? '(no arguments)' : jsonStr
-}
 
 function formatToolResult(result: unknown): { content: string; isError: boolean } {
   if (typeof result === 'object' && result !== null) {
@@ -188,10 +157,7 @@ export function SingleToolCallDisplay({
   const [showTask, setShowTask] = useState(false)
   const [showActions, setShowActions] = useState(false)
   const [showResult, setShowResult] = useState(false)
-  const [showParams, setShowParams] = useState(false)
   const [showToolResult, setShowToolResult] = useState(false)
-  // Ref for auto-scrolling live output
-  const liveOutputRef = useRef<HTMLDivElement>(null)
 
   const { agents } = useAgentStore()
   const { selectArtifact, openCanvas, artifacts } = useArtifactStore()
@@ -202,30 +168,17 @@ export function SingleToolCallDisplay({
     : null
   const subAgent = agentId ? agents.find(a => a.id === agentId) : null
 
-  // Auto-expand when sub-agent is running so user can see "Thinking"
+  // Auto-expand when sub-agent is running so user can see status
   useEffect(() => {
     if (subAgent?.status === 'running' || subAgent?.status === 'pending') {
       setExpanded(true)
     }
   }, [subAgent?.status])
 
-  // Auto-scroll live output when progress updates
-  useEffect(() => {
-    if (liveOutputRef.current && subAgent?.progress) {
-      // Use requestAnimationFrame for smoother scrolling
-      requestAnimationFrame(() => {
-        if (liveOutputRef.current) {
-          liveOutputRef.current.scrollTop = liveOutputRef.current.scrollHeight
-        }
-      })
-    }
-  }, [subAgent?.progress])
-
   // Custom label for spawn_agent to show task inline
   const label: string = (toolCall.name === 'spawn_agent' && !!toolCall.args?.task)
     ? `Sub-agent: ${String(toolCall.args.task).slice(0, 60)}${String(toolCall.args.task).length > 60 ? '...' : ''}`
     : (TOOL_LABELS[toolCall.name] || toolCall.name)
-  const argDisplay = toolCall.name === 'spawn_agent' ? '' : formatToolArgs(toolCall.args)
 
   const hasResult = toolResult !== undefined
   const formattedResult = hasResult ? formatToolResult(toolResult.result) : null
@@ -233,11 +186,6 @@ export function SingleToolCallDisplay({
   // Use explicit status if available, otherwise infer from result presence
   const status = toolCall.status || (hasResult ? 'complete' : (isStreaming ? 'executing' : 'complete'))
   const isInProgress = status === 'starting' || status === 'executing'
-
-  // Status text for display
-  const statusText = status === 'starting' ? 'Starting...' :
-                     status === 'executing' ? 'Running...' :
-                     status === 'error' ? 'Error' : ''
 
   // Get artifact info if this is a create_artifact call
   const artifactTitle = toolCall.name === 'create_artifact' && toolCall.args?.title
@@ -267,11 +215,7 @@ export function SingleToolCallDisplay({
           <ChevronRight className="w-4 h-4 text-text-muted flex-shrink-0" />
         )}
 
-        <span className="text-sm font-medium text-accent">{label}</span>
-
-        <span className="text-xs text-text-muted truncate flex-1 font-mono">
-          {argDisplay || statusText}
-        </span>
+        <span className="text-sm font-medium text-accent flex-1 truncate">{label}</span>
 
         {/* Status indicator - for spawn_agent, show sub-agent status instead of tool completion */}
         {toolCall.name === 'spawn_agent' && subAgent ? (
@@ -356,15 +300,6 @@ export function SingleToolCallDisplay({
             }`}>
               {subAgent.status}
             </span>
-            {/* Show latest status update from agent */}
-            {subAgent.status === 'running' && subAgent.latestUpdate && (
-              <span className="text-xs text-text-muted truncate max-w-[200px]">
-                {subAgent.latestUpdate.phase && (
-                  <span className="text-accent">[{subAgent.latestUpdate.phase}]</span>
-                )}{' '}
-                {subAgent.latestUpdate.message}
-              </span>
-            )}
             <span className="flex-1" />
             {/* Expand/collapse indicator */}
             <span className="flex items-center gap-1 text-xs text-text-muted">
@@ -426,12 +361,7 @@ export function SingleToolCallDisplay({
                       {subAgent.toolCalls.map((tc, idx) => (
                         <div key={tc.id || idx} className="flex items-center gap-2 text-xs">
                           <CheckCircle className="w-3 h-3 text-green-500 flex-shrink-0" />
-                          <span className="text-accent font-medium">{TOOL_LABELS[tc.name] || tc.name}</span>
-                          {!!(tc.args?.path || tc.args?.command || tc.args?.query) && (
-                            <span className="text-text-muted truncate font-mono">
-                              {String(tc.args?.path || tc.args?.command || tc.args?.query || '')}
-                            </span>
-                          )}
+                          <span className="text-text-secondary">{TOOL_LABELS[tc.name] || tc.name}</span>
                         </div>
                       ))}
                     </div>
@@ -439,27 +369,22 @@ export function SingleToolCallDisplay({
                 </div>
               )}
 
-              {/* Live progress while running - NOT collapsible, always visible when running */}
+              {/* Live status while running - single line */}
               {(subAgent.status === 'running' || subAgent.status === 'pending') && (
-                <div className="py-2 border-t border-border/50">
-                  <div className="flex items-start">
-                    <div className="w-6 flex-shrink-0 flex justify-center pt-0.5">
-                      <Loader2 className="w-3 h-3 animate-spin text-accent" />
-                    </div>
-                    <div className="flex-1 pl-2 pr-3">
-                      <div className="flex items-center gap-2 mb-1">
-                        <span className="text-[10px] uppercase tracking-wider text-accent font-medium">Thinking</span>
-                      </div>
-                      <div
-                        ref={liveOutputRef}
-                        className="text-xs text-text-secondary font-mono bg-bg-deep rounded p-2 max-h-48 overflow-y-auto whitespace-pre-wrap border border-accent/30"
-                      >
-                        {subAgent.progress || (
-                          <span className="text-text-muted italic">Starting up...</span>
-                        )}
-                      </div>
-                    </div>
-                  </div>
+                <div className="px-3 py-2 border-t border-border/50 flex items-center gap-2">
+                  <Loader2 className="w-3 h-3 animate-spin text-accent flex-shrink-0" />
+                  <span className="text-xs text-text-muted">
+                    {subAgent.latestUpdate ? (
+                      <>
+                        {subAgent.latestUpdate.phase && (
+                          <span className="text-accent">[{subAgent.latestUpdate.phase}]</span>
+                        )}{' '}
+                        {subAgent.latestUpdate.message}
+                      </>
+                    ) : (
+                      'Starting up...'
+                    )}
+                  </span>
                 </div>
               )}
 
@@ -513,30 +438,6 @@ export function SingleToolCallDisplay({
       {/* Expanded content - collapsible sections */}
       {expanded && (
         <div className="border-t border-border bg-bg-surface">
-          {/* Parameters section - collapsible */}
-          <div className="border-b border-border/50">
-            <button
-              onClick={() => setShowParams(!showParams)}
-              className="w-full py-2 flex items-center hover:bg-bg-hover/50 transition-colors"
-            >
-              <div className="w-6 flex-shrink-0 flex justify-center">
-                {showParams ? (
-                  <ChevronDown className="w-3 h-3 text-text-muted" />
-                ) : (
-                  <ChevronRight className="w-3 h-3 text-text-muted" />
-                )}
-              </div>
-              <span className="text-[10px] uppercase tracking-wider text-text-muted">Parameters</span>
-            </button>
-            {showParams && (
-              <div className="pb-2 pl-8 pr-3">
-                <pre className="text-xs font-mono text-text-secondary overflow-x-auto bg-bg-deep rounded p-2">
-                  {toolCall.args ? JSON.stringify(toolCall.args, null, 2) : '(no arguments)'}
-                </pre>
-              </div>
-            )}
-          </div>
-
           {/* Result section - collapsible */}
           {formattedResult && (
             <div>
