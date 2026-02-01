@@ -2185,16 +2185,20 @@ Be concise but informative. The user needs to understand what happened.`,
       // Use a quick non-streaming call for title generation
       const { generateText } = await import('ai')
 
+      // Build content - may only have user message for early generation
+      const userPart = `User: ${params.userMessage.slice(0, 500)}`
+      const assistantPart = params.assistantMessage ? `\n\nAssistant: ${params.assistantMessage.slice(0, 500)}` : ''
+
       const result = await generateText({
         model: provider.chat(params.model),
         messages: [
           {
             role: 'system',
-            content: 'Generate a short, descriptive title (3-6 words) for this conversation. Return ONLY the title, no quotes or explanation.',
+            content: 'Generate a short, descriptive title (3-6 words) for this conversation based on what the user is asking. Return ONLY the title, no quotes or explanation.',
           },
           {
             role: 'user',
-            content: `User: ${params.userMessage.slice(0, 500)}\n\nAssistant: ${params.assistantMessage.slice(0, 500)}`,
+            content: userPart + assistantPart,
           },
         ],
         maxTokens: 20,

@@ -2,6 +2,14 @@
 
 All notable changes to Jelico will be documented in this file.
 
+## [0.7.18] - 2026-01-31
+
+### Changed
+- **Faster conversation title generation**: Title is now generated immediately when you send your first message
+  - No longer waits for AI to finish responding before generating title
+  - Runs in parallel with main AI response for quick sidebar update
+  - Falls back to user's message text until AI title is ready
+
 ## [0.7.17] - 2026-01-31
 
 ### Fixed

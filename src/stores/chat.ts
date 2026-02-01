@@ -307,12 +307,28 @@ export const useChatStore = create<ChatStore>((set, get) => ({
         titleSource = 'New conversation'
       }
 
-      // Use full message as initial title (CSS handles word-wrap)
-      // AI will generate a proper short title after first response
+      // Set initial title immediately (full message, CSS handles word-wrap)
       await window.jelico.conversations.updateTitle(conversationId, titleSource)
       // Reload conversations to get updated title
       const conversations = await window.jelico.conversations.list()
       set({ conversations })
+
+      // Generate proper short title in background immediately (don't wait for AI response)
+      // This starts in parallel with the main AI response so title appears quickly
+      window.jelico.ai.generateTitle({
+        providerId,
+        model,
+        userMessage: content.slice(0, 1000),
+        assistantMessage: '', // Generate from user message only for speed
+      }).then(async (result) => {
+        if (result.success && result.title) {
+          await window.jelico.conversations.updateTitle(conversationId, result.title)
+          const updatedConversations = await window.jelico.conversations.list()
+          set({ conversations: updatedConversations })
+        }
+      }).catch((err) => {
+        console.warn('[Chat] Failed to generate early title:', err)
+      })
     }
 
     const updatedMessages = [...messages, userMessage]
