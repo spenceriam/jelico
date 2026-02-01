@@ -11,6 +11,7 @@ import { WorkspaceSelector } from '../Workspace/WorkspaceSelector'
 import { ModelSelector } from '../Model/ModelSelector'
 import { ShimmerText, BrailleLoader } from '../StatusIndicators'
 import { TodoPanel } from '../Todo/TodoPanel'
+import { formatElapsedTime } from '../../utils/format'
 
 // Minimum display time for status messages (ms)
 const MIN_STATUS_DISPLAY_MS = 600
@@ -95,144 +96,146 @@ export function ChatArea() {
 
           {/* Status indicator - final row in chat view with braille animation */}
           {(isStreaming || isCompacting || isProcessing || modeTransitioning) && (
-            <div className="flex items-center gap-3 mt-4 py-3">
+            <div className="flex items-center gap-2 mt-4 py-3">
               <BrailleLoader className="text-accent text-lg" />
-              <ShimmerText className="text-sm text-text-secondary flex-1">
-                {modeTransitioning && modeSwitchReason ? modeSwitchReason :
-                 isCompacting ? 'Compacting conversation...' :
-                 isStreaming ? (() => {
-                   const now = Date.now()
+              <div className="flex items-center gap-1.5">
+                <ShimmerText className="text-sm text-text-secondary">
+                  {modeTransitioning && modeSwitchReason ? modeSwitchReason :
+                   isCompacting ? 'Compacting conversation...' :
+                   isStreaming ? (() => {
+                     const now = Date.now()
 
-                   const getShortPath = (p: string) => {
-                     const parts = p.split('/')
-                     return parts.length > 2 ? `.../${parts.slice(-2).join('/')}` : p
-                   }
+                     const getShortPath = (p: string) => {
+                       const parts = p.split('/')
+                       return parts.length > 2 ? `.../${parts.slice(-2).join('/')}` : p
+                     }
 
-                   const getToolStatus = (name: string, args: Record<string, unknown>, isComplete: boolean) => {
-                     if (isComplete) {
-                       switch (name) {
-                         case 'read_file':
-                           return args.path ? `Read ${getShortPath(String(args.path))}` : 'File read'
-                         case 'write_file':
-                           return args.path ? `Wrote ${getShortPath(String(args.path))}` : 'File written'
-                         case 'execute_command':
-                           return 'Command executed'
-                         case 'create_artifact':
-                           return args.title ? `Created "${String(args.title).slice(0, 20)}"` : 'Artifact created'
-                         case 'spawn_agent':
-                           return args.name ? `Spawned ${args.name}` : 'Agent spawned'
-                         case 'wait_for_agent':
-                           return 'Agent complete'
-                         case 'switch_mode':
-                           return `Switched to ${args.mode}`
-                         case 'todo_write':
-                           return 'Task list updated'
-                         case 'todo_read':
-                           return 'Tasks loaded'
-                         case 'todo_check':
-                           return args.taskId ? `Started task ${args.taskId}` : 'Task checked'
-                         default:
-                           return `${name} done`
-                       }
-                     } else {
-                       switch (name) {
-                         case 'read_file':
-                           return args.path ? `Reading ${getShortPath(String(args.path))}` : 'Reading file...'
-                         case 'write_file':
-                           return args.path ? `Writing ${getShortPath(String(args.path))}` : 'Writing file...'
-                         case 'list_directory':
-                           return args.path ? `Exploring ${getShortPath(String(args.path))}` : 'Listing directory...'
-                         case 'search_files':
-                           return args.pattern ? `Searching for ${args.pattern}` : 'Searching files...'
-                         case 'execute_command': {
-                           const cmd = String(args.command || '')
-                           const shortCmd = cmd.length > 30 ? cmd.slice(0, 30) + '...' : cmd
-                           return shortCmd ? `Running: ${shortCmd}` : 'Running command...'
+                     const getToolStatus = (name: string, args: Record<string, unknown>, isComplete: boolean) => {
+                       if (isComplete) {
+                         switch (name) {
+                           case 'read_file':
+                             return args.path ? `Read ${getShortPath(String(args.path))}` : 'File read'
+                           case 'write_file':
+                             return args.path ? `Wrote ${getShortPath(String(args.path))}` : 'File written'
+                           case 'execute_command':
+                             return 'Command executed'
+                           case 'create_artifact':
+                             return args.title ? `Created "${String(args.title).slice(0, 20)}"` : 'Artifact created'
+                           case 'spawn_agent':
+                             return args.name ? `Spawned ${args.name}` : 'Agent spawned'
+                           case 'wait_for_agent':
+                             return 'Agent complete'
+                           case 'switch_mode':
+                             return `Switched to ${args.mode}`
+                           case 'todo_write':
+                             return 'Task list updated'
+                           case 'todo_read':
+                             return 'Tasks loaded'
+                           case 'todo_check':
+                             return args.taskId ? `Started task ${args.taskId}` : 'Task checked'
+                           default:
+                             return `${name} done`
                          }
-                         case 'web_search':
-                           return args.query ? `Searching: "${String(args.query).slice(0, 25)}..."` : 'Searching the web...'
-                         case 'web_fetch': {
-                           const url = String(args.url || '')
-                           try {
-                             const hostname = new URL(url).hostname
-                             return `Fetching from ${hostname}`
-                           } catch {
-                             return 'Fetching URL...'
+                       } else {
+                         switch (name) {
+                           case 'read_file':
+                             return args.path ? `Reading ${getShortPath(String(args.path))}` : 'Reading file...'
+                           case 'write_file':
+                             return args.path ? `Writing ${getShortPath(String(args.path))}` : 'Writing file...'
+                           case 'list_directory':
+                             return args.path ? `Exploring ${getShortPath(String(args.path))}` : 'Listing directory...'
+                           case 'search_files':
+                             return args.pattern ? `Searching for ${args.pattern}` : 'Searching files...'
+                           case 'execute_command': {
+                             const cmd = String(args.command || '')
+                             const shortCmd = cmd.length > 30 ? cmd.slice(0, 30) + '...' : cmd
+                             return shortCmd ? `Running: ${shortCmd}` : 'Running command...'
                            }
+                           case 'web_search':
+                             return args.query ? `Searching: "${String(args.query).slice(0, 25)}..."` : 'Searching the web...'
+                           case 'web_fetch': {
+                             const url = String(args.url || '')
+                             try {
+                               const hostname = new URL(url).hostname
+                               return `Fetching from ${hostname}`
+                             } catch {
+                               return 'Fetching URL...'
+                             }
+                           }
+                           case 'create_artifact':
+                             return args.title ? `Creating: ${String(args.title).slice(0, 30)}` : 'Creating artifact...'
+                           case 'update_artifact':
+                             return args.title ? `Updating: ${String(args.title).slice(0, 30)}` : 'Updating artifact...'
+                           case 'spawn_agent':
+                             return args.name ? `Spawning ${args.name}` : 'Spawning sub-agent...'
+                           case 'wait_for_agent':
+                             return 'Waiting for sub-agent...'
+                           case 'get_agent_status':
+                             return 'Checking agent status...'
+                           case 'continue_agent':
+                             return 'Continuing agent...'
+                           case 'todo_write':
+                             return 'Updating task list...'
+                           case 'todo_read':
+                             return 'Reading tasks...'
+                           case 'todo_check':
+                             return args.taskId ? `Starting task ${args.taskId}...` : 'Checking task...'
+                           case 'switch_mode':
+                             return args.mode ? `Switching to ${args.mode} mode...` : 'Switching mode...'
+                           default:
+                             return `Running ${name}...`
                          }
-                         case 'create_artifact':
-                           return args.title ? `Creating: ${String(args.title).slice(0, 30)}` : 'Creating artifact...'
-                         case 'update_artifact':
-                           return args.title ? `Updating: ${String(args.title).slice(0, 30)}` : 'Updating artifact...'
-                         case 'spawn_agent':
-                           return args.name ? `Spawning ${args.name}` : 'Spawning sub-agent...'
-                         case 'wait_for_agent':
-                           return 'Waiting for sub-agent...'
-                         case 'get_agent_status':
-                           return 'Checking agent status...'
-                         case 'continue_agent':
-                           return 'Continuing agent...'
-                         case 'todo_write':
-                           return 'Updating task list...'
-                         case 'todo_read':
-                           return 'Reading tasks...'
-                         case 'todo_check':
-                           return args.taskId ? `Starting task ${args.taskId}...` : 'Checking task...'
-                         case 'switch_mode':
-                           return args.mode ? `Switching to ${args.mode} mode...` : 'Switching mode...'
-                         default:
-                           return `Running ${name}...`
                        }
                      }
-                   }
 
-                   const activeItems = statusDisplayQueue.filter(item => {
-                     if (!item.completedAt) return true
-                     return (now - item.completedAt) < MIN_STATUS_DISPLAY_MS
-                   })
+                     const activeItems = statusDisplayQueue.filter(item => {
+                       if (!item.completedAt) return true
+                       return (now - item.completedAt) < MIN_STATUS_DISPLAY_MS
+                     })
 
-                   if (activeItems.length > 0) {
-                     const item = activeItems[activeItems.length - 1]
-                     const isComplete = !!item.completedAt
-                     return getToolStatus(item.toolName, item.args, isComplete)
-                   }
-
-                   if (lastCompletedTool) {
-                     const timeSinceCompletion = now - lastCompletedTool.completedAt
-                     if (timeSinceCompletion < 1500) {
-                       return getToolStatus(lastCompletedTool.name, lastCompletedTool.args, true)
+                     if (activeItems.length > 0) {
+                       const item = activeItems[activeItems.length - 1]
+                       const isComplete = !!item.completedAt
+                       return getToolStatus(item.toolName, item.args, isComplete)
                      }
-                   }
 
-                   // Show tool input progress (for large artifacts being generated)
-                   if (toolInputProgress) {
-                     const { toolName, charCount } = toolInputProgress
-                     const kbSize = (charCount / 1024).toFixed(1)
-                     switch (toolName) {
-                       case 'create_artifact':
-                         return `Generating artifact... (${kbSize}KB)`
-                       case 'update_artifact':
-                         return `Updating artifact... (${kbSize}KB)`
-                       case 'write_file':
-                         return `Writing file... (${kbSize}KB)`
-                       default:
-                         return `Generating ${toolName}... (${kbSize}KB)`
+                     if (lastCompletedTool) {
+                       const timeSinceCompletion = now - lastCompletedTool.completedAt
+                       if (timeSinceCompletion < 1500) {
+                         return getToolStatus(lastCompletedTool.name, lastCompletedTool.args, true)
+                       }
                      }
-                   }
 
-                   if (streamingToolCalls.length > 0) {
-                     return 'Finishing up...'
-                   }
-                   return streamingContent ? 'Responding...' : 'Processing...'
-                 })() :
-                 processingMessage || 'Processing...'}
-              </ShimmerText>
-              {/* Elapsed time display */}
-              {isStreaming && streamingStartTime && (
-                <span className="text-sm text-text-muted font-mono">
-                  ({((Date.now() - streamingStartTime) / 1000).toFixed(1)}s)
-                </span>
-              )}
+                     // Show tool input progress (for large artifacts being generated)
+                     if (toolInputProgress) {
+                       const { toolName, charCount } = toolInputProgress
+                       const kbSize = (charCount / 1024).toFixed(1)
+                       switch (toolName) {
+                         case 'create_artifact':
+                           return `Generating artifact... (${kbSize}KB)`
+                         case 'update_artifact':
+                           return `Updating artifact... (${kbSize}KB)`
+                         case 'write_file':
+                           return `Writing file... (${kbSize}KB)`
+                         default:
+                           return `Generating ${toolName}... (${kbSize}KB)`
+                       }
+                     }
+
+                     if (streamingToolCalls.length > 0) {
+                       return 'Finishing up...'
+                     }
+                     return streamingContent ? 'Responding...' : 'Processing...'
+                   })() :
+                   processingMessage || 'Processing...'}
+                </ShimmerText>
+                {/* Elapsed time display - right next to status text */}
+                {isStreaming && streamingStartTime && (
+                  <span className="text-sm text-text-muted">
+                    ({formatElapsedTime(Date.now() - streamingStartTime)})
+                  </span>
+                )}
+              </div>
             </div>
           )}
 

@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import {
   ChevronDown,
   ChevronRight,
@@ -184,21 +184,32 @@ export function SingleToolCallDisplay({
   isStreaming?: boolean
 }) {
   const [expanded, setExpanded] = useState(false)
+  // Sub-sections are collapsed by default
+  const [showTask, setShowTask] = useState(false)
+  const [showActions, setShowActions] = useState(false)
+  const [showResult, setShowResult] = useState(false)
+  const [showParams, setShowParams] = useState(false)
+  const [showToolResult, setShowToolResult] = useState(false)
+  // Ref for auto-scrolling live output
+  const liveOutputRef = useRef<HTMLDivElement>(null)
+
   const { agents } = useAgentStore()
   const { selectArtifact, openCanvas, artifacts } = useArtifactStore()
 
-  // Get sub-agent info early for auto-expand logic
+  // Get sub-agent info first for reference in useEffect
   const agentId = toolCall.name === 'spawn_agent' && toolResult?.result
     ? (toolResult.result as any)?.agent_id
     : null
   const subAgent = agentId ? agents.find(a => a.id === agentId) : null
 
-  // Auto-expand when sub-agent is running so user can see progress
+  // Auto-scroll live output when progress updates
   useEffect(() => {
-    if (subAgent && (subAgent.status === 'running' || subAgent.status === 'pending')) {
-      setExpanded(true)
+    if (liveOutputRef.current && subAgent?.progress) {
+      liveOutputRef.current.scrollTop = liveOutputRef.current.scrollHeight
     }
-  }, [subAgent?.status])
+  }, [subAgent?.progress])
+
+  // No auto-expand - user controls visibility
 
   // Custom label for spawn_agent to show task inline
   const label: string = (toolCall.name === 'spawn_agent' && !!toolCall.args?.task)
@@ -349,64 +360,85 @@ export function SingleToolCallDisplay({
           {/* Expanded details - only show when user expands */}
           {expanded && (
             <>
-              {/* Task - indented under agent */}
-              <div className="py-2 border-t border-border/50">
-                <div className="flex items-start">
-                  <div className="w-6 flex-shrink-0 flex justify-center pt-0.5">
-                    <div className="w-px h-full bg-border" />
+              {/* Task - collapsible */}
+              <div className="border-t border-border/50">
+                <button
+                  onClick={() => setShowTask(!showTask)}
+                  className="w-full py-2 flex items-center hover:bg-bg-hover/50 transition-colors"
+                >
+                  <div className="w-6 flex-shrink-0 flex justify-center">
+                    {showTask ? (
+                      <ChevronDown className="w-3 h-3 text-text-muted" />
+                    ) : (
+                      <ChevronRight className="w-3 h-3 text-text-muted" />
+                    )}
                   </div>
-                  <div className="flex-1 pl-2 pr-3">
-                    <div className="text-[10px] uppercase tracking-wider text-text-muted mb-1">Task</div>
+                  <span className="text-[10px] uppercase tracking-wider text-text-muted">Task</span>
+                </button>
+                {showTask && (
+                  <div className="pb-2 pl-8 pr-3">
                     <div className="text-xs text-text-secondary">{subAgent.task}</div>
                   </div>
-                </div>
+                )}
               </div>
 
-              {/* Sub-agent's tool calls - indented under agent */}
+              {/* Sub-agent's tool calls - collapsible */}
               {subAgent.toolCalls && subAgent.toolCalls.length > 0 && (
-                <div className="py-2 border-t border-border/50">
-                  <div className="flex items-start">
-                    <div className="w-6 flex-shrink-0 flex justify-center pt-0.5">
-                      <div className="w-px h-full bg-border" />
+                <div className="border-t border-border/50">
+                  <button
+                    onClick={() => setShowActions(!showActions)}
+                    className="w-full py-2 flex items-center hover:bg-bg-hover/50 transition-colors"
+                  >
+                    <div className="w-6 flex-shrink-0 flex justify-center">
+                      {showActions ? (
+                        <ChevronDown className="w-3 h-3 text-text-muted" />
+                      ) : (
+                        <ChevronRight className="w-3 h-3 text-text-muted" />
+                      )}
                     </div>
-                    <div className="flex-1 pl-2 pr-3">
-                      <div className="text-[10px] uppercase tracking-wider text-text-muted mb-2">Actions</div>
-                      <div className="space-y-2">
-                        {subAgent.toolCalls.map((tc, idx) => (
-                          <div key={tc.id || idx} className="flex items-start">
-                            {/* Nested indent line */}
-                            <div className="w-4 flex-shrink-0 flex justify-center pt-0.5">
-                              <div className="w-px h-full bg-border/50" />
-                            </div>
-                            <div className="flex-1 pl-2">
-                              <div className="flex items-center gap-2 text-xs">
-                                <CheckCircle className="w-3 h-3 text-green-500 flex-shrink-0" />
-                                <span className="text-accent font-medium">{TOOL_LABELS[tc.name] || tc.name}</span>
-                              </div>
-                              {!!(tc.args?.path || tc.args?.command || tc.args?.query) && (
-                                <div className="text-xs text-text-muted mt-0.5 ml-5 truncate font-mono">
-                                  {String(tc.args?.path || tc.args?.command || tc.args?.query || '')}
-                                </div>
-                              )}
-                            </div>
-                          </div>
-                        ))}
-                      </div>
+                    <span className="text-[10px] uppercase tracking-wider text-text-muted">
+                      Actions ({subAgent.toolCalls.length})
+                    </span>
+                  </button>
+                  {showActions && (
+                    <div className="pb-2 pl-8 pr-3 space-y-1">
+                      {subAgent.toolCalls.map((tc, idx) => (
+                        <div key={tc.id || idx} className="flex items-center gap-2 text-xs">
+                          <CheckCircle className="w-3 h-3 text-green-500 flex-shrink-0" />
+                          <span className="text-accent font-medium">{TOOL_LABELS[tc.name] || tc.name}</span>
+                          {!!(tc.args?.path || tc.args?.command || tc.args?.query) && (
+                            <span className="text-text-muted truncate font-mono">
+                              {String(tc.args?.path || tc.args?.command || tc.args?.query || '')}
+                            </span>
+                          )}
+                        </div>
+                      ))}
                     </div>
-                  </div>
+                  )}
                 </div>
               )}
 
-              {/* Live progress while running - always show when running */}
+              {/* Live progress while running - NOT collapsible, always visible when running */}
               {(subAgent.status === 'running' || subAgent.status === 'pending') && (
                 <div className="py-2 border-t border-border/50">
                   <div className="flex items-start">
-                    <div className="w-6 flex-shrink-0 flex justify-center">
+                    <div className="w-6 flex-shrink-0 flex justify-center pt-0.5">
                       <Loader2 className="w-3 h-3 animate-spin text-accent" />
                     </div>
                     <div className="flex-1 pl-2 pr-3">
-                      <div className="text-[10px] uppercase tracking-wider text-text-muted mb-1">Live Output</div>
-                      <div className="text-xs text-text-secondary font-mono bg-bg-deep rounded p-2 max-h-48 overflow-y-auto whitespace-pre-wrap">
+                      <div className="flex items-center gap-2 mb-1">
+                        <span className="text-[10px] uppercase tracking-wider text-accent font-medium">Thinking</span>
+                        <span className="flex gap-0.5">
+                          <span className="w-1 h-1 rounded-full bg-accent animate-pulse" style={{ animationDelay: '0ms' }} />
+                          <span className="w-1 h-1 rounded-full bg-accent animate-pulse" style={{ animationDelay: '150ms' }} />
+                          <span className="w-1 h-1 rounded-full bg-accent animate-pulse" style={{ animationDelay: '300ms' }} />
+                        </span>
+                      </div>
+                      <div
+                        ref={liveOutputRef}
+                        className="text-xs text-text-secondary font-mono bg-bg-deep rounded p-2 max-h-48 overflow-y-auto whitespace-pre-wrap border border-accent/30 animate-pulse"
+                        style={{ animationDuration: '2s' }}
+                      >
                         {subAgent.progress || (
                           <span className="text-text-muted italic">Starting up...</span>
                         )}
@@ -416,24 +448,33 @@ export function SingleToolCallDisplay({
                 </div>
               )}
 
-              {/* Final result - indented */}
+              {/* Final result - collapsible */}
               {subAgent.status === 'completed' && subAgent.result && (
-                <div className="py-2 border-t border-border/50">
-                  <div className="flex items-start">
+                <div className="border-t border-border/50">
+                  <button
+                    onClick={() => setShowResult(!showResult)}
+                    className="w-full py-2 flex items-center hover:bg-bg-hover/50 transition-colors"
+                  >
                     <div className="w-6 flex-shrink-0 flex justify-center">
-                      <CheckCircle className="w-3.5 h-3.5 text-green-500" />
+                      {showResult ? (
+                        <ChevronDown className="w-3 h-3 text-green-500" />
+                      ) : (
+                        <ChevronRight className="w-3 h-3 text-green-500" />
+                      )}
                     </div>
-                    <div className="flex-1 pl-2 pr-3">
-                      <div className="text-[10px] uppercase tracking-wider text-green-500 mb-1">Result</div>
+                    <span className="text-[10px] uppercase tracking-wider text-green-500">Result</span>
+                  </button>
+                  {showResult && (
+                    <div className="pb-2 pl-8 pr-3">
                       <div className="text-sm text-text-primary bg-bg-deep rounded p-2 max-h-40 overflow-y-auto whitespace-pre-wrap">
                         {subAgent.result}
                       </div>
                     </div>
-                  </div>
+                  )}
                 </div>
               )}
 
-              {/* Error message - indented */}
+              {/* Error message - NOT collapsible, always show errors */}
               {subAgent.status === 'failed' && subAgent.error && (
                 <div className="py-2 border-t border-border/50">
                   <div className="flex items-start">
@@ -454,46 +495,64 @@ export function SingleToolCallDisplay({
         </div>
       )}
 
-      {/* Expanded content - indented hierarchy */}
+      {/* Expanded content - collapsible sections */}
       {expanded && (
         <div className="border-t border-border bg-bg-surface">
-          {/* Parameters section - indented */}
-          <div className="py-2">
-            <div className="flex items-start">
-              <div className="w-6 flex-shrink-0 flex justify-center pt-0.5">
-                <div className="w-px h-full bg-border" />
+          {/* Parameters section - collapsible */}
+          <div className="border-b border-border/50">
+            <button
+              onClick={() => setShowParams(!showParams)}
+              className="w-full py-2 flex items-center hover:bg-bg-hover/50 transition-colors"
+            >
+              <div className="w-6 flex-shrink-0 flex justify-center">
+                {showParams ? (
+                  <ChevronDown className="w-3 h-3 text-text-muted" />
+                ) : (
+                  <ChevronRight className="w-3 h-3 text-text-muted" />
+                )}
               </div>
-              <div className="flex-1 pl-2 pr-3">
-                <div className="text-[10px] uppercase tracking-wider text-text-muted mb-1">Parameters</div>
+              <span className="text-[10px] uppercase tracking-wider text-text-muted">Parameters</span>
+            </button>
+            {showParams && (
+              <div className="pb-2 pl-8 pr-3">
                 <pre className="text-xs font-mono text-text-secondary overflow-x-auto bg-bg-deep rounded p-2">
                   {toolCall.args ? JSON.stringify(toolCall.args, null, 2) : '(no arguments)'}
                 </pre>
               </div>
-            </div>
+            )}
           </div>
 
-          {/* Result section - indented */}
+          {/* Result section - collapsible */}
           {formattedResult && (
-            <div className="py-2 border-t border-border/50">
-              <div className="flex items-start">
-                <div className="w-6 flex-shrink-0 flex justify-center pt-0.5">
-                  <div className="w-px h-full bg-border" />
+            <div>
+              <button
+                onClick={() => setShowToolResult(!showToolResult)}
+                className="w-full py-2 flex items-center hover:bg-bg-hover/50 transition-colors"
+              >
+                <div className="w-6 flex-shrink-0 flex justify-center">
+                  {showToolResult ? (
+                    <ChevronDown className={`w-3 h-3 ${formattedResult.isError ? 'text-error' : 'text-text-muted'}`} />
+                  ) : (
+                    <ChevronRight className={`w-3 h-3 ${formattedResult.isError ? 'text-error' : 'text-text-muted'}`} />
+                  )}
                 </div>
-                <div className="flex-1 pl-2 pr-3">
-                  <div className={`text-[10px] uppercase tracking-wider mb-1 ${formattedResult.isError ? 'text-error' : 'text-text-muted'}`}>
-                    {formattedResult.isError ? 'Error' : 'Result'}
-                  </div>
+                <span className={`text-[10px] uppercase tracking-wider ${formattedResult.isError ? 'text-error' : 'text-text-muted'}`}>
+                  {formattedResult.isError ? 'Error' : 'Result'}
+                </span>
+              </button>
+              {showToolResult && (
+                <div className="pb-2 pl-8 pr-3">
                   <pre className={`text-xs font-mono overflow-x-auto max-h-48 overflow-y-auto rounded p-2 ${
                     formattedResult.isError ? 'text-error bg-error/10' : 'text-text-secondary bg-bg-deep'
                   }`}>
                     {formattedResult.content}
                   </pre>
                 </div>
-              </div>
+              )}
             </div>
           )}
 
-          {/* In progress indicator - indented */}
+          {/* In progress indicator - always visible when in progress */}
           {isInProgress && (
             <div className="py-2 border-t border-border/50">
               <div className="flex items-start">

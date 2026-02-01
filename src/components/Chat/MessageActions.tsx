@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { Copy, Check, RefreshCw } from 'lucide-react'
 import type { MessageUsage, ToolCall, ToolResult } from '../../stores/chat'
+import { formatElapsedTime } from '../../utils/format'
 
 interface MessageActionsProps {
   content: string
@@ -91,7 +92,7 @@ export function MessageActions({ content, toolCalls, toolResults, usage, onRegen
       {usage && usage.durationMs !== undefined && usage.durationMs > 0 && (
         <div className="flex items-center gap-1 ml-auto text-xs text-text-muted" title={`${usage.totalTokens.toLocaleString()} tokens | ${usage.tokensPerSecond || 0} tok/s`}>
           <span>Completed in</span>
-          <span className="text-accent font-medium">{(usage.durationMs / 1000).toFixed(1)}s</span>
+          <span className="text-accent font-medium">{formatElapsedTime(usage.durationMs)}</span>
         </div>
       )}
     </div>

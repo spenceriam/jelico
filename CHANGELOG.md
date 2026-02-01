@@ -2,6 +2,51 @@
 
 All notable changes to Jelico will be documented in this file.
 
+## [0.7.16] - 2026-01-31
+
+### Changed
+- **Tool call display improvements**:
+  - Tool calls collapsed by default - users click to expand
+  - All sub-sections (Task, Actions, Parameters, Result) collapsed by default
+  - "Completed actions" section groups finished tools
+  - Active tool calls remain visible during streaming
+
+- **Live Output for sub-agents**:
+  - Renamed "Live Output" to "Thinking" with animated dots indicator
+  - Pulsing accent border to indicate active streaming
+  - Auto-scroll to show latest output as sub-agent works
+  - Visual distinction from static content
+
+- **Elapsed time display**:
+  - Positioned directly next to status text (not right-aligned)
+  - Shared `formatElapsedTime()` utility for consistency
+  - Supports seconds, minutes, and hours formats (e.g., "45.2s", "2m 30s", "1h 15m")
+  - Same formatting used in both streaming status and "Completed in" message
+
+- **Sidebar conversation titles**:
+  - Word-wrap enabled for long titles (no more ellipsis truncation)
+  - Titles can span multiple lines as needed
+
+### Fixed
+- Created `src/utils/format.ts` for shared formatting utilities
+- Removed unused clarification imports that caused build errors
+
+## [0.7.15] - 2026-01-31
+
+### Added
+- **AskUserQuestion tool**: AI can now ask clarifying questions before proceeding with tasks. Questions appear inline in chat with multiple-choice options plus "Other" for custom input.
+  - `ask_user_question` tool with subject, questions (1-4), and options (2-4 per question)
+  - Multi-select support for non-mutually-exclusive choices
+  - Accent-border styling matching TodoPanel
+  - Click-then-submit interaction pattern
+
+### Changed
+- **ClarificationPanel component**: New inline UI for AI clarification requests
+  - Header: "Clarification required for: {subject}"
+  - Radio buttons for single-select, checkboxes for multi-select
+  - "Other..." option with expandable text input
+  - Submit button enabled only when all questions answered
+
 ## [0.7.14] - 2026-01-31
 
 ### Changed
