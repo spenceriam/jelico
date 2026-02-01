@@ -2,6 +2,35 @@
 
 All notable changes to Jelico will be documented in this file.
 
+## [0.7.22] - 2026-02-01
+
+### Added
+- **cancel_agent tool**: Main AI can now cancel stuck or misbehaving sub-agents
+  - Immediately aborts running agent
+  - Returns clear error if agent already completed
+  - Enables recovery when agents hang or loop
+
+### Changed
+- **Strengthened main AI persona** (`persona.md`)
+  - Added error recovery guidance
+  - Systematic approach to sub-agent failures
+  - When to retry vs escalate to user
+  - Never give up after single failure
+
+- **Enhanced sub-agent orchestration docs** (`sub-agents.md`)
+  - Complete rewrite with clearer patterns
+  - Explicit decision tree for when to delegate
+  - Error handling patterns (timeout, failure, iteration)
+  - Structured feedback guidance
+  - Best practices for parallel execution
+
+- **Improved sub-agent system prompt**
+  - Added time management guidance
+  - Graceful completion before timeout
+  - What to do when encountering errors
+  - Required elements in final response
+  - Prioritize working result over perfection
+
 ## [0.7.21] - 2026-02-01
 
 ### Fixed

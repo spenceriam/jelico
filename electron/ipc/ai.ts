@@ -21,6 +21,7 @@ import {
   continueSubAgent,
   dismissSubAgent,
   dismissAgentsForStream,
+  cancelSubAgent,
   cancelAgentsForStream,
   registerParentStream,
   unregisterParentStream,
@@ -615,6 +616,65 @@ Then call wait_for_agent again to get the updated result.
         return {
           success: true,
           message: `Agent will continue with your feedback. Use wait_for_agent to get the result.`,
+        }
+      },
+    })
+
+    // Cancel a running sub-agent
+    tools.cancel_agent = tool({
+      description: `Cancel a running sub-agent immediately.
+
+## When to Use
+- Agent is taking too long (stuck or inefficient)
+- You realize the task was wrong and want to restart with better instructions
+- Agent is looping or not making progress
+- You want to free up resources for a different approach
+
+## What Happens
+- Agent's execution is immediately aborted
+- Status changes to "cancelled"
+- Any partial work is lost (artifacts not finalized won't be saved)
+- You can spawn a new agent with corrected instructions
+
+## When NOT to Use
+- If agent has already completed (use dismiss_agent instead)
+- If you want to keep the agent's memory for later (use dismiss_agent)
+
+## After Cancellation
+Consider:
+1. Spawning a new agent with clearer instructions
+2. Handling the task yourself if delegation isn't working
+3. Asking the user for clarification if the task is unclear`,
+      parameters: z.object({
+        agent_id: z.string().describe('The ID of the running agent to cancel'),
+      }),
+      execute: async ({ agent_id }) => {
+        const result = cancelSubAgent(agent_id)
+
+        if (!result) {
+          // Check why it failed
+          const status = getSubAgentStatus(agent_id)
+          if (!status.found) {
+            return {
+              success: false,
+              error: `Agent not found: ${agent_id}. It may have already been dismissed.`,
+            }
+          }
+          if (status.status !== 'running') {
+            return {
+              success: false,
+              error: `Agent is not running (status: ${status.status}). Use dismiss_agent to remove completed/failed agents.`,
+            }
+          }
+          return {
+            success: false,
+            error: 'Failed to cancel agent for unknown reason.',
+          }
+        }
+
+        return {
+          success: true,
+          message: 'Agent cancelled. You can spawn a new agent with corrected instructions if needed.',
         }
       },
     })

@@ -1444,6 +1444,31 @@ Example:
 - Alternative: I can provide the exact changes for you to apply"
 
 Only ask when truly necessary - try to complete the task autonomously when possible.
+
+## Time Management & Graceful Completion
+
+The main AI has a timeout waiting for you (typically 5 minutes). Work efficiently:
+
+**Before timeout runs out:**
+- If you sense time pressure, prioritize delivering a working result over perfection
+- For artifacts: A complete but simple version is better than an incomplete complex one
+- For research: Key findings first, details second
+
+**If your task is complex:**
+- Focus on the core requirement first
+- Add enhancements only after the basics work
+- Document what you completed vs. what remains
+
+**If you encounter errors:**
+- Try an alternative approach before giving up
+- If stuck, return what you have with a clear explanation
+- Don't loop infinitely on the same error
+
+**Your final response should include:**
+1. What you accomplished (be specific)
+2. Any artifacts created (title and brief description)
+3. Limitations or known issues (if any)
+4. Suggestions for next steps (if the task isn't fully complete)
 `
 
   // Add sibling context if provided
