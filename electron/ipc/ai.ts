@@ -47,7 +47,7 @@ const DEBUG_API_REQUESTS = process.env.DEBUG_AI === 'true' || process.env.NODE_E
 const accumulatedToolInputByCallId = new Map<string, string>()
 
 // Streaming timeout in ms (5 minutes for large artifacts)
-const STREAM_TIMEOUT_MS = 300000
+const STREAM_TIMEOUT_MS = 600000 // 10 minutes - must be longer than wait_for_agent timeout
 
 // Activity timeout - reset on any stream activity (30 seconds)
 const ACTIVITY_TIMEOUT_MS = 30000
@@ -429,6 +429,14 @@ IMPORTANT: Always call this after spawn_agent to get results.`,
         timeout_seconds: z.number().optional().describe('Maximum seconds to wait (default: 300)'),
       }),
       execute: async ({ agent_id, timeout_seconds }) => {
+        // Validate agent_id is provided (some models send empty {})
+        if (!agent_id) {
+          return {
+            success: false,
+            error: 'Missing agent_id parameter. You must provide the agent_id from spawn_agent result.',
+          }
+        }
+
         const timeoutMs = (timeout_seconds || 300) * 1000
 
         // Keep the main stream alive while waiting by resetting activity timeout

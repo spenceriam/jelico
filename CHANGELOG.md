@@ -2,6 +2,12 @@
 
 All notable changes to Jelico will be documented in this file.
 
+## [0.7.10] - 2026-01-31
+
+### Fixed
+- **Stream timeout during sub-agent work**: Increased overall stream timeout from 5 to 10 minutes (`STREAM_TIMEOUT_MS`). Previously the stream would abort while waiting for complex sub-agent artifact generation.
+- **Missing agent_id validation**: Added explicit validation for `wait_for_agent` when model sends empty `{}`. Now returns clear error message instead of cryptic "Agent not found".
+
 ## [0.7.9] - 2026-01-31
 
 ### Changed
