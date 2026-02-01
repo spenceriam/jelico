@@ -219,6 +219,12 @@ export interface SubAgentRecord {
     input: Record<string, unknown>
     output?: unknown
   }>
+  // Artifacts created by this agent
+  createdArtifacts: Array<{
+    id: string
+    title: string
+    type: string
+  }>
   // Provider info for continuation
   providerId: string
   model: string
@@ -435,6 +441,7 @@ export async function spawnSubAgent(params: {
     pendingQuestion: null,
     messages: [],
     toolCalls: [],
+    createdArtifacts: [],
     providerId: params.providerId,
     model: params.model,
     workspacePath: params.workspacePath,
@@ -909,6 +916,13 @@ IMPORTANT: You MUST provide all required parameters (type, title, content).`,
         agentContext.sendArtifact({ type, title, content, language })
 
         console.log(`[SubAgents] ${agentContext.agentName} created artifact: "${title}" (${type})`)
+
+        // Track artifact in agent record for wait_for_agent to report
+        const agentRecord = activeAgents.get(agentContext.agentId)
+        if (agentRecord) {
+          const artifactId = `${agentContext.agentId}-${Date.now()}`
+          agentRecord.createdArtifacts.push({ id: artifactId, title, type })
+        }
 
         // Return content summary for main AI to review
         // Truncate if very long, but include enough for meaningful review
@@ -1529,6 +1543,7 @@ export function getSubAgentStatus(agentId: string): {
   isComplete?: boolean
   hasQuestion?: boolean
   question?: SubAgentQuestion | null
+  createdArtifacts?: Array<{ id: string; title: string; type: string }>
 } {
   const agent = activeAgents.get(agentId)
   if (!agent) {
@@ -1552,6 +1567,7 @@ export function getSubAgentStatus(agentId: string): {
     isComplete: isTerminal,
     hasQuestion: agent.status === 'waiting_for_input' && !!agent.pendingQuestion,
     question: agent.pendingQuestion,
+    createdArtifacts: agent.createdArtifacts.length > 0 ? agent.createdArtifacts : undefined,
   }
 }
 
@@ -1568,6 +1584,7 @@ export function waitForSubAgent(
   timedOut?: boolean
   hasQuestion?: boolean
   question?: SubAgentQuestion | null
+  createdArtifacts?: Array<{ id: string; title: string; type: string }>
 }> {
   return new Promise((resolve) => {
     const agent = activeAgents.get(agentId)
@@ -1582,7 +1599,11 @@ export function waitForSubAgent(
 
     // Already in a resolvable state?
     if (agent.status === 'completed') {
-      resolve({ success: true, result: agent.result || '' })
+      resolve({
+        success: true,
+        result: agent.result || '',
+        createdArtifacts: agent.createdArtifacts.length > 0 ? agent.createdArtifacts : undefined,
+      })
       return
     }
 
@@ -1620,7 +1641,11 @@ export function waitForSubAgent(
 
       if (updatedAgent.status === 'completed') {
         cleanup()
-        resolve({ success: true, result: updatedAgent.result || '' })
+        resolve({
+          success: true,
+          result: updatedAgent.result || '',
+          createdArtifacts: updatedAgent.createdArtifacts.length > 0 ? updatedAgent.createdArtifacts : undefined,
+        })
       } else if (updatedAgent.status === 'failed') {
         cleanup()
         resolve({ success: false, error: updatedAgent.error || 'Agent failed' })

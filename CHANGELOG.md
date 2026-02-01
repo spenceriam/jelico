@@ -2,6 +2,22 @@
 
 All notable changes to Jelico will be documented in this file.
 
+## [0.7.17] - 2026-01-31
+
+### Fixed
+- **Sub-agent artifact tracking**: Main AI now knows when sub-agents create artifacts
+  - `wait_for_agent` and `get_agent_status` return `artifacts_created` field
+  - Prevents main AI from saying "the agent didn't create the artifact" when it actually did
+  - Each artifact entry includes { title, type }
+
+- **Conversation title truncation**: Removed 50-character limit with "..." on initial titles
+  - Titles now use full message text until AI generates a proper short title
+  - CSS word-wrap handles display of longer titles in sidebar
+
+### Changed
+- Updated `wait_for_agent` tool description to explain artifact detection
+- Sub-agents now track created artifacts in their record for reporting
+
 ## [0.7.16] - 2026-01-31
 
 ### Changed

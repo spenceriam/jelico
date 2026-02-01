@@ -39,6 +39,14 @@ startOrphanCleanup()
 // Store active streams for cancellation
 const activeStreams = new Map<string, AbortController>()
 
+// Track pending clarification requests (requestId -> resolver)
+interface PendingClarification {
+  resolve: (answers: Record<string, string[]>) => void
+  reject: (error: Error) => void
+  channelId: string
+}
+const pendingClarifications = new Map<string, PendingClarification>()
+
 // Debug flag - controlled by environment
 const DEBUG_API_REQUESTS = process.env.DEBUG_AI === 'true' || process.env.NODE_ENV === 'development'
 
@@ -440,6 +448,11 @@ CRITICAL: You MUST call wait_for_agent before finishing your response.`,
           result: status.result,
           progress: status.isComplete ? undefined : status.progress,
           error: status.error,
+          // Include artifact info so main AI knows what was created
+          artifacts_created: status.createdArtifacts?.map(a => ({
+            title: a.title,
+            type: a.type,
+          })),
         }
       },
     })
@@ -455,18 +468,24 @@ CRITICAL: You MUST call wait_for_agent before finishing your response.`,
 
 ## Return Values
 - success: true if agent completed successfully
-- result: The agent's complete response text (includes artifact content if created)
+- result: The agent's complete response text
+- artifacts_created: Array of artifacts the agent created (each has title, type)
 - has_question: true if agent needs clarification - use continue_agent to respond
 - question: The agent's question text (if has_question is true)
 - timed_out: true if agent didn't finish in time
 - error: Error message if failed
 
+## Checking for Artifacts
+The artifacts_created field tells you what the agent built:
+- If artifacts_created is present, the agent created content visible in the Canvas
+- Each artifact has { title, type } - e.g. { title: "Daily Wordle", type: "html" }
+- The artifacts are ALREADY visible to the user - no need to create them again
+
 ## After Receiving Results
 If the agent created an artifact:
-1. The artifact content is in the 'result' field
-2. Review it for errors, completeness, quality
-3. If issues found, use continue_agent to ask for fixes
-4. Only report success to user after your review passes
+1. Check artifacts_created to see what was built
+2. The artifact is already in the Canvas - tell the user it's ready
+3. If quality issues, use continue_agent to ask for fixes
 
 ## If Agent Has a Question
 - has_question will be true
@@ -522,6 +541,11 @@ If the agent created an artifact:
             success: result.success,
             result: result.result,
             error: result.error,
+            // Include artifact info so main AI knows what was created
+            artifacts_created: result.createdArtifacts?.map(a => ({
+              title: a.title,
+              type: a.type,
+            })),
           }
         } finally {
           if (keepAliveInterval) {
@@ -993,6 +1017,115 @@ Use this to read documentation, articles, or any web page content.`,
         }
       } catch (error: any) {
         return { success: false, error: error.message }
+      }
+    },
+  })
+
+  // Ask user question tool - always available
+  // Allows AI to ask clarifying questions before proceeding
+  tools.ask_user_question = tool({
+    description: `Ask the user for clarification before proceeding with a task.
+Use this when you need to make a decision that depends on user preference, or when you need more information.
+
+## When to Use
+- Before starting tasks with multiple valid approaches
+- When implementation details need user input
+- When making decisions that affect project structure
+- To confirm destructive or significant changes
+
+## Parameters
+- subject: Brief description of the task requiring clarification
+- questions: Array of 1-4 questions, each with:
+  - header: Short label (12 chars max) like "Auth method", "Library"
+  - question: The full question to ask
+  - options: 2-4 choices, each with label and description
+  - multiSelect: true to allow multiple selections
+
+## What Happens
+1. A clarification UI appears inline in chat
+2. User selects options or types custom "Other" response
+3. You receive their answers and can proceed
+
+Note: If recommended option, list it first with "(Recommended)" suffix.`,
+    parameters: z.object({
+      subject: z.string().describe('Brief description of the task requiring clarification'),
+      questions: z.array(z.object({
+        header: z.string().max(12).describe('Short label for the question (max 12 chars)'),
+        question: z.string().describe('The full question to ask'),
+        options: z.array(z.object({
+          label: z.string().describe('Option label (add "(Recommended)" suffix if preferred)'),
+          description: z.string().optional().describe('Additional context for this option'),
+        })).min(2).max(4),
+        multiSelect: z.boolean().optional().describe('Allow multiple selections (default: false)'),
+      })).min(1).max(4),
+    }),
+    execute: async ({ subject, questions }) => {
+      const { randomUUID } = await import('crypto')
+      const requestId = randomUUID()
+
+      // Build the request to send to UI
+      const clarificationRequest = {
+        id: requestId,
+        subject,
+        questions: questions.map((q, idx) => ({
+          id: `q-${idx}`,
+          question: q.question,
+          header: q.header,
+          options: q.options,
+          multiSelect: q.multiSelect || false,
+          selectedOptions: [],
+          otherText: '',
+        })),
+        conversationId: streamContext.channelId,
+        createdAt: Date.now(),
+      }
+
+      // Create a promise that will be resolved when user responds
+      const answersPromise = new Promise<Record<string, string[]>>((resolve, reject) => {
+        pendingClarifications.set(requestId, {
+          resolve,
+          reject,
+          channelId: streamContext.channelId,
+        })
+
+        // Timeout after 5 minutes
+        setTimeout(() => {
+          if (pendingClarifications.has(requestId)) {
+            pendingClarifications.delete(requestId)
+            reject(new Error('Clarification request timed out'))
+          }
+        }, 300000)
+      })
+
+      // Send request to UI via IPC
+      const { BrowserWindow } = await import('electron')
+      const windows = BrowserWindow.getAllWindows()
+      for (const win of windows) {
+        win.webContents.send('clarification:request', clarificationRequest)
+      }
+
+      // Keep the stream alive while waiting for response
+      const keepAliveInterval = setInterval(() => {
+        streamContext.resetActivityTimeout?.()
+      }, 10000)
+
+      try {
+        // Wait for user response
+        const answers = await answersPromise
+
+        return {
+          success: true,
+          answers,
+          message: 'User provided clarification. Proceed with their preferences.',
+        }
+      } catch (error: any) {
+        return {
+          success: false,
+          error: error.message || 'Failed to get user clarification',
+        }
+      } finally {
+        clearInterval(keepAliveInterval)
+        pendingClarifications.delete(requestId)
       }
     },
   })
@@ -2087,5 +2220,21 @@ Be concise but informative. The user needs to understand what happened.`,
   }) => {
     const result = increaseAgentLimit(params.conversationId, params.additionalAgents || 10)
     return { success: true, ...result }
+  })
+
+  // Handle clarification responses from UI
+  ipcMain.handle('clarification:respond', async (_, requestId: string, answers: Record<string, string[]>) => {
+    const pending = pendingClarifications.get(requestId)
+    if (!pending) {
+      console.warn('[AI] Clarification response for unknown request:', requestId)
+      return { success: false, error: 'Request not found or already expired' }
+    }
+
+    // Resolve the pending promise with the answers
+    pending.resolve(answers)
+    pendingClarifications.delete(requestId)
+
+    console.log('[AI] Clarification received for request:', requestId, answers)
+    return { success: true }
   })
 }

@@ -307,8 +307,9 @@ export const useChatStore = create<ChatStore>((set, get) => ({
         titleSource = 'New conversation'
       }
 
-      const title = titleSource.slice(0, 50) + (titleSource.length > 50 ? '...' : '')
-      await window.jelico.conversations.updateTitle(conversationId, title)
+      // Use full message as initial title (CSS handles word-wrap)
+      // AI will generate a proper short title after first response
+      await window.jelico.conversations.updateTitle(conversationId, titleSource)
       // Reload conversations to get updated title
       const conversations = await window.jelico.conversations.list()
       set({ conversations })
