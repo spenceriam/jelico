@@ -147,6 +147,7 @@ interface ChatStore {
 }
 
 let currentStreamChannelId: string | null = null
+let modeTransitionTimeoutId: ReturnType<typeof setTimeout> | null = null
 
 export const useChatStore = create<ChatStore>((set, get) => ({
   conversations: [],
@@ -205,6 +206,12 @@ export const useChatStore = create<ChatStore>((set, get) => ({
     // Clear streaming preview when switching conversations to prevent state bleeding
     useArtifactStore.getState().clearStreamingPreview()
 
+    // Cancel any pending mode transition timeout to prevent stale updates
+    if (modeTransitionTimeoutId) {
+      clearTimeout(modeTransitionTimeoutId)
+      modeTransitionTimeoutId = null
+    }
+
     if (!id) {
       set({
         activeConversationId: null,
@@ -217,6 +224,8 @@ export const useChatStore = create<ChatStore>((set, get) => ({
         streamingSegments: [],
         statusDisplayQueue: [],
         toolInputProgress: null,
+        modeTransitioning: false,
+        modeSwitchReason: null,
         isReasoning: false,
         reasoningContent: '',
         error: null,
@@ -239,6 +248,8 @@ export const useChatStore = create<ChatStore>((set, get) => ({
         streamingSegments: [],
         statusDisplayQueue: [],
         toolInputProgress: null,
+        modeTransitioning: false,
+        modeSwitchReason: null,
         isReasoning: false,
         reasoningContent: '',
       })
@@ -825,6 +836,10 @@ export const useChatStore = create<ChatStore>((set, get) => ({
     window.jelico.ai.onStreamError(channelId, (error) => {
       window.jelico.ai.removeListeners(channelId)
       currentStreamChannelId = null
+
+      // Clear streaming preview to prevent stale artifact content
+      useArtifactStore.getState().clearStreamingPreview()
+
       set({
         isStreaming: false,
         streamingStartTime: null,
@@ -833,6 +848,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
         streamingToolResults: [],
         streamingSegments: [],
         statusDisplayQueue: [],
+        toolInputProgress: null,
         isReasoning: false,
         reasoningContent: '',
         error: error,
@@ -867,6 +883,10 @@ export const useChatStore = create<ChatStore>((set, get) => ({
       window.jelico.ai.removeListeners(currentStreamChannelId)
       currentStreamChannelId = null
     }
+
+    // Clear streaming preview to prevent stale artifact content
+    useArtifactStore.getState().clearStreamingPreview()
+
     set({
       isStreaming: false,
       streamingStartTime: null,
@@ -926,13 +946,22 @@ export const useChatStore = create<ChatStore>((set, get) => ({
 
   handleModeSwitch: (_fromMode, toMode, reason) => {
     const { modes } = require('../lib/modes') as { modes: Record<AgentMode, { name: string }> }
+
+    // Cancel any pending mode transition timeout to prevent orphaned callbacks
+    if (modeTransitionTimeoutId) {
+      clearTimeout(modeTransitionTimeoutId)
+      modeTransitionTimeoutId = null
+    }
+
     set({
       mode: toMode,
       modeTransitioning: true,
       modeSwitchReason: `Switching to ${modes[toMode].name}: ${reason}`,
     })
+
     // Clear the transitioning state after animation
-    setTimeout(() => {
+    modeTransitionTimeoutId = setTimeout(() => {
+      modeTransitionTimeoutId = null
       set({ modeTransitioning: false, modeSwitchReason: null })
     }, 2000)
   },

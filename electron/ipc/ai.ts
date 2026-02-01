@@ -44,6 +44,7 @@ interface PendingClarification {
   resolve: (answers: Record<string, string[]>) => void
   reject: (error: Error) => void
   channelId: string
+  timeoutId: ReturnType<typeof setTimeout>
 }
 const pendingClarifications = new Map<string, PendingClarification>()
 
@@ -1101,19 +1102,20 @@ Note: If recommended option, list it first with "(Recommended)" suffix.`,
 
       // Create a promise that will be resolved when user responds
       const answersPromise = new Promise<Record<string, string[]>>((resolve, reject) => {
-        pendingClarifications.set(requestId, {
-          resolve,
-          reject,
-          channelId: streamContext.channelId,
-        })
-
-        // Timeout after 5 minutes
-        setTimeout(() => {
+        // Timeout after 5 minutes - store ID so we can cancel it
+        const timeoutId = setTimeout(() => {
           if (pendingClarifications.has(requestId)) {
             pendingClarifications.delete(requestId)
             reject(new Error('Clarification request timed out'))
           }
         }, 300000)
+
+        pendingClarifications.set(requestId, {
+          resolve,
+          reject,
+          channelId: streamContext.channelId,
+          timeoutId,
+        })
       })
 
       // Send request to UI via IPC
@@ -1144,6 +1146,11 @@ Note: If recommended option, list it first with "(Recommended)" suffix.`,
         }
       } finally {
         clearInterval(keepAliveInterval)
+        // Clear the timeout to prevent memory leak
+        const pending = pendingClarifications.get(requestId)
+        if (pending?.timeoutId) {
+          clearTimeout(pending.timeoutId)
+        }
         pendingClarifications.delete(requestId)
       }
     },
@@ -2196,6 +2203,18 @@ Be concise but informative. The user needs to understand what happened.`,
       console.log(`[AI] Cancelled ${cancelled} running sub-agent(s) for stopped stream`)
     }
 
+    // Cancel any pending clarification requests for this stream
+    for (const [requestId, pending] of pendingClarifications.entries()) {
+      if (pending.channelId === channelId) {
+        if (pending.timeoutId) {
+          clearTimeout(pending.timeoutId)
+        }
+        pending.reject(new Error('Stream stopped by user'))
+        pendingClarifications.delete(requestId)
+        console.log(`[AI] Cancelled pending clarification ${requestId} for stopped stream`)
+      }
+    }
+
     // Unregister parent stream
     unregisterParentStream(channelId)
 
@@ -2276,6 +2295,11 @@ Be concise but informative. The user needs to understand what happened.`,
     if (!pending) {
       console.warn('[AI] Clarification response for unknown request:', requestId)
       return { success: false, error: 'Request not found or already expired' }
+    }
+
+    // Clear the timeout since response arrived
+    if (pending.timeoutId) {
+      clearTimeout(pending.timeoutId)
     }
 
     // Resolve the pending promise with the answers

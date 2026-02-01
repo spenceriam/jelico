@@ -24,6 +24,18 @@ All notable changes to Jelico will be documented in this file.
   - `toolInputProgress` now cleared when tool completes
   - Status properly updates to show next tool (e.g., "Waiting for sub-agent...")
 
+- **Streaming preview not cleared on error/stop**
+  - `streamingPreview` now cleared in `onStreamError` and `stopStreaming`
+  - Prevents stale artifact content showing in Canvas after errors
+
+- **Mode transition indicator stuck after conversation switch**
+  - Mode transition timeout now tracked and cancelled on conversation switch
+  - Prevents orphaned callbacks from updating wrong conversation's state
+
+- **Clarification timeout memory leak**
+  - Clarification request timeouts now stored and properly cancelled
+  - Timeouts cleaned up when response received, stream stopped, or request handled
+
 ### Changed
 - **Sub-agent status display simplified**
   - Removed "Working..." text - spinner already indicates activity
