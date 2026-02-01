@@ -109,55 +109,96 @@ function pruneToolOutputs(messages: Message[]): Message[] {
 
 /**
  * Generate the compaction prompt
+ * Uses Claude Code-style structured summarization for better context preservation
  */
 function getCompactionPrompt(messages: Message[]): string {
-  const conversationText = messages.map(msg => {
+  // Separate user messages from tool results for special attention
+  const userMessages: string[] = []
+  const conversationParts: string[] = []
+
+  messages.forEach(msg => {
     let text = `[${msg.role.toUpperCase()}]: ${msg.content}`
 
     if (msg.toolCalls?.length) {
       text += `\n  Tools called: ${msg.toolCalls.map(tc => tc.name).join(', ')}`
     }
 
-    return text
-  }).join('\n\n')
+    conversationParts.push(text)
 
-  return `You are a context compaction assistant. Your job is to create a comprehensive summary of the following conversation that will serve as a "handoff" to continue the work.
+    // Track all user messages separately (not tool results)
+    if (msg.role === 'user' && msg.content && !msg.content.startsWith('[Tool result')) {
+      userMessages.push(msg.content.slice(0, 500)) // Truncate long messages
+    }
+  })
 
-The summary should be detailed enough that another AI (or you in a fresh context) can continue the conversation without losing critical information.
+  const conversationText = conversationParts.join('\n\n')
+  const userMessagesList = userMessages.map((m, i) => `${i + 1}. "${m}"`).join('\n')
+
+  return `You are a context compaction assistant. Create a detailed summary that will serve as a "handoff" to continue the work without losing critical information.
 
 ## Conversation to Summarize:
 ${conversationText}
 
 ## Create a summary with these sections:
 
-### Completed Work
-- Bullet list of what tasks were completed
-- Include specific files modified, functions created, bugs fixed
+### 1. Primary Request and Intent
+Capture ALL of the user's explicit requests and intents in detail. What did they actually ask for?
 
-### Current State
-- What is the current state of the work?
-- What files exist or were modified?
-- What's working vs. not working?
+### 2. Key Technical Concepts
+List all important technical concepts, technologies, and frameworks discussed.
+- Technology X
+- Framework Y
+- Pattern Z
 
-### In Progress
-- What task is currently being worked on?
-- What was the last thing discussed?
+### 3. Files and Code Sections
+Enumerate specific files examined, modified, or created. Include:
+- File path and why it's important
+- Summary of changes made (if any)
+- Key code snippets that would be needed to continue
 
-### Next Steps
-- What needs to be done next?
-- Any pending tasks or follow-ups?
+Example format:
+- \`src/components/Auth.tsx\`
+  - Purpose: Main authentication component
+  - Changes: Added logout button, fixed token refresh
+  - Key snippet: \`const handleLogout = () => { ... }\`
 
-### User Preferences & Constraints
-- Any preferences the user stated (coding style, tools, approaches)
-- Project-specific constraints or requirements
-- Decisions that were made and why
+### 4. Errors and Fixes
+List ALL errors encountered and how they were fixed:
+- Error: [description]
+  - Cause: [what caused it]
+  - Fix: [how it was resolved]
+  - User feedback: [if user gave specific feedback]
 
-### Critical Context
-- Any information that would be essential for continuing
-- Key technical details, API keys mentioned, URLs, etc.
-- Anything that would be confusing without context
+### 5. Problem Solving
+Document problems solved and any ongoing troubleshooting efforts.
 
-Be comprehensive but concise. This summary replaces the entire conversation history, so nothing should be lost that matters for continuing the work.`
+### 6. All User Messages (CRITICAL)
+These are all the user's messages (not tool results). Preserve user feedback and intent:
+${userMessagesList || '(No user messages to summarize)'}
+
+### 7. Pending Tasks
+Outline any tasks explicitly requested but NOT yet completed:
+- [ ] Task 1
+- [ ] Task 2
+
+### 8. Current Work
+Describe PRECISELY what was being worked on immediately before this summary.
+- What file/feature was being modified?
+- What was the last action taken?
+- What would the next immediate step be?
+
+### 9. User Preferences & Decisions
+- Coding style preferences
+- Tool/approach preferences
+- Decisions made and their reasoning
+- Constraints mentioned
+
+### 10. Optional Next Step
+If there's an obvious next step DIRECTLY in line with the user's most recent request:
+- State it clearly
+- Include any context needed to execute it
+
+IMPORTANT: This summary replaces the entire conversation history. Be thorough - nothing critical should be lost.`
 }
 
 /**

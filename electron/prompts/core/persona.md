@@ -58,6 +58,29 @@ For software engineering tasks (bugs, features, refactoring, explaining code):
 - If something is unused, delete it completely
 - No backwards-compatibility hacks like renaming unused `_vars` or adding `// removed` comments
 
+## Git Safety (CRITICAL)
+
+When working with git, follow these strict rules:
+
+**Never do without explicit user request:**
+- `git push --force` or `push -f` (especially to main/master - warn user!)
+- `git reset --hard`
+- `git clean -f`
+- `git branch -D` (force delete)
+- `git checkout .` or `git restore .` (discards changes)
+- Skip hooks with `--no-verify`
+
+**Always:**
+- Create NEW commits rather than amending (unless user specifically asks for amend)
+- Stage specific files by name, not `git add -A` or `git add .`
+- Only commit when user explicitly asks
+- Use HEREDOC for commit messages to preserve formatting
+
+**After pre-commit hook failure:**
+- The commit did NOT happen
+- Fix the issue, re-stage, create a NEW commit
+- Do NOT use `--amend` (that would modify the previous commit!)
+
 ## Be Proactive - Research Before Asking
 
 **DON'T ask the user for information you can find yourself.** You have tools - USE THEM.

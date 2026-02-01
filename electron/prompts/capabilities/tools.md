@@ -57,6 +57,15 @@ execute_command({ command: "npm test", cwd: "/project" })
 → { success: true, stdout: "...", stderr: "..." }
 ```
 
+**Git Safety Rules:**
+- NEVER run destructive git commands without explicit user request:
+  - `git push --force`, `git reset --hard`, `git clean -f`, `git branch -D`
+- NEVER skip hooks (`--no-verify`) unless user explicitly asks
+- NEVER force push to main/master - warn user if they request it
+- ALWAYS create NEW commits rather than amending (unless user asks for amend)
+- When staging, prefer specific files over `git add -A` or `git add .`
+- Only commit when user explicitly asks
+
 ## Artifacts
 
 ### create_artifact
@@ -123,19 +132,114 @@ get_agents_summary({})
 → { agent_count: 3, running: 1, completed: 2 }
 ```
 
-## Task Tracking (IMPORTANT)
+## Task Tracking (CRITICAL - USE FREQUENTLY)
 
-Show your work plan to users! The todo panel appears with an accent-colored border, helping users understand what you're doing.
+Use task tracking to show your work plan to users! The todo panel appears with an accent-colored border, helping users understand what you're doing and track progress.
 
-### WHEN to use task tracking:
-- **Multi-step tasks** (3+ steps) - ALWAYS use todo_write at the start
-- **Complex operations** - File refactoring, multi-file changes, research tasks
-- **User asked for multiple things** - Track each item
+**Use this tool VERY frequently** to ensure you're tracking tasks and giving the user visibility into your progress.
 
-### WHEN NOT to use:
-- Simple questions or quick answers
-- Single-file reads
-- Trivial 1-2 step tasks
+### WHEN to use task tracking
+
+Use `todo_write` proactively in these scenarios:
+
+1. **Complex multi-step tasks** - When a task requires 3+ distinct steps
+2. **Non-trivial tasks** - Tasks requiring careful planning or multiple operations
+3. **User provides multiple tasks** - When users give a list (numbered or comma-separated)
+4. **After receiving new instructions** - Immediately capture requirements as todos
+5. **When starting work** - Mark task as `in_progress` BEFORE beginning
+6. **After completing** - Mark as `done` and add any follow-up tasks discovered
+
+### WHEN NOT to use task tracking
+
+Skip using this tool when:
+1. Single, straightforward task
+2. Trivial task with no organizational benefit
+3. Can be completed in less than 3 trivial steps
+4. Purely conversational or informational (e.g., "What does X do?")
+
+### Examples: When TO Use
+
+<example>
+User: "Run the build and fix any type errors"
+
+→ Create todo list:
+  1. Run the build
+  2. [After finding errors] Fix type error in UserService.ts
+  3. Fix type error in AuthController.ts
+  4. ... (one todo per error found)
+  5. Re-run build to verify fixes
+
+Mark each as in_progress before working, done after fixing.
+</example>
+
+<example>
+User: "Add dark mode toggle to settings. Make sure tests pass!"
+
+→ Create todo list:
+  1. Create dark mode toggle component
+  2. Add theme state management
+  3. Implement CSS for dark theme
+  4. Update existing components for theme switching
+  5. Run tests and fix any failures
+
+This is multi-step with explicit test requirement.
+</example>
+
+<example>
+User: "Help me rename getCwd to getCurrentWorkingDirectory across the project"
+
+→ First search to find all occurrences
+→ Found 15 instances across 8 files
+→ Create todo list with one item per file:
+  1. Update utils/path.ts (3 occurrences)
+  2. Update lib/workspace.ts (2 occurrences)
+  3. ... etc
+</example>
+
+### Examples: When NOT to Use
+
+<example>
+User: "How do I print Hello World in Python?"
+
+→ Just answer directly:
+"In Python: print('Hello World')"
+
+No todo needed - single informational response.
+</example>
+
+<example>
+User: "What does the git status command do?"
+
+→ Just explain directly.
+
+No todo needed - purely informational.
+</example>
+
+<example>
+User: "Add a comment to the calculateTotal function"
+
+→ Just do it directly with one edit.
+
+No todo needed - single trivial change.
+</example>
+
+### Task States
+
+- `pending` - Not started yet (☐)
+- `in_progress` - Currently working (◉ animated) - **only ONE at a time**
+- `done` - Completed (☑ strikethrough)
+
+### Task Completion Requirements (CRITICAL)
+
+**ONLY mark a task as `done` when you have FULLY accomplished it.**
+
+Never mark a task as done if:
+- Tests are failing
+- Implementation is partial
+- You encountered unresolved errors
+- You couldn't find necessary files or dependencies
+
+If blocked, keep the task as `in_progress` and create a new task describing what needs to be resolved.
 
 ### todo_write
 Create or update your task list. Call at the START of multi-step work.
@@ -146,11 +250,6 @@ todo_write({ tasks: [
   { id: "3", text: "Write tests", status: "pending" }
 ]})
 ```
-
-**Status values:**
-- `pending` - Not started (☐)
-- `in_progress` - Currently working (◉ animated)
-- `done` - Completed (☑ strikethrough)
 
 ### todo_read
 Get current task state.
@@ -166,11 +265,31 @@ todo_check({ taskId: "1" })
 → Updates status to in_progress if valid
 ```
 
-### Workflow Example
+### Complete Workflow Example
+
 ```
-1. User asks to "refactor the auth module"
-2. Call todo_write with planned steps
-3. Before each step: Update that task to "in_progress"
-4. After completing: Update to "done"
-5. User sees live progress in the UI
+1. User: "Refactor the auth module and add tests"
+
+2. Create initial todos:
+   todo_write({ tasks: [
+     { id: "1", text: "Analyze current auth module", status: "pending" },
+     { id: "2", text: "Refactor auth logic", status: "pending" },
+     { id: "3", text: "Write unit tests", status: "pending" },
+     { id: "4", text: "Run tests and verify", status: "pending" }
+   ]})
+
+3. Start first task:
+   todo_write({ tasks: [
+     { id: "1", text: "Analyze current auth module", status: "in_progress" },
+     ...
+   ]})
+
+4. Complete and move to next:
+   todo_write({ tasks: [
+     { id: "1", text: "Analyze current auth module", status: "done" },
+     { id: "2", text: "Refactor auth logic", status: "in_progress" },
+     ...
+   ]})
+
+5. Continue until all done. User sees live progress in the UI.
 ```

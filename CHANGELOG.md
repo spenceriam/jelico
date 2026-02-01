@@ -2,6 +2,19 @@
 
 All notable changes to Jelico will be documented in this file.
 
+## [0.7.14] - 2026-01-31
+
+### Changed
+- **Enhanced todo documentation**: Added detailed examples of WHEN to use and WHEN NOT to use task tracking (inspired by Claude Code). Includes complete workflow examples, task completion requirements, and common scenarios.
+- **Git safety rules**: Added strict git safety protocols to prevent destructive operations without explicit user consent (no force push, no hard reset, no amending without asking, prefer specific file staging).
+- **Improved context compaction**: Rewrote summarization template with 10 structured sections (Claude Code-style) for better context preservation across compaction:
+  - Primary request and intent
+  - Files and code sections with snippets
+  - Errors and fixes
+  - All user messages (preserved separately)
+  - Pending vs completed tasks
+  - Current work and next steps
+
 ## [0.7.13] - 2026-01-31
 
 ### Fixed
