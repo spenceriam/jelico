@@ -42,16 +42,35 @@ wait_for_agent({ agent_id: "abc-123-..." })
 ```
 This BLOCKS until the agent finishes. Returns:
 - `success`: true if completed successfully
-- `result`: The agent's complete response (includes artifact content if created)
+- `result`: The agent's response text
+- `artifacts_created`: Array of artifacts created (each has `title`, `type`)
 - `has_question`: true if agent needs your help
 - `timed_out`: true if took too long (default 5 min timeout)
 
-### 3. Review and Iterate (for artifacts)
+**IMPORTANT: Check `artifacts_created`** - This tells you what the agent built:
+```
+{
+  success: true,
+  result: "I created a complete Wordle clone...",
+  artifacts_created: [{ title: "Daily Wordle", type: "html" }]
+}
+```
+If `artifacts_created` is present, the artifact is ALREADY visible in the Canvas - the user can see it!
 
-When an agent creates an artifact:
-1. The content streams to the Canvas in real-time (user can see it building)
-2. The full content is included in the `result` field
-3. **YOU MUST REVIEW IT** before reporting success to the user
+### 3. Review and Summarize
+
+After the agent completes:
+
+**If artifacts were created:**
+1. Check `artifacts_created` to see what was built
+2. The artifact is already visible to the user in the Canvas
+3. Tell the user: "I've created [title] - you can see it in the Canvas panel."
+4. If you notice quality issues, use `continue_agent` to request fixes
+
+**If no artifacts (research/analysis task):**
+1. Review the `result` text
+2. Summarize the key findings for the user
+3. Use the information to complete the task
 
 If issues found, use continue_agent to request fixes:
 ```
@@ -126,16 +145,25 @@ Sub-agents can signal they need help:
 
 Respond via `continue_agent` with your answer or the requested capability.
 
+## Handling Timeouts
+
+If `timed_out: true`:
+1. Check if the agent is still working: `get_agent_status({ agent_id })`
+2. If `status: "running"` - wait again with a longer timeout
+3. If `status: "completed"` - the agent finished, check `artifacts_created`
+4. If `status: "failed"` - handle the error or retry
+
 ## Best Practices
 
 1. **Be specific in task descriptions** - The more detail, the better results
-2. **Review all artifacts** - Never report success without reviewing sub-agent work
-3. **Use sibling context** - When spawning multiple related agents:
+2. **Check artifacts_created** - Always check this field to know what was built
+3. **Summarize for the user** - After sub-agent completes, tell the user what was accomplished
+4. **Use sibling context** - When spawning multiple related agents:
    ```
    spawn_agent({
      task: "Analyze frontend code",
      siblingContext: "Agent B is analyzing backend. Agent C is reviewing tests."
    })
    ```
-4. **Always wait** - Never finish your response without collecting all agent results
-5. **Handle failures gracefully** - If an agent fails, either retry or handle it yourself
+5. **Always wait** - Never finish your response without collecting all agent results
+6. **Handle failures gracefully** - If an agent fails, either retry or handle it yourself

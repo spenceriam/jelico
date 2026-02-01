@@ -1982,14 +1982,18 @@ When the user asks to modify, update, fix, or improve an existing artifact, use 
           console.log(`[AI] Sub-agents for this stream: ${activeAgents.length}`, activeAgents.map(a => `${a.name}:${a.status}`))
           const runningAgents = activeAgents.filter(a => a.status === 'running' || a.status === 'pending')
 
-          // If there are running agents, wait for them
+          // If there are running agents, wait for them with appropriate timeout
           if (runningAgents.length > 0 && !abortController.signal.aborted) {
             console.log('[AI] Waiting for', runningAgents.length, 'running sub-agent(s)...')
 
             for (const agent of runningAgents) {
               try {
-                const agentResult = await waitForSubAgent(agent.id, 30000) // 30 sec timeout per agent
+                // Use 2-minute timeout per agent - complex tasks like artifact generation need time
+                const agentResult = await waitForSubAgent(agent.id, 120000)
                 console.log(`[AI] Agent ${agent.name} completed:`, agentResult.success ? 'success' : 'failed')
+                if (agentResult.createdArtifacts?.length) {
+                  console.log(`[AI] Agent ${agent.name} created artifacts:`, agentResult.createdArtifacts)
+                }
               } catch (e) {
                 console.warn(`[AI] Failed to wait for agent ${agent.name}:`, e)
               }
@@ -1997,34 +2001,50 @@ When the user asks to modify, update, fix, or improve an existing artifact, use 
           }
 
           // Check if we need to generate a summary
+          // Summary is needed if: tool calls happened AND not much text after last tool
+          // Also generate summary if sub-agents were used to ensure artifacts are announced
           const hasTextAfterTools = textAfterLastToolResult.trim().length > 50
+          const usedSubAgents = activeAgents.length > 0
 
           console.log('[AI] Summary detection:', {
             hadAnyToolCalls,
             textAfterLastToolResult: textAfterLastToolResult.length,
             hasTextAfterTools,
+            usedSubAgents,
             finishReason,
           })
 
-          if (hadAnyToolCalls && !hasTextAfterTools && !abortController.signal.aborted) {
+          // Generate summary if tools were used OR sub-agents were spawned (to announce artifacts)
+          if ((hadAnyToolCalls || usedSubAgents) && !hasTextAfterTools && !abortController.signal.aborted) {
             console.log('[AI] Generating summary for tool results...')
 
-            // Build proper context with actual tool results
+            // Build proper context with actual tool results and sub-agent artifacts
             const toolContext = buildToolContext(toolTracker)
+
+            // Collect artifacts created by sub-agents
+            const subAgentArtifacts = activeAgents
+              .filter(a => a.createdArtifacts && a.createdArtifacts.length > 0)
+              .flatMap(a => a.createdArtifacts.map(art => ({ ...art, agentName: a.displayName })))
+
+            // Build artifact summary if any were created
+            const artifactSummary = subAgentArtifacts.length > 0
+              ? `\n\n## Artifacts Created\n${subAgentArtifacts.map(a => `- **${a.title}** (${a.type}) - created by ${a.agentName}`).join('\n')}`
+              : ''
 
             try {
               const summaryResult = await streamText({
                 model: provider.chat(modelId),
-                system: `You just executed tools to help the user. Now provide a clear, helpful summary:
-1. What you did (briefly)
+                system: `You just executed tools and/or used sub-agents to help the user. Now provide a clear, helpful summary:
+1. What was accomplished (briefly)
 2. Key results or findings
-3. Any issues encountered
-4. Next steps if applicable
+3. Artifacts created (if any) - mention they're visible in the Canvas
+4. Any issues encountered
+5. Next steps if applicable
 
 Be concise but informative. The user needs to understand what happened.`,
                 messages: [
                   ...messages,
-                  { role: 'assistant', content: `I executed the following tools:\n\n${toolContext}` },
+                  { role: 'assistant', content: `I executed the following:\n\n${toolContext}${artifactSummary}` },
                   { role: 'user', content: 'Please summarize what you did and the results.' },
                 ],
                 abortSignal: abortController.signal,
@@ -2045,8 +2065,11 @@ Be concise but informative. The user needs to understand what happened.`,
               }
             } catch (summaryError: any) {
               console.warn('[AI] Failed to generate summary:', summaryError.message)
-              // Send a fallback message with tool results
-              const fallbackSummary = `\n\n---\n**Tool Execution Complete**\n${buildToolContext(toolTracker)}`
+              // Send a fallback message with tool results and artifacts
+              let fallbackSummary = `\n\n---\n**Task Complete**\n${buildToolContext(toolTracker)}`
+              if (subAgentArtifacts.length > 0) {
+                fallbackSummary += `\n\n**Artifacts Created:**\n${subAgentArtifacts.map(a => `- ${a.title} (${a.type})`).join('\n')}\n\nCheck the Canvas panel to view.`
+              }
               event.sender.send(`ai:chunk:${channelId}`, fallbackSummary)
             }
           }

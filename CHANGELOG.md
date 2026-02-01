@@ -2,6 +2,24 @@
 
 All notable changes to Jelico will be documented in this file.
 
+## [0.7.19] - 2026-01-31
+
+### Fixed
+- **Sub-agent completion at stream end**: Increased timeout from 30s to 2min per agent
+  - Complex tasks (like artifact generation with large content) now complete properly
+  - Logs artifact creation when agents finish
+
+- **Turn summary with sub-agent artifacts**: Summary now includes artifacts created by sub-agents
+  - Summary generation triggers if sub-agents were used (even without other tool calls)
+  - Artifacts listed with title, type, and which agent created them
+  - Fallback summary also includes artifact list
+
+### Changed
+- **Updated sub-agents documentation**: Added `artifacts_created` field documentation
+  - Clear guidance on checking artifacts after wait_for_agent
+  - Added timeout handling section
+  - Added summarization best practices
+
 ## [0.7.18] - 2026-01-31
 
 ### Changed
