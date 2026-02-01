@@ -501,6 +501,12 @@ Jelico protects users from destructive AI actions with an approval workflow.
 
 ## Tool calls and context management
 
+**Tool Call Display (UI):**
+- **During streaming:** Active tool calls shown normally with spinner, completed actions collapse into "Completed actions" section
+- **After turn:** All tool calls collapse into "Completed actions" (expandable)
+- **Elapsed time:** Shown next to status text while streaming (e.g., "(12.3s)")
+- **Completion stats:** Shows only "Completed in X.Xs" after turn finishes (no tokens/sec or token counts displayed)
+
 **Tool Call Persistence:**
 - Tool calls and results are saved to the database with each message
 - When reloading a conversation, full tool history is preserved
@@ -649,3 +655,135 @@ No environment variables required for basic operation. AI provider API keys are 
 - Production build outputs to `dist/` (renderer) and `dist-electron/` (main process)
 - Electron-builder creates platform-specific installers
 - Single executable distribution for each platform
+
+---
+
+## Future Considerations
+
+### Phase C: Skills System
+
+A skills system would allow Jelico to have specialized, invocable behaviors similar to Claude Code's slash commands.
+
+**Concept:**
+- Skills are specialized prompts/behaviors invoked via `/skill-name` syntax
+- Each skill can have its own prompt, tools, and workflow
+- Skills can be user-defined or built-in
+
+**Example Skills:**
+```
+/commit - Create a well-formatted git commit
+/pr - Create a pull request with proper description
+/test - Run tests and analyze failures
+/refactor - Refactor selected code with explanation
+/explain - Explain code in detail
+/security-scan - Scan for security vulnerabilities
+```
+
+**Implementation Approach:**
+1. Create `electron/prompts/skills/` directory for skill prompts
+2. Add skill registry in `electron/lib/skills.ts`
+3. Parse `/skill-name` from user input
+4. Inject skill-specific prompt into system context
+5. Optionally spawn dedicated sub-agent for skill execution
+
+**Skill Definition Format:**
+```typescript
+interface Skill {
+  name: string           // e.g., "commit"
+  description: string    // Shown in /help
+  prompt: string         // Skill-specific instructions
+  mode?: AgentMode       // Force mode for skill
+  args?: SkillArg[]      // Expected arguments
+  userInvocable: boolean // Can user call directly?
+}
+```
+
+**Files to Create:**
+- `electron/prompts/skills/*.md` - Individual skill prompts
+- `electron/lib/skills.ts` - Skill registry and invocation
+- Update chat input to parse `/` commands
+
+---
+
+### Phase D: System Reminders
+
+System reminders are contextual hints injected into tool results to help the AI make better decisions.
+
+**Concept:**
+- After certain tool calls, inject a `<system-reminder>` with contextual guidance
+- Reminds AI of capabilities, best practices, or current state
+- Does not require full context window (small injection)
+
+**Example Reminders:**
+
+After reading a file:
+```xml
+<system-reminder>
+Consider whether this file requires any follow-up:
+- If it imports other files, you may want to read those too
+- If it contains tests, check if they pass
+- If it has TODO comments, note them for the user
+</system-reminder>
+```
+
+After multiple tool calls:
+```xml
+<system-reminder>
+The task tools haven't been used recently. Consider using TaskCreate
+to track progress on multi-step work. Only use if relevant.
+</system-reminder>
+```
+
+After file write:
+```xml
+<system-reminder>
+File was modified. Remember to:
+- Run relevant tests if they exist
+- Check for TypeScript errors if it's a .ts file
+- Consider related files that may need updating
+</system-reminder>
+```
+
+**Implementation Approach:**
+1. Create reminder registry with trigger conditions
+2. After tool execution, check if reminder should fire
+3. Append reminder XML to tool result
+4. Rate-limit reminders (don't spam every call)
+
+**Reminder Types:**
+- **Capability Reminders**: "You have X tool available for this"
+- **Best Practice Reminders**: "Remember to check Y after doing Z"
+- **State Reminders**: "Current mode is X, you can/cannot do Y"
+- **Progress Reminders**: "Consider updating task status"
+
+**Files to Create:**
+- `electron/lib/reminders.ts` - Reminder registry and logic
+- `electron/prompts/reminders/*.md` - Reminder templates
+
+---
+
+### Sub-Agent Specialized Types
+
+Current specialized sub-agent types (implemented):
+
+| Mode | Purpose | Capabilities |
+|------|---------|--------------|
+| `explore` | Fast file search, codebase analysis | Read-only: search, read, list |
+| `plan` | Architecture, implementation planning | Read-only: analyze and design |
+| `security-review` | Security vulnerability scanning | Read-only: find vulnerabilities |
+| `pr-review` | Code review for pull requests | Read + limited execute |
+| `execute` | Make changes to files/code | Full access |
+| `review` | General code review | Read + limited execute |
+
+**Agent Prompts Location:** `electron/prompts/agents/`
+- `explore.md` - Fast exploration specialist
+- `plan.md` - Implementation planner
+- `security-review.md` - Security analysis
+- `pr-review.md` - PR review specialist
+- `general.md` - Default sub-agent behavior
+
+**Adding New Agent Types:**
+1. Create prompt file in `electron/prompts/agents/`
+2. Add mode to `AgentMode` type in `electron/lib/modes.ts`
+3. Update `buildSubAgentSystemPrompt` in `electron/services/subagents.ts`
+4. Update `getSubAgentTools` to set appropriate tool access

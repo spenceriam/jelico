@@ -4,6 +4,7 @@ import { useChatStore } from '../../stores/chat'
 import { useProviderStore } from '../../stores/providers'
 import { useUIStore } from '../../stores/ui'
 import { useContextStore } from '../../stores/context'
+import { useClarificationStore } from '../../stores/clarification'
 import { MessageList } from './MessageList'
 import { ChatInput } from './ChatInput'
 import { ModeSelector } from '../ModeSelector/ModeSelector'
@@ -11,15 +12,17 @@ import { WorkspaceSelector } from '../Workspace/WorkspaceSelector'
 import { ModelSelector } from '../Model/ModelSelector'
 import { ShimmerText, BrailleLoader } from '../StatusIndicators'
 import { TodoPanel } from '../Todo/TodoPanel'
+import { ClarificationPanel } from '../Clarification/ClarificationPanel'
 
 // Minimum display time for status messages (ms)
 const MIN_STATUS_DISPLAY_MS = 600
 
 export function ChatArea() {
-  const { messages, isStreaming, streamingContent, streamingToolCalls, streamingToolResults, streamingSegments, systemNotifications, activeConversationId, regenerateLastResponse, modeSwitchReason, modeTransitioning, lastCompletedTool, statusDisplayQueue, toolInputProgress } = useChatStore()
+  const { messages, isStreaming, streamingContent, streamingToolCalls, streamingToolResults, streamingSegments, systemNotifications, activeConversationId, regenerateLastResponse, modeSwitchReason, modeTransitioning, lastCompletedTool, statusDisplayQueue, toolInputProgress, streamingStartTime } = useChatStore()
   const { activeProviderId, activeModel } = useProviderStore()
   const { isProcessing, processingMessage } = useUIStore()
   const { getContextUsage, isCompacting } = useContextStore()
+  const { setActiveRequest, activeRequest, clearForConversation } = useClarificationStore()
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const [showContextBar, setShowContextBar] = useState(false) // Hidden by default, click to show
   const [userName, setUserName] = useState<string | null>(null)
@@ -35,6 +38,25 @@ export function ChatArea() {
       }
     }).catch(() => {})
   }, [])
+
+  // Set up clarification request listener
+  useEffect(() => {
+    const unsubscribe = window.jelico.clarification.onRequest((request) => {
+      console.log('[ChatArea] Received clarification request:', request)
+      setActiveRequest(request)
+    })
+    return () => unsubscribe()
+  }, [setActiveRequest])
+
+  // Clear clarification when conversation changes
+  useEffect(() => {
+    if (activeConversationId) {
+      // Clear any clarification from a different conversation
+      if (activeRequest && activeRequest.conversationId !== activeConversationId) {
+        clearForConversation(activeRequest.conversationId)
+      }
+    }
+  }, [activeConversationId, activeRequest, clearForConversation])
 
   // Auto-scroll to bottom when new messages or tool calls arrive
   useEffect(() => {
@@ -93,11 +115,14 @@ export function ChatArea() {
             userName={userName || undefined}
           />
 
+          {/* Clarification panel - inline when AI needs user input */}
+          <ClarificationPanel />
+
           {/* Status indicator - final row in chat view with braille animation */}
           {(isStreaming || isCompacting || isProcessing || modeTransitioning) && (
             <div className="flex items-center gap-3 mt-4 py-3">
               <BrailleLoader className="text-accent text-lg" />
-              <ShimmerText className="text-sm text-text-secondary">
+              <ShimmerText className="text-sm text-text-secondary flex-1">
                 {modeTransitioning && modeSwitchReason ? modeSwitchReason :
                  isCompacting ? 'Compacting conversation...' :
                  isStreaming ? (() => {
@@ -227,6 +252,12 @@ export function ChatArea() {
                  })() :
                  processingMessage || 'Processing...'}
               </ShimmerText>
+              {/* Elapsed time display */}
+              {isStreaming && streamingStartTime && (
+                <span className="text-sm text-text-muted font-mono">
+                  ({((Date.now() - streamingStartTime) / 1000).toFixed(1)}s)
+                </span>
+              )}
             </div>
           )}
 

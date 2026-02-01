@@ -18,6 +18,8 @@ import { createOpenAI } from '@ai-sdk/openai'
 import { createGoogleGenerativeAI } from '@ai-sdk/google'
 import { randomUUID } from 'crypto'
 import { z } from 'zod'
+import fs from 'fs'
+import path from 'path'
 import { providerDb } from './database'
 import { keychainService } from './keychain'
 import { validateArtifact } from './artifactValidator'
@@ -48,6 +50,38 @@ const AGENT_FIRST_NAMES = [
 
 // Track used names per conversation to avoid duplicates
 const usedNamesPerConversation = new Map<string, Set<string>>()
+
+// Cache for agent prompts (loaded once from disk)
+const agentPromptCache = new Map<string, string>()
+
+/**
+ * Load agent prompt from file with caching
+ * Returns the prompt content or empty string if not found
+ */
+function loadAgentPrompt(agentType: string): string {
+  if (agentPromptCache.has(agentType)) {
+    return agentPromptCache.get(agentType)!
+  }
+
+  try {
+    // Determine path based on whether we're in development or production
+    const promptsDir = process.env.NODE_ENV === 'development'
+      ? path.join(__dirname, '..', 'prompts', 'agents')
+      : path.join(__dirname, 'prompts', 'agents')
+
+    const promptPath = path.join(promptsDir, `${agentType}.md`)
+
+    if (fs.existsSync(promptPath)) {
+      const content = fs.readFileSync(promptPath, 'utf-8')
+      agentPromptCache.set(agentType, content)
+      return content
+    }
+  } catch (error) {
+    console.error(`Failed to load agent prompt for ${agentType}:`, error)
+  }
+
+  return ''
+}
 
 /**
  * Get a unique random first name for a sub-agent in a conversation
@@ -165,7 +199,7 @@ export interface SubAgentRecord {
   name: string // Internal task-based name (e.g., "WordleCreator")
   displayName: string // UI display name (e.g., "Maya: Creating Wordle")
   task: string
-  mode: 'auto' | 'explore' | 'execute' | 'plan' | 'review'
+  mode: 'auto' | 'explore' | 'execute' | 'plan' | 'review' | 'security-review' | 'pr-review'
   status: SubAgentStatus
   progress: string // Streaming content so far
   result: string | null // Final result
@@ -352,7 +386,7 @@ export async function spawnSubAgent(params: {
   conversationId?: string
   name: string
   task: string
-  mode?: 'auto' | 'explore' | 'execute' | 'plan' | 'review'
+  mode?: 'auto' | 'explore' | 'execute' | 'plan' | 'review' | 'security-review' | 'pr-review'
   providerId: string
   model: string
   workspacePath?: string
@@ -602,8 +636,10 @@ function getSubAgentTools(
     sendArtifact?: SendArtifactCallback
   }
 ) {
-  const canWrite = mode !== 'explore'
-  const canExecute = mode === 'auto' || mode === 'execute' || mode === 'review'
+  // Read-only modes: explore, plan, security-review
+  const readOnlyModes = ['explore', 'plan', 'security-review']
+  const canWrite = !readOnlyModes.includes(mode)
+  const canExecute = mode === 'auto' || mode === 'execute' || mode === 'review' || mode === 'pr-review'
 
   const tools: Record<string, any> = {}
 
@@ -1407,21 +1443,60 @@ Your results will be combined with theirs by the main AI. Focus on your specific
     prompt += `\n## Workspace Context\nWorking in: ${workspacePath}\n`
   }
 
+  // Load specialized agent prompts based on mode
+  // These prompts include detailed instructions, read-only enforcement, and output formats
   switch (mode) {
-    case 'explore':
-      prompt += '\n## Mode: EXPLORE\nFocus on analysis and research. Do not make changes.'
+    case 'explore': {
+      const explorePrompt = loadAgentPrompt('explore')
+      if (explorePrompt) {
+        prompt += '\n\n' + explorePrompt
+      } else {
+        prompt += '\n## Mode: EXPLORE\n=== READ-ONLY MODE ===\nYou can ONLY analyze code. You cannot modify files, create files, or run commands that change state.\nFocus on searching, reading, and summarizing findings.'
+      }
       break
+    }
+    case 'plan': {
+      const planPrompt = loadAgentPrompt('plan')
+      if (planPrompt) {
+        prompt += '\n\n' + planPrompt
+      } else {
+        prompt += '\n## Mode: PLAN\n=== READ-ONLY MODE ===\nYou can ONLY analyze code and create implementation plans. You cannot modify files, create files, or run commands.\nFocus on exploring the codebase and designing step-by-step plans.'
+      }
+      break
+    }
+    case 'security-review': {
+      const securityPrompt = loadAgentPrompt('security-review')
+      if (securityPrompt) {
+        prompt += '\n\n' + securityPrompt
+      } else {
+        prompt += '\n## Mode: SECURITY REVIEW\n=== READ-ONLY MODE ===\nYou are a security engineer reviewing code for vulnerabilities.\nFocus on high-confidence security issues with real exploitation potential.'
+      }
+      break
+    }
+    case 'pr-review': {
+      const prPrompt = loadAgentPrompt('pr-review')
+      if (prPrompt) {
+        prompt += '\n\n' + prPrompt
+      } else {
+        prompt += '\n## Mode: PR REVIEW\nYou are reviewing a pull request. Provide constructive feedback on code quality, correctness, and best practices.'
+      }
+      break
+    }
     case 'execute':
-      prompt += '\n## Mode: EXECUTE\nProvide implementation details and code. You can make changes.'
-      break
-    case 'plan':
-      prompt += '\n## Mode: PLAN\nCreate structured plans and strategies.'
+      prompt += '\n## Mode: EXECUTE\nProvide implementation details and code. You can make changes to files and run commands.'
       break
     case 'review':
-      prompt += '\n## Mode: REVIEW\nReview and critique, suggest improvements.'
+      prompt += '\n## Mode: REVIEW\nReview and critique code, suggest improvements. Be constructive and specific.'
       break
-    default:
-      prompt += '\n## Mode: AUTO\nUse your best judgment for the task.'
+    default: {
+      // For 'auto' and other modes, use general agent prompt
+      const generalPrompt = loadAgentPrompt('general')
+      if (generalPrompt) {
+        prompt += '\n\n' + generalPrompt
+      } else {
+        prompt += '\n## Mode: AUTO\nUse your best judgment for the task.'
+      }
+    }
   }
 
   return prompt

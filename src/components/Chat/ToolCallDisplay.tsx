@@ -515,7 +515,7 @@ export function SingleToolCallDisplay({
 }
 
 export function ToolCallDisplay({ toolCalls, toolResults = [], isStreaming }: ToolCallDisplayProps) {
-  const [collapsed, setCollapsed] = useState(true) // Auto-collapse when complete
+  const [completedExpanded, setCompletedExpanded] = useState(false)
 
   // Filter out "plumbing" tools that users don't need to see
   const visibleToolCalls = toolCalls.filter(tc => !HIDDEN_TOOLS.has(tc.name))
@@ -525,48 +525,47 @@ export function ToolCallDisplay({ toolCalls, toolResults = [], isStreaming }: To
   // Map results by toolCallId for easy lookup
   const resultsMap = new Map(toolResults.map(r => [r.toolCallId, r]))
 
-  // Check if all tools are complete (for collapsing at end of turn)
-  const allComplete = visibleToolCalls.every(tc => resultsMap.has(tc.id))
+  // Separate completed vs active tool calls
+  const completedTools = visibleToolCalls.filter(tc => resultsMap.has(tc.id))
+  const activeTools = visibleToolCalls.filter(tc => !resultsMap.has(tc.id))
 
-  // If streaming is done and all complete, show collapsed view
-  if (!isStreaming && allComplete && visibleToolCalls.length > 0) {
-    return (
-      <div className="my-3">
-        <button
-          onClick={() => setCollapsed(!collapsed)}
-          className="flex items-center gap-2 text-xs text-text-muted hover:text-text-secondary transition-colors"
-        >
-          {collapsed ? (
-            <ChevronRight className="w-3 h-3" />
-          ) : (
-            <ChevronDown className="w-3 h-3" />
-          )}
-          <span>Executed {visibleToolCalls.length} action{visibleToolCalls.length !== 1 ? 's' : ''}</span>
-          <CheckCircle className="w-3 h-3 text-success" />
-        </button>
-
-        {!collapsed && (
-          <div className="space-y-2 mt-2">
-            {visibleToolCalls.map((toolCall, index) => (
-              <SingleToolCallDisplay
-                key={toolCall.id || `tool-${index}`}
-                toolCall={toolCall}
-                toolResult={resultsMap.get(toolCall.id)}
-                isStreaming={false}
-              />
-            ))}
-          </div>
-        )}
-      </div>
-    )
-  }
-
-  // While streaming or incomplete, show tool calls directly (no header)
   return (
     <div className="space-y-2 my-3">
-      {visibleToolCalls.map((toolCall, index) => (
+      {/* Completed actions - collapsible section */}
+      {completedTools.length > 0 && (
+        <div className="border border-border rounded-lg overflow-hidden bg-bg-deep">
+          <button
+            onClick={() => setCompletedExpanded(!completedExpanded)}
+            className="w-full flex items-center gap-2 px-3 py-2 hover:bg-bg-hover transition-colors text-left"
+          >
+            {completedExpanded ? (
+              <ChevronDown className="w-4 h-4 text-text-muted flex-shrink-0" />
+            ) : (
+              <ChevronRight className="w-4 h-4 text-text-muted flex-shrink-0" />
+            )}
+            <CheckCircle className="w-4 h-4 text-green-500 flex-shrink-0" />
+            <span className="text-sm text-text-muted">Completed actions</span>
+          </button>
+
+          {completedExpanded && (
+            <div className="border-t border-border bg-bg-surface p-2 space-y-2">
+              {completedTools.map((toolCall, index) => (
+                <SingleToolCallDisplay
+                  key={toolCall.id || `completed-${index}`}
+                  toolCall={toolCall}
+                  toolResult={resultsMap.get(toolCall.id)}
+                  isStreaming={false}
+                />
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Active tool calls - shown normally */}
+      {activeTools.map((toolCall, index) => (
         <SingleToolCallDisplay
-          key={toolCall.id || `tool-${index}`}
+          key={toolCall.id || `active-${index}`}
           toolCall={toolCall}
           toolResult={resultsMap.get(toolCall.id)}
           isStreaming={isStreaming}

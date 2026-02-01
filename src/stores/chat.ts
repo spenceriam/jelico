@@ -125,6 +125,8 @@ interface ChatStore {
   // Reasoning/thinking state for thinking models (Kimi K2.5, o1, o3, etc.)
   isReasoning: boolean
   reasoningContent: string
+  // Streaming start time for elapsed time display
+  streamingStartTime: number | null
 
   // Actions
   loadConversations: () => Promise<void>
@@ -167,6 +169,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
   toolInputProgress: null,
   isReasoning: false,
   reasoningContent: '',
+  streamingStartTime: null,
 
   loadConversations: async () => {
     set({ isLoading: true })
@@ -314,6 +317,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
     set({
       messages: updatedMessages,
       isStreaming: true,
+      streamingStartTime: Date.now(),
       streamingContent: '',
       streamingToolCalls: [],
       streamingToolResults: [],

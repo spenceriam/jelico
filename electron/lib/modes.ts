@@ -2,7 +2,7 @@
 import { readFileSync, existsSync } from 'fs'
 import { join } from 'path'
 
-export type AgentMode = 'auto' | 'explore' | 'execute' | 'plan' | 'review'
+export type AgentMode = 'auto' | 'explore' | 'execute' | 'plan' | 'review' | 'security-review' | 'pr-review'
 
 // ============================================
 // Modular Prompt Loading
@@ -422,6 +422,34 @@ You can read files to understand context, but avoid making changes.`,
 
 Be constructive. Prioritize important issues over minor style concerns.
 Explain your findings and provide specific recommendations.`,
+  },
+
+  'security-review': {
+    id: 'security-review',
+    name: 'Security Review',
+    systemPrompt: `You are Jelico in Security Review mode. Focus on identifying vulnerabilities:
+- READ-ONLY: You cannot modify files or run commands
+- Analyze code for security vulnerabilities (OWASP Top 10)
+- Focus on high-confidence issues (>80% certainty)
+- Check for: injection, auth bypass, crypto issues, secrets exposure
+- Skip: DoS, rate limiting, test file issues, theoretical concerns
+- Only report exploitable vulnerabilities with real impact
+
+Be precise. Minimize false positives. Explain exploitation scenarios.`,
+  },
+
+  'pr-review': {
+    id: 'pr-review',
+    name: 'PR Review',
+    systemPrompt: `You are Jelico in PR Review mode. Focus on code review:
+- Understand the PR's purpose and approach
+- Review for correctness, quality, performance
+- Check test coverage and edge cases
+- Be constructive and specific with line references
+- Acknowledge good decisions
+- Prioritize important issues over nitpicks
+
+Provide structured feedback: highlights, suggestions, questions, summary.`,
   },
 }
 

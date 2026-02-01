@@ -21,6 +21,22 @@ export interface ChangelogEntry {
 
 export const changelog: ChangelogEntry[] = [
   {
+    version: '0.7.15',
+    date: '2026-01-31',
+    changes: {
+      added: [
+        'Elapsed time display next to status text while AI is working',
+        'Specialized sub-agent types: security-review, pr-review with strict read-only enforcement',
+        'Sub-agent prompt files: explore.md, plan.md, security-review.md, pr-review.md, general.md',
+      ],
+      changed: [
+        'Tool calls now collapse into "Completed actions" while active tools stay visible',
+        'Turn completion shows "Completed in X.Xs" instead of tokens/sec and token counts',
+        'Conversation titles in sidebar now word-wrap instead of truncating with ellipsis',
+      ],
+    },
+  },
+  {
     version: '0.6.15',
     date: '2026-01-30',
     changes: {

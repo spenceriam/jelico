@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Copy, Check, RefreshCw, Zap, Hash } from 'lucide-react'
+import { Copy, Check, RefreshCw } from 'lucide-react'
 import type { MessageUsage, ToolCall, ToolResult } from '../../stores/chat'
 
 interface MessageActionsProps {
@@ -87,24 +87,11 @@ export function MessageActions({ content, toolCalls, toolResults, usage, onRegen
         </button>
       )}
 
-      {/* Usage stats */}
-      {usage && (
-        <div className="flex items-center gap-3 ml-auto text-xs text-text-muted">
-          {/* Tokens per second */}
-          {usage.tokensPerSecond !== undefined && usage.tokensPerSecond > 0 && (
-            <div className="flex items-center gap-1" title="Tokens per second">
-              <Zap className="w-3.5 h-3.5" />
-              <span>{usage.tokensPerSecond} tok/s</span>
-            </div>
-          )}
-
-          {/* Total tokens */}
-          {usage.totalTokens > 0 && (
-            <div className="flex items-center gap-1" title={`Prompt: ${usage.promptTokens} | Completion: ${usage.completionTokens}`}>
-              <Hash className="w-3.5 h-3.5" />
-              <span>{usage.totalTokens.toLocaleString()} tokens</span>
-            </div>
-          )}
+      {/* Completion time - show only elapsed time, hide token stats */}
+      {usage && usage.durationMs !== undefined && usage.durationMs > 0 && (
+        <div className="flex items-center gap-1 ml-auto text-xs text-text-muted" title={`${usage.totalTokens.toLocaleString()} tokens | ${usage.tokensPerSecond || 0} tok/s`}>
+          <span>Completed in</span>
+          <span className="text-accent font-medium">{(usage.durationMs / 1000).toFixed(1)}s</span>
         </div>
       )}
     </div>
