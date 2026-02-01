@@ -15,6 +15,11 @@ All notable changes to Jelico will be documented in this file.
   - Display name passed from backend through spawn and progress events
   - Agents now tracked per conversation for proper isolation
 
+- **Monaco editor blank on initial render**
+  - Added `min-h-0` to flex containers (HtmlViewer, CodeViewer, CanvasPanel)
+  - Fixes flexbox height calculation issue that caused Monaco to render with 0 height
+  - Editor now appears immediately instead of only after content grows
+
 ### Changed
 - **Sub-agent status display simplified**
   - Removed "Working..." text - spinner already indicates activity

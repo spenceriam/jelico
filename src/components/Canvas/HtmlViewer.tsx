@@ -275,8 +275,8 @@ export function HtmlViewer({ html, isStreaming = false, onSave }: HtmlViewerProp
         </div>
       )}
 
-      {/* Content */}
-      <div className="flex-1 overflow-hidden">
+      {/* Content - min-h-0 is critical for flex items to allow Monaco to calculate height */}
+      <div className="flex-1 min-h-0 overflow-hidden">
         {view === 'preview' ? (
           <iframe
             key={refreshKey}

@@ -268,8 +268,8 @@ export function CanvasPanel() {
         </div>
       </div>
 
-      {/* Content - with vertical scroll */}
-      <div className="flex-1 overflow-y-auto overflow-x-hidden">
+      {/* Content - with vertical scroll. min-h-0 fixes flexbox height calculation for Monaco */}
+      <div className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden">
         {streamingPreview ? (
           <StreamingArtifactContent preview={streamingPreview} />
         ) : displayArtifact ? (

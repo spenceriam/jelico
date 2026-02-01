@@ -176,8 +176,8 @@ export function CodeViewer({ code, language, title, isStreaming = false, onSave 
         </div>
       )}
 
-      {/* Monaco Editor */}
-      <div className="flex-1 overflow-hidden">
+      {/* Monaco Editor - min-h-0 is critical for flex items to allow Monaco to calculate height */}
+      <div className="flex-1 min-h-0 overflow-hidden">
         <MonacoEditor
           value={isStreaming ? code : editedContent}
           language={language}
