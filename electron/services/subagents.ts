@@ -192,6 +192,13 @@ export interface SubAgentQuestion {
   askedAt: number
 }
 
+// Progress update from sub-agent self-reporting
+export interface ProgressUpdate {
+  message: string
+  phase?: string // e.g., "research", "building", "testing"
+  timestamp: number
+}
+
 export interface SubAgentRecord {
   id: string
   parentStreamId: string // The stream that spawned this agent
@@ -210,6 +217,8 @@ export interface SubAgentRecord {
   lastActivityAt: number // For orphan detection
   // Bi-directional communication
   pendingQuestion: SubAgentQuestion | null // Question waiting for main AI
+  // Self-reported progress updates
+  progressUpdates: ProgressUpdate[]
   // Disposable memory - conversation history for this agent
   messages: CoreMessage[]
   // Tool calls made by this agent
@@ -439,6 +448,7 @@ export async function spawnSubAgent(params: {
     completedAt: null,
     lastActivityAt: now,
     pendingQuestion: null,
+    progressUpdates: [],
     messages: [],
     toolCalls: [],
     createdArtifacts: [],
@@ -949,6 +959,64 @@ IMPORTANT: You MUST provide all required parameters (type, title, content).`,
     })
   }
 
+  // Report progress tool - always available
+  // Allows sub-agent to self-report status updates to the main AI and user
+  if (agentContext) {
+    tools.report_progress = tool({
+      description: `Report your current progress to the main AI and user.
+
+## When to Use
+Call this tool at natural checkpoints:
+- When starting a new phase of work
+- After completing a significant step
+- Before a potentially long-running operation
+- Every 2-3 tool calls for complex tasks
+
+## Why It Matters
+- The user sees your progress in real-time
+- The main AI knows you're still working (not stuck)
+- Prevents the appearance of a "runaway" process
+
+## Best Practices
+- Keep messages brief and informative (1-2 sentences)
+- Describe WHAT you're doing, not technical details
+- Use phase to categorize your work stage`,
+      parameters: z.object({
+        message: z.string().describe('Brief description of what you are currently doing (e.g., "Building the navigation component")'),
+        phase: z.string().optional().describe('Optional work phase (e.g., "setup", "building", "testing", "finishing")'),
+      }),
+      execute: async ({ message, phase }) => {
+        const agent = activeAgents.get(agentContext.agentId)
+        if (!agent) {
+          return { success: false, error: 'Agent not found' }
+        }
+
+        // Create progress update
+        const update: ProgressUpdate = {
+          message,
+          phase,
+          timestamp: Date.now(),
+        }
+
+        // Store in agent record
+        agent.progressUpdates.push(update)
+        agent.lastActivityAt = Date.now()
+
+        // Notify via global callback (forwards to UI)
+        if (globalProgressCallback) {
+          globalProgressCallback(agentContext.agentId, agent)
+        }
+
+        console.log(`[SubAgents] ${agent.displayName} progress: ${phase ? `[${phase}] ` : ''}${message}`)
+
+        return {
+          success: true,
+          message: 'Progress reported. Continue with your task.',
+        }
+      },
+    })
+  }
+
   return tools
 }
 
@@ -1389,6 +1457,27 @@ If you receive a message via \`continue_agent\`:
 - Summarize findings rather than dumping raw data
 - Complete the ENTIRE task before finishing
 
+## Progress Reporting (IMPORTANT)
+
+Use \`report_progress\` to let the main AI and user know what you're doing:
+
+**When to report:**
+- When starting a new phase of work
+- After completing a significant step (reading files, research done, etc.)
+- Before a potentially long operation (creating artifact, complex analysis)
+- Every 2-3 tool calls for complex tasks
+
+**Example calls:**
+- \`report_progress({ message: "Reading component files", phase: "research" })\`
+- \`report_progress({ message: "Building HTML structure", phase: "building" })\`
+- \`report_progress({ message: "Adding interactivity", phase: "building" })\`
+- \`report_progress({ message: "Final review and cleanup", phase: "finishing" })\`
+
+**Why it matters:**
+- The user sees your progress in real-time (not just waiting)
+- The main AI knows you're still working (not stuck)
+- Prevents the appearance of a "runaway" process
+
 ## Artifact Creation (IMPORTANT)
 
 When your task involves creating content for display (code, HTML, documents, diagrams), use the \`create_artifact\` tool:
@@ -1570,6 +1659,7 @@ export function getSubAgentStatus(agentId: string): {
   hasQuestion?: boolean
   question?: SubAgentQuestion | null
   createdArtifacts?: Array<{ id: string; title: string; type: string }>
+  progressUpdates?: ProgressUpdate[]
 } {
   const agent = activeAgents.get(agentId)
   if (!agent) {
@@ -1595,6 +1685,7 @@ export function getSubAgentStatus(agentId: string): {
     hasQuestion: agent.status === 'waiting_for_input' && !!agent.pendingQuestion,
     question: agent.pendingQuestion,
     createdArtifacts: agent.createdArtifacts.length > 0 ? agent.createdArtifacts : undefined,
+    progressUpdates: agent.progressUpdates.length > 0 ? agent.progressUpdates : undefined,
   }
 }
 
@@ -1612,6 +1703,7 @@ export function waitForSubAgent(
   hasQuestion?: boolean
   question?: SubAgentQuestion | null
   createdArtifacts?: Array<{ id: string; title: string; type: string }>
+  progressUpdates?: ProgressUpdate[]
 }> {
   return new Promise((resolve) => {
     const agent = activeAgents.get(agentId)
@@ -1624,23 +1716,36 @@ export function waitForSubAgent(
     // Update activity timestamp
     agent.lastActivityAt = Date.now()
 
+    // Helper to include progress updates in response
+    const getProgressUpdates = () =>
+      agent.progressUpdates.length > 0 ? agent.progressUpdates : undefined
+
     // Already in a resolvable state?
     if (agent.status === 'completed') {
       resolve({
         success: true,
         result: agent.result || '',
         createdArtifacts: agent.createdArtifacts.length > 0 ? agent.createdArtifacts : undefined,
+        progressUpdates: getProgressUpdates(),
       })
       return
     }
 
     if (agent.status === 'failed') {
-      resolve({ success: false, error: agent.error || 'Agent failed' })
+      resolve({
+        success: false,
+        error: agent.error || 'Agent failed',
+        progressUpdates: getProgressUpdates(),
+      })
       return
     }
 
     if (agent.status === 'cancelled' || agent.status === 'dismissed') {
-      resolve({ success: false, error: 'Agent was cancelled or dismissed' })
+      resolve({
+        success: false,
+        error: 'Agent was cancelled or dismissed',
+        progressUpdates: getProgressUpdates(),
+      })
       return
     }
 
@@ -1649,6 +1754,7 @@ export function waitForSubAgent(
         success: true,
         hasQuestion: true,
         question: agent.pendingQuestion,
+        progressUpdates: getProgressUpdates(),
       })
       return
     }
@@ -1656,7 +1762,12 @@ export function waitForSubAgent(
     // Set up timeout
     const timeout = setTimeout(() => {
       cleanup()
-      resolve({ success: false, timedOut: true, error: 'Timed out waiting for agent' })
+      resolve({
+        success: false,
+        timedOut: true,
+        error: 'Timed out waiting for agent',
+        progressUpdates: getProgressUpdates(),
+      })
     }, timeoutMs)
 
     // Listen for state changes
@@ -1672,19 +1783,29 @@ export function waitForSubAgent(
           success: true,
           result: updatedAgent.result || '',
           createdArtifacts: updatedAgent.createdArtifacts.length > 0 ? updatedAgent.createdArtifacts : undefined,
+          progressUpdates: updatedAgent.progressUpdates.length > 0 ? updatedAgent.progressUpdates : undefined,
         })
       } else if (updatedAgent.status === 'failed') {
         cleanup()
-        resolve({ success: false, error: updatedAgent.error || 'Agent failed' })
+        resolve({
+          success: false,
+          error: updatedAgent.error || 'Agent failed',
+          progressUpdates: updatedAgent.progressUpdates.length > 0 ? updatedAgent.progressUpdates : undefined,
+        })
       } else if (updatedAgent.status === 'cancelled' || updatedAgent.status === 'dismissed') {
         cleanup()
-        resolve({ success: false, error: 'Agent was cancelled or dismissed' })
+        resolve({
+          success: false,
+          error: 'Agent was cancelled or dismissed',
+          progressUpdates: updatedAgent.progressUpdates.length > 0 ? updatedAgent.progressUpdates : undefined,
+        })
       } else if (updatedAgent.status === 'waiting_for_input') {
         cleanup()
         resolve({
           success: true,
           hasQuestion: true,
           question: updatedAgent.pendingQuestion,
+          progressUpdates: updatedAgent.progressUpdates.length > 0 ? updatedAgent.progressUpdates : undefined,
         })
       }
     }

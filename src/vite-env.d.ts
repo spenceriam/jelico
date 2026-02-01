@@ -336,6 +336,12 @@ interface AgentProgressEvent {
     input: Record<string, unknown>
     output?: unknown
   }>
+  // Latest self-reported status update from agent
+  latestUpdate?: {
+    message: string
+    phase?: string
+    timestamp: number
+  }
 }
 
 interface ArtifactUpdateEvent {

@@ -24,6 +24,12 @@ export interface SubAgent {
     args: Record<string, unknown>
     result?: unknown
   }>
+  // Latest self-reported status update from agent
+  latestUpdate?: {
+    message: string
+    phase?: string
+    timestamp: number
+  }
 }
 
 interface AgentStore {

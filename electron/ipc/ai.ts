@@ -531,11 +531,17 @@ If the agent created an artifact:
         try {
           const result = await waitForSubAgent(agent_id, timeoutMs)
 
+          // Format progress updates for main AI
+          const progressSummary = result.progressUpdates?.map(u =>
+            `[${new Date(u.timestamp).toLocaleTimeString()}]${u.phase ? ` (${u.phase})` : ''} ${u.message}`
+          )
+
           if (result.timedOut) {
             return {
               success: false,
               timed_out: true,
               error: `Agent did not respond within ${timeout_seconds || 300} seconds`,
+              progress_updates: progressSummary,
             }
           }
 
@@ -546,6 +552,7 @@ If the agent created an artifact:
               question: result.question?.question,
               question_context: result.question?.context,
               message: 'Agent is waiting for your response. Use continue_agent to provide clarification.',
+              progress_updates: progressSummary,
             }
           }
 
@@ -558,6 +565,8 @@ If the agent created an artifact:
               title: a.title,
               type: a.type,
             })),
+            // Include progress updates so main AI knows what the agent did
+            progress_updates: progressSummary,
           }
         } finally {
           if (keepAliveInterval) {
@@ -1423,7 +1432,12 @@ export function registerAIHandlers() {
     setGlobalProgressCallback((agentId, agent) => {
       // Only forward if this agent belongs to this stream
       if (agent.parentStreamId === channelId) {
-        console.log(`[AI] Forwarding agent progress: ${agent.displayName || agent.name} status=${agent.status}`)
+        // Get the latest progress update (if any)
+        const latestUpdate = agent.progressUpdates?.length > 0
+          ? agent.progressUpdates[agent.progressUpdates.length - 1]
+          : undefined
+
+        console.log(`[AI] Forwarding agent progress: ${agent.displayName || agent.name} status=${agent.status}${latestUpdate ? ` [${latestUpdate.phase || 'update'}] ${latestUpdate.message}` : ''}`)
         event.sender.send(`ai:agentProgress:${channelId}`, {
           agentId,
           status: agent.status,
@@ -1432,6 +1446,12 @@ export function registerAIHandlers() {
           result: agent.result, // Full result for sub-agent display
           error: agent.error,
           toolCalls: agent.toolCalls, // Sub-agent's tool calls for display
+          // Latest self-reported status update from agent
+          latestUpdate: latestUpdate ? {
+            message: latestUpdate.message,
+            phase: latestUpdate.phase,
+            timestamp: latestUpdate.timestamp,
+          } : undefined,
         })
       }
     })

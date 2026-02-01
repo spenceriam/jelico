@@ -2,6 +2,21 @@
 
 All notable changes to Jelico will be documented in this file.
 
+## [0.7.23] - 2026-02-01
+
+### Added
+- **Sub-agent self-reporting via `report_progress` tool**
+  - Sub-agents can now report their status to main AI and user in real-time
+  - Updates appear in UI as agent works (e.g., "[building] Creating navigation component")
+  - Main AI receives progress summary when `wait_for_agent` returns
+  - Prevents appearance of "runaway" processes - user always knows what agent is doing
+
+### Changed
+- **Sub-agent system prompt** now instructs agents to report progress at natural checkpoints
+- **wait_for_agent returns `progress_updates`** - array of all status messages from agent
+- **Agent progress events include `latestUpdate`** - forwarded to UI in real-time
+- **ToolCallDisplay shows latest status** - inline with agent name when running
+
 ## [0.7.22] - 2026-02-01
 
 ### Added

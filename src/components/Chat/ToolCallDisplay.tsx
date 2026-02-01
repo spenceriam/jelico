@@ -356,6 +356,15 @@ export function SingleToolCallDisplay({
             }`}>
               {subAgent.status}
             </span>
+            {/* Show latest status update from agent */}
+            {subAgent.status === 'running' && subAgent.latestUpdate && (
+              <span className="text-xs text-text-muted truncate max-w-[200px]">
+                {subAgent.latestUpdate.phase && (
+                  <span className="text-accent">[{subAgent.latestUpdate.phase}]</span>
+                )}{' '}
+                {subAgent.latestUpdate.message}
+              </span>
+            )}
             <span className="flex-1" />
             {/* Expand/collapse indicator */}
             <span className="flex items-center gap-1 text-xs text-text-muted">

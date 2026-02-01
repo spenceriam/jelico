@@ -606,6 +606,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
         error: update.error,
         toolCalls: mappedToolCalls,
         completedAt: update.status === 'completed' || update.status === 'failed' ? Date.now() : undefined,
+        latestUpdate: update.latestUpdate,  // Self-reported status from agent
       })
 
       // Clear streaming preview when sub-agent completes or fails
