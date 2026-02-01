@@ -234,6 +234,8 @@ export interface SubAgentRecord {
     title: string
     type: string
   }>
+  // Auto-continue attempts for premature completion detection
+  autoContinueAttempts: number
   // Provider info for continuation
   providerId: string
   model: string
@@ -452,6 +454,7 @@ export async function spawnSubAgent(params: {
     messages: [],
     toolCalls: [],
     createdArtifacts: [],
+    autoContinueAttempts: 0,
     providerId: params.providerId,
     model: params.model,
     workspacePath: params.workspacePath,
@@ -1307,12 +1310,75 @@ async function runSubAgent(agentId: string): Promise<void> {
       notifyProgress(agentId, agent)
       console.log(`[SubAgents] ${agent.name} paused with question: ${parsed.question.question}`)
     } else {
-      // Agent completed
+      // Check for premature completion - agent stopped without producing output
+      const hasArtifacts = agent.createdArtifacts.length > 0
+      const hasSubstantialText = fullText.trim().length > 100
+      const onlyCalledReportProgress = agent.toolCalls.every(tc => tc.name === 'report_progress')
+      const hasOutputToolCalls = agent.toolCalls.some(tc =>
+        ['create_artifact', 'write_file'].includes(tc.name)
+      )
+
+      // Premature completion: called report_progress but never created actual output
+      const MAX_AUTO_CONTINUE_ATTEMPTS = 2
+      if (onlyCalledReportProgress && agent.toolCalls.length > 0 && !hasArtifacts && !hasSubstantialText) {
+        agent.autoContinueAttempts++
+        console.warn(`[SubAgents] ${agent.name} appears to have completed prematurely (only called report_progress)`)
+        console.warn(`[SubAgents] ${agent.name} auto-continue attempt ${agent.autoContinueAttempts}/${MAX_AUTO_CONTINUE_ATTEMPTS}`)
+
+        if (agent.autoContinueAttempts > MAX_AUTO_CONTINUE_ATTEMPTS) {
+          // Too many attempts - fail the agent
+          console.error(`[SubAgents] ${agent.name} failed after ${MAX_AUTO_CONTINUE_ATTEMPTS} premature completions`)
+          agent.status = 'failed'
+          agent.error = `Agent repeatedly stopped without completing its task. It called report_progress ${agent.toolCalls.length} time(s) but never created the requested output. This may be a model-specific issue.`
+          agent.completedAt = Date.now()
+          agent.lastActivityAt = Date.now()
+          notifyProgress(agentId, agent)
+          return
+        }
+
+        console.log(`[SubAgents] ${agent.name} auto-continuing with reminder to complete task...`)
+
+        // Auto-continue the agent with a strong reminder
+        agent.messages.push({
+          role: 'user',
+          content: `IMPORTANT: You called report_progress but then stopped without completing your task.
+
+The report_progress tool is ONLY for status updates. You have NOT finished your work yet.
+
+Your task was: ${agent.task}
+
+You MUST now:
+1. Continue working on the task
+2. Create the actual output (use create_artifact for content, write_file for files, etc.)
+3. Only stop when your deliverable is complete
+
+Resume your work now.`,
+        })
+        agent.lastActivityAt = Date.now()
+
+        // Recursively run the agent again
+        runSubAgent(agentId).catch((error) => {
+          console.error(`[SubAgents] Error auto-continuing agent ${agentId}:`, error)
+          agent.status = 'failed'
+          agent.error = `Premature completion, then failed to continue: ${error.message}`
+          agent.completedAt = Date.now()
+          notifyProgress(agentId, agent)
+        })
+        return // Don't mark as completed yet
+      }
+
+      // Normal completion
       agent.status = 'completed'
       agent.result = fullText
       agent.completedAt = Date.now()
       agent.lastActivityAt = Date.now()
-      console.log(`[SubAgents] ${agent.name} completed, notifying progress listeners`)
+
+      // Log completion details for debugging
+      console.log(`[SubAgents] ${agent.name} completed:`)
+      console.log(`  - Text length: ${fullText.length}`)
+      console.log(`  - Artifacts: ${agent.createdArtifacts.length}`)
+      console.log(`  - Tool calls: ${agent.toolCalls.map(tc => tc.name).join(', ') || 'none'}`)
+
       notifyProgress(agentId, agent)
     }
 
