@@ -502,6 +502,8 @@ export const useChatStore = create<ChatStore>((set, get) => ({
             args: completedToolCall.args,
             completedAt: now,
           } : state.lastCompletedTool,
+          // Clear tool input progress when tool completes - fixes status stuck on "Generating spawn_agent"
+          toolInputProgress: null,
         }
       })
     })

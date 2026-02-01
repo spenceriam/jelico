@@ -20,6 +20,10 @@ All notable changes to Jelico will be documented in this file.
   - Fixes flexbox height calculation issue that caused Monaco to render with 0 height
   - Editor now appears immediately instead of only after content grows
 
+- **Status line stuck on "Generating spawn_agent"**
+  - `toolInputProgress` now cleared when tool completes
+  - Status properly updates to show next tool (e.g., "Waiting for sub-agent...")
+
 ### Changed
 - **Sub-agent status display simplified**
   - Removed "Working..." text - spinner already indicates activity
