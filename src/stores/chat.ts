@@ -202,6 +202,9 @@ export const useChatStore = create<ChatStore>((set, get) => ({
   },
 
   setActiveConversation: async (id) => {
+    // Clear streaming preview when switching conversations to prevent state bleeding
+    useArtifactStore.getState().clearStreamingPreview()
+
     if (!id) {
       set({
         activeConversationId: null,
@@ -228,6 +231,16 @@ export const useChatStore = create<ChatStore>((set, get) => ({
         activeConversationId: id,
         messages: conversation?.messages || [],
         isLoading: false,
+        // Clear streaming state when switching to prevent old stream data appearing
+        isStreaming: false,
+        streamingContent: '',
+        streamingToolCalls: [],
+        streamingToolResults: [],
+        streamingSegments: [],
+        statusDisplayQueue: [],
+        toolInputProgress: null,
+        isReasoning: false,
+        reasoningContent: '',
       })
       // Load artifacts for this conversation
       useArtifactStore.getState().loadArtifactsForConversation(id)
@@ -384,6 +397,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
       messages: aiMessages,
       workspacePath: activeWorkspace?.path,
       artifacts: artifactContext,
+      conversationId,  // Pass conversation ID for state isolation
     })
     currentStreamChannelId = channelId
 
@@ -549,8 +563,10 @@ export const useChatStore = create<ChatStore>((set, get) => ({
       useAgentStore.getState().addAgent({
         id: agent.id,
         name: agent.name,
+        displayName: agent.displayName,  // Friendly name like "Maya: Creating Wordle"
         task: agent.task,
         mode: agent.mode,
+        conversationId,  // Track which conversation this agent belongs to
       })
     })
 
@@ -571,6 +587,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
 
       useAgentStore.getState().updateAgent(update.agentId, {
         status: update.status as any,
+        displayName: update.displayName,  // Update display name if provided
         progress: update.progress,
         result: update.result,
         error: update.error,

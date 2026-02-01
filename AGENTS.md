@@ -72,7 +72,7 @@ The Soul/Memory system should make Jelico increasingly personalized - it learns 
 ## Project overview
 Jelico is an AI Productivity Desktop built with Electron, React, TypeScript, and Vite. It provides a frictionless AI assistant experience with multi-provider support (Anthropic, OpenAI, Google), workspace management, conversation persistence, and a soul/memory system that learns user patterns and preferences over time.
 
-**Current Version:** 0.7.14
+**Current Version:** 0.7.21
 
 ## Development workflow discipline
 - **CRITICAL**: NEVER commit or push changes without explicit user approval
@@ -321,6 +321,14 @@ Features:
 - 60+ gender-neutral first names (Aiden, Aria, Blake, Casey, etc.)
 - Names are unique within each conversation
 - Display name generated from task description (Creating, Analyzing, Searching, etc.)
+- Display name shown in UI via `displayName` field (falls back to internal `name`)
+
+### State Isolation
+Sub-agents are tied to specific conversations:
+- Each agent tracks its `conversationId`
+- When switching conversations, streaming preview is cleared
+- Streaming state (content, tool calls) reset on conversation switch
+- Prevents work from one chat appearing in another
 
 ### Architecture
 ```

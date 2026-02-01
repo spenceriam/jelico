@@ -388,6 +388,7 @@ CRITICAL: You MUST call wait_for_agent before finishing your response.`,
         // Spawn the sub-agent using the service
         const agentId = await spawnSubAgent({
           parentStreamId: streamContext.channelId,
+          conversationId: streamContext.conversationId,  // Track which conversation spawned this agent
           name: agentName,
           task,
           mode: agentMode || 'auto',
@@ -397,9 +398,18 @@ CRITICAL: You MUST call wait_for_agent before finishing your response.`,
           siblingContext,
         })
 
+        // Get agent info including display name
+        const agentStatus = getSubAgentStatus(agentId)
+
         // Notify the UI
         if (sendSpawnAgent) {
-          sendSpawnAgent({ id: agentId, name: agentName, task, mode: agentMode || 'auto' })
+          sendSpawnAgent({
+            id: agentId,
+            name: agentName,
+            displayName: agentStatus.displayName,  // Friendly name like "Maya: Creating Wordle"
+            task,
+            mode: agentMode || 'auto',
+          })
         }
 
         return {
@@ -557,16 +567,25 @@ If the agent created an artifact:
 
     // Continue a sub-agent with feedback or answer to question
     tools.continue_agent = tool({
-      description: `Send a message to a sub-agent to continue its work.
+      description: `Send a message to a sub-agent that has STOPPED to continue its work.
+
+## IMPORTANT: When to Use
+Only use this when the agent is NOT currently running:
+- **waiting_for_input**: Agent asked a question (has_question=true)
+- **completed**: You want to give feedback after agent finished
+- **failed**: You want to ask agent to retry
+
+**DO NOT use while agent is "running"** - it will error. If agent is still running:
+- Use wait_for_agent to wait for it to finish
+- Or use get_agent_status to check its progress without blocking
 
 ## Use Cases
 1. **Answer a question**: Agent asked something (has_question=true) - provide your answer
-2. **Request fixes**: Artifact has issues - tell agent what to fix
-3. **Request status**: Agent taking long - ask for progress update
-4. **Provide more context**: Agent needs additional information
+2. **Request fixes**: Artifact has issues - tell agent what to fix (after it completed)
+3. **Provide more context**: Agent needs additional information (when waiting_for_input)
 
 ## Example: Fixing an Artifact
-After reviewing an artifact and finding issues:
+After wait_for_agent returns with completed status and you review the artifact:
 continue_agent({
   agent_id: "<the agent_id>",
   response: "The button click handler is missing. Please add an onclick that increments the counter."
@@ -1337,10 +1356,11 @@ export function registerAIHandlers() {
     setGlobalProgressCallback((agentId, agent) => {
       // Only forward if this agent belongs to this stream
       if (agent.parentStreamId === channelId) {
-        console.log(`[AI] Forwarding agent progress: ${agent.name} status=${agent.status}`)
+        console.log(`[AI] Forwarding agent progress: ${agent.displayName || agent.name} status=${agent.status}`)
         event.sender.send(`ai:agentProgress:${channelId}`, {
           agentId,
           status: agent.status,
+          displayName: agent.displayName,  // Friendly name for UI display
           progress: agent.progress, // Full progress text for sub-agent display
           result: agent.result, // Full result for sub-agent display
           error: agent.error,
@@ -1445,6 +1465,7 @@ When the user asks to modify, update, fix, or improve an existing artifact, use 
         providerId: params.providerId,
         model: modelId,
         workspacePath: params.workspacePath,
+        conversationId: params.conversationId,  // Track which conversation this stream belongs to
         resetActivityTimeout, // Allow blocking tools like wait_for_agent to keep stream alive
       }
       const tools = getBuiltInTools(mode, streamContext, toolTracker, sendArtifact, sendSpawnAgent, sendUpdateArtifact, sendModeSwitch, sendTodos, getTodos)

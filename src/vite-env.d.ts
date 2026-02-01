@@ -170,6 +170,10 @@ interface Window {
       transcribe: (audioData: ArrayBuffer, options?: { language?: string }) => Promise<TranscriptionResult>
       onProgress: (callback: (progress: TranscriptionProgress) => void) => () => void
     }
+    clarification: {
+      respond: (requestId: string, answers: Record<string, string[]>) => Promise<{ success: boolean }>
+      onRequest: (callback: (request: ClarificationRequest) => void) => () => void
+    }
   }
 }
 
@@ -245,6 +249,7 @@ interface StreamParams {
   tools?: ToolDefinition[]
   workspacePath?: string
   artifacts?: ArtifactContext[]
+  conversationId?: string  // Track which conversation this stream belongs to
 }
 
 interface ArtifactContext {
@@ -290,6 +295,7 @@ interface ArtifactEvent {
 interface SpawnAgentEvent {
   id: string
   name: string
+  displayName?: string  // Friendly name like "Maya: Creating Wordle"
   task: string
   mode: 'auto' | 'explore' | 'execute' | 'plan' | 'review'
 }
@@ -320,6 +326,7 @@ interface ArtifactPreviewEvent {
 interface AgentProgressEvent {
   agentId: string
   status: string
+  displayName?: string  // Friendly name for UI display
   progress?: string
   result?: string
   error?: string
@@ -687,4 +694,32 @@ interface CompactionProgress {
   message: string
   tokensBefore?: number
   tokensAfter?: number
+}
+
+// Clarification types (for AskUserQuestion tool)
+interface ClarificationOption {
+  label: string
+  description?: string
+}
+
+interface ClarificationQuestionInput {
+  question: string
+  options: ClarificationOption[]
+  multiSelect: boolean
+}
+
+interface ClarificationRequest {
+  id: string
+  subject: string
+  questions: Array<{
+    id: string
+    question: string
+    header?: string
+    options: ClarificationOption[]
+    multiSelect: boolean
+    selectedOptions: string[]
+    otherText: string
+  }>
+  conversationId: string
+  createdAt: number
 }

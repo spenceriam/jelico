@@ -1537,6 +1537,7 @@ export function heartbeatAgent(agentId: string): boolean {
 export function getSubAgentStatus(agentId: string): {
   found: boolean
   status?: SubAgentStatus
+  displayName?: string  // Friendly name like "Maya: Creating Wordle"
   progress?: string
   result?: string | null
   error?: string | null
@@ -1561,6 +1562,7 @@ export function getSubAgentStatus(agentId: string): {
   return {
     found: true,
     status: agent.status,
+    displayName: agent.displayName,
     progress: agent.progress,
     result: agent.result,
     error: agent.error,

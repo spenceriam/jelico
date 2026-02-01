@@ -2,6 +2,29 @@
 
 All notable changes to Jelico will be documented in this file.
 
+## [0.7.21] - 2026-02-01
+
+### Fixed
+- **State isolation when switching conversations**
+  - Streaming preview cleared when switching conversations
+  - Streaming state (content, tool calls) reset on conversation switch
+  - Prevents work from one chat appearing in another
+
+- **Sub-agent display name shown correctly**
+  - Shows friendly name like "Maya: Creating Wordle" instead of "WordleCreator"
+  - Display name passed from backend through spawn and progress events
+  - Agents now tracked per conversation for proper isolation
+
+### Changed
+- **Sub-agent status display simplified**
+  - Removed "Working..." text - spinner already indicates activity
+  - Status now just shows "running", "completed", "failed"
+
+- **continue_agent documentation improved**
+  - Clarifies it only works when agent is NOT running
+  - Explains valid statuses: waiting_for_input, completed, failed
+  - Warns that calling during "running" status will error
+
 ## [0.7.20] - 2026-01-31
 
 ### Fixed

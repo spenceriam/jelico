@@ -202,14 +202,24 @@ export function SingleToolCallDisplay({
     : null
   const subAgent = agentId ? agents.find(a => a.id === agentId) : null
 
+  // Auto-expand when sub-agent is running so user can see "Thinking"
+  useEffect(() => {
+    if (subAgent?.status === 'running' || subAgent?.status === 'pending') {
+      setExpanded(true)
+    }
+  }, [subAgent?.status])
+
   // Auto-scroll live output when progress updates
   useEffect(() => {
     if (liveOutputRef.current && subAgent?.progress) {
-      liveOutputRef.current.scrollTop = liveOutputRef.current.scrollHeight
+      // Use requestAnimationFrame for smoother scrolling
+      requestAnimationFrame(() => {
+        if (liveOutputRef.current) {
+          liveOutputRef.current.scrollTop = liveOutputRef.current.scrollHeight
+        }
+      })
     }
   }, [subAgent?.progress])
-
-  // No auto-expand - user controls visibility
 
   // Custom label for spawn_agent to show task inline
   const label: string = (toolCall.name === 'spawn_agent' && !!toolCall.args?.task)
@@ -335,14 +345,16 @@ export function SingleToolCallDisplay({
             className="w-full px-3 py-2 flex items-center gap-2 hover:bg-bg-hover transition-colors"
           >
             <Bot className="w-4 h-4 text-accent flex-shrink-0" />
-            <span className="font-medium text-text-primary text-sm">{subAgent.name}</span>
+            <span className="font-medium text-text-primary text-sm">
+              {subAgent.displayName || subAgent.name}
+            </span>
             <span className={`px-2 py-0.5 rounded text-xs font-medium ${
-              subAgent.status === 'running' ? 'bg-accent/20 text-accent animate-pulse' :
+              subAgent.status === 'running' ? 'bg-accent/20 text-accent' :
               subAgent.status === 'completed' ? 'bg-green-500/20 text-green-500' :
               subAgent.status === 'failed' ? 'bg-error/20 text-error' :
               'bg-bg-elevated text-text-muted'
             }`}>
-              {subAgent.status === 'running' ? 'Working...' : subAgent.status}
+              {subAgent.status}
             </span>
             <span className="flex-1" />
             {/* Expand/collapse indicator */}
