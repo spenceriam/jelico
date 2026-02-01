@@ -2,6 +2,21 @@
 
 All notable changes to Jelico will be documented in this file.
 
+## [0.7.13] - 2026-01-31
+
+### Fixed
+- **Todo tools not used**: AI now knows about `todo_write`, `todo_read`, `todo_check` tools and when to use them. Previously the tools existed but weren't mentioned in the system prompt.
+
+### Changed
+- **Enhanced persona prompt**: Adopted Claude Code-style guidance:
+  - Professional objectivity over validation
+  - No time estimates ("this will take 5 minutes")
+  - Avoid over-engineering (don't add features beyond what's asked)
+  - Clean deletions (remove unused code completely)
+  - Security awareness for code changes
+- **Task tracking documentation**: Clear guidance on WHEN to use todo tools (3+ step tasks)
+- **Tool reference**: Enhanced todo section with workflow examples
+
 ## [0.7.12] - 2026-01-31
 
 ### Added

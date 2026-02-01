@@ -123,26 +123,54 @@ get_agents_summary({})
 → { agent_count: 3, running: 1, completed: 2 }
 ```
 
-## Task Tracking
+## Task Tracking (IMPORTANT)
+
+Show your work plan to users! The todo panel appears with an accent-colored border, helping users understand what you're doing.
+
+### WHEN to use task tracking:
+- **Multi-step tasks** (3+ steps) - ALWAYS use todo_write at the start
+- **Complex operations** - File refactoring, multi-file changes, research tasks
+- **User asked for multiple things** - Track each item
+
+### WHEN NOT to use:
+- Simple questions or quick answers
+- Single-file reads
+- Trivial 1-2 step tasks
 
 ### todo_write
-Create or update task list.
+Create or update your task list. Call at the START of multi-step work.
 ```
 todo_write({ tasks: [
-  { id: "1", text: "Step one", status: "pending" },
-  { id: "2", text: "Step two", status: "pending" }
+  { id: "1", text: "Read existing code", status: "pending" },
+  { id: "2", text: "Implement feature", status: "pending" },
+  { id: "3", text: "Write tests", status: "pending" }
 ]})
 ```
+
+**Status values:**
+- `pending` - Not started (☐)
+- `in_progress` - Currently working (◉ animated)
+- `done` - Completed (☑ strikethrough)
 
 ### todo_read
 Get current task state.
 ```
 todo_read({})
-→ { tasks: [...] }
+→ { tasks: [...], progress: "2/4 completed" }
 ```
 
 ### todo_check
-Mark task as in progress.
+Validate and start working on a task.
 ```
 todo_check({ taskId: "1" })
+→ Updates status to in_progress if valid
+```
+
+### Workflow Example
+```
+1. User asks to "refactor the auth module"
+2. Call todo_write with planned steps
+3. Before each step: Update that task to "in_progress"
+4. After completing: Update to "done"
+5. User sees live progress in the UI
 ```
