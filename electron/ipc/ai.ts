@@ -330,16 +330,34 @@ Returns validation result and updates the task status if valid.`,
   // Spawn sub-agent tool - for parallel task execution (bi-directional)
   if (canSpawnAgents) {
     tools.spawn_agent = tool({
-      description: `Spawn a background sub-agent to work on a task in parallel.
-Use this to delegate work and keep your context clean. Sub-agents run independently and return summarized results.
+      description: `Spawn a sub-agent to work on a task. The agent runs in the background while you continue.
 
-PREFER sub-agents for: reading multiple files, research tasks, any work that would bulk up your context.
+## When to Use
+- Creating artifacts (HTML, code, diagrams) - ALWAYS delegate to sub-agents
+- Reading multiple files - spawn agents to read in parallel
+- Research tasks - let agents search and summarize
+- Any task that would bulk up your context
 
-The sub-agent can ask you questions via [QUESTION] or request capabilities via [REQUEST].
-Returns an agent_id that you can use to track the agent.
+## What Happens
+1. You call spawn_agent → returns { agent_id: "uuid-..." }
+2. Sub-agent starts working immediately in background
+3. If task involves artifacts, content streams to Canvas (user sees it building)
+4. You MUST call wait_for_agent({ agent_id }) to get results
 
-CRITICAL: After spawning, you MUST call wait_for_agent before finishing your response.
-You MUST provide the task parameter.`,
+## What You'll Receive Back (from wait_for_agent)
+- success: boolean
+- result: The sub-agent's complete response text
+- If artifact was created: the content is INCLUDED in result for your review
+- has_question: true if agent needs your help
+- error: if something went wrong
+
+## Sub-Agent Capabilities
+- Can read files, search, web search/fetch
+- Can create artifacts that stream to Canvas
+- Can ask you questions via [QUESTION] marker
+- Can request capabilities via [REQUEST] marker
+
+CRITICAL: You MUST call wait_for_agent before finishing your response.`,
       parameters: z.object({
         name: z.string().optional().describe('A short name for the agent (e.g., "Test Runner", "Code Reviewer"). Auto-generated if not provided.'),
         task: z.string().describe('The detailed task description for the agent'),
@@ -386,10 +404,19 @@ You MUST provide the task parameter.`,
 
     // Get sub-agent status - check on a spawned agent
     tools.get_agent_status = tool({
-      description: `Check the status of a spawned sub-agent.
-Use this to see if the agent has completed, is waiting for input, or retrieve its result/progress.
-This is non-blocking - it returns immediately with the current state.
-If has_question is true, the agent is paused and waiting for you to respond using continue_agent.`,
+      description: `Check a sub-agent's status without blocking. Returns immediately.
+
+## Use Cases
+- Check if an agent finished before calling wait_for_agent
+- See what an agent has generated so far (progress field)
+- Check if agent has a question waiting
+
+## Return Values
+- status: "pending" | "running" | "completed" | "failed" | "waiting_for_input"
+- is_complete: true if agent finished (completed or failed)
+- has_question: true if agent needs your response
+- progress: Text generated so far (only while running)
+- result: Final result (only when completed)`,
       parameters: z.object({
         agent_id: z.string().describe('The ID of the agent to check (from spawn_agent result)'),
       }),
@@ -419,11 +446,33 @@ If has_question is true, the agent is paused and waiting for you to respond usin
 
     // Wait for sub-agent completion or question - blocking wait
     tools.wait_for_agent = tool({
-      description: `Wait for a spawned sub-agent to complete OR pause with a question.
-This blocks until the agent finishes (completes, fails) OR needs clarification.
-If has_question is true, respond using continue_agent to keep the agent working.
+      description: `Wait for a sub-agent to complete and get its results. REQUIRED after spawn_agent.
 
-IMPORTANT: Always call this after spawn_agent to get results.`,
+## What This Does
+- Blocks until the agent finishes (completes, fails, or asks a question)
+- Returns the agent's full response including any artifact content
+- Default timeout: 5 minutes (300 seconds)
+
+## Return Values
+- success: true if agent completed successfully
+- result: The agent's complete response text (includes artifact content if created)
+- has_question: true if agent needs clarification - use continue_agent to respond
+- question: The agent's question text (if has_question is true)
+- timed_out: true if agent didn't finish in time
+- error: Error message if failed
+
+## After Receiving Results
+If the agent created an artifact:
+1. The artifact content is in the 'result' field
+2. Review it for errors, completeness, quality
+3. If issues found, use continue_agent to ask for fixes
+4. Only report success to user after your review passes
+
+## If Agent Has a Question
+- has_question will be true
+- Read the question field
+- Use continue_agent({ agent_id, response: "your answer" }) to respond
+- Then call wait_for_agent again to get final results`,
       parameters: z.object({
         agent_id: z.string().describe('The ID of the agent to wait for (from spawn_agent result)'),
         timeout_seconds: z.number().optional().describe('Maximum seconds to wait (default: 300)'),
@@ -484,11 +533,27 @@ IMPORTANT: Always call this after spawn_agent to get results.`,
 
     // Continue a sub-agent with feedback or answer to question
     tools.continue_agent = tool({
-      description: `Continue a sub-agent that is waiting for input OR provide feedback to improve results.
-Use this when:
-1. An agent asked a question (has_question=true) - provide your answer
-2. Results were unsatisfactory - provide feedback for the agent to continue working
-The agent will continue with its preserved memory context.`,
+      description: `Send a message to a sub-agent to continue its work.
+
+## Use Cases
+1. **Answer a question**: Agent asked something (has_question=true) - provide your answer
+2. **Request fixes**: Artifact has issues - tell agent what to fix
+3. **Request status**: Agent taking long - ask for progress update
+4. **Provide more context**: Agent needs additional information
+
+## Example: Fixing an Artifact
+After reviewing an artifact and finding issues:
+continue_agent({
+  agent_id: "<the agent_id>",
+  response: "The button click handler is missing. Please add an onclick that increments the counter."
+})
+Then call wait_for_agent again to get the updated result.
+
+## What Happens
+- Your message is sent to the agent
+- Agent continues working with its full memory preserved
+- Agent will respond with updated results
+- You must call wait_for_agent again to get those results`,
       parameters: z.object({
         agent_id: z.string().describe('The ID of the agent to continue'),
         response: z.string().describe('Your response, clarification, or feedback for the agent'),
@@ -537,9 +602,19 @@ The agent will be stopped if running and its conversation memory will be cleared
 
     // Get summary of all sub-agents for this conversation
     tools.get_agents_summary = tool({
-      description: `Get a summary of all sub-agents spawned in this conversation.
-Shows the status and results of all your sub-agents at once.
-Useful for reviewing what work has been done by sub-agents.`,
+      description: `Get an overview of all sub-agents you've spawned.
+
+## Returns
+- agent_count: Total number of agents
+- running: Number still working
+- completed: Number finished successfully
+- failed: Number that failed
+- summary: Text summary of each agent's task and status
+
+## When to Use
+- Before finishing, to ensure all agents are accounted for
+- To see overall progress of parallel work
+- To identify any agents that failed and need attention`,
       parameters: z.object({}),
       execute: async () => {
         const agents = getSubAgentsForStream(streamContext.channelId)

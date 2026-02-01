@@ -34,6 +34,114 @@ const DEFAULT_AGENT_LIMIT = 30 // Max sub-agents per conversation before requiri
 const conversationAgentLimits = new Map<string, number>()
 const conversationAgentCounts = new Map<string, number>()
 
+// Random first names for sub-agents (diverse, gender-neutral mix)
+const AGENT_FIRST_NAMES = [
+  'Aiden', 'Aria', 'Blake', 'Casey', 'Dana', 'Drew', 'Eden', 'Ellis',
+  'Finn', 'Gray', 'Harper', 'Jade', 'Jordan', 'Kai', 'Lane', 'Luna',
+  'Max', 'Morgan', 'Nova', 'Parker', 'Quinn', 'Ray', 'Riley', 'River',
+  'Robin', 'Sage', 'Sam', 'Skyler', 'Taylor', 'Wren', 'Alex', 'Ash',
+  'Avery', 'Bailey', 'Cameron', 'Charlie', 'Dakota', 'Emery', 'Hayden',
+  'Jamie', 'Jesse', 'Jules', 'Kit', 'Lee', 'Logan', 'Mika', 'Noel',
+  'Phoenix', 'Reese', 'Rory', 'Rowan', 'Scout', 'Shay', 'Sloane', 'Spencer',
+  'Sydney', 'Toby', 'Val', 'Winter', 'Zara', 'Zeke'
+]
+
+// Track used names per conversation to avoid duplicates
+const usedNamesPerConversation = new Map<string, Set<string>>()
+
+/**
+ * Get a unique random first name for a sub-agent in a conversation
+ */
+function getUniqueAgentFirstName(conversationId?: string): string {
+  const key = conversationId || 'default'
+
+  // Get or create the set of used names for this conversation
+  if (!usedNamesPerConversation.has(key)) {
+    usedNamesPerConversation.set(key, new Set())
+  }
+  const usedNames = usedNamesPerConversation.get(key)!
+
+  // If all names are used, reset (unlikely with 60+ names)
+  if (usedNames.size >= AGENT_FIRST_NAMES.length) {
+    usedNames.clear()
+  }
+
+  // Find an unused name
+  let attempts = 0
+  let name: string
+  do {
+    name = AGENT_FIRST_NAMES[Math.floor(Math.random() * AGENT_FIRST_NAMES.length)]
+    attempts++
+  } while (usedNames.has(name) && attempts < 100)
+
+  usedNames.add(name)
+  return name
+}
+
+/**
+ * Generate a display name from task description
+ * Converts task descriptions into friendly action phrases
+ */
+function generateDisplayName(firstName: string, task: string): string {
+  // Extract a short action from the task
+  const lowerTask = task.toLowerCase()
+
+  // Common patterns to extract action
+  if (lowerTask.includes('create')) {
+    const match = task.match(/create\s+(?:a\s+)?(.+?)(?:\s+as\s+|\s+with\s+|\s+for\s+|$)/i)
+    if (match) {
+      const target = match[1].split(/[.,!?]/)[0].trim().slice(0, 30)
+      return `${firstName}: Creating ${target}`
+    }
+    return `${firstName}: Creating`
+  }
+
+  if (lowerTask.includes('read') || lowerTask.includes('analyze')) {
+    const action = lowerTask.includes('analyze') ? 'Analyzing' : 'Reading'
+    const match = task.match(/(?:read|analyze)\s+(?:and\s+\w+\s+)?(.+?)(?:\s+and\s+|\s+for\s+|$)/i)
+    if (match) {
+      const target = match[1].split(/[.,!?]/)[0].trim().slice(0, 30)
+      return `${firstName}: ${action} ${target}`
+    }
+    return `${firstName}: ${action}`
+  }
+
+  if (lowerTask.includes('search') || lowerTask.includes('find')) {
+    const action = 'Searching'
+    const match = task.match(/(?:search|find)\s+(?:for\s+)?(.+?)(?:\s+in\s+|\s+and\s+|$)/i)
+    if (match) {
+      const target = match[1].split(/[.,!?]/)[0].trim().slice(0, 30)
+      return `${firstName}: ${action} for ${target}`
+    }
+    return `${firstName}: ${action}`
+  }
+
+  if (lowerTask.includes('research')) {
+    return `${firstName}: Researching`
+  }
+
+  if (lowerTask.includes('summarize')) {
+    return `${firstName}: Summarizing`
+  }
+
+  if (lowerTask.includes('review') || lowerTask.includes('check')) {
+    return `${firstName}: Reviewing`
+  }
+
+  if (lowerTask.includes('fix') || lowerTask.includes('debug')) {
+    return `${firstName}: Debugging`
+  }
+
+  if (lowerTask.includes('implement') || lowerTask.includes('build')) {
+    return `${firstName}: Building`
+  }
+
+  // Fallback: use first few words of task
+  const words = task.split(/\s+/).slice(0, 4).join(' ')
+  const truncated = words.length > 25 ? words.slice(0, 25) + '...' : words
+  return `${firstName}: ${truncated}`
+}
+
 export type SubAgentStatus =
   | 'pending'
   | 'running'
@@ -54,7 +162,8 @@ export interface SubAgentRecord {
   id: string
   parentStreamId: string // The stream that spawned this agent
   conversationId?: string // Parent conversation ID for cleanup tracking
-  name: string
+  name: string // Internal task-based name (e.g., "WordleCreator")
+  displayName: string // UI display name (e.g., "Maya: Creating Wordle")
   task: string
   mode: 'auto' | 'explore' | 'execute' | 'plan' | 'review'
   status: SubAgentStatus
@@ -269,11 +378,16 @@ export async function spawnSubAgent(params: {
   const agentId = randomUUID()
   const now = Date.now()
 
+  // Generate unique display name with random first name
+  const firstName = getUniqueAgentFirstName(params.conversationId)
+  const displayName = generateDisplayName(firstName, params.task)
+
   const agent: SubAgentRecord = {
     id: agentId,
     parentStreamId: params.parentStreamId,
     conversationId: params.conversationId,
     name: params.name,
+    displayName,
     task: params.task,
     mode: params.mode || 'auto',
     status: 'pending',
@@ -295,7 +409,8 @@ export async function spawnSubAgent(params: {
 
   activeAgents.set(agentId, agent)
 
-  console.log(`[SubAgents] Spawning agent: ${params.name} (${agentId})`)
+  console.log(`[SubAgents] Spawning agent: ${displayName} (${agentId})`)
+  console.log(`[SubAgents] Internal name: ${params.name}`)
   console.log(`[SubAgents] Task: ${params.task.slice(0, 100)}...`)
   console.log(`[SubAgents] Provider: ${params.providerId}, Model: ${params.model}`)
 
@@ -831,8 +946,10 @@ async function runSubAgent(agentId: string): Promise<void> {
 
   // Build initial messages if this is a fresh start
   if (agent.messages.length === 0) {
+    // Extract first name from displayName (format: "FirstName: action")
+    const firstName = agent.displayName.split(':')[0].trim() || agent.name
     const systemPrompt = buildSubAgentSystemPrompt(
-      agent.name,
+      firstName,
       agent.task,
       agent.mode,
       agent.workspacePath,
@@ -1199,11 +1316,25 @@ function buildSubAgentSystemPrompt(
 
 Your task: ${task}
 
+## Your Relationship with the Main AI
+
+You were spawned by a main AI orchestrator who is WAITING for your results.
+- The main AI has called \`wait_for_agent\` and is blocked until you finish
+- Complete your task FULLY before ending - don't stop partway
+- If you create an artifact, it streams to the Canvas in real-time (user can see it building)
+- After you finish, the main AI will review your work and may ask for fixes
+
+If you receive a message via \`continue_agent\`:
+- The main AI is providing feedback, answering your question, or asking for a status update
+- Read the message, respond appropriately, and continue your work
+- If asked for a status update, briefly explain what you've done and what remains
+
 ## Guidelines
 - Stay focused on your assigned task
 - Be concise and direct in your response
-- Provide actionable results that can be used by the orchestrating AI
+- Provide actionable results that can be used by the main AI
 - Summarize findings rather than dumping raw data
+- Complete the ENTIRE task before finishing
 
 ## Artifact Creation (IMPORTANT)
 
@@ -1643,6 +1774,7 @@ export function increaseAgentLimit(conversationId: string, additionalAgents: num
 export function resetAgentCount(conversationId: string): void {
   conversationAgentCounts.delete(conversationId)
   conversationAgentLimits.delete(conversationId)
+  usedNamesPerConversation.delete(conversationId)
 }
 
 // Export types

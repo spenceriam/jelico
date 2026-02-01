@@ -2,6 +2,21 @@
 
 All notable changes to Jelico will be documented in this file.
 
+## [0.7.12] - 2026-01-31
+
+### Added
+- **Random first name sub-agent naming**: Sub-agents now get friendly display names like "Maya: Creating Wordle" or "Kai: Analyzing code" instead of "WordleCreator". Each conversation uses unique names from a pool of 60+ gender-neutral names.
+- **Modular prompt system**: System prompts now loaded from `electron/prompts/` directory for easier maintenance and customization:
+  - `core/persona.md` - Jelico's personality and behavior guidelines
+  - `capabilities/sub-agents.md` - Sub-agent documentation
+  - `capabilities/artifacts.md` - Artifact creation documentation
+  - `capabilities/tools.md` - Tool reference guide
+- **Lean system prompt option**: `buildLeanSystemPrompt()` for minimal context when full docs aren't needed
+
+### Changed
+- **Sub-agent system prompt**: Uses the random first name (e.g., "You are Maya...") for more natural interaction
+- **Display name generation**: Automatically extracts action from task (Creating, Analyzing, Searching, etc.)
+
 ## [0.7.11] - 2026-01-31
 
 ### Fixed

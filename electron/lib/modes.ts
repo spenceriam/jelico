@@ -1,5 +1,76 @@
 // Mode system - defines how the AI behaves
+import { readFileSync, existsSync } from 'fs'
+import { join } from 'path'
+
 export type AgentMode = 'auto' | 'explore' | 'execute' | 'plan' | 'review'
+
+// ============================================
+// Modular Prompt Loading
+// ============================================
+
+// Get the prompts directory path
+function getPromptsDir(): string {
+  // In development, prompts are in electron/prompts
+  // In production, they're bundled with the app
+  const devPath = join(__dirname, '..', 'prompts')
+  if (existsSync(devPath)) return devPath
+
+  // Fallback to relative path from dist-electron
+  const prodPath = join(__dirname, 'prompts')
+  if (existsSync(prodPath)) return prodPath
+
+  return devPath // Default to dev path
+}
+
+// Load a prompt file and return its contents
+export function loadPromptFile(category: string, name: string): string | null {
+  const promptsDir = getPromptsDir()
+  const filePath = join(promptsDir, category, `${name}.md`)
+
+  try {
+    if (existsSync(filePath)) {
+      return readFileSync(filePath, 'utf-8')
+    }
+  } catch (e) {
+    console.error(`[Prompts] Failed to load ${category}/${name}.md:`, e)
+  }
+  return null
+}
+
+// Load multiple prompt files and concatenate
+export function loadPrompts(files: Array<{ category: string; name: string }>): string {
+  const parts: string[] = []
+
+  for (const { category, name } of files) {
+    const content = loadPromptFile(category, name)
+    if (content) {
+      parts.push(content)
+    }
+  }
+
+  return parts.join('\n\n')
+}
+
+// Cache for loaded prompts (avoid repeated file reads)
+const promptCache = new Map<string, string>()
+
+export function getCachedPrompt(category: string, name: string): string | null {
+  const key = `${category}/${name}`
+
+  if (!promptCache.has(key)) {
+    const content = loadPromptFile(category, name)
+    if (content) {
+      promptCache.set(key, content)
+    }
+  }
+
+  return promptCache.get(key) || null
+}
+
+// Clear cache (useful for development/hot reload)
+export function clearPromptCache(): void {
+  promptCache.clear()
+}
 
 // Jelico's core personality and values
 export const JELICO_PERSONA = `You are Jelico, an AI assistant with genuine curiosity and a thoughtful, grounded personality.
@@ -371,9 +442,13 @@ export function buildSystemPrompt(
     userContext?: string // Memories and preferences
     workspaceContext?: string // Current workspace info
     soulLearnings?: string // Learned patterns
+    includeSubAgents?: boolean // Include sub-agent documentation (default: true)
+    includeArtifacts?: boolean // Include artifact documentation (default: true)
   }
 ): string {
-  const parts: string[] = [JELICO_PERSONA]
+  // Try to load modular persona, fall back to embedded JELICO_PERSONA
+  const persona = getCachedPrompt('core', 'persona') || JELICO_PERSONA
+  const parts: string[] = [persona]
 
   // Add soul learnings if available
   if (options?.soulLearnings) {
@@ -389,6 +464,79 @@ export function buildSystemPrompt(
   if (options?.workspaceContext) {
     parts.push(`## Current Workspace\n${options.workspaceContext}`)
   }
+
+  // Add sub-agent documentation (default: include)
+  if (options?.includeSubAgents !== false) {
+    const subAgentDocs = getCachedPrompt('capabilities', 'sub-agents')
+    if (subAgentDocs) {
+      parts.push(subAgentDocs)
+    }
+  }
+
+  // Add artifact documentation (default: include)
+  if (options?.includeArtifacts !== false) {
+    const artifactDocs = getCachedPrompt('capabilities', 'artifacts')
+    if (artifactDocs) {
+      parts.push(artifactDocs)
+    }
+  }
+
+  // Add mode-specific instructions
+  const modeDef = modes[mode] || modes.auto
+  parts.push(`## Current Mode: ${modeDef.name}\n${modeDef.systemPrompt}`)
+
+  return parts.join('\n\n')
+}
+
+// Build a LEAN system prompt that references capabilities without full docs
+// Use this when you want to minimize context but still let AI know what's available
+export function buildLeanSystemPrompt(
+  mode: AgentMode,
+  options?: {
+    userContext?: string
+    workspaceContext?: string
+    soulLearnings?: string
+  }
+): string {
+  const persona = getCachedPrompt('core', 'persona') || JELICO_PERSONA
+  const parts: string[] = [persona]
+
+  // Add soul learnings if available
+  if (options?.soulLearnings) {
+    parts.push(`## What I've Learned About You\n${options.soulLearnings}`)
+  }
+
+  // Add user context (memories)
+  if (options?.userContext) {
+    parts.push(options.userContext)
+  }
+
+  // Add workspace context
+  if (options?.workspaceContext) {
+    parts.push(`## Current Workspace\n${options.workspaceContext}`)
+  }
+
+  // Add capability summary instead of full docs
+  parts.push(`## Available Capabilities
+
+You have access to these capabilities. Tool descriptions contain detailed usage instructions.
+
+### Sub-Agents
+You can spawn sub-agents to work in parallel. Use \`spawn_agent\` to delegate tasks.
+- ALWAYS delegate artifact creation to sub-agents
+- Use \`wait_for_agent\` to get results (REQUIRED after spawning)
+- Review sub-agent artifacts before reporting success
+
+### Artifacts
+Create visual content for the Canvas panel using \`create_artifact\`.
+- Types: code, html, document, svg, mermaid
+- For substantial artifacts, delegate to sub-agents
+
+### Tools
+File ops: read_file, list_directory, search_files, write_file
+Web: web_search, web_fetch
+Execution: execute_command
+See each tool's description for detailed parameters and return values.`)
 
   // Add mode-specific instructions
   const modeDef = modes[mode] || modes.auto

@@ -72,7 +72,7 @@ The Soul/Memory system should make Jelico increasingly personalized - it learns 
 ## Project overview
 Jelico is an AI Productivity Desktop built with Electron, React, TypeScript, and Vite. It provides a frictionless AI assistant experience with multi-provider support (Anthropic, OpenAI, Google), workspace management, conversation persistence, and a soul/memory system that learns user patterns and preferences over time.
 
-**Current Version:** 0.7.11
+**Current Version:** 0.7.12
 
 ## Development workflow discipline
 - **CRITICAL**: NEVER commit or push changes without explicit user approval
@@ -222,6 +222,33 @@ Users can always override AI agent version decisions:
 - `electron/ipc/` - IPC handlers (ai, backup, memory, providers, etc.)
 - `electron/services/` - Backend services (database, soul, compaction)
 - `electron/lib/` - Shared utilities
+- `electron/prompts/` - Modular system prompt files (see below)
+
+## Modular Prompt System
+
+System prompts are loaded from markdown files in `electron/prompts/`:
+
+```
+electron/prompts/
+├── core/
+│   └── persona.md       # Jelico's personality and behavior guidelines
+└── capabilities/
+    ├── sub-agents.md    # Sub-agent orchestration documentation
+    ├── artifacts.md     # Artifact creation documentation
+    └── tools.md         # Tool reference guide
+```
+
+**Functions in `electron/lib/modes.ts`:**
+- `loadPromptFile(category, name)` - Load a single prompt file
+- `getCachedPrompt(category, name)` - Load with caching
+- `buildSystemPrompt(mode, options)` - Build full system prompt with modular files
+- `buildLeanSystemPrompt(mode, options)` - Minimal context version
+
+**Benefits:**
+- Easier to maintain and update prompts
+- Clear separation of concerns
+- Hot-reload friendly for development
+- Fallback to embedded prompts if files not found
 
 ## Component structure
 
@@ -285,6 +312,16 @@ Pattern categories: `coding_style`, `communication`, `mistake`, `preference`, `w
 
 Jelico uses a bi-directional sub-agent system for parallel task execution.
 
+### Random First Name Naming
+Sub-agents get friendly display names instead of technical names:
+- **Before**: "WordleCreator", "CodeAnalyzer", "APIFinder"
+- **After**: "Maya: Creating Wordle", "Kai: Analyzing code", "Nova: Searching for APIs"
+
+Features:
+- 60+ gender-neutral first names (Aiden, Aria, Blake, Casey, etc.)
+- Names are unique within each conversation
+- Display name generated from task description (Creating, Analyzing, Searching, etc.)
+
 ### Architecture
 ```
 ┌─────────────────────────────────────────────┐
@@ -297,7 +334,7 @@ Jelico uses a bi-directional sub-agent system for parallel task execution.
         │             │             │
         ▼             ▼             ▼
    ┌─────────┐   ┌─────────┐   ┌─────────┐
-   │ Agent A │   │ Agent B │   │ Agent C │
+   │  Maya   │   │   Kai   │   │  Nova   │
    │ Limited │   │ Limited │   │ Limited │
    │ Tools   │   │ Tools   │   │ Tools   │
    └────┬────┘   └────┬────┘   └────┬────┘
