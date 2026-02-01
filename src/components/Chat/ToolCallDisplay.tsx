@@ -449,16 +449,10 @@ export function SingleToolCallDisplay({
                     <div className="flex-1 pl-2 pr-3">
                       <div className="flex items-center gap-2 mb-1">
                         <span className="text-[10px] uppercase tracking-wider text-accent font-medium">Thinking</span>
-                        <span className="flex gap-0.5">
-                          <span className="w-1 h-1 rounded-full bg-accent animate-pulse" style={{ animationDelay: '0ms' }} />
-                          <span className="w-1 h-1 rounded-full bg-accent animate-pulse" style={{ animationDelay: '150ms' }} />
-                          <span className="w-1 h-1 rounded-full bg-accent animate-pulse" style={{ animationDelay: '300ms' }} />
-                        </span>
                       </div>
                       <div
                         ref={liveOutputRef}
-                        className="text-xs text-text-secondary font-mono bg-bg-deep rounded p-2 max-h-48 overflow-y-auto whitespace-pre-wrap border border-accent/30 animate-pulse"
-                        style={{ animationDuration: '2s' }}
+                        className="text-xs text-text-secondary font-mono bg-bg-deep rounded p-2 max-h-48 overflow-y-auto whitespace-pre-wrap border border-accent/30"
                       >
                         {subAgent.progress || (
                           <span className="text-text-muted italic">Starting up...</span>

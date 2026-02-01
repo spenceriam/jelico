@@ -1,7 +1,6 @@
 import { Bot, X, Pause, CheckCircle, XCircle, Loader2, ChevronDown, ChevronRight, Sparkles } from 'lucide-react'
 import { useState } from 'react'
 import { useAgentStore, type SubAgent, type AgentStatus } from '../../stores/agents'
-import { ShimmerText } from '../StatusIndicators/ShimmerText'
 
 const STATUS_ICONS: Record<AgentStatus, React.ComponentType<{ className?: string }>> = {
   pending: Pause,
@@ -40,9 +39,9 @@ export function AgentPanel() {
             <Sparkles className="w-4 h-4 text-accent" />
             <span className="font-medium text-text-primary">Jelico</span>
             {runningCount > 0 && (
-              <ShimmerText className="text-xs">
+              <span className="text-xs text-accent">
                 Orchestrating...
-              </ShimmerText>
+              </span>
             )}
           </div>
           {/* Sub-agent count */}
@@ -135,9 +134,9 @@ function AgentItem({
           <div className="text-sm font-medium text-text-primary truncate">{agent.name}</div>
           <div className="text-xs truncate">
             {agent.status === 'running' ? (
-              <ShimmerText className="text-xs">
+              <span className="text-text-secondary">
                 {agent.progress?.slice(-50) || 'Working...'}
-              </ShimmerText>
+              </span>
             ) : (
               <span className="text-text-muted">{agent.task.slice(0, 50)}</span>
             )}

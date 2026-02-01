@@ -185,7 +185,7 @@ export function MermaidViewer({ content, title, isStreaming = false }: MermaidVi
           >
             {content}
             {isStreaming && (
-              <span className="inline-block w-2 h-4 bg-accent animate-pulse ml-0.5" />
+              <span className="inline-block w-0.5 h-4 bg-accent ml-0.5" />
             )}
           </pre>
         )}

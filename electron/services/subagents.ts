@@ -578,6 +578,7 @@ function getProviderClient(providerConfig: any, apiKey: string | null) {
 // Markers that indicate the sub-agent needs clarification
 const CLARIFICATION_MARKERS = [
   '[QUESTION]',
+  '[REQUEST]',
   '[NEED CLARIFICATION]',
   '[WAITING FOR INPUT]',
   '[PAUSED]',

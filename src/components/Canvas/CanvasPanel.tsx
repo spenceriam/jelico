@@ -173,7 +173,7 @@ export function CanvasPanel() {
               <div className="flex items-center gap-2">
                 {(() => {
                   const Icon = streamingPreview.type ? (TYPE_ICONS[streamingPreview.type as ArtifactType] || DEFAULT_TYPE_ICON) : FileCode
-                  return <Icon className="w-5 h-5 text-accent flex-shrink-0 animate-pulse" />
+                  return <Icon className="w-5 h-5 text-accent flex-shrink-0" />
                 })()}
                 <div className="text-left min-w-0">
                   <h3 className="text-sm font-medium text-text-primary truncate">

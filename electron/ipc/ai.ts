@@ -385,39 +385,60 @@ CRITICAL: You MUST call wait_for_agent before finishing your response.`,
             error: 'Missing required parameter: task. You MUST provide a task description when calling spawn_agent.',
           }
         }
+
         // Auto-generate name if not provided
         const agentName = name || `Agent-${Date.now().toString(36).slice(-4)}`
-        // Spawn the sub-agent using the service
-        const agentId = await spawnSubAgent({
-          parentStreamId: streamContext.channelId,
-          conversationId: streamContext.conversationId,  // Track which conversation spawned this agent
-          name: agentName,
-          task,
-          mode: agentMode || 'auto',
-          providerId: streamContext.providerId,
-          model: streamContext.model,
-          workspacePath: streamContext.workspacePath,
-          siblingContext,
-        })
 
-        // Get agent info including display name
-        const agentStatus = getSubAgentStatus(agentId)
-
-        // Notify the UI
-        if (sendSpawnAgent) {
-          sendSpawnAgent({
-            id: agentId,
+        try {
+          // Spawn the sub-agent using the service
+          const agentId = await spawnSubAgent({
+            parentStreamId: streamContext.channelId,
+            conversationId: streamContext.conversationId,  // Track which conversation spawned this agent
             name: agentName,
-            displayName: agentStatus.displayName,  // Friendly name like "Maya: Creating Wordle"
             task,
             mode: agentMode || 'auto',
+            providerId: streamContext.providerId,
+            model: streamContext.model,
+            workspacePath: streamContext.workspacePath,
+            siblingContext,
           })
-        }
 
-        return {
-          success: true,
-          agent_id: agentId,
-          message: `Agent "${agentName}" spawned. You MUST call wait_for_agent("${agentId}") to get results before finishing.`,
+          // Get agent info including display name
+          const agentStatus = getSubAgentStatus(agentId)
+
+          // Notify the UI
+          if (sendSpawnAgent) {
+            sendSpawnAgent({
+              id: agentId,
+              name: agentName,
+              displayName: agentStatus.displayName,  // Friendly name like "Maya: Creating Wordle"
+              task,
+              mode: agentMode || 'auto',
+            })
+          }
+
+          return {
+            success: true,
+            agent_id: agentId,
+            message: `Agent "${agentName}" spawned. You MUST call wait_for_agent("${agentId}") to get results before finishing.`,
+          }
+        } catch (error: any) {
+          // Handle agent limit exceeded error
+          if (error.message?.includes('AGENT_LIMIT_EXCEEDED')) {
+            console.warn('[AI] Agent limit exceeded:', error.message)
+            return {
+              success: false,
+              error: error.message,
+              suggestion: 'Ask the user for permission to spawn additional agents, explaining why more parallel work is needed.',
+            }
+          }
+
+          // Handle other errors
+          console.error('[AI] Failed to spawn agent:', error)
+          return {
+            success: false,
+            error: `Failed to spawn agent: ${error.message || 'Unknown error'}`,
+          }
         }
       },
     })

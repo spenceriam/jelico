@@ -163,6 +163,15 @@ contextBridge.exposeInMainWorld('jelico', {
       return () => ipcRenderer.removeListener('speech:progress', handler)
     },
   },
+  clarification: {
+    respond: (requestId: string, answers: Record<string, string[]>) =>
+      ipcRenderer.invoke('clarification:respond', requestId, answers),
+    onRequest: (callback: (request: any) => void) => {
+      const handler = (_: any, request: any) => callback(request)
+      ipcRenderer.on('clarification:request', handler)
+      return () => ipcRenderer.removeListener('clarification:request', handler)
+    },
+  },
   compaction: {
     getThresholds: () => ipcRenderer.invoke('compaction:getThresholds'),
     shouldCompact: (currentTokens: number, maxTokens: number) =>
