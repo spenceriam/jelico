@@ -2,6 +2,15 @@
 
 All notable changes to Jelico will be documented in this file.
 
+## [0.7.8] - 2026-01-31
+
+### Fixed
+- **Streaming stops on window switch**: Added `backgroundThrottling: false` to prevent Electron from throttling IPC updates when the window loses focus. Artifact streaming now continues updating even when switching to other apps.
+
+### Changed
+- **Sub-agent panel auto-expands**: Sub-agent details now automatically expand when the agent is running so you can see progress immediately.
+- **Clearer sub-agent expand indicator**: Added "View/Hide" button with chevron to make it obvious the panel is expandable.
+
 ## [0.7.7] - 2026-01-31
 
 ### Changed

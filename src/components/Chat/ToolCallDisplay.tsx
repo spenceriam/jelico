@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import {
   ChevronDown,
   ChevronRight,
@@ -6,7 +6,8 @@ import {
   XCircle,
   Loader2,
   Bot,
-  ExternalLink
+  ExternalLink,
+  Eye
 } from 'lucide-react'
 import type { ToolCall, ToolResult } from '../../stores/chat'
 import { useAgentStore } from '../../stores/agents'
@@ -186,6 +187,19 @@ export function SingleToolCallDisplay({
   const { agents } = useAgentStore()
   const { selectArtifact, openCanvas, artifacts } = useArtifactStore()
 
+  // Get sub-agent info early for auto-expand logic
+  const agentId = toolCall.name === 'spawn_agent' && toolResult?.result
+    ? (toolResult.result as any)?.agent_id
+    : null
+  const subAgent = agentId ? agents.find(a => a.id === agentId) : null
+
+  // Auto-expand when sub-agent is running so user can see progress
+  useEffect(() => {
+    if (subAgent && (subAgent.status === 'running' || subAgent.status === 'pending')) {
+      setExpanded(true)
+    }
+  }, [subAgent?.status])
+
   // Custom label for spawn_agent to show task inline
   const label: string = (toolCall.name === 'spawn_agent' && !!toolCall.args?.task)
     ? `Sub-agent: ${String(toolCall.args.task).slice(0, 60)}${String(toolCall.args.task).length > 60 ? '...' : ''}`
@@ -203,12 +217,6 @@ export function SingleToolCallDisplay({
   const statusText = status === 'starting' ? 'Starting...' :
                      status === 'executing' ? 'Running...' :
                      status === 'error' ? 'Error' : ''
-
-  // Get sub-agent info if this is a spawn_agent call
-  const agentId = toolCall.name === 'spawn_agent' && toolResult?.result
-    ? (toolResult.result as any)?.agent_id
-    : null
-  const subAgent = agentId ? agents.find(a => a.id === agentId) : null
 
   // Get artifact info if this is a create_artifact call
   const artifactTitle = toolCall.name === 'create_artifact' && toolCall.args?.title
@@ -311,7 +319,10 @@ export function SingleToolCallDisplay({
       {toolCall.name === 'spawn_agent' && subAgent && (
         <div className="border-t border-border bg-bg-surface">
           {/* Agent header - always visible, shows status */}
-          <div className="px-3 py-2 flex items-center gap-2">
+          <button
+            onClick={() => setExpanded(!expanded)}
+            className="w-full px-3 py-2 flex items-center gap-2 hover:bg-bg-hover transition-colors"
+          >
             <Bot className="w-4 h-4 text-accent flex-shrink-0" />
             <span className="font-medium text-text-primary text-sm">{subAgent.name}</span>
             <span className={`px-2 py-0.5 rounded text-xs font-medium ${
@@ -322,7 +333,18 @@ export function SingleToolCallDisplay({
             }`}>
               {subAgent.status === 'running' ? 'Working...' : subAgent.status}
             </span>
-          </div>
+            <span className="flex-1" />
+            {/* Expand/collapse indicator */}
+            <span className="flex items-center gap-1 text-xs text-text-muted">
+              <Eye className="w-3 h-3" />
+              {expanded ? 'Hide' : 'View'}
+            </span>
+            {expanded ? (
+              <ChevronDown className="w-4 h-4 text-text-muted" />
+            ) : (
+              <ChevronRight className="w-4 h-4 text-text-muted" />
+            )}
+          </button>
 
           {/* Expanded details - only show when user expands */}
           {expanded && (
@@ -375,17 +397,19 @@ export function SingleToolCallDisplay({
                 </div>
               )}
 
-              {/* Live progress while running - indented */}
-              {subAgent.status === 'running' && subAgent.progress && (
+              {/* Live progress while running - always show when running */}
+              {(subAgent.status === 'running' || subAgent.status === 'pending') && (
                 <div className="py-2 border-t border-border/50">
                   <div className="flex items-start">
                     <div className="w-6 flex-shrink-0 flex justify-center">
                       <Loader2 className="w-3 h-3 animate-spin text-accent" />
                     </div>
                     <div className="flex-1 pl-2 pr-3">
-                      <div className="text-[10px] uppercase tracking-wider text-text-muted mb-1">Output</div>
-                      <div className="text-xs text-text-secondary font-mono bg-bg-deep rounded p-2 max-h-32 overflow-y-auto whitespace-pre-wrap">
-                        {subAgent.progress}
+                      <div className="text-[10px] uppercase tracking-wider text-text-muted mb-1">Live Output</div>
+                      <div className="text-xs text-text-secondary font-mono bg-bg-deep rounded p-2 max-h-48 overflow-y-auto whitespace-pre-wrap">
+                        {subAgent.progress || (
+                          <span className="text-text-muted italic">Starting up...</span>
+                        )}
                       </div>
                     </div>
                   </div>

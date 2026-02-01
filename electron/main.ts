@@ -185,6 +185,7 @@ function createWindow() {
       contextIsolation: true,
       nodeIntegration: false,
       sandbox: false, // Required for some Node APIs
+      backgroundThrottling: false, // Keep streaming active when window loses focus
     },
   })
 
