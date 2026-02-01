@@ -58,6 +58,9 @@ interface ArtifactStore {
   isLoading: boolean
   // Streaming preview - shown in Canvas while artifact is being generated
   streamingPreview: { type?: string; title?: string; content: string } | null
+  // Track the title of the artifact we've already opened canvas for
+  // Prevents reopening if user manually closed during generation
+  streamingOpenedFor: string | null
 
   // Actions
   loadArtifacts: () => Promise<void>
@@ -86,6 +89,7 @@ export const useArtifactStore = create<ArtifactStore>((set, get) => ({
   canvasOpen: false,
   isLoading: false,
   streamingPreview: null,
+  streamingOpenedFor: null,
 
   loadArtifacts: async () => {
     set({ isLoading: true })
@@ -232,17 +236,32 @@ export const useArtifactStore = create<ArtifactStore>((set, get) => ({
     }
   },
 
-  // Streaming preview - opens Canvas and shows content as it's being generated
+  // Streaming preview - opens Canvas for NEW artifacts, respects user closing during generation
   setStreamingPreview: (preview) => {
-    set({
-      streamingPreview: preview,
-      canvasOpen: true, // Auto-open canvas when streaming starts
-      selectedArtifactId: null, // Deselect any existing artifact to show preview
-    })
+    const state = get()
+    const previewTitle = preview?.title || ''
+    const isNewArtifact = previewTitle !== state.streamingOpenedFor
+
+    // Only auto-open canvas if this is a NEW artifact we haven't opened for yet
+    // This prevents reopening if user manually closed the canvas during generation
+    if (isNewArtifact && preview) {
+      set({
+        streamingPreview: preview,
+        canvasOpen: true,
+        selectedArtifactId: null,
+        streamingOpenedFor: previewTitle, // Remember we've opened for this artifact
+      })
+    } else {
+      // Same artifact, just update content without touching canvasOpen
+      set({ streamingPreview: preview })
+    }
   },
 
   clearStreamingPreview: () => {
-    set({ streamingPreview: null })
+    set({
+      streamingPreview: null,
+      streamingOpenedFor: null, // Reset so next artifact will open canvas
+    })
   },
 }))
 

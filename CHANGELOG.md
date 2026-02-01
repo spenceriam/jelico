@@ -2,6 +2,15 @@
 
 All notable changes to Jelico will be documented in this file.
 
+## [0.7.20] - 2026-01-31
+
+### Fixed
+- **Canvas panel respects user close during artifact generation**
+  - Canvas only auto-opens for NEW artifacts, not on every streaming update
+  - If user closes canvas during generation, it stays closed
+  - Next NEW artifact will open canvas again
+  - Tracks `streamingOpenedFor` to detect when artifact title changes
+
 ## [0.7.19] - 2026-01-31
 
 ### Fixed
