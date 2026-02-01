@@ -1318,6 +1318,9 @@ export function dismissSubAgent(agentId: string): { success: boolean; error?: st
   // Remove from active agents
   activeAgents.delete(agentId)
 
+  // Clean up progress tracking to prevent memory leaks
+  lastProgressUpdate.delete(agentId)
+
   console.log(`[SubAgents] Dismissed agent: ${agent.name} (${agentId})`)
   return { success: true }
 }

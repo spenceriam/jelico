@@ -526,8 +526,13 @@ export function ToolCallDisplay({ toolCalls, toolResults = [], isStreaming }: To
   const resultsMap = new Map(toolResults.map(r => [r.toolCallId, r]))
 
   // Separate completed vs active tool calls
-  const completedTools = visibleToolCalls.filter(tc => resultsMap.has(tc.id))
-  const activeTools = visibleToolCalls.filter(tc => !resultsMap.has(tc.id))
+  // A tool is complete if it has a result OR its status is 'complete'
+  const completedTools = visibleToolCalls.filter(tc =>
+    resultsMap.has(tc.id) || tc.status === 'complete'
+  )
+  const activeTools = visibleToolCalls.filter(tc =>
+    !resultsMap.has(tc.id) && tc.status !== 'complete'
+  )
 
   return (
     <div className="space-y-2 my-3">
@@ -537,6 +542,8 @@ export function ToolCallDisplay({ toolCalls, toolResults = [], isStreaming }: To
           <button
             onClick={() => setCompletedExpanded(!completedExpanded)}
             className="w-full flex items-center gap-2 px-3 py-2 hover:bg-bg-hover transition-colors text-left"
+            aria-expanded={completedExpanded}
+            aria-controls="completed-actions-content"
           >
             {completedExpanded ? (
               <ChevronDown className="w-4 h-4 text-text-muted flex-shrink-0" />
@@ -548,7 +555,7 @@ export function ToolCallDisplay({ toolCalls, toolResults = [], isStreaming }: To
           </button>
 
           {completedExpanded && (
-            <div className="border-t border-border bg-bg-surface p-2 space-y-2">
+            <div id="completed-actions-content" className="border-t border-border bg-bg-surface p-2 space-y-2">
               {completedTools.map((toolCall, index) => (
                 <SingleToolCallDisplay
                   key={toolCall.id || `completed-${index}`}

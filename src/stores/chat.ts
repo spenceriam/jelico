@@ -207,6 +207,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
         activeConversationId: null,
         messages: [],
         isStreaming: false,
+        streamingStartTime: null,
         streamingContent: '',
         streamingToolCalls: [],
         streamingToolResults: [],
@@ -663,6 +664,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
         set((state) => ({
           messages: [...state.messages, messageWithTools],
           isStreaming: false,
+          streamingStartTime: null,
           streamingContent: '',
           streamingToolCalls: [],
           streamingToolResults: [],
@@ -715,6 +717,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
         // Still need to end streaming state even on error
         set({
           isStreaming: false,
+          streamingStartTime: null,
           streamingContent: '',
           streamingToolCalls: [],
           streamingToolResults: [],
@@ -788,6 +791,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
       currentStreamChannelId = null
       set({
         isStreaming: false,
+        streamingStartTime: null,
         streamingContent: '',
         streamingToolCalls: [],
         streamingToolResults: [],
@@ -829,6 +833,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
     }
     set({
       isStreaming: false,
+      streamingStartTime: null,
       streamingContent: '',
       streamingToolCalls: [],
       streamingToolResults: [],
@@ -863,6 +868,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
           activeConversationId: null,
           messages: [],
           isStreaming: false,
+          streamingStartTime: null,
           streamingContent: '',
           streamingToolCalls: [],
           streamingToolResults: [],

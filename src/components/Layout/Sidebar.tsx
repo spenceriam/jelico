@@ -121,7 +121,7 @@ export function Sidebar() {
                     ) : (
                       <div className="w-4 flex-shrink-0" /> /* Spacer for alignment */
                     )}
-                    <span className="flex-1 break-words">{conv.title}</span>
+                    <span className="flex-1 break-words line-clamp-2">{conv.title}</span>
                     <button
                       onClick={(e) => handleDeleteConversation(e, conv.id)}
                       className="opacity-0 group-hover:opacity-100 p-1 hover:bg-bg-hover rounded text-text-muted hover:text-error flex-shrink-0"
