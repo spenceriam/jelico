@@ -57,7 +57,7 @@ export function ContextIndicator() {
 
       {/* Progress bar - shows when expanded */}
       {showBar && (
-        <div className="w-24 h-2 bg-bg-deep rounded-full overflow-hidden">
+        <div className="w-40 h-2.5 bg-bg-deep rounded-full overflow-hidden">
           <div
             className={`h-full transition-all duration-300 ${
               contextUsage.shouldWarn ? 'bg-warning' : 'bg-accent'
