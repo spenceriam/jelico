@@ -2,6 +2,18 @@
 
 All notable changes to Jelico will be documented in this file.
 
+## [0.7.38] - 2026-02-01
+
+### Fixed
+- **Sub-agent name parameter deprecated**
+  - Removed name examples from all prompts (was causing "WordleCreator" style names)
+  - Names are now always auto-generated with friendly first names
+  - Tool description marks `name` parameter as DEPRECATED
+
+- **Premature completion debug logging**
+  - Added detailed logging to diagnose sub-agents completing without artifacts
+  - Logs tool call names, artifact status, and detection flags
+
 ## [0.7.37] - 2026-02-01
 
 ### Fixed

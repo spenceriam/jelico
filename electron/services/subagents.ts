@@ -1385,6 +1385,17 @@ async function runSubAgent(agentId: string): Promise<void> {
       const taskLower = agent.task.toLowerCase()
       const taskRequiresOutput = /\b(create|build|make|implement|write|generate|develop|design|code)\b/.test(taskLower)
 
+      // Debug logging for premature completion detection
+      console.log(`[SubAgents] ${agent.name} completion check:`, {
+        hasArtifacts,
+        hasOutputToolCalls,
+        calledReportProgress,
+        onlyCalledReportProgress,
+        taskRequiresOutput,
+        toolCallNames: agent.toolCalls.map(tc => tc.name),
+        autoContinueAttempts: agent.autoContinueAttempts,
+      })
+
       // Premature completion detection:
       // 1. If only called report_progress with no output - definitely premature
       // 2. If task requires output but no output tools called and no artifacts - ALWAYS premature

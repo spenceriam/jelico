@@ -37,10 +37,11 @@ Sub-agents are independent workers that run in parallel with their own context. 
 ```
 spawn_agent({
   task: "Create a responsive dashboard with dark theme using HTML/CSS/JS",
-  name: "DashboardBuilder",
   mode: "auto"
 })
 ```
+
+Note: Names are auto-generated with friendly first names (e.g., "Sidney: Creating dashboard").
 
 Returns: `{ agent_id: "abc-123", success: true }`
 
@@ -140,13 +141,11 @@ Spawn multiple agents for concurrent work:
 ```
 const frontend = spawn_agent({
   task: "Analyze frontend components in src/components/",
-  name: "FrontendAnalyzer",
   siblingContext: "Another agent is analyzing the backend API routes"
 })
 
 const backend = spawn_agent({
   task: "Analyze API routes in src/api/",
-  name: "BackendAnalyzer",
   siblingContext: "Another agent is analyzing frontend components"
 })
 

@@ -446,7 +446,7 @@ Returns validation result and updates the task status if valid.`,
 
 CRITICAL: You MUST call wait_for_agent before finishing your response.`,
       parameters: z.object({
-        name: z.string().optional().describe('A short name for the agent (e.g., "Test Runner", "Code Reviewer"). Auto-generated if not provided.'),
+        name: z.string().optional().describe('DEPRECATED - do not provide. Names are auto-generated with friendly first names.'),
         task: z.string().describe('The detailed task description for the agent'),
         mode: z.enum(['auto', 'explore', 'execute', 'plan', 'review'])
           .optional()

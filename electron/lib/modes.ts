@@ -274,9 +274,9 @@ read_file("src/a.ts") → read_file("src/b.ts") → read_file("src/c.ts") → an
 
 Do this (fast, parallel, clean context):
 \`\`\`
-const agent1 = spawn_agent({ task: "Read and summarize src/components/*", name: "Components" })
-const agent2 = spawn_agent({ task: "Read and summarize src/stores/*", name: "Stores" })
-const agent3 = spawn_agent({ task: "Find all API endpoints", name: "APIs" })
+const agent1 = spawn_agent({ task: "Read and summarize src/components/*" })
+const agent2 = spawn_agent({ task: "Read and summarize src/stores/*" })
+const agent3 = spawn_agent({ task: "Find all API endpoints" })
 // Wait for each using the agent_id from spawn result
 wait_for_agent({ agent_id: agent1.agent_id }) → summary
 wait_for_agent({ agent_id: agent2.agent_id }) → summary
