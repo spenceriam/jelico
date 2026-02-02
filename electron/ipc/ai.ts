@@ -50,7 +50,9 @@ interface PendingClarification {
   resolve: (answers: Record<string, string[]>) => void
   reject: (error: Error) => void
   channelId: string
+  conversationId: string
   timeoutId: ReturnType<typeof setTimeout>
+  resolved: boolean // Prevents race condition between timeout/response/stop
 }
 const pendingClarifications = new Map<string, PendingClarification>()
 
@@ -66,6 +68,9 @@ const STREAM_TIMEOUT_MS = 600000 // 10 minutes - must be longer than wait_for_ag
 
 // Activity timeout - reset on any stream activity (30 seconds)
 const ACTIVITY_TIMEOUT_MS = 30000
+
+// Max tool input size (10MB) - prevents memory exhaustion from malformed streams
+const MAX_TOOL_INPUT_SIZE = 10 * 1024 * 1024
 
 // Max retries for transient errors
 const MAX_RETRIES = 2
@@ -1291,7 +1296,10 @@ Note: If recommended option, list it first with "(Recommended)" suffix.`,
       const answersPromise = new Promise<Record<string, string[]>>((resolve, reject) => {
         // Timeout after 5 minutes - store ID so we can cancel it
         const timeoutId = setTimeout(() => {
-          if (pendingClarifications.has(requestId)) {
+          const pending = pendingClarifications.get(requestId)
+          // Only reject if not already resolved (prevents race condition)
+          if (pending && !pending.resolved) {
+            pending.resolved = true
             pendingClarifications.delete(requestId)
             reject(new Error('Clarification request timed out'))
           }
@@ -1303,6 +1311,7 @@ Note: If recommended option, list it first with "(Recommended)" suffix.`,
           channelId: streamContext.channelId, // Keep channelId for IPC routing
           conversationId: streamContext.conversationId, // Track actual conversation
           timeoutId,
+          resolved: false,
         })
       })
 
@@ -1917,12 +1926,22 @@ When the user asks to modify, update, fix, or improve an existing artifact, use 
                 const anyPart = part as any
                 const inputDelta = anyPart.inputTextDelta || anyPart.delta || anyPart.argsTextDelta || ''
 
-                accumulatedToolInput += inputDelta
-                toolInputCharCount += inputDelta.length
+                // Prevent unbounded memory growth - truncate at MAX_TOOL_INPUT_SIZE
+                if (accumulatedToolInput.length >= MAX_TOOL_INPUT_SIZE) {
+                  // Already at limit, skip accumulation
+                  break
+                }
+                const remainingCapacity = MAX_TOOL_INPUT_SIZE - accumulatedToolInput.length
+                const safeInputDelta = inputDelta.length > remainingCapacity
+                  ? inputDelta.slice(0, remainingCapacity)
+                  : inputDelta
+
+                accumulatedToolInput += safeInputDelta
+                toolInputCharCount += safeInputDelta.length
 
                 // Send progress update every 500ms or 1000 chars to avoid flooding
                 const now = Date.now()
-                if (now - lastToolInputUpdate > 500 || toolInputCharCount % 1000 < inputDelta.length) {
+                if (now - lastToolInputUpdate > 500 || toolInputCharCount % 1000 < safeInputDelta.length) {
                   lastToolInputUpdate = now
                   // Find the tool name from tracker if we have it
                   const toolName = currentToolInputName ||
@@ -2369,7 +2388,8 @@ Be concise but informative. The user needs to understand what happened.`,
 
     // Cancel any pending clarification requests for this stream
     for (const [requestId, pending] of pendingClarifications.entries()) {
-      if (pending.channelId === channelId) {
+      if (pending.channelId === channelId && !pending.resolved) {
+        pending.resolved = true // Mark as resolved to prevent race condition
         if (pending.timeoutId) {
           clearTimeout(pending.timeoutId)
         }
@@ -2402,6 +2422,13 @@ Be concise but informative. The user needs to understand what happened.`,
       userMessageLength: params.userMessage?.length,
       assistantMessageLength: params.assistantMessage?.length,
     })
+
+    // Validate required params to prevent null/undefined crashes
+    if (!params.userMessage || typeof params.userMessage !== 'string') {
+      console.warn('[AI] Title generation: Missing or invalid userMessage')
+      return { success: true, title: 'New conversation' }
+    }
+
     try {
       const providerConfig = providerDb.get(params.providerId)
       if (!providerConfig) {
@@ -2487,10 +2514,13 @@ Be concise but informative. The user needs to understand what happened.`,
   // Handle clarification responses from UI
   ipcMain.handle('clarification:respond', async (_, requestId: string, answers: Record<string, string[]>) => {
     const pending = pendingClarifications.get(requestId)
-    if (!pending) {
-      console.warn('[AI] Clarification response for unknown request:', requestId)
-      return { success: false, error: 'Request not found or already expired' }
+    if (!pending || pending.resolved) {
+      console.warn('[AI] Clarification response for unknown or already-handled request:', requestId)
+      return { success: false, error: 'Request not found or already handled' }
     }
+
+    // Mark as resolved FIRST to prevent race conditions
+    pending.resolved = true
 
     // Clear the timeout since response arrived
     if (pending.timeoutId) {

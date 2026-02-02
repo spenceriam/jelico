@@ -21,6 +21,17 @@ export interface ChangelogEntry {
 
 export const changelog: ChangelogEntry[] = [
   {
+    version: '0.7.55',
+    date: '2026-02-02',
+    changes: {
+      fixed: [
+        'Race condition in clarification requests that could cause double resolution',
+        'Unbounded tool input accumulation that could exhaust memory (now capped at 10MB)',
+        'Missing null check in title generation that could crash on invalid input',
+      ],
+    },
+  },
+  {
     version: '0.7.34',
     date: '2026-02-01',
     changes: {
