@@ -802,6 +802,60 @@ File was modified. Remember to:
 
 ---
 
+### Phase E: Multi-Model Architecture
+
+Different models for different tasks - main AI uses a smarter model, sub-agents use faster/cheaper models.
+
+**Concept:**
+- Main AI handles complex reasoning, synthesis, user interaction → stronger model
+- Sub-agents handle research grunt work (read, search, summarize) → lighter model
+- Similar to Claude Code's Opus/Sonnet/Haiku tiering
+- Most API providers offer multiple model tiers to leverage
+
+**Model Tier Examples:**
+
+| Provider | Main AI (Smarter) | Sub-Agents (Faster) |
+|----------|-------------------|---------------------|
+| Z.ai | GLM 4.7 | GLM 4.7-Flash |
+| OpenAI | GPT 5.2 | GPT 5.2-mini/nano |
+| Anthropic | Claude Opus | Claude Haiku |
+| Google | Gemini Ultra | Gemini Flash |
+
+**Future Enhancement - Specialized Models:**
+- Coding models vs chat models (e.g., GPT 5.2-codex vs GPT 5.2)
+- Route code-heavy tasks to coding-optimized models
+- Route general chat/planning to general models
+
+**Implementation Approach:**
+1. Add `subAgentModel` setting per provider (separate from main model)
+2. Update `spawnAgent` to use sub-agent model from settings
+3. Settings UI: "Sub-Agent Model" dropdown per provider
+4. Default: same as main model (current behavior)
+5. Optional: auto-select lighter tier if available
+
+**Settings Schema:**
+```typescript
+interface ProviderSettings {
+  model: string          // Main AI model
+  subAgentModel?: string // Sub-agent model (optional, defaults to main)
+  apiKey: string
+}
+```
+
+**Files to Modify:**
+- `src/stores/providers.ts` - Add subAgentModel to provider config
+- `src/components/Settings/ProvidersSettings.tsx` - Sub-agent model selector
+- `electron/services/subagents.ts` - Use subAgentModel when spawning
+- `electron/ipc/ai.ts` - Pass sub-agent model to agent spawn
+
+**Benefits:**
+- Cost efficiency: lighter models for research = lower API costs
+- Speed: faster models for sub-agents = quicker research cycles
+- Quality: main AI keeps strong model for final synthesis
+- Flexibility: users choose trade-offs per their budget/needs
+
+---
+
 ### Sub-Agent Specialized Types
 
 Current specialized sub-agent types (implemented):
