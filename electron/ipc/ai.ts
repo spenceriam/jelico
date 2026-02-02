@@ -64,12 +64,12 @@ const DEBUG_API_REQUESTS = process.env.DEBUG_AI === 'true' || process.env.NODE_E
 // via tool-input-delta but don't populate the final tool-call args (SDK bug workaround)
 const accumulatedToolInputByCallId = new Map<string, string>()
 
-// Stream timeouts - DISABLED
+// Stream timeouts - DISABLED (set to 0 to disable)
 // In the age of long-running agents, arbitrary timeouts cause more problems than they solve.
 // Users can manually stop streams via the Stop button if needed.
-// Keeping the timeout infrastructure for future use if needed, but set to Infinity.
-const STREAM_TIMEOUT_MS = Infinity // No max timeout
-const ACTIVITY_TIMEOUT_MS = Infinity // No activity timeout
+// Set to 0 to disable, or a positive number for the timeout in ms.
+const STREAM_TIMEOUT_MS = 0 // No max timeout (0 = disabled)
+const ACTIVITY_TIMEOUT_MS = 0 // No activity timeout (0 = disabled)
 
 // Max tool input size (10MB) - prevents memory exhaustion from malformed streams
 const MAX_TOOL_INPUT_SIZE = 10 * 1024 * 1024
@@ -1634,23 +1634,28 @@ export function registerAIHandlers() {
     let activityTimeoutId: NodeJS.Timeout
     let lastActivityReset = Date.now()
     const resetActivityTimeout = () => {
-      clearTimeout(activityTimeoutId)
-      lastActivityReset = Date.now()
-      activityTimeoutId = setTimeout(() => {
-        const elapsed = Date.now() - lastActivityReset
-        console.warn('[AI] Stream inactivity timeout - no activity for', elapsed, 'ms (threshold:', ACTIVITY_TIMEOUT_MS, 'ms)')
-        timeoutReason = 'inactivity'
-        abortController.abort()
-      }, ACTIVITY_TIMEOUT_MS)
+      if (ACTIVITY_TIMEOUT_MS > 0) {
+        clearTimeout(activityTimeoutId)
+        lastActivityReset = Date.now()
+        activityTimeoutId = setTimeout(() => {
+          const elapsed = Date.now() - lastActivityReset
+          console.warn('[AI] Stream inactivity timeout - no activity for', elapsed, 'ms (threshold:', ACTIVITY_TIMEOUT_MS, 'ms)')
+          timeoutReason = 'inactivity'
+          abortController.abort()
+        }, ACTIVITY_TIMEOUT_MS)
+      }
     }
     resetActivityTimeout()
 
-    // Also set a hard maximum timeout
-    const maxTimeoutId = setTimeout(() => {
-      console.warn('[AI] Stream max timeout - aborting after', STREAM_TIMEOUT_MS, 'ms')
-      timeoutReason = 'max'
-      abortController.abort()
-    }, STREAM_TIMEOUT_MS)
+    // Also set a hard maximum timeout (if enabled)
+    let maxTimeoutId: ReturnType<typeof setTimeout> | undefined
+    if (STREAM_TIMEOUT_MS > 0) {
+      maxTimeoutId = setTimeout(() => {
+        console.warn('[AI] Stream max timeout - aborting after', STREAM_TIMEOUT_MS, 'ms')
+        timeoutReason = 'max'
+        abortController.abort()
+      }, STREAM_TIMEOUT_MS)
+    }
 
     // Set up progress callback to forward agent updates to frontend
     setGlobalProgressCallback((agentId, agent) => {
