@@ -21,6 +21,21 @@ export interface ChangelogEntry {
 
 export const changelog: ChangelogEntry[] = [
   {
+    version: '0.7.31',
+    date: '2026-02-01',
+    changes: {
+      fixed: [
+        'Stop button now saves partial response instead of losing it',
+        'Sub-agent premature completion detection catches more edge cases',
+      ],
+      changed: [
+        'Sub-agent display simplified to "{Name}: {Task}" format',
+        'Artifact creation shows simple indicator instead of streaming content',
+        'Console logging significantly reduced for cleaner output',
+      ],
+    },
+  },
+  {
     version: '0.7.15',
     date: '2026-01-31',
     changes: {

@@ -467,16 +467,11 @@ export async function spawnSubAgent(params: {
 
   activeAgents.set(agentId, agent)
 
-  console.log(`[SubAgents] Spawning agent: ${displayName} (${agentId})`)
-  console.log(`[SubAgents] Internal name: ${params.name}`)
-  console.log(`[SubAgents] Task: ${params.task.slice(0, 100)}...`)
-  console.log(`[SubAgents] Provider: ${params.providerId}, Model: ${params.model}`)
+  console.log(`[SubAgents] Spawning: ${displayName} (${params.model})`)
 
   // Start the agent asynchronously
   runSubAgent(agentId)
-    .then(() => {
-      console.log(`[SubAgents] Agent ${params.name} runSubAgent completed`)
-    })
+    .then(() => {})
     .catch((error) => {
       console.error(`[SubAgents] Agent ${params.name} FAILED:`, error.message)
       console.error(`[SubAgents] Error stack:`, error.stack?.split('\n').slice(0, 5).join('\n'))
@@ -1033,19 +1028,14 @@ Call this tool at natural checkpoints:
  * Run a sub-agent (internal)
  */
 async function runSubAgent(agentId: string): Promise<void> {
-  console.log(`[SubAgents] runSubAgent called for: ${agentId}`)
-
   const agent = activeAgents.get(agentId)
   if (!agent) {
     console.error(`[SubAgents] Agent not found: ${agentId}`)
     return
   }
   if (agent.status === 'dismissed') {
-    console.log(`[SubAgents] Agent already dismissed: ${agentId}`)
     return
   }
-
-  console.log(`[SubAgents] Agent ${agent.name} starting execution...`)
 
   // Mark as running
   agent.status = 'running'
@@ -1059,13 +1049,9 @@ async function runSubAgent(agentId: string): Promise<void> {
     console.error(`[SubAgents] Provider not found: ${agent.providerId}`)
     throw new Error(`Provider not found: ${agent.providerId}`)
   }
-  console.log(`[SubAgents] Provider config found: ${providerConfig.type}`)
 
   const apiKey = await keychainService.getApiKey(agent.providerId)
-  console.log(`[SubAgents] API key retrieved: ${apiKey ? 'yes' : 'no'}`)
-
   const client = getProviderClient(providerConfig, apiKey)
-  console.log(`[SubAgents] Provider client created`)
 
   // Create abort controller
   const abortController = new AbortController()
@@ -1102,7 +1088,6 @@ async function runSubAgent(agentId: string): Promise<void> {
           agentId,
           agentName: agent.name,
         })
-        console.log(`[SubAgents] ${agent.name} sent artifact "${artifact.title}" to renderer`)
       }
     }
 
@@ -1112,11 +1097,6 @@ async function runSubAgent(agentId: string): Promise<void> {
       agentName: agent.name,
       sendArtifact,
     })
-
-    console.log(`[SubAgents] ${agent.name} starting with ${Object.keys(tools).length} tools:`, Object.keys(tools))
-
-    console.log(`[SubAgents] ${agent.name} calling streamText with model: ${agent.model}`)
-    console.log(`[SubAgents] ${agent.name} message count: ${agent.messages.length}`)
 
     // Stream response
     // IMPORTANT: Use .chat() to get Chat Completions API endpoint
@@ -1131,28 +1111,12 @@ async function runSubAgent(agentId: string): Promise<void> {
       abortSignal: abortController.signal,
     })
 
-    console.log(`[SubAgents] ${agent.name} streamText returned, processing stream...`)
-
     // Accumulate the result using fullStream to handle text AND tool calls
     let fullText = ''
-    let eventCount = 0
     let currentToolInput = '' // Accumulated tool input for artifact preview
 
     for await (const part of response.fullStream) {
       if (agent.status === 'dismissed') break
-
-      eventCount++
-      // Debug: log all event types to see what we're receiving
-      if (eventCount <= 10 || part.type === 'finish' || part.type === 'error') {
-        if (part.type === 'text-delta') {
-          // Log full structure to find the right property
-          console.log(`[SubAgents] ${agent.name} stream event #${eventCount}: text-delta`,
-            JSON.stringify(part, null, 0).slice(0, 200))
-        } else {
-          console.log(`[SubAgents] ${agent.name} stream event #${eventCount}: ${part.type}`,
-            part.type === 'error' ? (part as any).error : '')
-        }
-      }
 
       switch (part.type) {
         case 'text-delta':
@@ -1175,7 +1139,6 @@ async function runSubAgent(agentId: string): Promise<void> {
           // For sub-agents, we just log reasoning - don't expose to UI
           const reasoningContent = (part as any).text || (part as any).content || (part as any).thinking || (part as any).reasoning || ''
           if (reasoningContent) {
-            console.log(`[SubAgents] ${agent.name} reasoning: ${reasoningContent.slice(0, 100)}...`)
             agent.lastActivityAt = Date.now()
           }
           break
@@ -1185,12 +1148,7 @@ async function runSubAgent(agentId: string): Promise<void> {
           const startToolName = (part as any).toolName || (part as any).name
           if (startToolName === 'create_artifact') {
             // Request preview lock from artifact stream manager
-            const hasLock = artifactStreamManager.requestPreview(agentId, agent.name)
-            if (hasLock) {
-              console.log(`[SubAgents] ${agent.name} acquired artifact preview lock`)
-            } else {
-              console.log(`[SubAgents] ${agent.name} creating artifact in background (another agent has preview)`)
-            }
+            artifactStreamManager.requestPreview(agentId, agent.name)
             // Reset accumulated input for this artifact
             currentToolInput = ''
           }
@@ -1237,10 +1195,7 @@ async function runSubAgent(agentId: string): Promise<void> {
           lastArtifactPreviewUpdate.delete(agentId)
 
           // Release preview lock when artifact tool completes
-          const nextStream = artifactStreamManager.releasePreview(agentId)
-          if (nextStream) {
-            console.log(`[SubAgents] Preview auto-switching to ${nextStream.agentName}`)
-          }
+          artifactStreamManager.releasePreview(agentId)
           agent.lastActivityAt = Date.now()
           break
         }
@@ -1261,7 +1216,6 @@ async function runSubAgent(agentId: string): Promise<void> {
             name: tcToolName,
             input: toolArgs,
           })
-          console.log(`[SubAgents] ${agent.name} calling tool: ${tcToolName}`)
           agent.lastActivityAt = Date.now()
           notifyProgress(agentId, agent)
           break
@@ -1281,7 +1235,6 @@ async function runSubAgent(agentId: string): Promise<void> {
           if (toolCall) {
             toolCall.output = toolResult
           }
-          console.log(`[SubAgents] ${agent.name} tool result for: ${trToolCallId}`)
           agent.lastActivityAt = Date.now()
           notifyProgress(agentId, agent)
           break
@@ -1308,11 +1261,6 @@ async function runSubAgent(agentId: string): Promise<void> {
 
     if (agent.status === 'dismissed') return
 
-    console.log(`[SubAgents] ${agent.name} stream finished. Events: ${eventCount}, Text length: ${fullText.length}, Tool calls: ${agent.toolCalls.length}`)
-    if (fullText.length > 0) {
-      console.log(`[SubAgents] ${agent.name} result preview: "${fullText.slice(0, 200)}..."`)
-    }
-
     // Check if agent is asking a question
     const parsed = parseAgentResponse(fullText)
 
@@ -1330,51 +1278,60 @@ async function runSubAgent(agentId: string): Promise<void> {
       agent.progress = parsed.cleanText
       agent.lastActivityAt = Date.now()
       notifyProgress(agentId, agent)
-      console.log(`[SubAgents] ${agent.name} paused with question: ${parsed.question.question}`)
     } else {
       // Check for premature completion - agent stopped without producing output
       const hasArtifacts = agent.createdArtifacts.length > 0
-      const hasSubstantialText = fullText.trim().length > 100
-      const onlyCalledReportProgress = agent.toolCalls.every(tc => tc.name === 'report_progress')
       const hasOutputToolCalls = agent.toolCalls.some(tc =>
         ['create_artifact', 'write_file'].includes(tc.name)
       )
+      const calledReportProgress = agent.toolCalls.some(tc => tc.name === 'report_progress')
+      const onlyCalledReportProgress = calledReportProgress &&
+        agent.toolCalls.every(tc => tc.name === 'report_progress')
 
-      // Premature completion: called report_progress but never created actual output
+      // Detect if task requires creating output based on task description
+      const taskLower = agent.task.toLowerCase()
+      const taskRequiresOutput = /\b(create|build|make|implement|write|generate|develop|design|code)\b/.test(taskLower)
+
+      // Premature completion detection:
+      // 1. If only called report_progress with no output - definitely premature
+      // 2. If task requires output but no output tools called and no artifacts - likely premature
+      const isPrematureNoOutput = onlyCalledReportProgress && agent.toolCalls.length > 0 && !hasArtifacts
+      const isPrematureMissingDeliverable = taskRequiresOutput && !hasOutputToolCalls && !hasArtifacts && calledReportProgress
+
       const MAX_AUTO_CONTINUE_ATTEMPTS = 2
-      if (onlyCalledReportProgress && agent.toolCalls.length > 0 && !hasArtifacts && !hasSubstantialText) {
+      if (isPrematureNoOutput || isPrematureMissingDeliverable) {
         agent.autoContinueAttempts++
-        console.warn(`[SubAgents] ${agent.name} appears to have completed prematurely (only called report_progress)`)
-        console.warn(`[SubAgents] ${agent.name} auto-continue attempt ${agent.autoContinueAttempts}/${MAX_AUTO_CONTINUE_ATTEMPTS}`)
 
         if (agent.autoContinueAttempts > MAX_AUTO_CONTINUE_ATTEMPTS) {
           // Too many attempts - fail the agent
-          console.error(`[SubAgents] ${agent.name} failed after ${MAX_AUTO_CONTINUE_ATTEMPTS} premature completions`)
           agent.status = 'failed'
-          agent.error = `Agent repeatedly stopped without completing its task. It called report_progress ${agent.toolCalls.length} time(s) but never created the requested output. This may be a model-specific issue.`
+          const reason = isPrematureNoOutput
+            ? `called report_progress ${agent.toolCalls.length} time(s) but never created output`
+            : `task required output but agent stopped without creating artifacts or files`
+          agent.error = `Agent repeatedly stopped without completing its task (${reason}). This may be a model-specific issue.`
           agent.completedAt = Date.now()
           agent.lastActivityAt = Date.now()
           notifyProgress(agentId, agent)
           return
         }
 
-        console.log(`[SubAgents] ${agent.name} auto-continuing with reminder to complete task...`)
-
         // Auto-continue the agent with a strong reminder
+        const reminderMessage = isPrematureNoOutput
+          ? `You called report_progress but then stopped. report_progress is ONLY for status updates - you have NOT finished your work.`
+          : `You stopped without creating the required output. Your task requires creating artifacts or files, which you haven't done yet.`
+
         agent.messages.push({
           role: 'user',
-          content: `IMPORTANT: You called report_progress but then stopped without completing your task.
-
-The report_progress tool is ONLY for status updates. You have NOT finished your work yet.
+          content: `IMPORTANT: ${reminderMessage}
 
 Your task was: ${agent.task}
 
 You MUST now:
 1. Continue working on the task
-2. Create the actual output (use create_artifact for content, write_file for files, etc.)
-3. Only stop when your deliverable is complete
+2. Create the actual output (use create_artifact for visual content, write_file for files)
+3. Only stop AFTER your deliverable is complete
 
-Resume your work now.`,
+Do NOT just describe what you would create - actually create it now.`,
         })
         agent.lastActivityAt = Date.now()
 
@@ -1394,13 +1351,6 @@ Resume your work now.`,
       agent.result = fullText
       agent.completedAt = Date.now()
       agent.lastActivityAt = Date.now()
-
-      // Log completion details for debugging
-      console.log(`[SubAgents] ${agent.name} completed:`)
-      console.log(`  - Text length: ${fullText.length}`)
-      console.log(`  - Artifacts: ${agent.createdArtifacts.length}`)
-      console.log(`  - Tool calls: ${agent.toolCalls.map(tc => tc.name).join(', ') || 'none'}`)
-
       notifyProgress(agentId, agent)
     }
 
@@ -1493,7 +1443,6 @@ export function dismissSubAgent(agentId: string): { success: boolean; error?: st
   // Clean up progress tracking to prevent memory leaks
   lastProgressUpdate.delete(agentId)
 
-  console.log(`[SubAgents] Dismissed agent: ${agent.name} (${agentId})`)
   return { success: true }
 }
 
@@ -2104,8 +2053,6 @@ export function increaseAgentLimit(conversationId: string, additionalAgents: num
   conversationAgentLimits.set(conversationId, newLimit)
 
   const current = conversationAgentCounts.get(conversationId) || 0
-  console.log(`[SubAgents] Increased limit for conversation ${conversationId}: ${currentLimit} -> ${newLimit} (current: ${current})`)
-
   return { newLimit, current }
 }
 

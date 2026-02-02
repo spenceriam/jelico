@@ -41,7 +41,6 @@ export function CanvasPanel() {
     getBaseArtifactId,
     closeCanvas,
     removeArtifact,
-    streamingPreview,
   } = useArtifactStore()
   const { activeConversationId } = useChatStore()
   const [dropdownOpen, setDropdownOpen] = useState(false)
@@ -166,24 +165,8 @@ export function CanvasPanel() {
                 )}
               </>
             )}
-            {!displayArtifact && !streamingPreview && (
+            {!displayArtifact && (
               <span className="text-sm text-text-muted">No artifact selected</span>
-            )}
-            {streamingPreview && !displayArtifact && (
-              <div className="flex items-center gap-2">
-                {(() => {
-                  const Icon = streamingPreview.type ? (TYPE_ICONS[streamingPreview.type as ArtifactType] || DEFAULT_TYPE_ICON) : FileCode
-                  return <Icon className="w-5 h-5 text-accent flex-shrink-0" />
-                })()}
-                <div className="text-left min-w-0">
-                  <h3 className="text-sm font-medium text-text-primary truncate">
-                    {streamingPreview.title || 'Generating...'}
-                  </h3>
-                  <span className="text-xs text-accent">
-                    Generating...
-                  </span>
-                </div>
-              </div>
             )}
           </div>
 
@@ -270,9 +253,7 @@ export function CanvasPanel() {
 
       {/* Content - with vertical scroll. min-h-0 fixes flexbox height calculation for Monaco */}
       <div className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden">
-        {streamingPreview ? (
-          <StreamingArtifactContent preview={streamingPreview} />
-        ) : displayArtifact ? (
+        {displayArtifact ? (
           <ArtifactContent artifact={displayArtifact} />
         ) : conversationArtifacts.length === 0 ? (
           <EmptyState />
@@ -356,42 +337,5 @@ function EmptyState() {
         </p>
       </div>
     </div>
-  )
-}
-
-// Uses the normal artifact viewers but in streaming mode
-function StreamingArtifactContent({ preview }: { preview: { type?: string; title?: string; content: string } }) {
-  // Route to the appropriate viewer with streaming flag
-  if (preview.type === 'html' || preview.type === 'svg') {
-    return <HtmlViewer html={preview.content} isStreaming />
-  }
-
-  if (preview.type === 'code') {
-    return (
-      <CodeViewer
-        code={preview.content}
-        language="text"
-        title={preview.title || 'Generating...'}
-        isStreaming
-      />
-    )
-  }
-
-  if (preview.type === 'mermaid') {
-    return <MermaidViewer content={preview.content} title={preview.title} isStreaming />
-  }
-
-  if (preview.type === 'document') {
-    return <DocumentViewer content={preview.content} isStreaming />
-  }
-
-  // Default: treat as code
-  return (
-    <CodeViewer
-      code={preview.content}
-      language="text"
-      title={preview.title || 'Generating...'}
-      isStreaming
-    />
   )
 }

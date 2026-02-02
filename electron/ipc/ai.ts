@@ -1756,31 +1756,23 @@ When the user asks to modify, update, fix, or improve an existing artifact, use 
                   currentToolInputId = startToolId
                 }
 
-                console.log('[AI] tool-input-start - captured:', { toolName: startToolName, toolId: startToolId })
-                console.log('[AI]   Full event JSON:', JSON.stringify(part, null, 2))
+                if (DEBUG_API_REQUESTS) {
+                  console.log('[AI] tool-input-start:', { toolName: startToolName, toolId: startToolId })
+                }
                 break
               }
 
               case 'tool-input-end': {
-                // ALWAYS log to debug cross-provider issues
-                console.log('[AI] tool-input-end - ALL PROPERTIES:')
-                console.log('[AI]   Full event JSON:', JSON.stringify(part, null, 2))
-                console.log('[AI]   Accumulated input length:', accumulatedToolInput.length)
-                console.log('[AI]   Accumulated input preview:', accumulatedToolInput.slice(0, 500))
-
                 // Check if the tool-input-end event includes the full input
                 const anyPart = part as any
                 const endInput = anyPart.input || anyPart.args || anyPart.arguments || anyPart.toolInput || anyPart.function?.arguments
-                console.log('[AI]   Extracted endInput:', endInput)
 
                 // If we got input in the end event, use it (some providers send all at once)
                 if (endInput && typeof endInput === 'string' && endInput.trim()) {
                   accumulatedToolInput = endInput
-                  console.log('[AI]   Used string endInput')
                 } else if (endInput && typeof endInput === 'object' && Object.keys(endInput).length > 0) {
                   // If it's already an object, stringify it for consistency
                   accumulatedToolInput = JSON.stringify(endInput)
-                  console.log('[AI]   Used object endInput, stringified')
                 }
                 break
               }
@@ -1789,15 +1781,6 @@ When the user asks to modify, update, fix, or improve an existing artifact, use 
                 // Track and accumulate tool input for providers that stream args separately
                 const anyPart = part as any
                 const inputDelta = anyPart.inputTextDelta || anyPart.delta || anyPart.argsTextDelta || ''
-
-                // Log first delta and every 10th to track what we're receiving
-                if (toolInputCharCount === 0 || toolInputCharCount % 1000 < inputDelta.length) {
-                  console.log('[AI] tool-input-delta received:')
-                  console.log('[AI]   inputTextDelta:', anyPart.inputTextDelta)
-                  console.log('[AI]   delta:', anyPart.delta)
-                  console.log('[AI]   argsTextDelta:', anyPart.argsTextDelta)
-                  console.log('[AI]   Full event:', JSON.stringify(part, null, 2))
-                }
 
                 accumulatedToolInput += inputDelta
                 toolInputCharCount += inputDelta.length
@@ -1815,18 +1798,8 @@ When the user asks to modify, update, fix, or improve an existing artifact, use 
                     charCount: toolInputCharCount,
                   })
 
-                  // Stream artifact content preview for create_artifact tool
-                  if (toolName === 'create_artifact' && accumulatedToolInput.length > 50) {
-                    const preview = extractPartialArtifactContent(accumulatedToolInput)
-                    if (preview) {
-                      console.log('[AI] Sending artifact preview:', {
-                        type: preview.type,
-                        title: preview.title,
-                        contentLength: preview.content.length,
-                      })
-                      event.sender.send(`ai:artifactPreview:${channelId}`, preview)
-                    }
-                  }
+                  // Disabled: Don't stream artifact preview - wait for completion
+                  // This was causing Monaco editor issues and confusing UX
                 }
                 break
               }
@@ -1841,7 +1814,6 @@ When the user asks to modify, update, fix, or improve an existing artifact, use 
                   break
                 }
 
-                console.log('[AI] Tool call starting:', toolName)
                 // Track this as the current tool receiving input
                 currentToolInputId = toolCallId
                 currentToolInputName = toolName
@@ -1865,23 +1837,7 @@ When the user asks to modify, update, fix, or improve an existing artifact, use 
 
               case 'tool-call': {
                 hadAnyToolCalls = true
-
-                // ALWAYS log full event to diagnose argument issues across providers
-                console.log('[AI] tool-call event - ALL PROPERTIES:')
-                console.log('[AI]   type:', part.type)
-                console.log('[AI]   toolCallId:', part.toolCallId)
-                console.log('[AI]   toolName:', part.toolName)
-                console.log('[AI]   args:', part.args)
-                console.log('[AI]   args type:', typeof part.args)
-                console.log('[AI]   args keys:', part.args ? Object.keys(part.args) : 'N/A')
-                // Check all possible property names
                 const anyPart = part as any
-                console.log('[AI]   (any).input:', anyPart.input)
-                console.log('[AI]   (any).arguments:', anyPart.arguments)
-                console.log('[AI]   (any).parameters:', anyPart.parameters)
-                console.log('[AI]   (any).function:', anyPart.function)
-                console.log('[AI]   (any).function?.arguments:', anyPart.function?.arguments)
-                console.log('[AI]   Full part JSON:', JSON.stringify(part, null, 2))
 
                 // Validate and extract properties with fallbacks
                 const tcToolCallId = part.toolCallId || (part as any).id
@@ -1900,9 +1856,7 @@ When the user asks to modify, update, fix, or improve an existing artifact, use 
                 if (typeof toolArgs === 'string' && toolArgs.trim()) {
                   try {
                     toolArgs = JSON.parse(toolArgs)
-                    console.log('[AI] Parsed string tool args:', tcToolName, toolArgs)
-                  } catch (e) {
-                    console.warn('[AI] Failed to parse string tool args:', e)
+                  } catch {
                     toolArgs = {}
                   }
                 }
@@ -1911,10 +1865,7 @@ When the user asks to modify, update, fix, or improve an existing artifact, use 
                 if ((!toolArgs || Object.keys(toolArgs).length === 0) && accumulatedToolInput.trim()) {
                   try {
                     toolArgs = JSON.parse(accumulatedToolInput)
-                    console.log('[AI] Parsed tool args from accumulated input:', tcToolName, toolArgs)
-                  } catch (e) {
-                    console.warn('[AI] Failed to parse accumulated tool input:', e)
-                    console.warn('[AI] Accumulated input was:', accumulatedToolInput.slice(0, 500))
+                  } catch {
                     toolArgs = {}
                   }
                 }
@@ -1924,9 +1875,8 @@ When the user asks to modify, update, fix, or improve an existing artifact, use 
                 if ((!toolArgs || Object.keys(toolArgs).length === 0) && storedInput?.trim()) {
                   try {
                     toolArgs = JSON.parse(storedInput)
-                    console.log('[AI] Parsed tool args from stored input:', tcToolName, toolArgs)
-                  } catch (e) {
-                    console.warn('[AI] Failed to parse stored tool input:', e)
+                  } catch {
+                    // Ignore parsing errors
                   }
                 }
 
@@ -1938,8 +1888,6 @@ When the user asks to modify, update, fix, or improve an existing artifact, use 
                 toolInputCharCount = 0
                 accumulatedToolInput = ''
                 accumulatedToolInputByCallId.delete(tcToolCallId)
-
-                console.log('[AI] Tool call ready:', tcToolName, toolArgs)
 
                 const existingExec = toolTracker.get(tcToolCallId)
                 if (existingExec) {
@@ -1961,7 +1909,6 @@ When the user asks to modify, update, fix, or improve an existing artifact, use 
                     status: 'executing',
                   })
                 } else {
-                  console.log('[AI] Tool call without streaming-start, sending as new')
                   event.sender.send(`ai:toolCalls:${channelId}`, [{
                     id: tcToolCallId,
                     name: tcToolName,
@@ -1980,9 +1927,6 @@ When the user asks to modify, update, fix, or improve an existing artifact, use 
                   console.warn('[AI] tool-result missing toolCallId:', part)
                   break
                 }
-
-                console.log('[AI] Tool result:', trToolCallId,
-                  typeof toolResult === 'object' ? JSON.stringify(toolResult).slice(0, 100) : toolResult)
 
                 // Update tracker with result
                 const exec = toolTracker.get(trToolCallId)
@@ -2061,7 +2005,6 @@ When the user asks to modify, update, fix, or improve an existing artifact, use 
           const finalText = await result.text
           // Only send if NO text was streamed at all (prevents duplicate sending on timeout)
           if (finalText && totalStreamedTextLength === 0) {
-            console.log('[AI] Text not streamed, using final result:', finalText.slice(0, 100) + '...')
             event.sender.send(`ai:chunk:${channelId}`, finalText)
             textAfterLastToolResult = finalText
           }
@@ -2108,21 +2051,14 @@ When the user asks to modify, update, fix, or improve an existing artifact, use 
 
           // Check for running sub-agents that weren't waited for
           const activeAgents = getSubAgentsForStream(channelId)
-          console.log(`[AI] Sub-agents for this stream: ${activeAgents.length}`, activeAgents.map(a => `${a.name}:${a.status}`))
           const runningAgents = activeAgents.filter(a => a.status === 'running' || a.status === 'pending')
 
           // If there are running agents, wait for them with appropriate timeout
           if (runningAgents.length > 0 && !abortController.signal.aborted) {
-            console.log('[AI] Waiting for', runningAgents.length, 'running sub-agent(s)...')
-
             for (const agent of runningAgents) {
               try {
                 // Use 2-minute timeout per agent - complex tasks like artifact generation need time
-                const agentResult = await waitForSubAgent(agent.id, 120000)
-                console.log(`[AI] Agent ${agent.name} completed:`, agentResult.success ? 'success' : 'failed')
-                if (agentResult.createdArtifacts?.length) {
-                  console.log(`[AI] Agent ${agent.name} created artifacts:`, agentResult.createdArtifacts)
-                }
+                await waitForSubAgent(agent.id, 120000)
               } catch (e) {
                 console.warn(`[AI] Failed to wait for agent ${agent.name}:`, e)
               }
@@ -2135,17 +2071,8 @@ When the user asks to modify, update, fix, or improve an existing artifact, use 
           const hasTextAfterTools = textAfterLastToolResult.trim().length > 50
           const usedSubAgents = activeAgents.length > 0
 
-          console.log('[AI] Summary detection:', {
-            hadAnyToolCalls,
-            textAfterLastToolResult: textAfterLastToolResult.length,
-            hasTextAfterTools,
-            usedSubAgents,
-            finishReason,
-          })
-
           // Generate summary if tools were used OR sub-agents were spawned (to announce artifacts)
           if ((hadAnyToolCalls || usedSubAgents) && !hasTextAfterTools && !abortController.signal.aborted) {
-            console.log('[AI] Generating summary for tool results...')
 
             // Build proper context with actual tool results and sub-agent artifacts
             const toolContext = buildToolContext(toolTracker)
@@ -2204,14 +2131,6 @@ Be concise but informative. The user needs to understand what happened.`,
           }
 
           const totalTokens = promptTokens + completionTokens
-
-          console.log('[AI] Stream completed:', {
-            finishReason,
-            promptTokens,
-            completionTokens,
-            totalTokens,
-            toolsExecuted: toolTracker.size,
-          })
 
           // Signal completion with stats
           if (!abortController.signal.aborted) {

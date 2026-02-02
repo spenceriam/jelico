@@ -299,10 +299,11 @@ export function initArtifactListeners() {
     useArtifactStore.getState().clearStreamingPreview()
   })
 
-  // Listen for sub-agent artifact preview streaming
-  window.jelico.ai.onSubAgentArtifactPreview((preview) => {
-    useArtifactStore.getState().setStreamingPreview(preview)
-  })
+  // Disabled: Don't stream artifact preview - wait until complete
+  // The streaming was causing Monaco editor issues and confusing UX
+  // window.jelico.ai.onSubAgentArtifactPreview((preview) => {
+  //   useArtifactStore.getState().setStreamingPreview(preview)
+  // })
 
   // Listen for artifact status updates (multiple artifacts generating)
   window.jelico.ai.onArtifactStatus((status) => {

@@ -135,7 +135,7 @@ interface ChatStore {
   sendMessage: (content: string, providerId: string, model: string, attachments?: MessageAttachment[]) => Promise<void>
   queueMessage: (content: string, providerId: string, model: string, attachments?: MessageAttachment[]) => void
   processQueue: () => Promise<void>
-  stopStreaming: () => void
+  stopStreaming: () => Promise<void>
   deleteConversation: (id: string) => Promise<void>
   setMode: (mode: AgentMode) => void
   setModeTransitioning: (transitioning: boolean) => void
@@ -878,7 +878,14 @@ export const useChatStore = create<ChatStore>((set, get) => ({
     await get().sendMessage(nextMessage.content, nextMessage.providerId, nextMessage.model, nextMessage.attachments)
   },
 
-  stopStreaming: () => {
+  stopStreaming: async () => {
+    const {
+      streamingContent,
+      streamingToolCalls,
+      streamingToolResults,
+      activeConversationId,
+    } = get()
+
     if (currentStreamChannelId) {
       window.jelico.ai.stopStream(currentStreamChannelId)
       window.jelico.ai.removeListeners(currentStreamChannelId)
@@ -887,6 +894,29 @@ export const useChatStore = create<ChatStore>((set, get) => ({
 
     // Clear streaming preview to prevent stale artifact content
     useArtifactStore.getState().clearStreamingPreview()
+
+    // Save partial response if there's content or tool activity
+    const hasContent = streamingContent.trim().length > 0
+    const hasToolCalls = streamingToolCalls.length > 0
+
+    if (activeConversationId && (hasContent || hasToolCalls)) {
+      try {
+        // Save the partial response to the database
+        const partialMessage = await window.jelico.conversations.addMessage(activeConversationId, {
+          role: 'assistant',
+          content: hasContent ? streamingContent : '(Stopped)',
+          toolCalls: hasToolCalls ? streamingToolCalls : undefined,
+          toolResults: streamingToolResults.length > 0 ? streamingToolResults : undefined,
+        })
+
+        // Add to local messages array
+        set((state) => ({
+          messages: [...state.messages, partialMessage],
+        }))
+      } catch (error) {
+        console.error('[Chat Store] Failed to save partial response on stop:', error)
+      }
+    }
 
     set({
       isStreaming: false,
