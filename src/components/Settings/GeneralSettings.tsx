@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { Check, Moon, Sun, Monitor, Palette, User, Brain, Sparkles } from 'lucide-react'
+import { Check, Moon, Sun, Monitor, Palette, User, Brain, Sparkles, Package } from 'lucide-react'
 import { useThemeStore, COLOR_THEMES, type ThemeMode } from '../../stores/theme'
 import { useChatStore } from '../../stores/chat'
 import type { AgentMode } from '../../lib/modes'
@@ -34,17 +34,21 @@ export function GeneralSettings() {
   // Memory settings
   const [learningEnabled, setLearningEnabled] = useState(true)
 
+  // Sandbox settings
+  const [crossSandboxSearch, setCrossSandboxSearch] = useState(false)
+
   // Load user profile from soul
   useEffect(() => {
     async function loadProfile() {
       setIsLoadingProfile(true)
       try {
-        const [name, intentions, preferences, additional, learning] = await Promise.all([
+        const [name, intentions, preferences, additional, learning, crossSandbox] = await Promise.all([
           window.jelico.soul.getPreference('userName'),
           window.jelico.soul.getPreference('userIntentions'),
           window.jelico.soul.getPreference('userPreferences'),
           window.jelico.soul.getPreference('additionalInfo'),
           window.jelico.soul.getPreference('learningEnabled'),
+          window.jelico.soul.getPreference('crossSandboxSearch'),
         ])
 
         if (name?.value) setUserName(name.value as string)
@@ -52,6 +56,7 @@ export function GeneralSettings() {
         if (preferences?.value) setUserPreferences(preferences.value as string)
         if (additional?.value) setAdditionalInfo(additional.value as string)
         if (learning?.value !== undefined) setLearningEnabled(learning.value as boolean)
+        if (crossSandbox?.value !== undefined) setCrossSandboxSearch(crossSandbox.value as boolean)
       } catch (err) {
         console.error('Failed to load profile:', err)
       } finally {
@@ -87,12 +92,27 @@ export function GeneralSettings() {
     }
   }
 
+  const handleSaveSandboxSettings = async () => {
+    try {
+      await window.jelico.soul.setPreference('crossSandboxSearch', crossSandboxSearch, 1.0)
+    } catch (err) {
+      console.error('Failed to save sandbox settings:', err)
+    }
+  }
+
   // Save learning settings when they change
   useEffect(() => {
     if (!isLoadingProfile) {
       handleSaveLearningSettings()
     }
   }, [learningEnabled])
+
+  // Save sandbox settings when they change
+  useEffect(() => {
+    if (!isLoadingProfile) {
+      handleSaveSandboxSettings()
+    }
+  }, [crossSandboxSearch])
 
   return (
     <div className="space-y-8">
@@ -307,6 +327,51 @@ export function GeneralSettings() {
           <p className="text-sm text-text-muted">
             When enabled, Jelico learns your preferences, coding style, and common corrections over time.
             You can view and manage what Jelico has learned in the Memory section of the Backup settings.
+          </p>
+        </div>
+      </section>
+
+      {/* Sandbox Section */}
+      <section>
+        <h3 className="text-lg font-medium text-text-primary mb-4 flex items-center gap-2">
+          <Package className="w-5 h-5" />
+          Sandbox
+        </h3>
+
+        <div className="space-y-4">
+          {/* Cross-sandbox search toggle */}
+          <div className="flex items-center justify-between p-4 bg-bg-elevated rounded-lg border border-border">
+            <div>
+              <div className="font-medium text-text-primary">Allow cross-conversation sandbox search</div>
+              <div className="text-sm text-text-muted">
+                When enabled and you explicitly request it, Jelico can search files in other conversation sandboxes
+              </div>
+            </div>
+            <button
+              onClick={() => setCrossSandboxSearch(!crossSandboxSearch)}
+              className={`w-12 h-6 rounded-full transition-colors relative ${
+                crossSandboxSearch ? 'bg-accent' : 'bg-bg-deep'
+              }`}
+            >
+              <div
+                className={`absolute top-1 w-4 h-4 rounded-full bg-white transition-transform ${
+                  crossSandboxSearch ? 'translate-x-7' : 'translate-x-1'
+                }`}
+              />
+            </button>
+          </div>
+
+          <div className="p-3 bg-warning/10 border border-warning/30 rounded-lg">
+            <p className="text-sm text-warning">
+              <strong>Important:</strong> Even when enabled, Jelico will only search other sandboxes when you explicitly ask.
+              The AI will never proactively search other conversation sandboxes on its own.
+            </p>
+          </div>
+
+          <p className="text-sm text-text-muted">
+            Each conversation has its own isolated sandbox directory. Files created without a workspace
+            are stored there. This setting allows searching across sandboxes when you need to find
+            something from a previous session.
           </p>
         </div>
       </section>

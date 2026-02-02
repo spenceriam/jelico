@@ -72,7 +72,7 @@ The Soul/Memory system should make Jelico increasingly personalized - it learns 
 ## Project overview
 Jelico is an AI Productivity Desktop built with Electron, React, TypeScript, and Vite. It provides a frictionless AI assistant experience with multi-provider support (Anthropic, OpenAI, Google), workspace management, conversation persistence, and a soul/memory system that learns user patterns and preferences over time.
 
-**Current Version:** 0.7.34
+**Current Version:** 0.7.41
 
 ## Development workflow discipline
 - **CRITICAL**: NEVER commit or push changes without explicit user approval
@@ -529,25 +529,56 @@ Jelico protects users from destructive AI actions with an approval workflow.
 
 ## Greeting system
 
-800+ unique greeting combinations in ChatArea, designed to never repeat:
+1500+ unique greeting combinations in ChatArea, designed to never repeat:
 
 **Structure:**
-- **Question greetings** (50+): Stand alone, no follow-up needed
-- **Statement greetings** (33): Paired with tone-matched follow-ups (27)
-- **Distribution**: 60% questions, 40% statements with follow-ups
+- **Question greetings** (70+): Stand alone, including coding-specific questions
+- **Statement greetings** (64): Paired with tone-matched follow-ups (51)
+- **Special greetings** (10): Rare (5% chance) memorable greetings
+- **Distribution**: 55% questions, 40% statements with follow-ups, 5% special
 
 **Time periods:**
 - **Morning** (5am-12pm): Fresh, productive greetings
 - **Afternoon** (12pm-5pm): Check-in style greetings
 - **Evening** (5pm-9pm): Winding down but helpful
-- **Night** (9pm-5am): Calm/warm tone greetings (non-judgmental about late hours)
+- **Night** (9pm-5am): Night owl, coding-specific greetings
 
 **Tones** (for statement+follow-up pairs):
 - **Warm**: Welcoming, supportive
 - **Energetic**: Action-oriented, ready to build
 - **Calm**: Patient, no pressure
+- **Curious**: Interested in user's projects
+- **Playful**: Code-themed humor ("The compiler awaits")
 
 Greetings personalize with user name when available from soul preferences.
+
+## Sandbox System
+
+Per-conversation sandbox for file creation when no workspace is selected.
+
+**Architecture:**
+- Each conversation gets its own sandbox: `~/.jelico/sandbox/{conversation-id}/`
+- Files created without a workspace go to the conversation's sandbox
+- Sandbox files shown in sidebar under each conversation
+- Export button to copy sandbox files to a real directory
+
+**Key Rules:**
+- Sandbox is per-conversation (no cross-pollination)
+- AI/sub-agents MUST NOT search other sandboxes without explicit user request
+- Even with "Allow cross-sandbox search" enabled, user must explicitly ask
+- System prompt enforces this rule
+
+**Files:**
+- `electron/services/sandbox.ts` - Sandbox directory management
+- `electron/ipc/sandbox.ts` - IPC handlers for sandbox operations
+- `electron/prompts/capabilities/sandbox.md` - AI rules for sandbox behavior
+- `src/stores/sandbox.ts` - Frontend sandbox state
+- `src/components/Workspace/WorkspaceSelector.tsx` - Sandbox UI in workspace picker
+
+**Settings:**
+- "Allow cross-conversation sandbox search" toggle in Settings > General > Sandbox
+- Disabled by default
+- Warning that AI only searches when explicitly requested
 
 ## Todo System (AI Task Tracking)
 

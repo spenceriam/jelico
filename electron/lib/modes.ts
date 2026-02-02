@@ -467,6 +467,12 @@ export function buildSystemPrompt(
     }
   }
 
+  // Add sandbox documentation (always include - it's critical)
+  const sandboxDocs = getCachedPrompt('capabilities', 'sandbox')
+  if (sandboxDocs) {
+    parts.push(sandboxDocs)
+  }
+
   // Add mode-specific instructions
   const modeDef = modes[mode] || modes.auto
   parts.push(`## Current Mode: ${modeDef.name}\n${modeDef.systemPrompt}`)

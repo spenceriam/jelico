@@ -180,7 +180,7 @@ export function CanvasPanel() {
               >
                 <History className="w-3 h-3 text-text-muted" />
                 <span className="text-text-secondary">
-                  r{currentRevision?.revision || displayArtifact.revision}
+                  v{currentRevision?.revision || displayArtifact.revision}
                 </span>
                 <ChevronDown className={`w-3 h-3 text-text-muted transition-transform ${revisionDropdownOpen ? 'rotate-180' : ''}`} />
               </button>
@@ -202,7 +202,7 @@ export function CanvasPanel() {
                           : ''
                       }`}
                     >
-                      <span className="text-sm text-text-primary">r{rev.revision}</span>
+                      <span className="text-sm text-text-primary">v{rev.revision}</span>
                       {rev.id === revisions[revisions.length - 1].id && (
                         <span className="text-xs text-accent">latest</span>
                       )}
@@ -265,7 +265,7 @@ export function CanvasPanel() {
         <div className="px-4 py-2 border-t border-border flex items-center justify-between flex-shrink-0">
           <span className="text-xs text-text-faint">
             {hasMultipleRevisions && currentRevision && currentRevision.id !== revisions[revisions.length - 1].id ? (
-              <>Viewing r{currentRevision.revision} • </>
+              <>Viewing v{currentRevision.revision} • </>
             ) : null}
             Created {new Date(displayArtifact.createdAt).toLocaleTimeString()}
           </span>

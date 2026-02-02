@@ -33,6 +33,11 @@ import {
 } from '../services/subagents'
 import { validateArtifact } from '../services/artifactValidator'
 import { extractPartialArtifactContent } from '../services/artifactUtils'
+import {
+  getConversationSandboxPath,
+  writeSandboxFile,
+  listSandboxFiles,
+} from '../services/sandbox'
 
 // Start orphan cleanup on module load
 startOrphanCleanup()
@@ -1333,9 +1338,9 @@ Note: If recommended option, list it first with "(Recommended)" suffix.`,
   // Write file tool - only if canWrite
   if (canWrite) {
     tools.write_file = tool({
-      description: 'Write content to a file at the specified path. You MUST provide both path and content parameters.',
+      description: 'Write content to a file at the specified path. You MUST provide both path and content parameters. When no workspace is selected, files are written to a sandbox directory.',
       parameters: z.object({
-        path: z.string().describe('The file path to write to'),
+        path: z.string().describe('The file path to write to (relative paths work best in sandbox mode)'),
         content: z.string().describe('The content to write'),
       }),
       execute: async ({ path, content }) => {
@@ -1351,14 +1356,38 @@ Note: If recommended option, list it first with "(Recommended)" suffix.`,
           }
         }
         try {
-          // Check permission before writing
-          const permCheck = await checkPermission('write_file', { path, content }, streamContext.workspacePath)
+          const pathModule = await import('path')
+          const fs = await import('fs/promises')
+
+          // SANDBOX MODE: When no workspace is selected, use per-conversation sandbox
+          const useSandbox = !streamContext.workspacePath && streamContext.conversationId
+          let actualPath = path
+          let sandboxRelativePath: string | undefined
+
+          if (useSandbox) {
+            // Convert to relative path for sandbox
+            // If path is absolute, extract just the filename or relative portion
+            sandboxRelativePath = path.startsWith('/') ? path.slice(1) : path
+            // Remove any leading ../ to prevent escaping sandbox
+            sandboxRelativePath = sandboxRelativePath.replace(/^(\.\.\/)+/, '')
+
+            const sandboxDir = getConversationSandboxPath(streamContext.conversationId!)
+            actualPath = pathModule.join(sandboxDir, sandboxRelativePath)
+
+            console.log(`[AI] Sandbox mode: Writing to ${actualPath} (relative: ${sandboxRelativePath})`)
+          }
+
+          // Check permission before writing (use actual path for permission check)
+          const permCheck = await checkPermission('write_file', { path: actualPath, content }, streamContext.workspacePath)
           if (!permCheck.allowed && permCheck.reason === 'needs_approval') {
             // Request permission from user
+            const displayPath = useSandbox ? `[Sandbox] ${sandboxRelativePath}` : path
             const result = await requestPermission({
               toolName: 'write_file',
-              action: `Write to: ${path}`,
-              description: `The AI wants to write ${content.length} characters to this file.`,
+              action: `Write to: ${displayPath}`,
+              description: useSandbox
+                ? `The AI wants to write ${content.length} characters to the sandbox.`
+                : `The AI wants to write ${content.length} characters to this file.`,
               preview: content.length > 500 ? content.slice(0, 500) + '\n...(truncated)' : content,
               workspaceId: streamContext.workspacePath,
             })
@@ -1369,11 +1398,18 @@ Note: If recommended option, list it first with "(Recommended)" suffix.`,
             return { success: false, error: `Permission denied: ${permCheck.reason}` }
           }
 
-          const fs = await import('fs/promises')
-          const pathModule = await import('path')
           // Ensure directory exists
-          await fs.mkdir(pathModule.dirname(path), { recursive: true })
-          await fs.writeFile(path, content, 'utf-8')
+          await fs.mkdir(pathModule.dirname(actualPath), { recursive: true })
+          await fs.writeFile(actualPath, content, 'utf-8')
+
+          if (useSandbox) {
+            return {
+              success: true,
+              message: `File written to sandbox: ${sandboxRelativePath}`,
+              sandbox: true,
+              sandboxPath: sandboxRelativePath,
+            }
+          }
           return { success: true, message: `File written to ${path}` }
         } catch (error: any) {
           return { success: false, error: error.message }

@@ -273,6 +273,9 @@ export function initArtifactListeners() {
   if (listenersInitialized) return
   listenersInitialized = true
 
+  // Load ALL artifacts from database on startup so sidebar can show them immediately
+  useArtifactStore.getState().loadArtifacts()
+
   // Listen for sub-agent artifact creation
   window.jelico.ai.onSubAgentArtifact(async (artifact) => {
     console.log(`[Artifacts] Received artifact from sub-agent ${artifact.agentName}: "${artifact.title}"`)

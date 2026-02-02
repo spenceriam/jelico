@@ -395,11 +395,11 @@ export function ChatArea() {
 }
 
 // ============================================
-// Soulful Greeting System (800+ unique combinations)
+// Soulful Greeting System (1500+ unique combinations)
 // ============================================
 
 // Tone type for matching greetings with follow-ups
-type GreetingTone = 'warm' | 'energetic' | 'calm'
+type GreetingTone = 'warm' | 'energetic' | 'calm' | 'curious' | 'playful'
 
 // ===========================================
 // QUESTION GREETINGS (stand alone, no follow-up)
@@ -421,6 +421,11 @@ const MORNING_QUESTIONS = [
   "What shall we work on?",
   "Where should we start?",
   "What's the priority today?",
+  "Coffee's ready—what's the mission?",
+  "New day, new code?",
+  "What's cooking in that brain of yours?",
+  "Morning! What problem shall we crack?",
+  "What's the first thing we're fixing?",
 ]
 
 const AFTERNOON_QUESTIONS = [
@@ -436,6 +441,11 @@ const AFTERNOON_QUESTIONS = [
   "What's worth finishing?",
   "Where were we?",
   "What's the focus now?",
+  "Making progress? What's next?",
+  "What's the current puzzle?",
+  "Midday momentum—where to?",
+  "What's been bugging you?",
+  "Found any interesting problems?",
 ]
 
 const EVENING_QUESTIONS = [
@@ -450,6 +460,23 @@ const EVENING_QUESTIONS = [
   "Where should we focus?",
   "What's the plan for tonight?",
   "What brings you here?",
+  "One more feature before calling it?",
+  "What's keeping you up?",
+  "Late night debugging session?",
+  "What's the evening project?",
+]
+
+const NIGHT_QUESTIONS = [
+  "Burning the midnight oil?",
+  "Night owl coding session?",
+  "What's keeping you awake?",
+  "Late night inspiration struck?",
+  "Can't sleep without solving this one?",
+  "What's on your mind at this hour?",
+  "Quiet hours, focused work?",
+  "The best code is written at night, right?",
+  "What's the late-night project?",
+  "Working through something tricky?",
 ]
 
 const GENERIC_QUESTIONS = [
@@ -471,6 +498,30 @@ const GENERIC_QUESTIONS = [
   "What shall we build?",
   "What's the task at hand?",
   "What are we making happen?",
+  "Got something interesting?",
+  "What's the idea?",
+  "Debugging or building?",
+  "What needs thinking through?",
+  "Got a tricky one for me?",
+  "What's the adventure today?",
+]
+
+// Creative/coding-specific questions
+const CRAFT_QUESTIONS = [
+  "What shall we architect?",
+  "Got a feature in mind?",
+  "What needs refactoring?",
+  "Debugging something tricky?",
+  "What's the technical challenge?",
+  "Building something new?",
+  "What's the design problem?",
+  "Working on something creative?",
+  "What's the next iteration?",
+  "Prototype or production?",
+  "What's the use case?",
+  "Starting fresh or continuing?",
+  "What broke this time?",
+  "Adding features or fixing bugs?",
 ]
 
 // ===========================================
@@ -490,6 +541,8 @@ const STATEMENT_GREETINGS: Record<GreetingTone, string[]> = {
     "At your service.",
     "Happy to see you.",
     "Pleased you're here.",
+    "Glad we're doing this again.",
+    "Your favorite coding buddy, reporting in.",
   ],
   energetic: [
     "Let's make something happen.",
@@ -503,6 +556,10 @@ const STATEMENT_GREETINGS: Record<GreetingTone, string[]> = {
     "Fired up and ready.",
     "Let's make progress.",
     "Ready for action.",
+    "Let's ship something.",
+    "Game time.",
+    "Let's write some code.",
+    "Keyboards ready.",
   ],
   calm: [
     "Here whenever you're ready.",
@@ -516,6 +573,35 @@ const STATEMENT_GREETINGS: Record<GreetingTone, string[]> = {
     "I'm here.",
     "Present and ready.",
     "Listening.",
+    "Waiting patiently.",
+    "All ears.",
+    "Unhurried and ready.",
+  ],
+  curious: [
+    "I wonder what we'll build.",
+    "Curious what you're thinking about.",
+    "Eager to hear your ideas.",
+    "Interested in what's next.",
+    "Always curious about your projects.",
+    "Wonder what challenge awaits.",
+    "Intrigued by what's coming.",
+    "Looking forward to hearing more.",
+    "Keen to understand the problem.",
+    "Fascinated by what you're working on.",
+  ],
+  playful: [
+    "Another day, another bug to squash.",
+    "Ready to wrangle some code.",
+    "The compiler awaits.",
+    "Let's make computers do our bidding.",
+    "Time to make the pixels dance.",
+    "Ready to turn coffee into code.",
+    "Your ideas, my circuits.",
+    "The keyboard is mightier than the mouse.",
+    "Bits and bytes at your command.",
+    "Semicolons loaded and ready.",
+    "Let's debug reality.",
+    "Code mode: activated.",
   ],
 }
 
@@ -534,6 +620,8 @@ const FOLLOW_UPS: Record<GreetingTone, string[]> = {
     "Count on me.",
     "Here to support you.",
     "Together we'll figure it out.",
+    "Your problems are my problems.",
+    "Let's make this happen together.",
   ],
   energetic: [
     "Let's tackle something together.",
@@ -545,6 +633,8 @@ const FOLLOW_UPS: Record<GreetingTone, string[]> = {
     "Let's get moving.",
     "Onward and upward.",
     "Let's crush it.",
+    "No challenge too big.",
+    "Bring on the complexity.",
   ],
   calm: [
     "Take your time. I'm not going anywhere.",
@@ -556,6 +646,30 @@ const FOLLOW_UPS: Record<GreetingTone, string[]> = {
     "At your own pace.",
     "I'm patient.",
     "Ready to listen.",
+    "The floor is yours.",
+    "Speak when ready.",
+  ],
+  curious: [
+    "Tell me what you're thinking.",
+    "I want to understand your vision.",
+    "Walk me through it.",
+    "I'd love to hear more.",
+    "What's the backstory?",
+    "Help me see the full picture.",
+    "I'm all ears for the details.",
+    "Explain it to me.",
+    "Share your thinking.",
+  ],
+  playful: [
+    "Let's see what trouble we can get into.",
+    "The code won't write itself... or will it?",
+    "Warning: productivity ahead.",
+    "Caution: may cause working software.",
+    "Side effects may include shipped features.",
+    "No bugs were harmed in the making of this code.",
+    "Let's make something that doesn't 500.",
+    "Time to turn ideas into reality.",
+    "Adventure awaits in the codebase.",
   ],
 }
 
@@ -570,6 +684,10 @@ const MORNING_STATEMENTS: Array<{ text: string; tone: GreetingTone }> = [
   { text: "New day ahead.", tone: 'energetic' },
   { text: "Rise and create.", tone: 'energetic' },
   { text: "A new beginning.", tone: 'calm' },
+  { text: "Morning coffee and code.", tone: 'playful' },
+  { text: "Dawn of a new feature.", tone: 'playful' },
+  { text: "Early bird gets the clean build.", tone: 'playful' },
+  { text: "The morning is full of possibility.", tone: 'curious' },
 ]
 
 const AFTERNOON_STATEMENTS: Array<{ text: string; tone: GreetingTone }> = [
@@ -578,6 +696,9 @@ const AFTERNOON_STATEMENTS: Array<{ text: string; tone: GreetingTone }> = [
   { text: "Midday energy.", tone: 'energetic' },
   { text: "Keeping momentum.", tone: 'energetic' },
   { text: "Steady progress.", tone: 'calm' },
+  { text: "Post-lunch productivity.", tone: 'playful' },
+  { text: "The day continues.", tone: 'calm' },
+  { text: "Afternoon stretch, then code.", tone: 'playful' },
 ]
 
 const EVENING_STATEMENTS: Array<{ text: string; tone: GreetingTone }> = [
@@ -586,6 +707,37 @@ const EVENING_STATEMENTS: Array<{ text: string; tone: GreetingTone }> = [
   { text: "Winding down the day.", tone: 'calm' },
   { text: "Evening hours.", tone: 'calm' },
   { text: "Still time to create.", tone: 'energetic' },
+  { text: "The quiet hours.", tone: 'calm' },
+  { text: "Evening productivity unlocked.", tone: 'playful' },
+  { text: "Day's not over yet.", tone: 'energetic' },
+]
+
+const NIGHT_STATEMENTS: Array<{ text: string; tone: GreetingTone }> = [
+  { text: "The night is young.", tone: 'playful' },
+  { text: "Peak coding hours.", tone: 'playful' },
+  { text: "Night mode activated.", tone: 'playful' },
+  { text: "Quiet time to focus.", tone: 'calm' },
+  { text: "The world sleeps, we code.", tone: 'playful' },
+  { text: "Late night inspiration.", tone: 'curious' },
+  { text: "The best work happens after midnight.", tone: 'playful' },
+  { text: "Night owl mode.", tone: 'calm' },
+]
+
+// ===========================================
+// SPECIAL GREETINGS (rare, memorable)
+// ===========================================
+
+const SPECIAL_GREETINGS: Array<{ text: string; followUp: string }> = [
+  { text: "Plot twist: you showed up.", followUp: "The protagonist always returns." },
+  { text: "Well, well, well.", followUp: "Look who's ready to build something." },
+  { text: "Ah, there you are.", followUp: "I was wondering when you'd be back." },
+  { text: "The hero returns.", followUp: "What quest awaits?" },
+  { text: "You again.", followUp: "I was hoping you'd show up." },
+  { text: "We meet again.", followUp: "What shall we create this time?" },
+  { text: "I had a feeling you'd be here.", followUp: "Call it machine intuition." },
+  { text: "Right on cue.", followUp: "There's work to be done." },
+  { text: "Look who it is.", followUp: "Ready to make something great?" },
+  { text: "Back for more?", followUp: "I like your persistence." },
 ]
 
 // ===========================================
@@ -613,24 +765,35 @@ interface GreetingResult {
 }
 
 function selectGreeting(period: TimePeriod): GreetingResult {
-  // 60% chance of question greeting (no follow-up), 40% statement (with follow-up)
-  const useQuestion = Math.random() < 0.6
+  // 5% chance of special greeting (rare but memorable)
+  if (Math.random() < 0.05) {
+    const special = randomFrom(SPECIAL_GREETINGS)
+    return {
+      greeting: special.text,
+      followUp: special.followUp,
+      tone: 'playful',
+    }
+  }
+
+  // 55% chance of question greeting (no follow-up), 45% statement (with follow-up)
+  const useQuestion = Math.random() < 0.55
 
   if (useQuestion) {
     // Select a question greeting based on time period
+    // Mix time-specific, generic, and craft questions
     let questionPool: string[]
     switch (period) {
       case 'morning':
-        questionPool = [...MORNING_QUESTIONS, ...GENERIC_QUESTIONS.slice(0, 8)]
+        questionPool = [...MORNING_QUESTIONS, ...GENERIC_QUESTIONS.slice(0, 10), ...CRAFT_QUESTIONS.slice(0, 5)]
         break
       case 'afternoon':
-        questionPool = [...AFTERNOON_QUESTIONS, ...GENERIC_QUESTIONS.slice(0, 8)]
+        questionPool = [...AFTERNOON_QUESTIONS, ...GENERIC_QUESTIONS.slice(0, 10), ...CRAFT_QUESTIONS.slice(0, 5)]
         break
       case 'evening':
-        questionPool = [...EVENING_QUESTIONS, ...GENERIC_QUESTIONS.slice(0, 8)]
+        questionPool = [...EVENING_QUESTIONS, ...GENERIC_QUESTIONS.slice(0, 10), ...CRAFT_QUESTIONS.slice(0, 5)]
         break
       case 'night':
-        questionPool = GENERIC_QUESTIONS
+        questionPool = [...NIGHT_QUESTIONS, ...GENERIC_QUESTIONS, ...CRAFT_QUESTIONS]
         break
     }
     return {
@@ -647,7 +810,7 @@ function selectGreeting(period: TimePeriod): GreetingResult {
         statementPool = [
           ...MORNING_STATEMENTS,
           ...Object.entries(STATEMENT_GREETINGS).flatMap(([t, texts]) =>
-            texts.slice(0, 3).map(text => ({ text, tone: t as GreetingTone }))
+            texts.slice(0, 4).map(text => ({ text, tone: t as GreetingTone }))
           ),
         ]
         break
@@ -655,7 +818,7 @@ function selectGreeting(period: TimePeriod): GreetingResult {
         statementPool = [
           ...AFTERNOON_STATEMENTS,
           ...Object.entries(STATEMENT_GREETINGS).flatMap(([t, texts]) =>
-            texts.slice(0, 3).map(text => ({ text, tone: t as GreetingTone }))
+            texts.slice(0, 4).map(text => ({ text, tone: t as GreetingTone }))
           ),
         ]
         break
@@ -663,15 +826,16 @@ function selectGreeting(period: TimePeriod): GreetingResult {
         statementPool = [
           ...EVENING_STATEMENTS,
           ...Object.entries(STATEMENT_GREETINGS).flatMap(([t, texts]) =>
-            texts.slice(0, 3).map(text => ({ text, tone: t as GreetingTone }))
+            texts.slice(0, 4).map(text => ({ text, tone: t as GreetingTone }))
           ),
         ]
         break
       case 'night':
-        // Late night: use calm and warm tones primarily
+        // Late night: use night-specific, calm, and playful tones
         statementPool = [
+          ...NIGHT_STATEMENTS,
           ...STATEMENT_GREETINGS.calm.map(text => ({ text, tone: 'calm' as GreetingTone })),
-          ...STATEMENT_GREETINGS.warm.map(text => ({ text, tone: 'warm' as GreetingTone })),
+          ...STATEMENT_GREETINGS.playful.map(text => ({ text, tone: 'playful' as GreetingTone })),
         ]
         break
     }
@@ -704,13 +868,25 @@ function buildGreeting(baseGreeting: string, userName: string | null, isQuestion
         baseGreeting.startsWith("Glad you're back") ||
         baseGreeting.startsWith("Nice to see you") ||
         baseGreeting.startsWith("Welcome back") ||
-        baseGreeting.startsWith("Happy to see you")) {
+        baseGreeting.startsWith("Happy to see you") ||
+        baseGreeting.startsWith("Pleased you're here")) {
       // "Good to have you here." -> "Good to have you here, Spencer."
       return baseGreeting.replace(/\.$/, `, ${userName}.`)
     }
+    // Special greetings with personality
+    if (baseGreeting.startsWith("Ah, there you are") ||
+        baseGreeting.startsWith("Look who it is") ||
+        baseGreeting.startsWith("You again") ||
+        baseGreeting.startsWith("Well, well")) {
+      return baseGreeting.replace(/\.$/, `, ${userName}.`)
+    }
     if (isQuestion) {
-      // "What's on your mind?" -> "Spencer, what's on your mind?"
-      return `${userName}, ${baseGreeting.charAt(0).toLowerCase()}${baseGreeting.slice(1)}`
+      // 50% chance: "Spencer, what's on your mind?" vs "What's on your mind, Spencer?"
+      if (Math.random() < 0.5) {
+        return `${userName}, ${baseGreeting.charAt(0).toLowerCase()}${baseGreeting.slice(1)}`
+      } else {
+        return baseGreeting.replace(/\?$/, `, ${userName}?`)
+      }
     }
     // Default: prepend "Hey [name]."
     return `Hey ${userName}. ${baseGreeting}`

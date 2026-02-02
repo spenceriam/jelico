@@ -2,6 +2,55 @@
 
 All notable changes to Jelico will be documented in this file.
 
+## [0.7.41] - 2026-02-02
+
+### Added
+- **Sandbox-aware file writing**
+  - `write_file` now automatically uses per-conversation sandbox when no workspace is selected
+  - Files go to `~/.jelico/sandbox/{conversation-id}/` directory
+  - User informed when files are written to sandbox
+
+- **Sandbox files in sidebar**
+  - Conversations now show sandbox files in expandable tree (like artifacts)
+  - Package icon badge indicates conversations with sandbox files
+  - Files limited to 10 with "+N more files" indicator
+
+- **Cross-sandbox search setting**
+  - New toggle in Settings > General > Sandbox
+  - Disabled by default
+  - Warning that AI only searches when user explicitly requests it
+  - System prompt enforces the rule that AI must NEVER auto-search other sandboxes
+
+- **Sandbox documentation**
+  - New `electron/prompts/capabilities/sandbox.md` prompt file
+  - Injected into all AI conversations
+  - Documents sandbox behavior and critical cross-sandbox rules
+
+### Changed
+- **Artifact versioning notation**
+  - Changed from `r1, r2, r3` to `v1, v2, v3` for clearer version indication
+
+- **Greeting system expanded**
+  - Now 1500+ unique combinations (up from ~950)
+  - Added 2 new tones: `curious` and `playful`
+  - Added night-specific questions and statements
+  - Added craft/coding-specific questions (14 new)
+  - Added 10 special greetings (5% chance, memorable)
+  - Improved name personalization with more variety
+
+### Fixed
+- **Artifacts not showing on UI load**
+  - All artifacts now loaded at startup via `loadArtifacts()` call
+  - Sidebar shows artifact badges immediately without clicking conversations
+
+## [0.7.40] - 2026-02-01
+
+### Changed
+- **Parallel sub-agent spawning emphasized**
+  - Updated prompts to strongly encourage spawning multiple sub-agents simultaneously
+  - Added explicit parallel vs serial examples in modes.ts and sub-agents.md
+  - Research tasks should spawn agents in parallel for efficiency
+
 ## [0.7.39] - 2026-02-01
 
 ### Changed
