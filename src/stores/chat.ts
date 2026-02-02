@@ -736,42 +736,8 @@ export const useChatStore = create<ChatStore>((set, get) => ({
           lastCompletedTool: null,
         }))
 
-        // Generate AI title after first exchange (2 messages: user + assistant)
-        const currentMessages = get().messages
-        if (currentMessages.length === 2 && conversationId) {
-          const userMsg = currentMessages.find(m => m.role === 'user')
-          const assistantMsg = currentMessages.find(m => m.role === 'assistant')
-
-          if (userMsg && assistantMsg) {
-            // Get the full user content including attachments
-            let userContent = userMsg.content || ''
-            if (userMsg.attachments?.length) {
-              const attachmentText = userMsg.attachments
-                .filter(a => a.type === 'text' && a.data)
-                .map(a => a.data)
-                .join('\n')
-              if (attachmentText) {
-                userContent = userContent ? `${userContent}\n\n${attachmentText}` : attachmentText
-              }
-            }
-
-            // Generate title in background (don't await)
-            window.jelico.ai.generateTitle({
-              providerId,
-              model,
-              userMessage: userContent.slice(0, 1000),
-              assistantMessage: assistantMsg.content.slice(0, 1000),
-            }).then(async (result) => {
-              if (result.success && result.title) {
-                await window.jelico.conversations.updateTitle(conversationId, result.title)
-                const conversations = await window.jelico.conversations.list()
-                set({ conversations })
-              }
-            }).catch((err) => {
-              console.warn('[Chat] Failed to generate AI title:', err)
-            })
-          }
-        }
+        // Title is generated ONCE when user sends first message (see sendMessage)
+        // No second generation here - we don't want AI response to change the title
       } catch (error) {
         console.error('[Chat Store] Error in onStreamEnd:', error)
         // Still need to end streaming state even on error

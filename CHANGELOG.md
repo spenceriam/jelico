@@ -2,6 +2,14 @@
 
 All notable changes to Jelico will be documented in this file.
 
+## [0.7.49] - 2026-02-02
+
+### Fixed
+- **Title generation running twice, second time using AI response**
+  - Removed second title generation after AI response completes
+  - Title now generated ONCE from user's first message only
+  - AI response no longer overwrites the conversation title
+
 ## [0.7.48] - 2026-02-02
 
 ### Changed
