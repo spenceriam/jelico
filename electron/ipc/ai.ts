@@ -2182,6 +2182,13 @@ When the user asks to modify, update, fix, or improve an existing artifact, use 
               : ''
 
             try {
+              // Create a timeout for summary generation (30 seconds max)
+              const summaryAbort = new AbortController()
+              const summaryTimeout = setTimeout(() => {
+                console.warn('[AI] Summary generation timed out after 30 seconds')
+                summaryAbort.abort()
+              }, 30000)
+
               const summaryResult = await streamText({
                 model: provider.chat(modelId),
                 system: `You just executed tools and/or used sub-agents to help the user. Now provide a clear, helpful summary:
@@ -2197,8 +2204,10 @@ Be concise but informative. The user needs to understand what happened.`,
                   { role: 'assistant', content: `I executed the following:\n\n${toolContext}${artifactSummary}` },
                   { role: 'user', content: 'Please summarize what you did and the results.' },
                 ],
-                abortSignal: abortController.signal,
+                abortSignal: summaryAbort.signal,
               })
+
+              clearTimeout(summaryTimeout)
 
               // Stream the summary
               for await (const chunk of summaryResult.textStream) {

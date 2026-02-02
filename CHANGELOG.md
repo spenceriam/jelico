@@ -2,6 +2,13 @@
 
 All notable changes to Jelico will be documented in this file.
 
+## [0.7.37] - 2026-02-01
+
+### Fixed
+- **Summary generation timeout**
+  - Added 30-second timeout for post-completion summary generation
+  - Prevents main AI from hanging indefinitely after sub-agent completes
+
 ## [0.7.36] - 2026-02-01
 
 ### Added
