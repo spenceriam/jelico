@@ -9,11 +9,13 @@ import { useState } from 'react'
 import { Loader2, AlertTriangle } from 'lucide-react'
 import { useChatStore } from '../../stores/chat'
 import { useContextStore } from '../../stores/context'
+import { useProviderStore } from '../../stores/providers'
 
 export function ContextIndicator() {
   const [showBar, setShowBar] = useState(false)
   const { activeConversationId, messages, isStreaming } = useChatStore()
   const { getContextUsage, isCompacting } = useContextStore()
+  const { activeModel } = useProviderStore()
 
   // Get context usage for current conversation
   const contextUsage = activeConversationId ? getContextUsage(activeConversationId) : null
@@ -38,7 +40,9 @@ export function ContextIndicator() {
             ? 'text-warning hover:bg-warning/10'
             : 'text-text-muted hover:text-text-secondary hover:bg-bg-surface'}
         `}
-        title={showBar ? 'Hide context bar' : 'Show context bar'}
+        title={showBar
+          ? `Context window of ${activeModel || 'model'}, click to hide bar`
+          : `Context window of ${activeModel || 'model'}, click to see bar`}
       >
         {/* Spinner during compaction */}
         {isCompacting && (
