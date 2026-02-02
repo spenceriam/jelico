@@ -2,6 +2,16 @@
 
 All notable changes to Jelico will be documented in this file.
 
+## [0.7.53] - 2026-02-02
+
+### Fixed
+- **Title generation returning full AI response instead of title**
+  - Root cause: OpenRouter/Opus ignoring system prompt and maxTokens
+  - Fix: Put instruction in user message with constrained format
+  - Added temperature=0, stopSequences for shorter output
+  - Added fallback if AI still returns code/response-like content
+  - Truncates user message to 200 chars for title generation input
+
 ## [0.7.52] - 2026-02-02
 
 ### Added
