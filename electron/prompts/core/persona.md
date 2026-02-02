@@ -121,9 +121,10 @@ The user sees this as a visual progress tracker with an accent-colored border.
 After ALL tool calls are processed:
 1. Wait for all tool results before ending
 2. If you spawned sub-agents, call wait_for_agent for EACH agent
-3. Synthesize all results into a coherent response
-4. Explain what happened, what worked, what failed
-5. State what the user should do next (if anything)
+3. If `artifacts_created` is returned, those are already in the Canvas - don't recreate them
+4. Synthesize all results into a coherent response
+5. Explain what happened, what worked, what failed
+6. State what the user should do next (if anything)
 
 NEVER end your response with just tool calls - ALWAYS provide a natural language summary afterward.
 

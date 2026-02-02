@@ -2,6 +2,52 @@
 
 All notable changes to Jelico will be documented in this file.
 
+## [0.7.35] - 2026-02-01
+
+### Fixed
+- **Simplified artifact ownership prompts**
+  - Cleaner wait_for_agent message: `[Artifacts in Canvas: {names} - do not recreate]`
+  - Concise sub-agents.md section about artifact ownership (3 lines, not verbose)
+  - Brief persona.md reminder to check `artifacts_created` before creating artifacts
+
+## [0.7.34] - 2026-02-01
+
+### Fixed
+- **Duplicate artifact creation by main AI**
+  - Main AI now receives explicit message when sub-agent creates artifacts
+  - Updated system prompts to explain artifacts live in Canvas, not on disk
+  - Expanded premature completion detection to catch missing output regardless of report_progress
+
+## [0.7.33] - 2026-02-01
+
+### Fixed
+- **Duplicate spinners in sub-agent display**
+  - Replaced spinning loader in expanded status with pulsing braille indicator
+  - Header spinner is sufficient; expanded view shows pulsing dot instead
+
+### Changed
+- **Expanded agent name pool**
+  - 141 gender-neutral names (up from 62)
+  - Better coverage for conversations with many sub-agents
+
+## [0.7.32] - 2026-02-01
+
+### Fixed
+- **Sub-agent display names**
+  - Now shows friendly first name from agent store (e.g., "Maya: Creating Wordle")
+  - Previously showed internal names like "WordleCreator"
+
+## [0.7.31] - 2026-02-01
+
+### Fixed
+- **Stop button losing partial response**
+  - Now saves partial content and tool calls before clearing state
+  - Shows "(Stopped)" if no content but tool calls were made
+
+- **Sub-agent premature completion detection**
+  - Enhanced detection to catch agents that call report_progress without actual output
+  - Auto-continues agents that prematurely stop
+
 ## [0.7.30] - 2026-02-01
 
 ### Fixed
