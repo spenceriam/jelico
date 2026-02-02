@@ -62,22 +62,23 @@ export function ChatInput({ disabled, isStreaming, centered }: ChatInputProps) {
   const { sendMessage, stopStreaming, messageQueue, activeConversationId } = useChatStore()
   const { activeProviderId, activeModel } = useProviderStore()
 
-  // Focus textarea on mount and when conversation changes
+  // Robust focus management - handles view transitions and dialog dismissals
   useEffect(() => {
-    // Longer delay to ensure DOM is fully ready after view transitions
-    const timer = setTimeout(() => {
-      textareaRef.current?.focus()
-    }, 100)
-    return () => clearTimeout(timer)
-  }, []) // Focus on mount
+    // Multi-attempt focus to handle race conditions after dialogs/transitions
+    const focusAttempts = [50, 150, 300] // Try at multiple intervals
+    const timers: NodeJS.Timeout[] = []
 
-  useEffect(() => {
-    // Focus when conversation changes (selection or deletion)
-    const timer = setTimeout(() => {
-      textareaRef.current?.focus()
-    }, 100)
-    return () => clearTimeout(timer)
-  }, [activeConversationId])
+    focusAttempts.forEach(delay => {
+      const timer = setTimeout(() => {
+        if (textareaRef.current && document.activeElement !== textareaRef.current) {
+          textareaRef.current.focus()
+        }
+      }, delay)
+      timers.push(timer)
+    })
+
+    return () => timers.forEach(t => clearTimeout(t))
+  }, [activeConversationId]) // Re-run on mount and conversation change
 
   // OS-aware modifier key
   const modKey = useMemo(() => isMac() ? '⌘' : 'Ctrl', [])
@@ -434,6 +435,7 @@ export function ChatInput({ disabled, isStreaming, centered }: ChatInputProps) {
         onDragOver={handleDragOver}
         onDragLeave={handleDragLeave}
         onDrop={handleDrop}
+        onClick={() => textareaRef.current?.focus()} // Click anywhere to focus
       >
         {/* Text area */}
         <textarea

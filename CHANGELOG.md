@@ -2,6 +2,14 @@
 
 All notable changes to Jelico will be documented in this file.
 
+## [0.7.45] - 2026-02-02
+
+### Fixed
+- **Chat input loses focus after deleting conversation**
+  - Multi-attempt focus strategy (50ms, 150ms, 300ms) handles race conditions
+  - Clicking anywhere in input container now focuses textarea
+  - Fixes issue where typing did nothing after deleting a chat
+
 ## [0.7.44] - 2026-02-02
 
 ### Changed
