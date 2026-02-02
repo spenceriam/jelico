@@ -340,17 +340,21 @@ export const useChatStore = create<ChatStore>((set, get) => ({
 
       // Generate proper short title in background immediately (don't wait for AI response)
       // This starts in parallel with the main AI response so title appears quickly
+      console.log('[Chat] Starting title generation for:', conversationId)
       window.jelico.ai.generateTitle({
         providerId,
         model,
         userMessage: content.slice(0, 1000),
         assistantMessage: '', // Generate from user message only for speed
       }).then(async (result) => {
+        console.log('[Chat] Title generation result:', result)
         if (result.success && result.title) {
+          console.log('[Chat] Updating title to:', result.title)
           await window.jelico.conversations.updateTitle(conversationId, result.title)
           const updatedConversations = await window.jelico.conversations.list()
           set({ conversations: updatedConversations })
         } else {
+          console.warn('[Chat] Title generation failed, using fallback. Error:', result.error)
           // Fallback: truncate to first 50 chars if generation fails
           const fallbackTitle = content.trim().slice(0, 50) + (content.length > 50 ? '...' : '')
           await window.jelico.conversations.updateTitle(conversationId, fallbackTitle)

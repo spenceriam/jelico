@@ -2396,14 +2396,22 @@ Be concise but informative. The user needs to understand what happened.`,
     userMessage: string
     assistantMessage: string
   }) => {
+    console.log('[AI] generateTitle called with:', {
+      providerId: params.providerId,
+      model: params.model,
+      userMessageLength: params.userMessage?.length,
+      assistantMessageLength: params.assistantMessage?.length,
+    })
     try {
       const providerConfig = providerDb.get(params.providerId)
       if (!providerConfig) {
+        console.error('[AI] Title generation: Provider not found:', params.providerId)
         return { success: false, error: 'Provider not found' }
       }
 
       const apiKey = await keychainService.getApiKey(params.providerId)
       if (!apiKey && providerConfig.type !== 'ollama' && providerConfig.type !== 'local') {
+        console.error('[AI] Title generation: API key not found for:', params.providerId)
         return { success: false, error: 'API key not found' }
       }
 
@@ -2415,6 +2423,8 @@ Be concise but informative. The user needs to understand what happened.`,
       // Build content - may only have user message for early generation
       const userPart = `User: ${params.userMessage.slice(0, 500)}`
       const assistantPart = params.assistantMessage ? `\n\nAssistant: ${params.assistantMessage.slice(0, 500)}` : ''
+
+      console.log('[AI] Title generation: calling AI with content length:', (userPart + assistantPart).length)
 
       const result = await generateText({
         model: provider.chat(params.model),
@@ -2432,6 +2442,7 @@ Be concise but informative. The user needs to understand what happened.`,
       })
 
       const title = result.text.trim().replace(/^["']|["']$/g, '') // Remove quotes if present
+      console.log('[AI] Title generation success:', title)
       return { success: true, title }
     } catch (error: any) {
       console.error('[AI] Title generation error:', error.message)

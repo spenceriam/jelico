@@ -2,6 +2,14 @@
 
 All notable changes to Jelico will be documented in this file.
 
+## [0.7.52] - 2026-02-02
+
+### Added
+- **Debug logging for title generation investigation**
+  - Backend: logs when generateTitle is called and results
+  - Frontend: logs title generation flow start/result/update
+  - Use DevTools Console to see why titles aren't updating
+
 ## [0.7.51] - 2026-02-02
 
 ### Fixed
