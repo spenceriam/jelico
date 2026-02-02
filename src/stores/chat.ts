@@ -238,6 +238,8 @@ export const useChatStore = create<ChatStore>((set, get) => ({
         reasoningContent: '',
         error: null,
       })
+      // New Chat = reset to Sandbox
+      useWorkspaceStore.getState().setActiveWorkspace(null, true)
       // No conversation = no artifacts to show
       useArtifactStore.getState().closeCanvas()
       return
