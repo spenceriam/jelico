@@ -66,10 +66,13 @@ export function TodoPanel() {
     return null
   }
 
-  // Find current in-progress task
-  const currentTask = todos.find(t => t.status === 'in_progress')
+  // Find current in-progress task, or next pending task
+  const inProgressTask = todos.find(t => t.status === 'in_progress')
+  const nextPendingTask = todos.find(t => t.status === 'pending')
+  const displayTask = inProgressTask || nextPendingTask
   const completedCount = todos.filter(t => t.status === 'done').length
   const failedCount = todos.filter(t => t.status === 'failed').length
+  const allDone = completedCount === todos.length
 
   // Progress summary
   const progressText = failedCount > 0
@@ -87,15 +90,19 @@ export function TodoPanel() {
           {isExpanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
         </span>
 
-        {/* Show current task when collapsed, or "Tasks" when expanded */}
+        {/* Show current/next task when collapsed, or "Tasks" header when expanded */}
         {isExpanded ? (
           <span className="text-xs text-text-muted font-medium uppercase tracking-wide">
             Tasks
           </span>
-        ) : currentTask ? (
+        ) : allDone ? (
+          <span className="text-sm text-success">All tasks complete</span>
+        ) : displayTask ? (
           <div className="flex-1 flex items-center gap-2 min-w-0">
-            <span className="text-accent animate-pulse">◉</span>
-            <span className="text-sm text-text-primary truncate">{currentTask.text}</span>
+            <span className={inProgressTask ? 'text-accent animate-pulse' : 'text-text-muted'}>
+              {inProgressTask ? '◉' : '○'}
+            </span>
+            <span className="text-sm text-text-primary truncate">{displayTask.text}</span>
           </div>
         ) : (
           <span className="text-xs text-text-muted">Tasks</span>

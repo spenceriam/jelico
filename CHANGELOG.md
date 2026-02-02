@@ -2,6 +2,14 @@
 
 All notable changes to Jelico will be documented in this file.
 
+## [0.7.46] - 2026-02-02
+
+### Fixed
+- **Todo panel collapsed view showed no task text**
+  - Now shows next pending task if nothing is in_progress
+  - Shows "All tasks complete" when all done
+  - Collapsed view always shows something meaningful
+
 ## [0.7.45] - 2026-02-02
 
 ### Fixed
