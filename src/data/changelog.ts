@@ -27,7 +27,7 @@ export const changelog: ChangelogEntry[] = [
       changed: [
         'Sub-agent completion detection now recognizes research work (web_search, read_file)',
         'Sub-agents no longer incorrectly told to call create_artifact (they cannot)',
-        'Context window now estimates tokens when provider usage not available',
+        'Added detailed logging for token usage tracking',
       ],
       fixed: [
         'Stream timeouts removed - long-running agents no longer get killed',

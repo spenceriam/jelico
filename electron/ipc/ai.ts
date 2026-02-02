@@ -2297,7 +2297,16 @@ If you find yourself frequently hitting limits, suggest breaking the task into m
             usageObj?.completion ||        // Custom providers
             0
 
-          // Log if we couldn't parse tokens but had usage data
+          // Always log usage data for debugging context window tracking
+          console.log('[AI] Usage stats:', {
+            raw: usage,
+            parsed: usageObj,
+            promptTokens,
+            completionTokens,
+            total: promptTokens + completionTokens,
+          })
+
+          // Warn if we couldn't parse tokens but had usage data
           if (promptTokens === 0 && completionTokens === 0 && usage && Object.keys(usageObj || {}).length > 0) {
             console.warn('[AI] Could not extract token counts from usage:', usageObj)
           }

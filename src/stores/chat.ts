@@ -737,19 +737,8 @@ export const useChatStore = create<ChatStore>((set, get) => ({
         if (conversationId && usage?.totalTokens) {
           useContextStore.getState().updateTokenCount(conversationId, usage.totalTokens)
         } else if (conversationId) {
-          // Fallback: estimate tokens from all messages in conversation
-          // This ensures context tracking works even when provider doesn't return usage
-          const allMessages = [...get().messages, messageWithTools]
-          const conversationMessages = allMessages.filter(m => m.conversationId === conversationId)
-          const estimatedTokens = conversationMessages.reduce((total, msg) => {
-            // Rough estimate: ~4 chars per token
-            const contentTokens = Math.ceil((msg.content?.length || 0) / 4)
-            // Tool calls add overhead
-            const toolTokens = (msg.toolCalls?.length || 0) * 50
-            return total + contentTokens + toolTokens
-          }, 0)
-          useContextStore.getState().updateTokenCount(conversationId, estimatedTokens)
-          console.log('[Chat Store] Using estimated token count:', estimatedTokens)
+          // No fallback estimation - we need actual token counts from the API
+          console.warn('[Chat Store] No usage stats received from provider - context tracking requires API to report token usage')
         }
 
         set((state) => ({
