@@ -68,7 +68,10 @@ const accumulatedToolInputByCallId = new Map<string, string>()
 const STREAM_TIMEOUT_MS = 600000 // 10 minutes - must be longer than wait_for_agent timeout
 
 // Activity timeout - reset on any stream activity (30 seconds)
+// Activity timeout - how long before we consider the stream dead
+// Note: This is dynamically extended while waiting for user clarification
 const ACTIVITY_TIMEOUT_MS = 30000
+const CLARIFICATION_TIMEOUT_MS = 300000 // 5 minutes for clarification responses
 
 // Max tool input size (10MB) - prevents memory exhaustion from malformed streams
 const MAX_TOOL_INPUT_SIZE = 10 * 1024 * 1024
@@ -1265,6 +1268,8 @@ ${text}
     description: `Ask the user for clarification before proceeding with a task.
 Use this when you need to make a decision that depends on user preference, or when you need more information.
 
+IMPORTANT: This tool BLOCKS until the user provides an answer. Do NOT continue or assume an answer - wait for the user's actual response.
+
 ## When to Use
 - Before starting tasks with multiple valid approaches
 - When implementation details need user input
@@ -1282,7 +1287,8 @@ Use this when you need to make a decision that depends on user preference, or wh
 ## What Happens
 1. A clarification UI appears inline in chat
 2. User selects options or types custom "Other" response
-3. You receive their answers and can proceed
+3. Tool returns ONLY after user submits their answers
+4. You receive their answers and can proceed
 
 Note: If recommended option, list it first with "(Recommended)" suffix.`,
     parameters: z.object({
@@ -1298,8 +1304,11 @@ Note: If recommended option, list it first with "(Recommended)" suffix.`,
       })).min(1).max(4),
     }),
     execute: async ({ subject, questions }) => {
+      console.log('[AI] ask_user_question: Starting, subject:', subject)
+
       const { randomUUID } = await import('crypto')
       const requestId = randomUUID()
+      console.log('[AI] ask_user_question: Generated requestId:', requestId)
 
       // Build the request to send to UI
       const clarificationRequest = {
@@ -1314,48 +1323,68 @@ Note: If recommended option, list it first with "(Recommended)" suffix.`,
           selectedOptions: [],
           otherText: '',
         })),
-        conversationId: streamContext.conversationId, // Use actual conversation ID, not channel ID
+        conversationId: streamContext.conversationId,
         createdAt: Date.now(),
       }
 
       // Create a promise that will be resolved when user responds
       const answersPromise = new Promise<Record<string, string[]>>((resolve, reject) => {
-        // Timeout after 5 minutes - store ID so we can cancel it
+        // Timeout after 5 minutes
         const timeoutId = setTimeout(() => {
           const pending = pendingClarifications.get(requestId)
-          // Only reject if not already resolved (prevents race condition)
           if (pending && !pending.resolved) {
+            console.log('[AI] ask_user_question: 5-minute timeout reached for', requestId)
             pending.resolved = true
             pendingClarifications.delete(requestId)
-            reject(new Error('Clarification request timed out'))
+            reject(new Error('Clarification request timed out after 5 minutes. Please try asking the question again.'))
           }
-        }, 300000)
+        }, CLARIFICATION_TIMEOUT_MS)
 
         pendingClarifications.set(requestId, {
           resolve,
           reject,
-          channelId: streamContext.channelId, // Keep channelId for IPC routing
-          conversationId: streamContext.conversationId, // Track actual conversation
+          channelId: streamContext.channelId,
+          conversationId: streamContext.conversationId,
           timeoutId,
           resolved: false,
         })
+        console.log('[AI] ask_user_question: Stored pending clarification, waiting for user response...')
       })
 
       // Send request to UI via IPC
       const { BrowserWindow } = await import('electron')
       const windows = BrowserWindow.getAllWindows()
+      console.log('[AI] ask_user_question: Sending to', windows.length, 'window(s)')
       for (const win of windows) {
         win.webContents.send('clarification:request', clarificationRequest)
       }
 
       // Keep the stream alive while waiting for response
+      // CRITICAL: Reset activity timeout immediately to prevent 30s stream timeout
+      // Then keep resetting every 10 seconds until user responds
+      if (streamContext.resetActivityTimeout) {
+        streamContext.resetActivityTimeout()
+        console.log('[AI] ask_user_question: Activity timeout reset (preventing stream timeout while waiting)')
+      } else {
+        console.error('[AI] ask_user_question: CRITICAL - resetActivityTimeout not available! Stream may timeout.')
+      }
+
+      // Keep resetting the activity timeout every 10 seconds
       const keepAliveInterval = setInterval(() => {
-        streamContext.resetActivityTimeout?.()
+        if (streamContext.resetActivityTimeout) {
+          streamContext.resetActivityTimeout()
+          console.log('[AI] ask_user_question: Keep-alive reset')
+        } else {
+          console.warn('[AI] ask_user_question: Keep-alive fired but resetActivityTimeout unavailable')
+        }
       }, 10000)
 
       try {
-        // Wait for user response
+        console.log('[AI] ask_user_question: Awaiting user response (this will block until user submits)...')
+        const startTime = Date.now()
         const answers = await answersPromise
+        const elapsed = Date.now() - startTime
+        console.log('[AI] ask_user_question: User responded after', elapsed, 'ms with:', answers)
 
         return {
           success: true,
@@ -1363,6 +1392,7 @@ Note: If recommended option, list it first with "(Recommended)" suffix.`,
           message: 'User provided clarification. Proceed with their preferences.',
         }
       } catch (error: any) {
+        console.error('[AI] ask_user_question: Error or timeout:', error.message)
         return {
           success: false,
           error: error.message || 'Failed to get user clarification',
@@ -1375,6 +1405,7 @@ Note: If recommended option, list it first with "(Recommended)" suffix.`,
           clearTimeout(pending.timeoutId)
         }
         pendingClarifications.delete(requestId)
+        console.log('[AI] ask_user_question: Cleanup complete for', requestId)
       }
     },
   })
@@ -1613,10 +1644,13 @@ export function registerAIHandlers() {
 
     // Set up activity-based timeout (resets on any stream activity)
     let activityTimeoutId: NodeJS.Timeout
+    let lastActivityReset = Date.now()
     const resetActivityTimeout = () => {
       clearTimeout(activityTimeoutId)
+      lastActivityReset = Date.now()
       activityTimeoutId = setTimeout(() => {
-        console.warn('[AI] Stream inactivity timeout - no activity for', ACTIVITY_TIMEOUT_MS, 'ms')
+        const elapsed = Date.now() - lastActivityReset
+        console.warn('[AI] Stream inactivity timeout - no activity for', elapsed, 'ms (threshold:', ACTIVITY_TIMEOUT_MS, 'ms)')
         timeoutReason = 'inactivity'
         abortController.abort()
       }, ACTIVITY_TIMEOUT_MS)
@@ -2590,14 +2624,23 @@ Be concise but informative. The user needs to understand what happened.`,
 
   // Handle clarification responses from UI
   ipcMain.handle('clarification:respond', async (_, requestId: string, answers: Record<string, string[]>) => {
+    console.log('[AI] clarification:respond called with requestId:', requestId)
+    console.log('[AI] clarification:respond pending map size:', pendingClarifications.size)
+    console.log('[AI] clarification:respond pending keys:', Array.from(pendingClarifications.keys()))
+
     const pending = pendingClarifications.get(requestId)
-    if (!pending || pending.resolved) {
-      console.warn('[AI] Clarification response for unknown or already-handled request:', requestId)
-      return { success: false, error: 'Request not found or already handled' }
+    if (!pending) {
+      console.warn('[AI] Clarification response for UNKNOWN request:', requestId)
+      return { success: false, error: 'Request not found' }
+    }
+    if (pending.resolved) {
+      console.warn('[AI] Clarification response for ALREADY-HANDLED request:', requestId)
+      return { success: false, error: 'Request already handled' }
     }
 
     // Mark as resolved FIRST to prevent race conditions
     pending.resolved = true
+    console.log('[AI] clarification:respond marking as resolved')
 
     // Clear the timeout since response arrived
     if (pending.timeoutId) {
@@ -2605,10 +2648,11 @@ Be concise but informative. The user needs to understand what happened.`,
     }
 
     // Resolve the pending promise with the answers
+    console.log('[AI] clarification:respond resolving promise with answers:', answers)
     pending.resolve(answers)
     pendingClarifications.delete(requestId)
 
-    console.log('[AI] Clarification received for request:', requestId, answers)
+    console.log('[AI] Clarification successfully received for request:', requestId)
     return { success: true }
   })
 }

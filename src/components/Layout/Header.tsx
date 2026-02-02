@@ -1,12 +1,19 @@
 import { Settings, Presentation } from 'lucide-react'
 import { useUIStore } from '../../stores/ui'
 import { useArtifactStore } from '../../stores/artifacts'
+import { useChatStore } from '../../stores/chat'
 import { WorkspaceSelector } from '../Workspace/WorkspaceSelector'
 import { ModelSelector } from '../Model/ModelSelector'
 
 export function Header() {
   const { openSettings, sidebarCollapsed } = useUIStore()
   const { artifacts, canvasOpen, toggleCanvas } = useArtifactStore()
+  const activeConversationId = useChatStore((state) => state.activeConversationId)
+
+  // Only count artifacts for the CURRENT conversation
+  const currentConversationArtifacts = activeConversationId
+    ? artifacts.filter((a) => a.conversationId === activeConversationId)
+    : []
 
   return (
     <header className="h-14 flex items-center justify-between px-4 border-b border-border bg-bg-deep">
@@ -30,7 +37,7 @@ export function Header() {
           title={canvasOpen ? 'Hide Canvas' : 'Show Canvas'}
         >
           <Presentation className="w-5 h-5" />
-          {artifacts.length > 0 && !canvasOpen && (
+          {currentConversationArtifacts.length > 0 && !canvasOpen && (
             <span className="absolute -top-0.5 -right-0.5 w-2 h-2 bg-accent rounded-full" />
           )}
         </button>

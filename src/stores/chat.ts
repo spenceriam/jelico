@@ -195,6 +195,9 @@ export const useChatStore = create<ChatStore>((set, get) => ({
         activeConversationId: conversation.id,
         messages: [],
       })
+      // New conversation has no artifacts - close canvas and clear streaming preview
+      useArtifactStore.getState().clearStreamingPreview()
+      useArtifactStore.getState().closeCanvas()
       return conversation.id
     } catch (error: any) {
       set({ error: error.message })
@@ -230,6 +233,8 @@ export const useChatStore = create<ChatStore>((set, get) => ({
         reasoningContent: '',
         error: null,
       })
+      // No conversation = no artifacts to show
+      useArtifactStore.getState().closeCanvas()
       return
     }
 
@@ -253,8 +258,12 @@ export const useChatStore = create<ChatStore>((set, get) => ({
         isReasoning: false,
         reasoningContent: '',
       })
-      // Load artifacts for this conversation
-      useArtifactStore.getState().loadArtifactsForConversation(id)
+      // Load artifacts for this conversation and close canvas if none exist
+      await useArtifactStore.getState().loadArtifactsForConversation(id)
+      const conversationArtifacts = useArtifactStore.getState().getArtifactsByConversation(id)
+      if (conversationArtifacts.length === 0) {
+        useArtifactStore.getState().closeCanvas()
+      }
     } catch (error: any) {
       set({ error: error.message, isLoading: false })
     }

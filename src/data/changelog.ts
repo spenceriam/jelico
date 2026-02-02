@@ -21,6 +21,27 @@ export interface ChangelogEntry {
 
 export const changelog: ChangelogEntry[] = [
   {
+    version: '0.8.1',
+    date: '2026-02-02',
+    changes: {
+      changed: [
+        'ClarificationPanel redesigned with collapsible TodoPanel-style UI',
+        'Clarification questions now show in scrollable container (max 300px)',
+        'Progress indicator shows X/Y questions answered with checkmarks',
+        'Submit button always visible outside scroll area',
+        'Canvas now auto-collapses when switching to a conversation with no artifacts',
+        'Added comprehensive logging for ask_user_question debugging',
+      ],
+      fixed: [
+        'ClarificationPanel no longer overflows without scrollbar',
+        'Canvas dot indicator now only shows for current conversation artifacts (was showing for all)',
+        'New chat now properly closes canvas panel',
+        'ask_user_question now uses 5-minute timeout constant for consistency',
+        'Added keep-alive logging to debug stream timeout issues',
+      ],
+    },
+  },
+  {
     version: '0.8.0',
     date: '2026-02-02',
     changes: {

@@ -2,11 +2,11 @@
  * ClarificationPanel - Inline clarification questions
  *
  * Displays when AI needs user input before proceeding.
- * Appears inline in chat with accent-border styling matching TodoPanel.
+ * TodoPanel-style collapsible with scrollable content.
  */
 
-import { useState } from 'react'
-import { HelpCircle, ChevronRight } from 'lucide-react'
+import { useState, useMemo } from 'react'
+import { HelpCircle, ChevronRight, ChevronDown, Check } from 'lucide-react'
 import { useClarificationStore, type ClarificationQuestion } from '../../stores/clarification'
 
 // Single option row
@@ -27,7 +27,7 @@ function OptionRow({
     <button
       onClick={onSelect}
       className={`
-        w-full text-left px-4 py-3 border-b border-[var(--border)] last:border-b-0
+        w-full text-left px-4 py-2.5 border-b border-[var(--border)] last:border-b-0
         transition-colors duration-150
         ${isSelected
           ? 'bg-[var(--accent-glow)] border-l-[3px] border-l-[var(--accent)]'
@@ -76,7 +76,7 @@ function OptionRow({
             {label}
           </div>
           {description && (
-            <div className="text-xs text-[var(--text-muted)] mt-0.5">
+            <div className="text-xs text-[var(--text-muted)] mt-0.5 line-clamp-2">
               {description}
             </div>
           )}
@@ -102,7 +102,7 @@ function OtherInput({
 }) {
   return (
     <div className={`
-      px-4 py-3 border-b border-[var(--border)] last:border-b-0
+      px-4 py-2.5 border-b border-[var(--border)] last:border-b-0
       transition-colors duration-150
       ${isSelected
         ? 'bg-[var(--accent-glow)] border-l-[3px] border-l-[var(--accent)]'
@@ -156,7 +156,7 @@ function OtherInput({
 
       {/* Expanded text input */}
       {isSelected && (
-        <div className="mt-3 ml-7">
+        <div className="mt-2 ml-7">
           <input
             type="text"
             value={value}
@@ -188,15 +188,22 @@ function QuestionBlock({ question }: { question: ClarificationQuestion }) {
     }
   }
 
+  const hasAnswer = question.selectedOptions.length > 0
+
   return (
-    <div className="py-3">
-      {/* Question text */}
-      <div className="px-4 pb-3 text-sm font-medium text-[var(--text-primary)]">
-        {question.question}
-        {question.multiSelect && (
-          <span className="text-[var(--text-muted)] font-normal ml-2">
-            (Select all that apply)
-          </span>
+    <div className="py-2">
+      {/* Question text with answer indicator */}
+      <div className="px-4 pb-2 flex items-start gap-2">
+        <div className="flex-1 text-sm font-medium text-[var(--text-primary)]">
+          {question.question}
+          {question.multiSelect && (
+            <span className="text-[var(--text-muted)] font-normal ml-2">
+              (Select all that apply)
+            </span>
+          )}
+        </div>
+        {hasAnswer && (
+          <Check className="w-4 h-4 text-[var(--accent)] flex-shrink-0 mt-0.5" />
         )}
       </div>
 
@@ -230,6 +237,17 @@ function QuestionBlock({ question }: { question: ClarificationQuestion }) {
 export function ClarificationPanel() {
   const { activeRequest, canSubmit, submitAnswers } = useClarificationStore()
   const [isSubmitting, setIsSubmitting] = useState(false)
+  // Default expanded for 1-2 questions, collapsed for 3+
+  const [isExpanded, setIsExpanded] = useState(() => {
+    return !activeRequest || activeRequest.questions.length <= 2
+  })
+
+  // Calculate progress
+  const progress = useMemo(() => {
+    if (!activeRequest) return { answered: 0, total: 0 }
+    const answered = activeRequest.questions.filter(q => q.selectedOptions.length > 0).length
+    return { answered, total: activeRequest.questions.length }
+  }, [activeRequest])
 
   if (!activeRequest) return null
 
@@ -244,55 +262,97 @@ export function ClarificationPanel() {
     }
   }
 
+  const allAnswered = progress.answered === progress.total
+
   return (
     <div
       className="
-        rounded-[var(--radius-md)] overflow-hidden my-4
+        rounded-lg overflow-hidden mb-4
         border-2 border-[var(--accent)]
         bg-[var(--bg-surface)]
       "
       style={{
-        boxShadow: '0 0 20px var(--accent-glow), inset 0 0 30px var(--accent-glow)',
+        boxShadow: '0 0 15px var(--accent-glow)',
       }}
     >
-      {/* Header */}
-      <div
-        className="flex items-center gap-2 px-4 py-3 border-b border-[var(--accent-dim)]"
+      {/* Collapsible Header */}
+      <button
+        onClick={() => setIsExpanded(!isExpanded)}
+        className="w-full flex items-center gap-2 px-3 py-2.5 hover:bg-[var(--bg-hover)]/50 transition-colors text-left"
         style={{
-          background: 'linear-gradient(135deg, var(--accent-glow) 0%, transparent 100%)',
+          background: isExpanded
+            ? 'linear-gradient(135deg, var(--accent-glow) 0%, transparent 100%)'
+            : undefined,
         }}
       >
-        <HelpCircle className="w-4 h-4 text-[var(--accent-bright)]" />
-        <span className="text-sm font-semibold text-[var(--accent-bright)]">
-          Clarification required for: {activeRequest.subject}
+        {/* Expand/Collapse icon */}
+        <span className="text-[var(--accent)]">
+          {isExpanded ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
         </span>
-      </div>
 
-      {/* Questions */}
-      <div className="divide-y divide-[var(--border)]">
-        {activeRequest.questions.map((question) => (
-          <QuestionBlock key={question.id} question={question} />
-        ))}
-      </div>
+        {/* Icon */}
+        <HelpCircle className="w-4 h-4 text-[var(--accent-bright)]" />
 
-      {/* Footer with Submit button */}
-      <div className="px-4 py-3 border-t border-[var(--border)] flex justify-end">
-        <button
-          onClick={handleSubmit}
-          disabled={!canSubmit() || isSubmitting}
-          className={`
-            flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium
-            transition-colors duration-150
-            ${canSubmit() && !isSubmitting
-              ? 'bg-[var(--accent)] text-white hover:bg-[var(--accent-bright)]'
-              : 'bg-[var(--bg-elevated)] text-[var(--text-muted)] cursor-not-allowed'
-            }
-          `}
-        >
-          {isSubmitting ? 'Submitting...' : 'Submit Answer'}
-          {!isSubmitting && <ChevronRight className="w-4 h-4" />}
-        </button>
-      </div>
+        {/* Title - show different content based on expanded state */}
+        {isExpanded ? (
+          <span className="flex-1 text-sm font-semibold text-[var(--accent-bright)] truncate">
+            {activeRequest.subject}
+          </span>
+        ) : (
+          <span className="flex-1 text-sm text-[var(--text-primary)]">
+            {progress.total} question{progress.total !== 1 ? 's' : ''} need{progress.total === 1 ? 's' : ''} answers
+          </span>
+        )}
+
+        {/* Progress indicator */}
+        <span className={`
+          text-xs font-mono px-2 py-0.5 rounded
+          ${allAnswered
+            ? 'bg-[var(--accent)]/20 text-[var(--accent-bright)]'
+            : 'text-[var(--text-muted)]'
+          }
+        `}>
+          {progress.answered}/{progress.total}
+          {allAnswered && ' ✓'}
+        </span>
+      </button>
+
+      {/* Expanded content */}
+      {isExpanded && (
+        <>
+          {/* Scrollable questions area */}
+          <div
+            className="divide-y divide-[var(--border)] overflow-y-auto"
+            style={{ maxHeight: '300px' }}
+          >
+            {activeRequest.questions.map((question) => (
+              <QuestionBlock key={question.id} question={question} />
+            ))}
+          </div>
+
+          {/* Footer with Submit button - always visible outside scroll */}
+          <div className="px-3 py-2.5 border-t border-[var(--border)] flex items-center justify-between bg-[var(--bg-surface)]">
+            <span className="text-xs text-[var(--text-muted)]">
+              {allAnswered ? 'Ready to submit' : `Answer all ${progress.total} questions to continue`}
+            </span>
+            <button
+              onClick={handleSubmit}
+              disabled={!canSubmit() || isSubmitting}
+              className={`
+                flex items-center gap-2 px-4 py-1.5 rounded-md text-sm font-medium
+                transition-colors duration-150
+                ${canSubmit() && !isSubmitting
+                  ? 'bg-[var(--accent)] text-white hover:bg-[var(--accent-bright)]'
+                  : 'bg-[var(--bg-elevated)] text-[var(--text-muted)] cursor-not-allowed'
+                }
+              `}
+            >
+              {isSubmitting ? 'Submitting...' : 'Submit'}
+              {!isSubmitting && <ChevronRight className="w-4 h-4" />}
+            </button>
+          </div>
+        </>
+      )}
     </div>
   )
 }
