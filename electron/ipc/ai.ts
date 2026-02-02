@@ -2420,56 +2420,47 @@ Be concise but informative. The user needs to understand what happened.`,
       // Use a quick non-streaming call for title generation
       const { generateText } = await import('ai')
 
-      // Truncate user message to first 200 chars for title generation
-      const userSnippet = params.userMessage.slice(0, 200).replace(/\n/g, ' ').trim()
+      // Truncate and clean user message for title generation
+      const userSnippet = params.userMessage.slice(0, 300).replace(/\n/g, ' ').trim()
 
       console.log('[AI] Title generation: calling AI with snippet:', userSnippet.slice(0, 50) + '...')
 
-      // Put instruction in user message directly - models are less likely to ignore it
-      // Use a very constrained format to prevent long responses
+      // Use system message for instructions, user message clearly quotes the content
+      // The key fix: wrap content in XML tags so AI knows it's QUOTED, not spoken
       const result = await generateText({
         model: provider.chat(params.model),
         messages: [
           {
+            role: 'system',
+            content: 'You are a title generator. Generate a short, descriptive title (3-6 words) for conversations. Output ONLY the title text - no quotes, no explanation, no punctuation.',
+          },
+          {
             role: 'user',
-            content: `TASK: Generate a conversation title (3-6 words max).
-
-INPUT: "${userSnippet}"
-
-RULES:
-- Output ONLY the title
-- No quotes, no explanation, no markdown
-- 3-6 words maximum
-
-TITLE:`,
+            content: `Generate a title for this conversation:\n\n<user_message>\n${userSnippet}\n</user_message>`,
           },
         ],
-        maxTokens: 15,
-        temperature: 0, // Deterministic, less creative = shorter
-        stopSequences: ['\n', '.', '!', '?'], // Stop at first sentence end
+        maxTokens: 20,
       })
 
-      // Clean up the title - remove quotes, newlines, limit length
+      // Clean up the title
       let title = result.text.trim()
-        .replace(/^["']|["']$/g, '') // Remove surrounding quotes
-        .replace(/[\n\r]/g, ' ')     // Remove newlines
-        .split(/[.!?]/)[0]           // Take only first sentence
+        .replace(/^["']|["']$/g, '')  // Remove surrounding quotes
+        .replace(/[\n\r]/g, ' ')      // Remove newlines
+        .replace(/^Title:\s*/i, '')   // Remove "Title:" prefix if present
         .trim()
 
-      // Final safety: truncate to 60 chars max
+      // Safety: truncate to 60 chars max
       if (title.length > 60) {
         title = title.slice(0, 57) + '...'
       }
 
-      // Fallback: if title still looks like code/response, use truncated user message
-      const looksLikeCode = /```|import |def |function |class |const |let |var /.test(title)
-      const looksLikeResponse = /^(I'll|I will|Here's|Let me|Sure|OK|Okay|Hello|Hi)/i.test(title)
+      // Fallback: if title looks like a response instead of a title, use truncated message
+      const looksLikeResponse = /^(I'll|I will|I'd|Here's|Let me|Sure|OK|Okay|Hello|Hi|```|import |def |function |class )/i.test(title)
 
-      if (looksLikeCode || looksLikeResponse || title.length < 3) {
-        console.log('[AI] Title generation: AI output invalid, using fallback')
-        // Use first 40 chars of user message as fallback
+      if (looksLikeResponse || title.length < 3) {
+        console.log('[AI] Title generation: AI output looks like response, using fallback')
         title = params.userMessage.slice(0, 40).replace(/\n/g, ' ').trim()
-        if (title.length === 40) title += '...'
+        if (params.userMessage.length > 40) title += '...'
       }
       console.log('[AI] Title generation success:', title)
       return { success: true, title }

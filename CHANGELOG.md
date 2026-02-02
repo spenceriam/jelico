@@ -2,15 +2,21 @@
 
 All notable changes to Jelico will be documented in this file.
 
-## [0.7.53] - 2026-02-02
+## [0.7.54] - 2026-02-02
 
 ### Fixed
 - **Title generation returning full AI response instead of title**
-  - Root cause: OpenRouter/Opus ignoring system prompt and maxTokens
-  - Fix: Put instruction in user message with constrained format
-  - Added temperature=0, stopSequences for shorter output
-  - Added fallback if AI still returns code/response-like content
-  - Truncates user message to 200 chars for title generation input
+  - Root cause: Prompt injection - `User: [content]` in user message made AI think content was being spoken, not quoted
+  - Fix: Wrap quoted content in `<user_message>` XML tags so AI knows it's quoted
+  - Kept proper system message for instructions (removed hacky temperature/stopSequences)
+  - Fallback to truncated user message if AI still returns response-like content
+
+## [0.7.53] - 2026-02-02
+
+### Fixed
+- **Title generation returning full AI response instead of title** (incomplete fix)
+  - Attempted workaround with temperature=0 and stopSequences
+  - Replaced in 0.7.54 with proper fix
 
 ## [0.7.52] - 2026-02-02
 
