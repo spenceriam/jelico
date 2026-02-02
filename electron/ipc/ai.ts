@@ -342,8 +342,16 @@ Keep tasks clear and concise. The user sees this as a progress tracker.`,
       })).describe('The complete task list'),
     }),
     execute: async ({ tasks }) => {
+      console.log('[AI] todo_write received:', JSON.stringify(tasks, null, 2))
       if (sendTodos) {
-        sendTodos(tasks)
+        // Normalize tasks - some models might use different field names
+        const normalizedTasks = tasks.map((t: any, idx: number) => ({
+          id: t.id || String(idx + 1),
+          text: t.text || t.description || t.title || t.name || t.content || 'Task',
+          status: t.status || 'pending',
+        }))
+        console.log('[AI] todo_write normalized:', JSON.stringify(normalizedTasks, null, 2))
+        sendTodos(normalizedTasks)
       }
       const completed = tasks.filter(t => t.status === 'done').length
       return {

@@ -2,6 +2,14 @@
 
 All notable changes to Jelico will be documented in this file.
 
+## [0.7.50] - 2026-02-02
+
+### Fixed
+- **Todo tasks showing empty text**
+  - Added normalization for different field names models might use
+  - Handles: text, description, title, name, content
+  - Added debug logging to diagnose future issues
+
 ## [0.7.49] - 2026-02-02
 
 ### Fixed
