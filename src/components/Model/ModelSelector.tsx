@@ -119,7 +119,7 @@ export function ModelSelector({ compact = false }: ModelSelectorProps) {
     <div className="relative" ref={dropdownRef}>
       <button
         onClick={() => setDropdownOpen(!dropdownOpen)}
-        className={`flex items-center gap-2 px-3 py-1.5 text-sm text-text-secondary hover:text-text-primary hover:bg-bg-surface border border-border-subtle rounded-md transition-colors ${
+        className={`flex items-center gap-2 px-3 py-1.5 text-sm text-text-secondary hover:text-text-primary bg-bg-surface rounded-lg transition-colors ${
           compact ? '' : ''
         }`}
       >
