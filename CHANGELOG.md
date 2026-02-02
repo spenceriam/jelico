@@ -2,6 +2,19 @@
 
 All notable changes to Jelico will be documented in this file.
 
+## [0.7.51] - 2026-02-02
+
+### Fixed
+- **ask_user_question clarification UI not showing**
+  - Bug: used stream channelId instead of actual conversationId
+  - Frontend couldn't match the request to the active conversation
+  - Now uses correct conversationId for proper routing
+
+- **Hide tool calls that have dedicated UI**
+  - `ask_user_question` → has ClarificationPanel
+  - `todo_write/read/check` → has TodoPanel
+  - No more empty "Running" dropdowns for these tools
+
 ## [0.7.50] - 2026-02-02
 
 ### Fixed

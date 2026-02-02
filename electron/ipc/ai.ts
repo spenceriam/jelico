@@ -1283,7 +1283,7 @@ Note: If recommended option, list it first with "(Recommended)" suffix.`,
           selectedOptions: [],
           otherText: '',
         })),
-        conversationId: streamContext.channelId,
+        conversationId: streamContext.conversationId, // Use actual conversation ID, not channel ID
         createdAt: Date.now(),
       }
 
@@ -1300,7 +1300,8 @@ Note: If recommended option, list it first with "(Recommended)" suffix.`,
         pendingClarifications.set(requestId, {
           resolve,
           reject,
-          channelId: streamContext.channelId,
+          channelId: streamContext.channelId, // Keep channelId for IPC routing
+          conversationId: streamContext.conversationId, // Track actual conversation
           timeoutId,
         })
       })

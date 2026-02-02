@@ -41,11 +41,15 @@ const TOOL_LABELS: Record<string, string> = {
 }
 
 // Tools that are "plumbing" and shouldn't be shown in the UI
-// These are internal operations that happen automatically
+// These are internal operations that happen automatically or have dedicated UI
 export const HIDDEN_TOOLS = new Set([
   'wait_for_agent',      // Waiting is implicit - sub-agent panel shows status
   'get_agent_status',    // Internal polling
   'get_agents_summary',  // Internal status check
+  'ask_user_question',   // Has dedicated ClarificationPanel UI
+  'todo_write',          // Has dedicated TodoPanel UI
+  'todo_read',           // Internal status check
+  'todo_check',          // Internal status check
 ])
 
 function formatToolResult(result: unknown): { content: string; isError: boolean } {
