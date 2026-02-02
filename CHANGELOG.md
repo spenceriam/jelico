@@ -2,6 +2,20 @@
 
 All notable changes to Jelico will be documented in this file.
 
+## [0.7.42] - 2026-02-02
+
+### Changed
+- **Sub-agent delegation overhaul**
+  - Reframed sub-agents as "research team" that handles heavy lifting
+  - Added clear WHY to delegate: context drift prevention, token efficiency, model flexibility
+  - Explicit WHEN rules: ALWAYS delegate exploration/search/research, do directly only for targeted edits
+  - Sibling awareness: sub-agents automatically see what other agents are working on
+  - Updated both `modes.ts` (JELICO_PERSONA) and `sub-agents.md` with consistent guidance
+
+### Technical
+- Auto-sibling context injection in `subagents.ts` - agents receive context about active siblings
+- Framing emphasizes being good stewards of API usage, not wasteful with tokens
+
 ## [0.7.41] - 2026-02-02
 
 ### Added

@@ -529,6 +529,26 @@ export async function spawnSubAgent(params: {
   const firstName = getUniqueAgentFirstName(params.conversationId)
   const displayName = generateDisplayName(firstName, params.task)
 
+  // Auto-generate sibling context from other active agents (if not manually provided)
+  // This helps agents coordinate and avoid duplicating work
+  let effectiveSiblingContext = params.siblingContext || ''
+  if (!effectiveSiblingContext && params.conversationId) {
+    const siblingAgents = Array.from(activeAgents.values())
+      .filter(a =>
+        a.conversationId === params.conversationId &&
+        a.status !== 'completed' &&
+        a.status !== 'dismissed' &&
+        a.status !== 'failed' &&
+        a.status !== 'cancelled'
+      )
+    if (siblingAgents.length > 0) {
+      effectiveSiblingContext = siblingAgents
+        .map(a => `- ${a.displayName.split(':')[0]}: ${a.task.slice(0, 80)}${a.task.length > 80 ? '...' : ''}`)
+        .join('\n')
+      console.log(`[SubAgents] Auto-injected sibling context: ${siblingAgents.length} active agents`)
+    }
+  }
+
   const agent: SubAgentRecord = {
     id: agentId,
     parentStreamId: params.parentStreamId,
@@ -554,7 +574,7 @@ export async function spawnSubAgent(params: {
     providerId: params.providerId,
     model: params.model,
     workspacePath: params.workspacePath,
-    siblingContext: params.siblingContext,
+    siblingContext: effectiveSiblingContext,
   }
 
   activeAgents.set(agentId, agent)
