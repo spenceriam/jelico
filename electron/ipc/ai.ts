@@ -64,14 +64,12 @@ const DEBUG_API_REQUESTS = process.env.DEBUG_AI === 'true' || process.env.NODE_E
 // via tool-input-delta but don't populate the final tool-call args (SDK bug workaround)
 const accumulatedToolInputByCallId = new Map<string, string>()
 
-// Streaming timeout in ms (5 minutes for large artifacts)
-const STREAM_TIMEOUT_MS = 600000 // 10 minutes - must be longer than wait_for_agent timeout
-
-// Activity timeout - reset on any stream activity (30 seconds)
-// Activity timeout - how long before we consider the stream dead
-// Note: This is dynamically extended while waiting for user clarification
-const ACTIVITY_TIMEOUT_MS = 30000
-// No timeout for clarification - users have unlimited time to answer
+// Stream timeouts - DISABLED
+// In the age of long-running agents, arbitrary timeouts cause more problems than they solve.
+// Users can manually stop streams via the Stop button if needed.
+// Keeping the timeout infrastructure for future use if needed, but set to Infinity.
+const STREAM_TIMEOUT_MS = Infinity // No max timeout
+const ACTIVITY_TIMEOUT_MS = Infinity // No activity timeout
 
 // Max tool input size (10MB) - prevents memory exhaustion from malformed streams
 const MAX_TOOL_INPUT_SIZE = 10 * 1024 * 1024

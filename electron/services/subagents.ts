@@ -1013,10 +1013,10 @@ Call this tool at natural checkpoints:
 - Every 2-3 tool calls for complex tasks
 
 ## Example Flow
-1. report_progress("Starting HTML structure", "setup")
-2. ... continue working, use create_artifact, etc ...
-3. report_progress("Adding interactivity", "building")
-4. ... continue until task is actually complete ...`,
+1. report_progress("Starting research", "setup")
+2. ... call web_search, read_file, etc. to do actual work ...
+3. report_progress("Analyzing results", "analysis")
+4. ... continue until task is actually complete with a summary ...`,
       parameters: z.object({
         message: z.string().describe('Brief description of what you are currently doing (e.g., "Building the navigation component")'),
         phase: z.string().optional().describe('Optional work phase (e.g., "setup", "building", "testing", "finishing")'),
@@ -1313,34 +1313,57 @@ async function runSubAgent(agentId: string): Promise<void> {
     } else {
       // Check for premature completion - agent stopped without producing output
       const hasArtifacts = agent.createdArtifacts.length > 0
-      const hasOutputToolCalls = agent.toolCalls.some(tc =>
-        ['create_artifact', 'write_file'].includes(tc.name)
+
+      // Creative output tools (files - sub-agents don't have create_artifact)
+      const hasCreativeOutput = agent.toolCalls.some(tc =>
+        ['write_file'].includes(tc.name)
       )
+
+      // Research work tools (web search, file reading) - count as valid work done
+      const hasResearchWork = agent.toolCalls.some(tc =>
+        ['web_search', 'web_fetch', 'read_file', 'list_directory', 'search_files'].includes(tc.name)
+      )
+
+      // Text output counts as completion - agent returned findings
+      const hasTextResponse = parsed.cleanText && parsed.cleanText.length > 100
+
       const calledReportProgress = agent.toolCalls.some(tc => tc.name === 'report_progress')
       const onlyCalledReportProgress = calledReportProgress &&
         agent.toolCalls.every(tc => tc.name === 'report_progress')
 
-      // Detect if task requires creating output based on task description
+      // Detect if task requires creating creative output (artifacts/files)
       const taskLower = agent.task.toLowerCase()
-      const taskRequiresOutput = /\b(create|build|make|implement|write|generate|develop|design|code)\b/.test(taskLower)
+      const taskRequiresCreativeOutput = /\b(create|build|make|implement|write|generate|develop|code)\b/.test(taskLower)
+
+      // Research tasks need research work + text summary, not artifacts
+      const taskIsResearch = /\b(research|find|search|look|analyze|investigate|explore)\b/.test(taskLower)
 
       // Debug logging for premature completion detection
       console.log(`[SubAgents] ${agent.name} completion check:`, {
         hasArtifacts,
-        hasOutputToolCalls,
+        hasCreativeOutput,
+        hasResearchWork,
+        hasTextResponse: !!hasTextResponse,
         calledReportProgress,
         onlyCalledReportProgress,
-        taskRequiresOutput,
+        taskRequiresCreativeOutput,
+        taskIsResearch,
         toolCallNames: agent.toolCalls.map(tc => tc.name),
         autoContinueAttempts: agent.autoContinueAttempts,
       })
 
       // Premature completion detection:
-      // 1. If only called report_progress with no output - definitely premature
-      // 2. If task requires output but no output tools called and no artifacts - ALWAYS premature
-      //    (regardless of whether report_progress was called - agent may just stop without it)
+      // 1. If only called report_progress with no real work - definitely premature
+      // 2. If task requires creative output but none provided - premature
+      // 3. For research tasks, having research work + text response is enough
+      const hasActualWork = hasResearchWork || hasCreativeOutput || hasArtifacts
       const isPrematureNoOutput = onlyCalledReportProgress && agent.toolCalls.length > 0 && !hasArtifacts
-      const isPrematureMissingDeliverable = taskRequiresOutput && !hasOutputToolCalls && !hasArtifacts
+
+      // For creative tasks, require artifact/file output
+      // For research tasks, require research work + meaningful text response
+      const completedCreativeTask = hasCreativeOutput || hasArtifacts
+      const completedResearchTask = hasResearchWork && hasTextResponse
+      const isPrematureMissingDeliverable = taskRequiresCreativeOutput && !completedCreativeTask && !taskIsResearch
 
       const MAX_AUTO_CONTINUE_ATTEMPTS = 3
       if (isPrematureNoOutput || isPrematureMissingDeliverable) {
@@ -1350,9 +1373,9 @@ async function runSubAgent(agentId: string): Promise<void> {
           // Too many attempts - fail the agent
           agent.status = 'failed'
           const reason = isPrematureNoOutput
-            ? `called report_progress ${agent.toolCalls.length} time(s) but never created output`
-            : `task required creating output but agent never called create_artifact or write_file`
-          agent.error = `Agent failed to create output after ${MAX_AUTO_CONTINUE_ATTEMPTS} attempts. Main AI should handle this task directly using create_artifact.`
+            ? `called report_progress ${agent.toolCalls.length} time(s) but never did actual work`
+            : `task required file output but agent never called write_file`
+          agent.error = `Agent failed to complete after ${MAX_AUTO_CONTINUE_ATTEMPTS} attempts. Main AI should handle this task directly.`
           agent.completedAt = Date.now()
           agent.lastActivityAt = Date.now()
           notifyProgress(agentId, agent)
@@ -1361,8 +1384,8 @@ async function runSubAgent(agentId: string): Promise<void> {
 
         // Auto-continue the agent with an URGENT reminder
         const reminderMessage = isPrematureNoOutput
-          ? `STOP. You called report_progress but then stopped. report_progress is NOT completion - it's just a status update.`
-          : `STOP. You ended without creating anything. Your task REQUIRES creating an artifact.`
+          ? `STOP. You called report_progress but then stopped. report_progress is NOT completion - it's just a status update. You must actually DO the work.`
+          : `STOP. You ended without producing output. Your task REQUIRES you to complete the work.`
 
         agent.messages.push({
           role: 'user',
@@ -1373,18 +1396,15 @@ ${reminderMessage}
 Your task: ${agent.task}
 
 REQUIRED ACTION - Do this RIGHT NOW:
-1. Call create_artifact with type "html" (or appropriate type)
-2. Include the FULL content - not a description, the actual code
-3. Your task is ONLY complete when create_artifact succeeds
+1. Actually DO the research/work (use web_search, read_file, etc.)
+2. Complete the analysis
+3. Provide a comprehensive summary of your findings
 
-Example of what you MUST do:
-create_artifact({
-  title: "Your Title",
-  type: "html",
-  content: "<!DOCTYPE html>..." // THE ACTUAL FULL CODE
-})
+report_progress is just for status updates while working. Your task is NOT complete until you:
+- Have actually called the tools needed (web_search, read_file, etc.)
+- Provided a meaningful response summarizing your findings
 
-DO NOT call report_progress again. Call create_artifact NOW.`,
+Continue working NOW.`,
         })
         agent.lastActivityAt = Date.now()
 

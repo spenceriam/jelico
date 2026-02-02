@@ -21,6 +21,26 @@ export interface ChangelogEntry {
 
 export const changelog: ChangelogEntry[] = [
   {
+    version: '0.8.3',
+    date: '2026-02-02',
+    changes: {
+      changed: [
+        'Sub-agent completion detection now recognizes research work (web_search, read_file)',
+        'Sub-agents no longer incorrectly told to call create_artifact (they cannot)',
+        'Context window now estimates tokens when provider usage not available',
+      ],
+      fixed: [
+        'Stream timeouts removed - long-running agents no longer get killed',
+        'Sub-agents with research tasks no longer prematurely marked as failed',
+        'Auto-continue messages now give correct guidance for sub-agent capabilities',
+      ],
+      removed: [
+        'Removed 30-second activity timeout (was killing artifact generation)',
+        'Removed 10-minute max stream timeout (agents can run as long as needed)',
+      ],
+    },
+  },
+  {
     version: '0.8.2',
     date: '2026-02-02',
     changes: {
