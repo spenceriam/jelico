@@ -184,13 +184,13 @@ export const useChatStore = create<ChatStore>((set, get) => ({
 
   createConversation: async (providerId, model) => {
     try {
-      // New conversations start in Sandbox (no workspace)
-      // User can change workspace after creation if needed
+      // Save the currently selected workspace to the new conversation
+      const activeWorkspaceId = useWorkspaceStore.getState().activeWorkspaceId
       const conversation = await window.jelico.conversations.create({
         title: 'New chat',
         model,
         providerId,
-        // No workspaceId - starts in Sandbox
+        workspaceId: activeWorkspaceId || undefined,
       })
       const conversations = await window.jelico.conversations.list()
       set({
@@ -198,8 +198,6 @@ export const useChatStore = create<ChatStore>((set, get) => ({
         activeConversationId: conversation.id,
         messages: [],
       })
-      // Reset workspace to Sandbox for new conversation
-      useWorkspaceStore.getState().setActiveWorkspace(null, true)
       // New conversation has no artifacts - close canvas and clear streaming preview
       useArtifactStore.getState().clearStreamingPreview()
       useArtifactStore.getState().closeCanvas()
