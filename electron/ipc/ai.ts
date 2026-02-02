@@ -2282,8 +2282,8 @@ If you find yourself frequently hitting limits, suggest breaking the task into m
           let promptTokens =
             usageObj?.promptTokens ||      // Vercel AI SDK standard
             usageObj?.prompt_tokens ||     // OpenAI/snake_case
-            usageObj?.inputTokens ||       // Alternative
-            usageObj?.input_tokens ||      // Snake_case alternative
+            usageObj?.input_tokens ||      // Anthropic
+            usageObj?.inputTokens ||       // camelCase alternative
             usageObj?.promptTokenCount ||  // Google AI
             usageObj?.prompt ||            // Custom providers
             0
@@ -2291,8 +2291,8 @@ If you find yourself frequently hitting limits, suggest breaking the task into m
           let completionTokens =
             usageObj?.completionTokens ||  // Vercel AI SDK standard
             usageObj?.completion_tokens || // OpenAI/snake_case
-            usageObj?.outputTokens ||      // Alternative
-            usageObj?.output_tokens ||     // Snake_case alternative
+            usageObj?.output_tokens ||     // Anthropic
+            usageObj?.outputTokens ||      // camelCase alternative
             usageObj?.candidatesTokenCount || // Google AI
             usageObj?.completion ||        // Custom providers
             0
