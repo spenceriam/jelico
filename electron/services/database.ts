@@ -201,6 +201,15 @@ export const conversationDb = {
     }
   },
 
+  updateWorkspaceId(id: string, workspaceId: string | null): void {
+    const conv = db.conversations.find(c => c.id === id)
+    if (conv) {
+      conv.workspace_id = workspaceId
+      conv.updated_at = Date.now()
+      saveDb()
+    }
+  },
+
   touch(id: string): void {
     const conv = db.conversations.find(c => c.id === id)
     if (conv) {

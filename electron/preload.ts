@@ -26,6 +26,7 @@ contextBridge.exposeInMainWorld('jelico', {
     addMessage: (convId: string, message: any) => ipcRenderer.invoke('conversations:addMessage', convId, message),
     updateMessage: (messageId: string, updates: any) => ipcRenderer.invoke('conversations:updateMessage', messageId, updates),
     updateTitle: (id: string, title: string) => ipcRenderer.invoke('conversations:updateTitle', id, title),
+    updateWorkspaceId: (id: string, workspaceId: string | null) => ipcRenderer.invoke('conversations:updateWorkspaceId', id, workspaceId),
     delete: (id: string) => ipcRenderer.invoke('conversations:delete', id),
   },
   workspaces: {

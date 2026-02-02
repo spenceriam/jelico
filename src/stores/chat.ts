@@ -263,7 +263,8 @@ export const useChatStore = create<ChatStore>((set, get) => ({
       })
 
       // Restore workspace associated with this conversation (or reset to Sandbox if none)
-      useWorkspaceStore.getState().setActiveWorkspace(conversation?.workspaceId || null)
+      // Pass skipDbUpdate=true since we're restoring from DB, not changing
+      useWorkspaceStore.getState().setActiveWorkspace(conversation?.workspaceId || null, true)
 
       // Load artifacts for this conversation and close canvas if none exist
       await useArtifactStore.getState().loadArtifactsForConversation(id)

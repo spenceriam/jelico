@@ -1,4 +1,5 @@
 import { create } from 'zustand'
+import { useChatStore } from './chat'
 
 export interface Workspace {
   id: string
@@ -19,7 +20,7 @@ interface WorkspaceStore {
   // Actions
   loadWorkspaces: () => Promise<void>
   selectFolder: () => Promise<Workspace | null>
-  setActiveWorkspace: (id: string | null) => void
+  setActiveWorkspace: (id: string | null, skipDbUpdate?: boolean) => void
   updateWorkspace: (id: string, updates: { name?: string }) => Promise<void>
   deleteWorkspace: (id: string) => Promise<void>
   refreshGit: (id: string) => Promise<void>
@@ -61,13 +62,23 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
     }
   },
 
-  setActiveWorkspace: (id) => {
+  setActiveWorkspace: (id, skipDbUpdate = false) => {
     set({ activeWorkspaceId: id })
     // Store in localStorage for persistence
     if (id) {
       localStorage.setItem('jelico:activeWorkspace', id)
     } else {
       localStorage.removeItem('jelico:activeWorkspace')
+    }
+    // Update the active conversation's workspace in the database
+    // (skip when restoring from conversation, as the value is already correct)
+    if (!skipDbUpdate) {
+      const activeConversationId = useChatStore.getState().activeConversationId
+      if (activeConversationId) {
+        window.jelico.conversations.updateWorkspaceId(activeConversationId, id).catch((err) => {
+          console.error('Failed to update conversation workspace:', err)
+        })
+      }
     }
   },
 

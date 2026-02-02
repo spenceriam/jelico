@@ -24,6 +24,7 @@ interface Window {
       addMessage: (convId: string, message: MessageInput) => Promise<Message>
       updateMessage: (messageId: string, updates: Partial<MessageInput>) => Promise<Message | null>
       updateTitle: (id: string, title: string) => Promise<void>
+      updateWorkspaceId: (id: string, workspaceId: string | null) => Promise<Conversation | null>
       delete: (id: string) => Promise<void>
     }
     workspaces: {

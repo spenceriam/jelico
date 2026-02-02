@@ -82,6 +82,13 @@ export function registerConversationHandlers() {
     return conversation ? toConversationApi(conversation) : null
   })
 
+  // Update conversation workspace
+  ipcMain.handle('conversations:updateWorkspaceId', async (_, id: string, workspaceId: string | null) => {
+    conversationDb.updateWorkspaceId(id, workspaceId)
+    const conversation = conversationDb.get(id)
+    return conversation ? toConversationApi(conversation) : null
+  })
+
   // Delete a conversation
   ipcMain.handle('conversations:delete', async (_, id: string) => {
     conversationDb.delete(id)
