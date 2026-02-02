@@ -21,23 +21,35 @@ export interface ChangelogEntry {
 
 export const changelog: ChangelogEntry[] = [
   {
+    version: '0.8.2',
+    date: '2026-02-02',
+    changes: {
+      changed: [
+        'Chat input is now compact (1 line) in chat view, expands as you type',
+        'Welcome screen input retains taller 4-line style for discoverability',
+      ],
+    },
+  },
+  {
     version: '0.8.1',
     date: '2026-02-02',
     changes: {
       changed: [
+        'ClarificationPanel moved inside chat view (sticky bottom, above TodoPanel)',
         'ClarificationPanel redesigned with collapsible TodoPanel-style UI',
         'Clarification questions now show in scrollable container (max 300px)',
         'Progress indicator shows X/Y questions answered with checkmarks',
-        'Submit button always visible outside scroll area',
+        'TodoPanel auto-collapses when clarification questions appear',
         'Canvas now auto-collapses when switching to a conversation with no artifacts',
-        'Added comprehensive logging for ask_user_question debugging',
       ],
       fixed: [
+        'Regenerate no longer shows duplicate user message in chat',
         'ClarificationPanel no longer overflows without scrollbar',
-        'Canvas dot indicator now only shows for current conversation artifacts (was showing for all)',
+        'Canvas dot indicator now only shows for current conversation artifacts',
         'New chat now properly closes canvas panel',
-        'ask_user_question now uses 5-minute timeout constant for consistency',
-        'Added keep-alive logging to debug stream timeout issues',
+      ],
+      removed: [
+        'Removed 5-minute timeout on ask_user_question - users have unlimited time to answer',
       ],
     },
   },

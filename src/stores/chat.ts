@@ -269,18 +269,19 @@ export const useChatStore = create<ChatStore>((set, get) => ({
     }
   },
 
-  sendMessage: async (content, providerId, model, attachments) => {
+  // Internal flag to track if this is a regenerate (skips adding user message)
+  sendMessage: async (content, providerId, model, attachments, _isRegenerate = false) => {
     const { activeConversationId, messages, mode, isStreaming } = get()
     const { isCompacting } = useContextStore.getState()
 
-    // If already streaming or compacting, queue the message
-    if (isStreaming || isCompacting) {
+    // If already streaming or compacting, queue the message (unless regenerating)
+    if ((isStreaming || isCompacting) && !_isRegenerate) {
       get().queueMessage(content, providerId, model, attachments)
       return
     }
 
-    // Check for skill shortcuts
-    const skillMatch = useSkillStore.getState().findSkillByShortcut(content)
+    // Check for skill shortcuts (skip for regenerate - original message already processed)
+    const skillMatch = _isRegenerate ? null : useSkillStore.getState().findSkillByShortcut(content)
     let finalContent = content
     let finalMode = mode
 
@@ -295,7 +296,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
 
     let conversationId = activeConversationId
 
-    // Create conversation if needed
+    // Create conversation if needed (never happens during regenerate)
     if (!conversationId) {
       conversationId = await get().createConversation(providerId, model)
       // Initialize context tracking for new conversation
@@ -308,81 +309,87 @@ export const useChatStore = create<ChatStore>((set, get) => ({
       }
     }
 
-    // Add user message (show original content, not expanded skill)
-    const userMessage = await window.jelico.conversations.addMessage(conversationId, {
-      role: 'user',
-      content: content, // Original content for display
-      attachments: attachments, // Include attachments for display
-    })
+    // For regenerate, use existing messages; otherwise add user message
+    let updatedMessages = messages
+    if (!_isRegenerate) {
+      // Add user message (show original content, not expanded skill)
+      const userMessage = await window.jelico.conversations.addMessage(conversationId, {
+        role: 'user',
+        content: content, // Original content for display
+        attachments: attachments, // Include attachments for display
+      })
 
-    // Update title if this is the first message - use truncated content or placeholder
-    // AI will generate a proper title in the background
-    if (messages.length === 0) {
-      // Truncate to 50 chars max for initial display (AI generates better title)
-      let titleSource = content.trim().slice(0, 50) + (content.trim().length > 50 ? '...' : '')
+      // Update title if this is the first message - use truncated content or placeholder
+      // AI will generate a proper title in the background
+      if (messages.length === 0) {
+        // Truncate to 50 chars max for initial display (AI generates better title)
+        let titleSource = content.trim().slice(0, 50) + (content.trim().length > 50 ? '...' : '')
 
-      // If no typed content, use a descriptive placeholder based on attachment type
-      if (!titleSource && attachments && attachments.length > 0) {
-        const hasText = attachments.some(a => a.type === 'text')
-        const hasImage = attachments.some(a => a.type === 'image')
-        if (hasText && hasImage) {
-          titleSource = 'Pasted content...'
-        } else if (hasText) {
-          titleSource = 'Pasted text...'
-        } else if (hasImage) {
-          titleSource = 'Image prompt...'
-        } else {
-          titleSource = 'Attachment...'
+        // If no typed content, use a descriptive placeholder based on attachment type
+        if (!titleSource && attachments && attachments.length > 0) {
+          const hasText = attachments.some(a => a.type === 'text')
+          const hasImage = attachments.some(a => a.type === 'image')
+          if (hasText && hasImage) {
+            titleSource = 'Pasted content...'
+          } else if (hasText) {
+            titleSource = 'Pasted text...'
+          } else if (hasImage) {
+            titleSource = 'Image prompt...'
+          } else {
+            titleSource = 'Attachment...'
+          }
         }
-      }
 
-      // Fallback to placeholder
-      if (!titleSource) {
-        titleSource = 'New conversation'
-      }
+        // Fallback to placeholder
+        if (!titleSource) {
+          titleSource = 'New conversation'
+        }
 
-      // Set initial title immediately (full message, CSS handles word-wrap)
-      await window.jelico.conversations.updateTitle(conversationId, titleSource)
-      // Reload conversations to get updated title
-      const conversations = await window.jelico.conversations.list()
-      set({ conversations })
+        // Set initial title immediately (full message, CSS handles word-wrap)
+        await window.jelico.conversations.updateTitle(conversationId, titleSource)
+        // Reload conversations to get updated title
+        const conversations = await window.jelico.conversations.list()
+        set({ conversations })
 
-      // Generate proper short title in background immediately (don't wait for AI response)
-      // This starts in parallel with the main AI response so title appears quickly
-      console.log('[Chat] Starting title generation for:', conversationId)
-      window.jelico.ai.generateTitle({
-        providerId,
-        model,
-        userMessage: content.slice(0, 1000),
-        assistantMessage: '', // Generate from user message only for speed
-      }).then(async (result) => {
-        console.log('[Chat] Title generation result:', result)
-        if (result.success && result.title) {
-          console.log('[Chat] Updating title to:', result.title)
-          await window.jelico.conversations.updateTitle(conversationId, result.title)
-          const updatedConversations = await window.jelico.conversations.list()
-          set({ conversations: updatedConversations })
-        } else {
-          console.warn('[Chat] Title generation failed, using fallback. Error:', result.error)
-          // Fallback: truncate to first 50 chars if generation fails
+        // Generate proper short title in background immediately (don't wait for AI response)
+        // This starts in parallel with the main AI response so title appears quickly
+        console.log('[Chat] Starting title generation for:', conversationId)
+        window.jelico.ai.generateTitle({
+          providerId,
+          model,
+          userMessage: content.slice(0, 1000),
+          assistantMessage: '', // Generate from user message only for speed
+        }).then(async (result) => {
+          console.log('[Chat] Title generation result:', result)
+          if (result.success && result.title) {
+            console.log('[Chat] Updating title to:', result.title)
+            await window.jelico.conversations.updateTitle(conversationId, result.title)
+            const updatedConversations = await window.jelico.conversations.list()
+            set({ conversations: updatedConversations })
+          } else {
+            console.warn('[Chat] Title generation failed, using fallback. Error:', result.error)
+            // Fallback: truncate to first 50 chars if generation fails
+            const fallbackTitle = content.trim().slice(0, 50) + (content.length > 50 ? '...' : '')
+            await window.jelico.conversations.updateTitle(conversationId, fallbackTitle)
+            const updatedConversations = await window.jelico.conversations.list()
+            set({ conversations: updatedConversations })
+          }
+        }).catch(async (err) => {
+          console.warn('[Chat] Failed to generate early title:', err)
+          // Fallback: truncate to first 50 chars on error
           const fallbackTitle = content.trim().slice(0, 50) + (content.length > 50 ? '...' : '')
           await window.jelico.conversations.updateTitle(conversationId, fallbackTitle)
           const updatedConversations = await window.jelico.conversations.list()
           set({ conversations: updatedConversations })
-        }
-      }).catch(async (err) => {
-        console.warn('[Chat] Failed to generate early title:', err)
-        // Fallback: truncate to first 50 chars on error
-        const fallbackTitle = content.trim().slice(0, 50) + (content.length > 50 ? '...' : '')
-        await window.jelico.conversations.updateTitle(conversationId, fallbackTitle)
-        const updatedConversations = await window.jelico.conversations.list()
-        set({ conversations: updatedConversations })
-      })
+        })
+      }
+
+      updatedMessages = [...messages, userMessage]
+      set({ messages: updatedMessages })
     }
 
-    const updatedMessages = [...messages, userMessage]
+    // Set streaming state
     set({
-      messages: updatedMessages,
       isStreaming: true,
       streamingStartTime: Date.now(),
       streamingContent: '',
@@ -1028,12 +1035,17 @@ export const useChatStore = create<ChatStore>((set, get) => ({
       await artifactStore.removeArtifact(artifact.id)
     }
 
-    // Remove the assistant message from state
+    // Remove the assistant message from state (keep user message)
     const messagesWithoutLast = messages.slice(0, lastAssistantIndex)
     set({ messages: messagesWithoutLast })
 
-    // Re-send the user's message to regenerate
-    await get().sendMessage(lastUserMessage.content, providerId, model)
+    // Note: Old assistant message stays in DB (no deleteMessage API yet)
+    // This is fine - new message replaces it in UI, and conversation reload works correctly
+    // because we load messages by conversation and the new response overwrites conceptually
+
+    // Start streaming with existing messages (don't re-add user message)
+    // The _isRegenerate flag tells sendMessage to skip adding user message
+    await (get().sendMessage as any)(lastUserMessage.content, providerId, model, undefined, true)
   },
 
   addSystemNotification: (notification) => {

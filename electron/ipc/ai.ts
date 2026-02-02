@@ -52,8 +52,8 @@ interface PendingClarification {
   reject: (error: Error) => void
   channelId: string
   conversationId: string
-  timeoutId: ReturnType<typeof setTimeout>
-  resolved: boolean // Prevents race condition between timeout/response/stop
+  timeoutId?: ReturnType<typeof setTimeout> // Optional - no timeout by default
+  resolved: boolean // Prevents race condition between response/stop
 }
 const pendingClarifications = new Map<string, PendingClarification>()
 
@@ -71,7 +71,7 @@ const STREAM_TIMEOUT_MS = 600000 // 10 minutes - must be longer than wait_for_ag
 // Activity timeout - how long before we consider the stream dead
 // Note: This is dynamically extended while waiting for user clarification
 const ACTIVITY_TIMEOUT_MS = 30000
-const CLARIFICATION_TIMEOUT_MS = 300000 // 5 minutes for clarification responses
+// No timeout for clarification - users have unlimited time to answer
 
 // Max tool input size (10MB) - prevents memory exhaustion from malformed streams
 const MAX_TOOL_INPUT_SIZE = 10 * 1024 * 1024
@@ -1328,27 +1328,17 @@ Note: If recommended option, list it first with "(Recommended)" suffix.`,
       }
 
       // Create a promise that will be resolved when user responds
+      // NO TIMEOUT - users have unlimited time to answer clarification questions
       const answersPromise = new Promise<Record<string, string[]>>((resolve, reject) => {
-        // Timeout after 5 minutes
-        const timeoutId = setTimeout(() => {
-          const pending = pendingClarifications.get(requestId)
-          if (pending && !pending.resolved) {
-            console.log('[AI] ask_user_question: 5-minute timeout reached for', requestId)
-            pending.resolved = true
-            pendingClarifications.delete(requestId)
-            reject(new Error('Clarification request timed out after 5 minutes. Please try asking the question again.'))
-          }
-        }, CLARIFICATION_TIMEOUT_MS)
-
         pendingClarifications.set(requestId, {
           resolve,
           reject,
           channelId: streamContext.channelId,
           conversationId: streamContext.conversationId,
-          timeoutId,
+          timeoutId: undefined, // No timeout
           resolved: false,
         })
-        console.log('[AI] ask_user_question: Stored pending clarification, waiting for user response...')
+        console.log('[AI] ask_user_question: Stored pending clarification, waiting for user response (no timeout)...')
       })
 
       // Send request to UI via IPC

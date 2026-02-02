@@ -284,11 +284,11 @@ export function ChatInput({ disabled, isStreaming, centered }: ChatInputProps) {
     setInput('')
     setAttachments([])
 
-    // Reset textarea height
+    // Reset textarea height to appropriate min for context
     if (textareaRef.current) {
       textareaRef.current.style.height = 'auto'
     }
-  }, [input, attachments, activeProviderId, activeModel, sendMessage])
+  }, [input, attachments, activeProviderId, activeModel, sendMessage, centered])
 
   const handleKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === 'Enter' && !e.shiftKey) {
@@ -304,9 +304,12 @@ export function ChatInput({ disabled, isStreaming, centered }: ChatInputProps) {
     const textarea = textareaRef.current
     if (textarea) {
       textarea.style.height = 'auto'
-      const minHeight = 96 // 4 lines approx
+      // Chat view (not centered): compact 1-line style, grows as needed
+      // Welcome screen (centered): taller 4-line style
+      const minHeight = centered ? 96 : 24 // 4 lines vs 1 line
+      const maxHeight = centered ? 200 : 150 // Allow less growth in chat view
       const newHeight = Math.max(textarea.scrollHeight, minHeight)
-      textarea.style.height = `${Math.min(newHeight, 200)}px`
+      textarea.style.height = `${Math.min(newHeight, maxHeight)}px`
     }
   }
 
@@ -454,8 +457,10 @@ export function ChatInput({ disabled, isStreaming, centered }: ChatInputProps) {
               : 'Message Jelico...'
           }
           disabled={disabled}
-          rows={4}
-          className="flex-1 bg-transparent text-text-primary placeholder:text-text-muted outline-none resize-none min-h-[96px] max-h-[200px] disabled:cursor-not-allowed focus:outline-none focus:ring-0 border-none leading-6 p-3 pb-0"
+          rows={centered ? 4 : 1}
+          className={`flex-1 bg-transparent text-text-primary placeholder:text-text-muted outline-none resize-none disabled:cursor-not-allowed focus:outline-none focus:ring-0 border-none leading-6 p-3 pb-0 ${
+            centered ? 'min-h-[96px] max-h-[200px]' : 'min-h-[24px] max-h-[150px]'
+          }`}
         />
 
         {/* Divider */}

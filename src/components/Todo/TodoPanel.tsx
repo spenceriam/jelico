@@ -5,9 +5,10 @@
  * Shows: ✓ completed, ✗ failed, strikethrough cancelled, ◉ in_progress, ○ pending
  */
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { ChevronDown, ChevronRight } from 'lucide-react'
 import { useTodoStore, TodoItem, TodoStatus } from '../../stores/todos'
+import { useClarificationStore } from '../../stores/clarification'
 
 // Status indicator and styling
 function getStatusDisplay(status: TodoStatus): { icon: string; className: string } {
@@ -60,6 +61,14 @@ function TodoRow({ item, compact = false }: { item: TodoItem; compact?: boolean 
 export function TodoPanel() {
   const { todos, isVisible } = useTodoStore()
   const [isExpanded, setIsExpanded] = useState(false)
+  const activeRequest = useClarificationStore((state) => state.activeRequest)
+
+  // Auto-collapse when clarification questions appear (focus user on answering)
+  useEffect(() => {
+    if (activeRequest) {
+      setIsExpanded(false)
+    }
+  }, [activeRequest])
 
   // Don't render if no todos, not visible, or all tasks completed
   const allDone = todos.every(t => t.status === 'done' || t.status === 'cancelled' || t.status === 'failed')

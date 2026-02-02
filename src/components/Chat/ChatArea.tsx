@@ -323,8 +323,11 @@ export function ChatArea() {
           <div ref={messagesEndRef} />
         </div>
 
-        {/* Todo panel - sticky to bottom of scroll area */}
-        <div className="sticky bottom-0 max-w-3xl mx-auto px-4">
+        {/* Panels sticky to bottom of scroll area */}
+        <div className="sticky bottom-0 max-w-3xl mx-auto px-4 space-y-2">
+          {/* Clarification panel - AI asking for user input */}
+          <ClarificationPanel />
+          {/* Todo panel - task tracking */}
           <TodoPanel />
         </div>
       </div>
@@ -382,9 +385,6 @@ export function ChatArea() {
           <div className="flex justify-center mb-3">
             <ModeSelector />
           </div>
-
-          {/* Clarification panel - AI asking for user input */}
-          <ClarificationPanel />
 
           <ChatInput
             disabled={!activeProviderId || !activeModel}
