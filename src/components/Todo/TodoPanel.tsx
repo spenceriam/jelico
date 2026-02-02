@@ -1,153 +1,120 @@
 /**
- * TodoPanel - Displays AI's task progress
+ * TodoPanel - Claude Code style task list
  *
- * Shows a collapsible panel with accent-colored border
- * displaying the AI's current task list and progress.
+ * Sticky to bottom of chat view, collapsible.
+ * Shows: ✓ completed, ✗ failed, strikethrough cancelled, ◉ in_progress, ○ pending
  */
 
 import { useState } from 'react'
-import { ChevronDown, ListTodo } from 'lucide-react'
+import { ChevronDown, ChevronRight } from 'lucide-react'
 import { useTodoStore, TodoItem, TodoStatus } from '../../stores/todos'
 
-// Status indicator component
-function StatusIcon({ status }: { status: TodoStatus }) {
+// Status indicator and styling
+function getStatusDisplay(status: TodoStatus): { icon: string; className: string } {
   switch (status) {
     case 'pending':
-      return <span className="text-[var(--text-muted)]">☐</span>
+      return { icon: '○', className: 'text-text-muted' }
     case 'in_progress':
-      return (
-        <span
-          className="text-[var(--accent)]"
-          style={{
-            animation: 'pulse 1.5s ease-in-out infinite',
-          }}
-        >
-          ◉
-        </span>
-      )
+      return { icon: '◉', className: 'text-accent animate-pulse' }
     case 'done':
-      return <span className="text-[var(--success)]">☑</span>
+      return { icon: '✓', className: 'text-success' }
+    case 'failed':
+      return { icon: '✗', className: 'text-error' }
+    case 'cancelled':
+      return { icon: '—', className: 'text-text-muted' }
   }
 }
 
-// Status label text
-function getStatusLabel(status: TodoStatus): string {
-  switch (status) {
-    case 'pending':
-      return '○ pending'
-    case 'in_progress':
-      return '⟳ in progress'
-    case 'done':
-      return '✓ done'
-  }
-}
-
-// Individual todo item
-function TodoItemRow({ item }: { item: TodoItem }) {
-  const isCompleted = item.status === 'done'
+// Individual todo item row
+function TodoRow({ item, compact = false }: { item: TodoItem; compact?: boolean }) {
+  const { icon, className } = getStatusDisplay(item.status)
+  const isCancelled = item.status === 'cancelled'
+  const isDone = item.status === 'done'
+  const isFailed = item.status === 'failed'
   const isInProgress = item.status === 'in_progress'
 
   return (
-    <div
-      className="flex items-start gap-3 py-2.5 border-b border-[var(--border)] last:border-b-0"
-    >
-      <div className="text-lg leading-tight flex-shrink-0 w-5 text-center">
-        <StatusIcon status={item.status} />
-      </div>
-      <div className="flex-1 min-w-0">
-        <div
-          className={`text-sm leading-relaxed ${
-            isCompleted
-              ? 'line-through text-[var(--text-muted)]'
-              : isInProgress
-              ? 'text-[var(--accent-bright)]'
-              : 'text-[var(--text-primary)]'
-          }`}
-        >
-          {item.text}
-        </div>
-        <div className="text-[11px] text-[var(--text-muted)] mt-1 font-mono">
-          {getStatusLabel(item.status)}
-        </div>
-      </div>
+    <div className={`flex items-center gap-2 ${compact ? 'py-0.5' : 'py-1'}`}>
+      <span className={`font-mono text-sm w-4 text-center flex-shrink-0 ${className}`}>
+        {icon}
+      </span>
+      <span
+        className={`text-sm flex-1 ${
+          isCancelled
+            ? 'line-through text-text-muted'
+            : isDone
+            ? 'text-text-secondary'
+            : isFailed
+            ? 'text-error/80'
+            : isInProgress
+            ? 'text-text-primary font-medium'
+            : 'text-text-secondary'
+        }`}
+      >
+        {item.text}
+      </span>
     </div>
   )
 }
 
 export function TodoPanel() {
   const { todos, isVisible } = useTodoStore()
-  const [isCollapsed, setIsCollapsed] = useState(false)
+  const [isExpanded, setIsExpanded] = useState(false)
 
   // Don't render if no todos or not visible
   if (!isVisible || todos.length === 0) {
     return null
   }
 
-  const completed = todos.filter(t => t.status === 'done').length
-  const total = todos.length
+  // Find current in-progress task
+  const currentTask = todos.find(t => t.status === 'in_progress')
+  const completedCount = todos.filter(t => t.status === 'done').length
+  const failedCount = todos.filter(t => t.status === 'failed').length
+
+  // Progress summary
+  const progressText = failedCount > 0
+    ? `${completedCount}/${todos.length} done, ${failedCount} failed`
+    : `${completedCount}/${todos.length}`
 
   return (
-    <div
-      className={`
-        rounded-[var(--radius-md)] overflow-hidden mb-4
-        border-2 border-[var(--accent)]
-        bg-[var(--bg-surface)]
-      `}
-      style={{
-        boxShadow: '0 0 20px var(--accent-glow), inset 0 0 30px var(--accent-glow)',
-      }}
-    >
-      {/* Header */}
-      <div
-        className="flex items-center justify-between px-4 py-3 border-b border-[var(--accent-dim)]"
-        style={{
-          background: 'linear-gradient(135deg, var(--accent-glow) 0%, transparent 100%)',
-        }}
+    <div className="border border-border rounded-lg bg-bg-surface mb-4 overflow-hidden">
+      {/* Header - always visible, clickable to expand */}
+      <button
+        onClick={() => setIsExpanded(!isExpanded)}
+        className="w-full flex items-center gap-2 px-3 py-2 hover:bg-bg-hover/50 transition-colors text-left"
       >
-        <div className="flex items-center gap-2 font-semibold text-[var(--accent-bright)]">
-          <ListTodo size={16} />
-          <span>Task Progress</span>
-        </div>
-        <div className="flex items-center gap-3">
-          <span className="text-xs text-[var(--text-secondary)] font-mono">
-            {completed}/{total} completed
-          </span>
-          <button
-            onClick={() => setIsCollapsed(!isCollapsed)}
-            className="p-1 text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-transform duration-200"
-            style={{
-              transform: isCollapsed ? 'rotate(-90deg)' : 'rotate(0deg)',
-            }}
-          >
-            <ChevronDown size={14} />
-          </button>
-        </div>
-      </div>
+        <span className="text-text-muted">
+          {isExpanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+        </span>
 
-      {/* Todo list */}
-      {!isCollapsed && (
-        <div className="px-4 py-2">
+        {/* Show current task when collapsed, or "Tasks" when expanded */}
+        {isExpanded ? (
+          <span className="text-xs text-text-muted font-medium uppercase tracking-wide">
+            Tasks
+          </span>
+        ) : currentTask ? (
+          <div className="flex-1 flex items-center gap-2 min-w-0">
+            <span className="text-accent animate-pulse">◉</span>
+            <span className="text-sm text-text-primary truncate">{currentTask.text}</span>
+          </div>
+        ) : (
+          <span className="text-xs text-text-muted">Tasks</span>
+        )}
+
+        {/* Progress counter */}
+        <span className="text-xs text-text-muted font-mono ml-auto">
+          {progressText}
+        </span>
+      </button>
+
+      {/* Expanded task list */}
+      {isExpanded && (
+        <div className="px-3 pb-2 border-t border-border/50">
           {todos.map(item => (
-            <TodoItemRow key={item.id} item={item} />
+            <TodoRow key={item.id} item={item} />
           ))}
         </div>
       )}
     </div>
   )
-}
-
-// Add the pulse animation to globals via a style tag (injected once)
-if (typeof document !== 'undefined') {
-  const styleId = 'todo-panel-styles'
-  if (!document.getElementById(styleId)) {
-    const style = document.createElement('style')
-    style.id = styleId
-    style.textContent = `
-      @keyframes pulse {
-        0%, 100% { opacity: 0.6; transform: scale(0.95); }
-        50% { opacity: 1; transform: scale(1.05); }
-      }
-    `
-    document.head.appendChild(style)
-  }
 }

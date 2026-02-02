@@ -2,6 +2,22 @@
 
 All notable changes to Jelico will be documented in this file.
 
+## [0.7.44] - 2026-02-02
+
+### Changed
+- **Todo panel complete rework**
+  - Moved from above input to sticky bottom of chat message area
+  - Claude Code style: simple, clean, collapsible
+  - Collapsed view shows current in-progress task
+  - Expanded view shows full task list
+  - New status types: `failed` (✗ red), `cancelled` (— strikethrough)
+  - Status icons: ○ pending, ◉ in_progress, ✓ done, ✗ failed, — cancelled
+
+### Fixed
+- **PermissionDialog crash when preview is an object**
+  - Now properly stringifies object previews (e.g., package.json)
+  - Prevents "Objects are not valid as a React child" error
+
 ## [0.7.43] - 2026-02-02
 
 ### Added

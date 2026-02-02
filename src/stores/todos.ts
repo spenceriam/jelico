@@ -10,7 +10,7 @@
 
 import { create } from 'zustand'
 
-export type TodoStatus = 'pending' | 'in_progress' | 'done'
+export type TodoStatus = 'pending' | 'in_progress' | 'done' | 'failed' | 'cancelled'
 
 export interface TodoItem {
   id: string
@@ -35,8 +35,9 @@ interface TodoState {
   setVisible: (visible: boolean) => void
 
   // Computed
-  getProgress: () => { completed: number; total: number }
+  getProgress: () => { completed: number; failed: number; cancelled: number; total: number }
   getCurrentTask: () => TodoItem | undefined
+  getActiveTasks: () => TodoItem[]
 }
 
 export const useTodoStore = create<TodoState>((set, get) => ({
@@ -107,10 +108,17 @@ export const useTodoStore = create<TodoState>((set, get) => ({
   getProgress: () => {
     const todos = get().todos
     const completed = todos.filter(t => t.status === 'done').length
-    return { completed, total: todos.length }
+    const failed = todos.filter(t => t.status === 'failed').length
+    const cancelled = todos.filter(t => t.status === 'cancelled').length
+    return { completed, failed, cancelled, total: todos.length }
   },
 
   getCurrentTask: () => {
     return get().todos.find(t => t.status === 'in_progress')
+  },
+
+  getActiveTasks: () => {
+    // Tasks that are still actionable (not done, failed, or cancelled)
+    return get().todos.filter(t => t.status === 'pending' || t.status === 'in_progress')
   },
 }))

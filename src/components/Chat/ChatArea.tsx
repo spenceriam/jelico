@@ -322,6 +322,11 @@ export function ChatArea() {
 
           <div ref={messagesEndRef} />
         </div>
+
+        {/* Todo panel - sticky to bottom of scroll area */}
+        <div className="sticky bottom-0 max-w-3xl mx-auto px-4">
+          <TodoPanel />
+        </div>
       </div>
 
       {/* Input area */}
@@ -380,9 +385,6 @@ export function ChatArea() {
 
           {/* Clarification panel - AI asking for user input */}
           <ClarificationPanel />
-
-          {/* Todo panel - shows AI's task progress */}
-          <TodoPanel />
 
           <ChatInput
             disabled={!activeProviderId || !activeModel}

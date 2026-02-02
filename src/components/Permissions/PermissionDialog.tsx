@@ -71,7 +71,9 @@ export function PermissionDialog() {
             <div className="bg-bg-deep rounded-lg p-3 mb-4 max-h-40 overflow-y-auto">
               <p className="text-xs text-text-muted mb-1">Preview</p>
               <pre className="text-xs font-mono text-text-secondary whitespace-pre-wrap break-all">
-                {activeRequest.preview}
+                {typeof activeRequest.preview === 'object'
+                  ? JSON.stringify(activeRequest.preview, null, 2)
+                  : activeRequest.preview}
               </pre>
             </div>
           )}
