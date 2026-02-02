@@ -2,6 +2,14 @@
 
 All notable changes to Jelico will be documented in this file.
 
+## [0.7.48] - 2026-02-02
+
+### Changed
+- **Todo panel hides when all tasks complete**
+  - Panel disappears once all tasks are done/cancelled/failed
+  - No longer shows "All tasks complete" message
+  - Todo only visible while work is in progress
+
 ## [0.7.47] - 2026-02-02
 
 ### Fixed

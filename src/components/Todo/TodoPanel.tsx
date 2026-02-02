@@ -61,8 +61,9 @@ export function TodoPanel() {
   const { todos, isVisible } = useTodoStore()
   const [isExpanded, setIsExpanded] = useState(false)
 
-  // Don't render if no todos or not visible
-  if (!isVisible || todos.length === 0) {
+  // Don't render if no todos, not visible, or all tasks completed
+  const allDone = todos.every(t => t.status === 'done' || t.status === 'cancelled' || t.status === 'failed')
+  if (!isVisible || todos.length === 0 || allDone) {
     return null
   }
 
@@ -72,7 +73,6 @@ export function TodoPanel() {
   const displayTask = inProgressTask || nextPendingTask
   const completedCount = todos.filter(t => t.status === 'done').length
   const failedCount = todos.filter(t => t.status === 'failed').length
-  const allDone = completedCount === todos.length
 
   // Progress summary
   const progressText = failedCount > 0
@@ -95,8 +95,6 @@ export function TodoPanel() {
           <span className="text-xs text-text-muted font-medium uppercase tracking-wide">
             Tasks
           </span>
-        ) : allDone ? (
-          <span className="text-sm text-success">All tasks complete</span>
         ) : displayTask ? (
           <div className="flex-1 flex items-center gap-2 min-w-0">
             <span className={inProgressTask ? 'text-accent animate-pulse' : 'text-text-muted'}>
