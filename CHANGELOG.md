@@ -2,6 +2,21 @@
 
 All notable changes to Jelico will be documented in this file.
 
+## [0.7.43] - 2026-02-02
+
+### Added
+- **Sidebar date grouping**
+  - Conversations organized into Today, Yesterday, Earlier sections
+  - Groups based on `updatedAt` timestamp (active old chats bubble up)
+  - Empty groups automatically hidden
+  - Subtle dividers between date groups
+
+- **Days-old badges**
+  - Shows `Xd` badge for conversations 2+ days old (e.g., `3d`, `14d`)
+  - Small faint text with tabular-nums for alignment
+  - Only appears in Earlier group (Today/Yesterday don't need it)
+  - Uses `createdAt` for age calculation
+
 ## [0.7.42] - 2026-02-02
 
 ### Changed
