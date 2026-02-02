@@ -21,6 +21,33 @@ export interface ChangelogEntry {
 
 export const changelog: ChangelogEntry[] = [
   {
+    version: '0.8.0',
+    date: '2026-02-02',
+    changes: {
+      added: [
+        'Soul/memory context now injected into AI prompts (core differentiator enabled!)',
+        'External content guardrails for web_fetch/web_search to prevent prompt injection',
+        'Tool step limit awareness in system prompt (50 steps max with warning at 40)',
+      ],
+      changed: [
+        'Consolidated persona to single file-based source (deleted 260-line embedded duplicate)',
+        'Tool step limit increased from 10 to 50 for complex multi-file tasks',
+        'File tools now resolve relative paths against workspace directory',
+      ],
+      fixed: [
+        'Race condition in clarification requests that could cause double resolution',
+        'Unbounded tool input accumulation that could exhaust memory (now capped at 10MB)',
+        'Missing null check in title generation that could crash on invalid input',
+        'Sandbox path escaping vulnerability (Windows paths, nested traversal)',
+        'Removed switch_mode instructions for non-existent tool',
+      ],
+      security: [
+        'Sandbox now properly blocks path traversal attacks (C:\\, foo/../../../bar)',
+        'Web content wrapped in guardrail markers to prevent injection',
+      ],
+    },
+  },
+  {
     version: '0.7.55',
     date: '2026-02-02',
     changes: {
