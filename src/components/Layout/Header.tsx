@@ -4,6 +4,7 @@ import { useArtifactStore } from '../../stores/artifacts'
 import { useChatStore } from '../../stores/chat'
 import { WorkspaceSelector } from '../Workspace/WorkspaceSelector'
 import { ModelSelector } from '../Model/ModelSelector'
+import { ContextIndicator } from './ContextIndicator'
 
 export function Header() {
   const { openSettings, sidebarCollapsed } = useUIStore()
@@ -17,10 +18,11 @@ export function Header() {
 
   return (
     <header className="h-14 flex items-center justify-between px-4 border-b border-border bg-bg-deep">
-      {/* Left - Workspace selector */}
+      {/* Left - Workspace selector, Model, Context */}
       <div className="flex-1 min-w-0 flex items-center gap-3">
         <WorkspaceSelector />
         <ModelSelector />
+        <ContextIndicator />
       </div>
 
       {/* Right - Canvas & Settings */}

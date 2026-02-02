@@ -1,9 +1,8 @@
 import { useRef, useEffect, useState, useMemo, useCallback } from 'react'
-import { Settings, AlertTriangle, Loader2 } from 'lucide-react'
+import { Settings } from 'lucide-react'
 import { useChatStore } from '../../stores/chat'
 import { useProviderStore } from '../../stores/providers'
 import { useUIStore } from '../../stores/ui'
-import { useContextStore } from '../../stores/context'
 import { useClarificationStore, type ClarificationRequest } from '../../stores/clarification'
 import { MessageList } from './MessageList'
 import { ChatInput } from './ChatInput'
@@ -22,14 +21,9 @@ export function ChatArea() {
   const { messages, isStreaming, streamingContent, streamingToolCalls, streamingToolResults, streamingSegments, systemNotifications, activeConversationId, regenerateLastResponse, modeSwitchReason, modeTransitioning, lastCompletedTool, statusDisplayQueue, toolInputProgress, streamingStartTime } = useChatStore()
   const { activeProviderId, activeModel } = useProviderStore()
   const { isProcessing, processingMessage } = useUIStore()
-  const { getContextUsage, isCompacting } = useContextStore()
   const { setActiveRequest } = useClarificationStore()
   const messagesEndRef = useRef<HTMLDivElement>(null)
-  const [showContextBar, setShowContextBar] = useState(false) // Hidden by default, click to show
   const [userName, setUserName] = useState<string | null>(null)
-
-  // Get context usage for current conversation
-  const contextUsage = activeConversationId ? getContextUsage(activeConversationId) : null
 
   // Load user name from soul preferences
   useEffect(() => {
@@ -335,52 +329,6 @@ export function ChatArea() {
       {/* Input area */}
       <div className="border-t border-border bg-bg-surface">
         <div className="max-w-3xl mx-auto p-4">
-          {/* Context usage indicator - hidden by default, click percentage to toggle bar */}
-          {/* Show after first message (tokenCount > 0) or during active streaming */}
-          {contextUsage && (contextUsage.tokenCount > 0 || isStreaming || messages.length > 0) && (
-            <div className="mb-3">
-              <button
-                onClick={() => setShowContextBar(!showContextBar)}
-                className="w-full flex items-center gap-3 text-xs text-text-muted hover:text-text-secondary transition-colors group"
-                title={showContextBar ? 'Hide context window bar' : 'Show context window bar'}
-              >
-                {/* Progress bar - taller, only visible when toggled on */}
-                {showContextBar && (
-                  <div className="flex-1 h-3 bg-bg-deep rounded-full overflow-hidden">
-                    <div
-                      className={`h-full transition-all duration-300 ${
-                        contextUsage.shouldWarn ? 'bg-warning' : 'bg-accent'
-                      }`}
-                      style={{ width: `${Math.max(Math.min(contextUsage.percentage * 100, 100), 1)}%` }}
-                    />
-                  </div>
-                )}
-                {!showContextBar && (
-                  <div className="flex-1 flex items-center">
-                    <span className="opacity-0 group-hover:opacity-100 transition-opacity text-text-muted">
-                      Show context window
-                    </span>
-                  </div>
-                )}
-
-                {/* Right side: icons and percentage */}
-                <div className="flex items-center gap-2">
-                  {/* Spinner during compaction */}
-                  {isCompacting && (
-                    <Loader2 className="w-3.5 h-3.5 animate-spin text-accent" />
-                  )}
-                  {/* Warning icon when approaching limit (but not compacting) */}
-                  {!isCompacting && contextUsage.shouldWarn && (
-                    <span className="text-warning" title="Compacting conversation soon">
-                      <AlertTriangle className="w-3.5 h-3.5" />
-                    </span>
-                  )}
-                  <span>{Math.round(contextUsage.percentage * 100)}%</span>
-                </div>
-              </button>
-            </div>
-          )}
-
           {/* Mode selector above input */}
           <div className="flex justify-center mb-3">
             <ModeSelector />

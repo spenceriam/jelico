@@ -21,6 +21,17 @@ export interface ChangelogEntry {
 
 export const changelog: ChangelogEntry[] = [
   {
+    version: '0.8.4',
+    date: '2026-02-02',
+    changes: {
+      changed: [
+        'Context window indicator moved to header (right of model selector)',
+        'Click percentage to expand/collapse context bar',
+        'Input area now more compact without context indicator',
+      ],
+    },
+  },
+  {
     version: '0.8.3',
     date: '2026-02-02',
     changes: {
