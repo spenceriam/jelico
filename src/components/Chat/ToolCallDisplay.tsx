@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
 import {
   ChevronDown,
   ChevronRight,
@@ -6,8 +6,7 @@ import {
   XCircle,
   Loader2,
   Bot,
-  ExternalLink,
-  Eye
+  ExternalLink
 } from 'lucide-react'
 import type { ToolCall, ToolResult } from '../../stores/chat'
 import { useAgentStore } from '../../stores/agents'
@@ -153,10 +152,6 @@ export function SingleToolCallDisplay({
   isStreaming?: boolean
 }) {
   const [expanded, setExpanded] = useState(false)
-  // Sub-sections are collapsed by default
-  const [showTask, setShowTask] = useState(false)
-  const [showActions, setShowActions] = useState(false)
-  const [showResult, setShowResult] = useState(false)
   const [showToolResult, setShowToolResult] = useState(false)
 
   const { agents } = useAgentStore()
@@ -168,12 +163,6 @@ export function SingleToolCallDisplay({
     : null
   const subAgent = agentId ? agents.find(a => a.id === agentId) : null
 
-  // Auto-expand when sub-agent is running so user can see status
-  useEffect(() => {
-    if (subAgent?.status === 'running' || subAgent?.status === 'pending') {
-      setExpanded(true)
-    }
-  }, [subAgent?.status])
 
   // Custom label for spawn_agent to show task inline
   const label: string = (toolCall.name === 'spawn_agent' && !!toolCall.args?.task)
@@ -280,14 +269,11 @@ export function SingleToolCallDisplay({
         </div>
       )}
 
-      {/* Sub-agent activity panel - shown under spawn_agent calls */}
+      {/* Sub-agent panel - minimal display: name, status, live update, errors only */}
       {toolCall.name === 'spawn_agent' && subAgent && (
         <div className="border-t border-border bg-bg-surface">
-          {/* Agent header - always visible, shows status */}
-          <button
-            onClick={() => setExpanded(!expanded)}
-            className="w-full px-3 py-2 flex items-center gap-2 hover:bg-bg-hover transition-colors"
-          >
+          {/* Agent header - name and status badge */}
+          <div className="px-3 py-2 flex items-center gap-2">
             <Bot className="w-4 h-4 text-accent flex-shrink-0" />
             <span className="font-medium text-text-primary text-sm">
               {subAgent.displayName || subAgent.name}
@@ -300,137 +286,27 @@ export function SingleToolCallDisplay({
             }`}>
               {subAgent.status}
             </span>
-            <span className="flex-1" />
-            {/* Expand/collapse indicator */}
-            <span className="flex items-center gap-1 text-xs text-text-muted">
-              <Eye className="w-3 h-3" />
-              {expanded ? 'Hide' : 'View'}
-            </span>
-            {expanded ? (
-              <ChevronDown className="w-4 h-4 text-text-muted" />
-            ) : (
-              <ChevronRight className="w-4 h-4 text-text-muted" />
-            )}
-          </button>
+          </div>
 
-          {/* Expanded details - only show when user expands */}
-          {expanded && (
-            <>
-              {/* Task - collapsible */}
-              <div className="border-t border-border/50">
-                <button
-                  onClick={() => setShowTask(!showTask)}
-                  className="w-full py-2 flex items-center hover:bg-bg-hover/50 transition-colors"
-                >
-                  <div className="w-6 flex-shrink-0 flex justify-center">
-                    {showTask ? (
-                      <ChevronDown className="w-3 h-3 text-text-muted" />
-                    ) : (
-                      <ChevronRight className="w-3 h-3 text-text-muted" />
-                    )}
-                  </div>
-                  <span className="text-[10px] uppercase tracking-wider text-text-muted">Task</span>
-                </button>
-                {showTask && (
-                  <div className="pb-2 pl-8 pr-3">
-                    <div className="text-xs text-text-secondary">{subAgent.task}</div>
-                  </div>
-                )}
-              </div>
+          {/* Live status while running */}
+          {(subAgent.status === 'running' || subAgent.status === 'pending') && subAgent.latestUpdate && (
+            <div className="px-3 py-2 border-t border-border/50 flex items-center gap-2">
+              <Loader2 className="w-3 h-3 animate-spin text-accent flex-shrink-0" />
+              <span className="text-xs text-text-muted">
+                {subAgent.latestUpdate.phase && (
+                  <span className="text-accent">[{subAgent.latestUpdate.phase}]</span>
+                )}{' '}
+                {subAgent.latestUpdate.message}
+              </span>
+            </div>
+          )}
 
-              {/* Sub-agent's tool calls - collapsible */}
-              {subAgent.toolCalls && subAgent.toolCalls.length > 0 && (
-                <div className="border-t border-border/50">
-                  <button
-                    onClick={() => setShowActions(!showActions)}
-                    className="w-full py-2 flex items-center hover:bg-bg-hover/50 transition-colors"
-                  >
-                    <div className="w-6 flex-shrink-0 flex justify-center">
-                      {showActions ? (
-                        <ChevronDown className="w-3 h-3 text-text-muted" />
-                      ) : (
-                        <ChevronRight className="w-3 h-3 text-text-muted" />
-                      )}
-                    </div>
-                    <span className="text-[10px] uppercase tracking-wider text-text-muted">
-                      Actions ({subAgent.toolCalls.length})
-                    </span>
-                  </button>
-                  {showActions && (
-                    <div className="pb-2 pl-8 pr-3 space-y-1">
-                      {subAgent.toolCalls.map((tc, idx) => (
-                        <div key={tc.id || idx} className="flex items-center gap-2 text-xs">
-                          <CheckCircle className="w-3 h-3 text-green-500 flex-shrink-0" />
-                          <span className="text-text-secondary">{TOOL_LABELS[tc.name] || tc.name}</span>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              )}
-
-              {/* Live status while running - single line */}
-              {(subAgent.status === 'running' || subAgent.status === 'pending') && (
-                <div className="px-3 py-2 border-t border-border/50 flex items-center gap-2">
-                  <Loader2 className="w-3 h-3 animate-spin text-accent flex-shrink-0" />
-                  <span className="text-xs text-text-muted">
-                    {subAgent.latestUpdate ? (
-                      <>
-                        {subAgent.latestUpdate.phase && (
-                          <span className="text-accent">[{subAgent.latestUpdate.phase}]</span>
-                        )}{' '}
-                        {subAgent.latestUpdate.message}
-                      </>
-                    ) : (
-                      'Starting up...'
-                    )}
-                  </span>
-                </div>
-              )}
-
-              {/* Final result - collapsible */}
-              {subAgent.status === 'completed' && subAgent.result && (
-                <div className="border-t border-border/50">
-                  <button
-                    onClick={() => setShowResult(!showResult)}
-                    className="w-full py-2 flex items-center hover:bg-bg-hover/50 transition-colors"
-                  >
-                    <div className="w-6 flex-shrink-0 flex justify-center">
-                      {showResult ? (
-                        <ChevronDown className="w-3 h-3 text-green-500" />
-                      ) : (
-                        <ChevronRight className="w-3 h-3 text-green-500" />
-                      )}
-                    </div>
-                    <span className="text-[10px] uppercase tracking-wider text-green-500">Result</span>
-                  </button>
-                  {showResult && (
-                    <div className="pb-2 pl-8 pr-3">
-                      <div className="text-sm text-text-primary bg-bg-deep rounded p-2 max-h-40 overflow-y-auto whitespace-pre-wrap">
-                        {subAgent.result}
-                      </div>
-                    </div>
-                  )}
-                </div>
-              )}
-
-              {/* Error message - NOT collapsible, always show errors */}
-              {subAgent.status === 'failed' && subAgent.error && (
-                <div className="py-2 border-t border-border/50">
-                  <div className="flex items-start">
-                    <div className="w-6 flex-shrink-0 flex justify-center">
-                      <XCircle className="w-3.5 h-3.5 text-error" />
-                    </div>
-                    <div className="flex-1 pl-2 pr-3">
-                      <div className="text-[10px] uppercase tracking-wider text-error mb-1">Error</div>
-                      <div className="text-xs text-error bg-error/10 rounded p-2">
-                        {subAgent.error}
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              )}
-            </>
+          {/* Error message - always show errors */}
+          {subAgent.status === 'failed' && subAgent.error && (
+            <div className="px-3 py-2 border-t border-border/50 flex items-start gap-2">
+              <XCircle className="w-3.5 h-3.5 text-error flex-shrink-0 mt-0.5" />
+              <div className="text-xs text-error">{subAgent.error}</div>
+            </div>
           )}
         </div>
       )}

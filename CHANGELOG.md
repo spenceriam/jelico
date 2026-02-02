@@ -2,6 +2,15 @@
 
 All notable changes to Jelico will be documented in this file.
 
+## [0.7.29] - 2026-02-01
+
+### Changed
+- **Simplified sub-agent display**
+  - Removed Task, Actions, and Result sections from sub-agent panel
+  - Now shows only: agent name, status badge, live update, and errors
+  - Background details stay between main AI and sub-agents only
+  - Cleaner UI that doesn't overwhelm users with internal operations
+
 ## [0.7.28] - 2026-02-01
 
 ### Added
