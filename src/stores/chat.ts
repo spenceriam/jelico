@@ -184,10 +184,13 @@ export const useChatStore = create<ChatStore>((set, get) => ({
 
   createConversation: async (providerId, model) => {
     try {
+      // Include active workspace ID so conversation is associated with it
+      const activeWorkspaceId = useWorkspaceStore.getState().activeWorkspaceId
       const conversation = await window.jelico.conversations.create({
         title: 'New chat',
         model,
         providerId,
+        workspaceId: activeWorkspaceId || undefined,
       })
       const conversations = await window.jelico.conversations.list()
       set({
@@ -258,6 +261,12 @@ export const useChatStore = create<ChatStore>((set, get) => ({
         isReasoning: false,
         reasoningContent: '',
       })
+
+      // Restore workspace associated with this conversation
+      if (conversation?.workspaceId) {
+        useWorkspaceStore.getState().setActiveWorkspace(conversation.workspaceId)
+      }
+
       // Load artifacts for this conversation and close canvas if none exist
       await useArtifactStore.getState().loadArtifactsForConversation(id)
       const conversationArtifacts = useArtifactStore.getState().getArtifactsByConversation(id)
