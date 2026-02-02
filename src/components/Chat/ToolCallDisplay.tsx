@@ -163,14 +163,15 @@ export function SingleToolCallDisplay({
   const subAgent = agentId ? agents.find(a => a.id === agentId) : null
 
 
-  // Custom label for spawn_agent: show name and short task title
+  // Custom label for spawn_agent: use displayName from agent store (e.g., "Maya: Creating Wordle")
   const label: string = (() => {
     if (toolCall.name === 'spawn_agent') {
-      const agentName = toolCall.args?.name ? String(toolCall.args.name) : 'Agent'
-      const task = toolCall.args?.task ? String(toolCall.args.task) : ''
-      const maxTaskLen = 40
-      const truncatedTask = task.length > maxTaskLen ? task.slice(0, maxTaskLen) + '...' : task
-      return `${agentName}: ${truncatedTask}`
+      // Prefer displayName from agent store (has friendly first name)
+      if (subAgent?.displayName) {
+        return subAgent.displayName
+      }
+      // Fallback while agent is being spawned (before we have the agent_id)
+      return 'Starting sub-agent...'
     }
     return TOOL_LABELS[toolCall.name] || toolCall.name
   })()

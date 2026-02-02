@@ -21,6 +21,15 @@ export interface ChangelogEntry {
 
 export const changelog: ChangelogEntry[] = [
   {
+    version: '0.7.32',
+    date: '2026-02-01',
+    changes: {
+      fixed: [
+        'Sub-agent display now uses friendly first names (e.g., "Maya: Creating Wordle")',
+      ],
+    },
+  },
+  {
     version: '0.7.31',
     date: '2026-02-01',
     changes: {
