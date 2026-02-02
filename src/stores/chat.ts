@@ -306,10 +306,11 @@ export const useChatStore = create<ChatStore>((set, get) => ({
       attachments: attachments, // Include attachments for display
     })
 
-    // Update title if this is the first message - use content or placeholder
-    // AI will generate a proper title after the first response
+    // Update title if this is the first message - use truncated content or placeholder
+    // AI will generate a proper title in the background
     if (messages.length === 0) {
-      let titleSource = content.trim()
+      // Truncate to 50 chars max for initial display (AI generates better title)
+      let titleSource = content.trim().slice(0, 50) + (content.trim().length > 50 ? '...' : '')
 
       // If no typed content, use a descriptive placeholder based on attachment type
       if (!titleSource && attachments && attachments.length > 0) {
@@ -349,9 +350,20 @@ export const useChatStore = create<ChatStore>((set, get) => ({
           await window.jelico.conversations.updateTitle(conversationId, result.title)
           const updatedConversations = await window.jelico.conversations.list()
           set({ conversations: updatedConversations })
+        } else {
+          // Fallback: truncate to first 50 chars if generation fails
+          const fallbackTitle = content.trim().slice(0, 50) + (content.length > 50 ? '...' : '')
+          await window.jelico.conversations.updateTitle(conversationId, fallbackTitle)
+          const updatedConversations = await window.jelico.conversations.list()
+          set({ conversations: updatedConversations })
         }
-      }).catch((err) => {
+      }).catch(async (err) => {
         console.warn('[Chat] Failed to generate early title:', err)
+        // Fallback: truncate to first 50 chars on error
+        const fallbackTitle = content.trim().slice(0, 50) + (content.length > 50 ? '...' : '')
+        await window.jelico.conversations.updateTitle(conversationId, fallbackTitle)
+        const updatedConversations = await window.jelico.conversations.list()
+        set({ conversations: updatedConversations })
       })
     }
 

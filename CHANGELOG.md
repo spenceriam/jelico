@@ -2,6 +2,14 @@
 
 All notable changes to Jelico will be documented in this file.
 
+## [0.7.47] - 2026-02-02
+
+### Fixed
+- **Conversation titles staying huge when AI title generation fails**
+  - Initial title now truncated to 50 chars max (instead of full message)
+  - Fallback to 50-char truncation if AI generation fails or errors
+  - No more huge titles due to long initial prompts
+
 ## [0.7.46] - 2026-02-02
 
 ### Fixed
