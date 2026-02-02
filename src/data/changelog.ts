@@ -21,6 +21,16 @@ export interface ChangelogEntry {
 
 export const changelog: ChangelogEntry[] = [
   {
+    version: '0.7.34',
+    date: '2026-02-01',
+    changes: {
+      fixed: [
+        'Sub-agent premature completion now catches ALL missing output cases (not just report_progress)',
+        'wait_for_agent now returns explicit "DO NOT CREATE AGAIN" message when artifacts exist',
+      ],
+    },
+  },
+  {
     version: '0.7.33',
     date: '2026-02-01',
     changes: {

@@ -34,3 +34,6 @@ keys.json
 
 # Windows Zone.Identifier files
 *:Zone.Identifier
+
+# Local screenshots for debugging
+screenshot/

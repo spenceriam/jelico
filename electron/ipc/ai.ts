@@ -577,16 +577,27 @@ If the agent created an artifact:
             }
           }
 
+          // Build explicit message about artifacts if any were created
+          const artifactList = result.createdArtifacts?.map(a => ({
+            title: a.title,
+            type: a.type,
+          })) || []
+
+          // Create a strong message when artifacts exist to prevent duplication
+          let message = result.result
+          if (artifactList.length > 0) {
+            const artifactNames = artifactList.map(a => `"${a.title}" (${a.type})`).join(', ')
+            message = `ARTIFACTS ALREADY CREATED AND VISIBLE TO USER: ${artifactNames}. ` +
+              `DO NOT create these again - they are already in the Canvas panel. ` +
+              `Just tell the user the artifact is ready. ` +
+              (result.result ? `Agent's notes: ${result.result}` : '')
+          }
+
           return {
             success: result.success,
-            result: result.result,
+            result: message,
             error: result.error,
-            // Include artifact info so main AI knows what was created
-            artifacts_created: result.createdArtifacts?.map(a => ({
-              title: a.title,
-              type: a.type,
-            })),
-            // Include progress updates so main AI knows what the agent did
+            artifacts_created: artifactList,
             progress_updates: progressSummary,
           }
         } finally {

@@ -1327,9 +1327,10 @@ async function runSubAgent(agentId: string): Promise<void> {
 
       // Premature completion detection:
       // 1. If only called report_progress with no output - definitely premature
-      // 2. If task requires output but no output tools called and no artifacts - likely premature
+      // 2. If task requires output but no output tools called and no artifacts - ALWAYS premature
+      //    (regardless of whether report_progress was called - agent may just stop without it)
       const isPrematureNoOutput = onlyCalledReportProgress && agent.toolCalls.length > 0 && !hasArtifacts
-      const isPrematureMissingDeliverable = taskRequiresOutput && !hasOutputToolCalls && !hasArtifacts && calledReportProgress
+      const isPrematureMissingDeliverable = taskRequiresOutput && !hasOutputToolCalls && !hasArtifacts
 
       const MAX_AUTO_CONTINUE_ATTEMPTS = 2
       if (isPrematureNoOutput || isPrematureMissingDeliverable) {
@@ -1340,7 +1341,7 @@ async function runSubAgent(agentId: string): Promise<void> {
           agent.status = 'failed'
           const reason = isPrematureNoOutput
             ? `called report_progress ${agent.toolCalls.length} time(s) but never created output`
-            : `task required output but agent stopped without creating artifacts or files`
+            : `task required creating output but agent never called create_artifact or write_file`
           agent.error = `Agent repeatedly stopped without completing its task (${reason}). This may be a model-specific issue.`
           agent.completedAt = Date.now()
           agent.lastActivityAt = Date.now()
