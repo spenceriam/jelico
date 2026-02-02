@@ -272,20 +272,24 @@ export function SingleToolCallDisplay({
       {/* Sub-agent panel - minimal display: name, status, live update, errors only */}
       {toolCall.name === 'spawn_agent' && subAgent && (
         <div className="border-t border-border bg-bg-surface">
-          {/* Agent header - name and status badge */}
+          {/* Agent header - name and status indicator */}
           <div className="px-3 py-2 flex items-center gap-2">
             <Bot className="w-4 h-4 text-accent flex-shrink-0" />
             <span className="font-medium text-text-primary text-sm">
               {subAgent.displayName || subAgent.name}
             </span>
-            <span className={`px-2 py-0.5 rounded text-xs font-medium ${
-              subAgent.status === 'running' ? 'bg-accent/20 text-accent' :
-              subAgent.status === 'completed' ? 'bg-green-500/20 text-green-500' :
-              subAgent.status === 'failed' ? 'bg-error/20 text-error' :
-              'bg-bg-elevated text-text-muted'
-            }`}>
-              {subAgent.status}
-            </span>
+            {/* Show spinner for running, badge only for completed/failed */}
+            {(subAgent.status === 'running' || subAgent.status === 'pending') ? (
+              <Loader2 className="w-3.5 h-3.5 animate-spin text-accent flex-shrink-0" />
+            ) : (
+              <span className={`px-2 py-0.5 rounded text-xs font-medium ${
+                subAgent.status === 'completed' ? 'bg-green-500/20 text-green-500' :
+                subAgent.status === 'failed' ? 'bg-error/20 text-error' :
+                'bg-bg-elevated text-text-muted'
+              }`}>
+                {subAgent.status}
+              </span>
+            )}
           </div>
 
           {/* Live status while running */}

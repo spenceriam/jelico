@@ -2,6 +2,19 @@
 
 All notable changes to Jelico will be documented in this file.
 
+## [0.7.30] - 2026-02-01
+
+### Fixed
+- **Monaco editor going blank during artifact streaming**
+  - Added 150ms throttle to artifact preview updates
+  - Previously sent updates on every text delta (potentially 100s/second)
+  - Final preview sent before lock release to ensure complete content visible
+
+### Changed
+- **Sub-agent status indicator**
+  - Show spinner instead of "running" badge (redundant with spinner)
+  - Only show status badge for completed/failed states
+
 ## [0.7.29] - 2026-02-01
 
 ### Changed

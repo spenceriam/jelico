@@ -262,6 +262,10 @@ let globalProgressCallback: GlobalProgressCallback | null = null
 const lastProgressUpdate = new Map<string, number>()
 const PROGRESS_THROTTLE_MS = 500  // Only send progress updates every 500ms per agent
 
+// Throttle tracking for artifact preview updates (prevent Monaco editor issues)
+const lastArtifactPreviewUpdate = new Map<string, number>()
+const ARTIFACT_PREVIEW_THROTTLE_MS = 150  // Only send artifact previews every 150ms
+
 /**
  * Set global progress callback for IPC forwarding
  */
@@ -1201,11 +1205,18 @@ async function runSubAgent(agentId: string): Promise<void> {
           if (inputDelta) {
             currentToolInput += inputDelta
 
-            // If this agent has preview lock, stream the artifact content
+            // If this agent has preview lock, stream the artifact content (throttled)
             if (artifactStreamManager.hasPreviewLock(agentId) && currentToolInput.length > 50) {
-              const preview = extractPartialArtifactContent(currentToolInput)
-              if (preview) {
-                artifactStreamManager.sendPreview(agentId, preview)
+              const now = Date.now()
+              const lastUpdate = lastArtifactPreviewUpdate.get(agentId) || 0
+
+              // Throttle preview updates to prevent Monaco editor issues
+              if (now - lastUpdate >= ARTIFACT_PREVIEW_THROTTLE_MS) {
+                lastArtifactPreviewUpdate.set(agentId, now)
+                const preview = extractPartialArtifactContent(currentToolInput)
+                if (preview) {
+                  artifactStreamManager.sendPreview(agentId, preview)
+                }
               }
             }
           }
@@ -1214,6 +1225,17 @@ async function runSubAgent(agentId: string): Promise<void> {
         }
 
         case 'tool-input-end': {
+          // Send final preview update before releasing lock (in case last update was throttled)
+          if (artifactStreamManager.hasPreviewLock(agentId) && currentToolInput.length > 50) {
+            const preview = extractPartialArtifactContent(currentToolInput)
+            if (preview) {
+              artifactStreamManager.sendPreview(agentId, preview)
+            }
+          }
+
+          // Clean up throttle tracking
+          lastArtifactPreviewUpdate.delete(agentId)
+
           // Release preview lock when artifact tool completes
           const nextStream = artifactStreamManager.releasePreview(agentId)
           if (nextStream) {
