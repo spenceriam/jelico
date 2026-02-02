@@ -3,6 +3,7 @@ import { Settings } from 'lucide-react'
 import { useChatStore } from '../../stores/chat'
 import { useProviderStore } from '../../stores/providers'
 import { useUIStore } from '../../stores/ui'
+import { useContextStore } from '../../stores/context'
 import { useClarificationStore, type ClarificationRequest } from '../../stores/clarification'
 import { MessageList } from './MessageList'
 import { ChatInput } from './ChatInput'
@@ -21,6 +22,7 @@ export function ChatArea() {
   const { messages, isStreaming, streamingContent, streamingToolCalls, streamingToolResults, streamingSegments, systemNotifications, activeConversationId, regenerateLastResponse, modeSwitchReason, modeTransitioning, lastCompletedTool, statusDisplayQueue, toolInputProgress, streamingStartTime } = useChatStore()
   const { activeProviderId, activeModel } = useProviderStore()
   const { isProcessing, processingMessage } = useUIStore()
+  const { isCompacting } = useContextStore()
   const { setActiveRequest } = useClarificationStore()
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const [userName, setUserName] = useState<string | null>(null)
