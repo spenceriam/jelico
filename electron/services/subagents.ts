@@ -736,7 +736,8 @@ type SendArtifactCallback = (artifact: {
 
 /**
  * Get tools for sub-agents
- * Sub-agents can create artifacts, read/search files, web tools
+ * Sub-agents are RESEARCH ONLY - they can read/search files and web
+ * They do NOT create artifacts (main AI does that directly)
  * They do NOT get agent management tools (can't spawn sub-sub-agents)
  */
 function getSubAgentTools(
@@ -970,90 +971,8 @@ Returns instant answers, related topics, and web results.`,
     })
   }
 
-  // Artifact creation tool - available to all sub-agents
-  if (agentContext?.sendArtifact) {
-    tools.create_artifact = tool({
-      description: `Create an artifact to display in the Canvas panel.
-Use this for creating substantial content like:
-- code: Code snippets or files
-- document: Markdown documents
-- html: HTML content for preview
-- svg: SVG graphics
-- mermaid: Mermaid diagram syntax
-
-IMPORTANT: You MUST provide all required parameters (type, title, content).`,
-      parameters: z.object({
-        type: z.enum(['code', 'document', 'html', 'svg', 'mermaid']).describe('The type of artifact'),
-        title: z.string().describe('A short, descriptive title'),
-        content: z.string().describe('The artifact content'),
-        language: z.string().optional().describe('For code artifacts: the programming language'),
-      }),
-      execute: async ({ type, title, content, language }) => {
-        // Validate required parameters
-        if (!type || !title || !content) {
-          const missing = []
-          if (!type) missing.push('type')
-          if (!title) missing.push('title')
-          if (!content) missing.push('content')
-          return {
-            success: false,
-            error: `Missing required parameters: ${missing.join(', ')}`,
-          }
-        }
-
-        // Validate artifact content
-        const validation = validateArtifact(type, content, language)
-        if (!validation.valid) {
-          console.error(`[SubAgents] ${agentContext.agentName} artifact validation failed:`, validation.errors)
-          return {
-            success: false,
-            error: `Artifact validation failed:\n${validation.errors.join('\n')}\n\nPlease fix these issues and try again.`,
-            validationErrors: validation.errors,
-          }
-        }
-
-        // Log warnings but still create
-        if (validation.warnings.length > 0) {
-          console.warn(`[SubAgents] ${agentContext.agentName} artifact warnings:`, validation.warnings)
-        }
-
-        // Send artifact to main window
-        agentContext.sendArtifact({ type, title, content, language })
-
-        console.log(`[SubAgents] ${agentContext.agentName} created artifact: "${title}" (${type})`)
-
-        // Track artifact in agent record for wait_for_agent to report
-        const agentRecord = activeAgents.get(agentContext.agentId)
-        if (agentRecord) {
-          const artifactId = `${agentContext.agentId}-${Date.now()}`
-          const summary = generateArtifactSummary(type, title, content)
-          agentRecord.createdArtifacts.push({ id: artifactId, title, type, summary })
-        }
-
-        // Return content summary for main AI to review
-        // Truncate if very long, but include enough for meaningful review
-        const maxPreviewLength = 5000
-        const contentPreview = content.length > maxPreviewLength
-          ? content.slice(0, maxPreviewLength) + '\n\n... [truncated, full content in Canvas]'
-          : content
-
-        return {
-          success: true,
-          message: `Artifact "${title}" created successfully and is now visible in the Canvas.`,
-          artifact: {
-            type,
-            title,
-            language,
-            contentLength: content.length,
-            // Include content for main AI to review
-            content: contentPreview,
-          },
-          warnings: validation.warnings.length > 0 ? validation.warnings : undefined,
-          reviewReminder: 'Please review this artifact for correctness, completeness, and quality before reporting success to the user.',
-        }
-      },
-    })
-  }
+  // NOTE: Sub-agents do NOT have create_artifact - main AI creates artifacts directly
+  // This eliminates the complexity of sub-agent artifact creation and coordination
 
   // Report progress tool - always available
   // Allows sub-agent to self-report status updates to the main AI and user
@@ -1403,7 +1322,7 @@ async function runSubAgent(agentId: string): Promise<void> {
       const isPrematureNoOutput = onlyCalledReportProgress && agent.toolCalls.length > 0 && !hasArtifacts
       const isPrematureMissingDeliverable = taskRequiresOutput && !hasOutputToolCalls && !hasArtifacts
 
-      const MAX_AUTO_CONTINUE_ATTEMPTS = 2
+      const MAX_AUTO_CONTINUE_ATTEMPTS = 3
       if (isPrematureNoOutput || isPrematureMissingDeliverable) {
         agent.autoContinueAttempts++
 
@@ -1413,30 +1332,39 @@ async function runSubAgent(agentId: string): Promise<void> {
           const reason = isPrematureNoOutput
             ? `called report_progress ${agent.toolCalls.length} time(s) but never created output`
             : `task required creating output but agent never called create_artifact or write_file`
-          agent.error = `Agent repeatedly stopped without completing its task (${reason}). This may be a model-specific issue.`
+          agent.error = `Agent failed to create output after ${MAX_AUTO_CONTINUE_ATTEMPTS} attempts. Main AI should handle this task directly using create_artifact.`
           agent.completedAt = Date.now()
           agent.lastActivityAt = Date.now()
           notifyProgress(agentId, agent)
           return
         }
 
-        // Auto-continue the agent with a strong reminder
+        // Auto-continue the agent with an URGENT reminder
         const reminderMessage = isPrematureNoOutput
-          ? `You called report_progress but then stopped. report_progress is ONLY for status updates - you have NOT finished your work.`
-          : `You stopped without creating the required output. Your task requires creating artifacts or files, which you haven't done yet.`
+          ? `STOP. You called report_progress but then stopped. report_progress is NOT completion - it's just a status update.`
+          : `STOP. You ended without creating anything. Your task REQUIRES creating an artifact.`
 
         agent.messages.push({
           role: 'user',
-          content: `IMPORTANT: ${reminderMessage}
+          content: `⚠️ URGENT - YOU HAVE NOT COMPLETED YOUR TASK ⚠️
 
-Your task was: ${agent.task}
+${reminderMessage}
 
-You MUST now:
-1. Continue working on the task
-2. Create the actual output (use create_artifact for visual content, write_file for files)
-3. Only stop AFTER your deliverable is complete
+Your task: ${agent.task}
 
-Do NOT just describe what you would create - actually create it now.`,
+REQUIRED ACTION - Do this RIGHT NOW:
+1. Call create_artifact with type "html" (or appropriate type)
+2. Include the FULL content - not a description, the actual code
+3. Your task is ONLY complete when create_artifact succeeds
+
+Example of what you MUST do:
+create_artifact({
+  title: "Your Title",
+  type: "html",
+  content: "<!DOCTYPE html>..." // THE ACTUAL FULL CODE
+})
+
+DO NOT call report_progress again. Call create_artifact NOW.`,
         })
         agent.lastActivityAt = Date.now()
 
@@ -1577,79 +1505,37 @@ function buildSubAgentSystemPrompt(
   workspacePath?: string,
   siblingContext?: string
 ): string {
-  let prompt = `You are ${name}, a focused sub-agent working on a specific task.
+  let prompt = `You are ${name}, a focused research sub-agent.
 
 Your task: ${task}
 
-## Your Relationship with the Main AI
+## Your Role
 
-You were spawned by a main AI orchestrator who is WAITING for your results.
-- The main AI has called \`wait_for_agent\` and is blocked until you finish
-- Complete your task FULLY before ending - don't stop partway
-- If you create an artifact, it streams to the Canvas in real-time (user can see it building)
-- After you finish, the main AI will review your work and may ask for fixes
+You are a RESEARCH agent. Your job is to gather information and report findings.
+- Read files, search codebases, fetch web content
+- Analyze and summarize what you find
+- Return clear, actionable findings to the main AI
 
-If you receive a message via \`continue_agent\`:
-- The main AI is providing feedback, answering your question, or asking for a status update
-- Read the message, respond appropriately, and continue your work
-- If asked for a status update, briefly explain what you've done and what remains
+**You do NOT create artifacts.** The main AI handles all artifact creation.
 
 ## Guidelines
 - Stay focused on your assigned task
-- Be concise and direct in your response
-- Provide actionable results that can be used by the main AI
-- Summarize findings rather than dumping raw data
-- Complete the ENTIRE task before finishing
+- Be concise - summarize findings, don't dump raw data
+- Report progress so the user knows you're working
+- Complete your research fully before finishing
 
-## Progress Reporting (IMPORTANT)
+## Progress Reporting
 
-Use \`report_progress\` to let the main AI and user know what you're doing:
+Use \`report_progress\` at checkpoints:
+- \`report_progress({ message: "Reading config files", phase: "research" })\`
+- \`report_progress({ message: "Analyzing component structure", phase: "analysis" })\`
 
-**When to report:**
-- When starting a new phase of work
-- After completing a significant step (reading files, research done, etc.)
-- Before a potentially long operation (creating artifact, complex analysis)
-- Every 2-3 tool calls for complex tasks
+## Your Final Response
 
-**Example calls:**
-- \`report_progress({ message: "Reading component files", phase: "research" })\`
-- \`report_progress({ message: "Building HTML structure", phase: "building" })\`
-- \`report_progress({ message: "Adding interactivity", phase: "building" })\`
-- \`report_progress({ message: "Final review and cleanup", phase: "finishing" })\`
-
-**Why it matters:**
-- The user sees your progress in real-time (not just waiting)
-- The main AI knows you're still working (not stuck)
-- Prevents the appearance of a "runaway" process
-
-## Artifact Creation (IMPORTANT)
-
-When your task involves creating content for display (code, HTML, documents, diagrams), use the \`create_artifact\` tool:
-
-**Supported artifact types:**
-- \`code\`: Code snippets or files (specify \`language\` parameter)
-- \`html\`: HTML content for interactive preview (include CSS/JS inline)
-- \`document\`: Markdown documents
-- \`svg\`: SVG graphics
-- \`mermaid\`: Mermaid diagram syntax
-
-**Best practices:**
-- For HTML: Create self-contained documents with embedded CSS and JavaScript
-- For code: Use appropriate language identifiers
-- For mermaid: Use the correct diagram type for the concept
-- Always provide meaningful titles
-
-**Review workflow:**
-Your artifacts will be reviewed by the main AI for quality assurance. After creating an artifact:
-1. The artifact is displayed in the Canvas panel
-2. The main AI will review it visually and check the code
-3. If issues are found, you may receive feedback via \`continue_agent\`
-4. Address any feedback and update the artifact as needed
-
-Include a brief summary of what you created in your response to help the main AI review:
-- What the artifact does/contains
-- Key features or sections
-- Any limitations or known issues
+When done, provide:
+1. **Summary** - Key findings in 2-3 sentences
+2. **Details** - Relevant specifics the main AI needs
+3. **Recommendations** - If applicable, what should be done next
 
 ## Communication with Main AI
 

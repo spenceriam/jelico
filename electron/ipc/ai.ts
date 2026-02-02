@@ -414,40 +414,36 @@ Returns validation result and updates the task status if valid.`,
     },
   })
 
-  // Spawn sub-agent tool - for parallel task execution (bi-directional)
+  // Spawn sub-agent tool - for parallel RESEARCH tasks
   if (canSpawnAgents) {
     tools.spawn_agent = tool({
-      description: `Spawn a sub-agent to work on a task. The agent runs in the background while you continue.
+      description: `Spawn a research sub-agent to gather information in parallel.
+
+## What Sub-Agents Do (RESEARCH ONLY)
+- Read files and summarize contents
+- Search codebases for patterns
+- Fetch and analyze web content
+- Gather information from multiple sources
+
+## What Sub-Agents DON'T Do
+- Create artifacts (YOU do this directly with create_artifact)
+- Write files
+- Execute commands
 
 ## When to Use
-- Creating artifacts (HTML, code, diagrams) - ALWAYS delegate to sub-agents
-- Reading multiple files - spawn agents to read in parallel
-- Research tasks - let agents search and summarize
-- Any task that would bulk up your context
+- Reading 3+ files → spawn agents to read in parallel
+- Researching a topic → spawn agent to search and summarize
+- Understanding a codebase → spawn agents per directory
 
-## What Happens
-1. You call spawn_agent → returns { agent_id: "uuid-..." }
-2. Sub-agent starts working immediately in background
-3. If task involves artifacts, content streams to Canvas (user sees it building)
-4. You MUST call wait_for_agent({ agent_id }) to get results
-
-## What You'll Receive Back (from wait_for_agent)
-- success: boolean
-- result: The sub-agent's complete response text
-- If artifact was created: the content is INCLUDED in result for your review
-- has_question: true if agent needs your help
-- error: if something went wrong
-
-## Sub-Agent Capabilities
-- Can read files, search, web search/fetch
-- Can create artifacts that stream to Canvas
-- Can ask you questions via [QUESTION] marker
-- Can request capabilities via [REQUEST] marker
+## Workflow
+1. spawn_agent → returns { agent_id }
+2. wait_for_agent → returns research findings
+3. YOU create artifacts based on their research
 
 CRITICAL: You MUST call wait_for_agent before finishing your response.`,
       parameters: z.object({
-        name: z.string().optional().describe('DEPRECATED - do not provide. Names are auto-generated with friendly first names.'),
-        task: z.string().describe('The detailed task description for the agent'),
+        name: z.string().optional().describe('DEPRECATED - do not provide. Names are auto-generated.'),
+        task: z.string().describe('The research task - what information to gather'),
         mode: z.enum(['auto', 'explore', 'execute', 'plan', 'review'])
           .optional()
           .describe('The mode for the agent (defaults to auto)'),

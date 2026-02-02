@@ -2,6 +2,20 @@
 
 All notable changes to Jelico will be documented in this file.
 
+## [0.7.39] - 2026-02-01
+
+### Changed
+- **Sub-agents are now research-only**
+  - Sub-agents can: read files, search, web fetch, gather information
+  - Sub-agents cannot: create artifacts (removed create_artifact tool)
+  - Main AI creates all artifacts directly using create_artifact
+  - Simpler architecture, more reliable artifact creation
+
+- **Updated all prompts for new architecture**
+  - JELICO_PERSONA: artifact creation is direct, sub-agents for research
+  - sub-agents.md: simplified to research-only role
+  - artifacts.md: removed delegation instructions
+
 ## [0.7.38] - 2026-02-01
 
 ### Fixed
