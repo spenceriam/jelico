@@ -76,6 +76,14 @@ function formatCreatedDate(timestamp: number): string {
   }
 }
 
+// Calculate days old for a timestamp
+function getDaysOld(timestamp: number): number {
+  const now = new Date()
+  const date = new Date(timestamp)
+  const diffMs = now.getTime() - date.getTime()
+  return Math.floor(diffMs / (24 * 60 * 60 * 1000))
+}
+
 export function Sidebar() {
   const { conversations, activeConversationId, setActiveConversation, deleteConversation } = useChatStore()
   const { sidebarCollapsed, openSettings } = useUIStore()
@@ -211,6 +219,8 @@ export function Sidebar() {
               const isExpanded = expandedConversations.has(conv.id)
               const isActive = activeConversationId === conv.id
 
+              const daysOld = getDaysOld(conv.createdAt)
+
               return (
                 <div key={conv.id}>
                   {/* Conversation entry */}
@@ -240,6 +250,12 @@ export function Sidebar() {
                       <div className="w-4 flex-shrink-0" /> /* Spacer for alignment */
                     )}
                     <span className="flex-1 break-words">{conv.title}</span>
+                    {/* Days old badge (only for chats 2+ days old) */}
+                    {daysOld >= 2 && (
+                      <span className="text-[10px] text-text-faint tabular-nums mr-1">
+                        {daysOld}d
+                      </span>
+                    )}
                     {/* Sandbox indicator badge */}
                     {hasSandboxFiles && (
                       <span className="px-1.5 py-0.5 text-[10px] bg-accent/20 text-accent rounded" title="Has sandbox files">
@@ -349,8 +365,7 @@ function groupByDate(conversations: any[]) {
   const groups: Record<string, any[]> = {
     Today: [],
     Yesterday: [],
-    'Previous 7 days': [],
-    Older: [],
+    Earlier: [], // Combined group - individual chats show Xd badge
   }
 
   for (const conv of conversations) {
@@ -359,10 +374,9 @@ function groupByDate(conversations: any[]) {
       groups.Today.push(conv)
     } else if (convDate >= yesterday) {
       groups.Yesterday.push(conv)
-    } else if (convDate >= today - 7 * 24 * 60 * 60 * 1000) {
-      groups['Previous 7 days'].push(conv)
     } else {
-      groups.Older.push(conv)
+      // All older chats go into "Earlier" - badge shows specific age
+      groups.Earlier.push(conv)
     }
   }
 
