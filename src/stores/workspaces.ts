@@ -63,6 +63,9 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
   },
 
   setActiveWorkspace: (id, skipDbUpdate = false) => {
+    // Skip if already set to this value (prevents unnecessary re-renders)
+    if (id === get().activeWorkspaceId) return
+
     set({ activeWorkspaceId: id })
     // Store in localStorage for persistence
     if (id) {
