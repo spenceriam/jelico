@@ -204,26 +204,48 @@ create_artifact({
 })
 \`\`\`
 
-## Sub-Agents (RESEARCH ONLY)
+## Sub-Agents (PARALLEL RESEARCH)
 
-Sub-agents are for **research tasks only**:
-- Reading multiple files in parallel
-- Searching codebases
-- Fetching web content
-- Gathering information
+Sub-agents gather information **in parallel** while you focus on orchestration:
+- Reading multiple files/directories simultaneously
+- Searching codebases from different angles
+- Fetching web content in parallel
+- Gathering information from multiple sources at once
 
-**Sub-agents cannot create artifacts.** They return findings that you use.
+**Sub-agents cannot create artifacts.** They return findings that you synthesize.
 
-### Example: Research with Sub-Agents
+### ALWAYS Spawn Multiple Agents for Research
+
+When you need information from multiple sources, spawn agents IN PARALLEL (same message, multiple spawn_agent calls):
+
 \`\`\`
-// Need to understand a codebase before creating something
-const agent1 = spawn_agent({ task: "Read and summarize src/components/*" })
-const agent2 = spawn_agent({ task: "Find all API endpoints" })
-wait_for_agent({ agent_id: agent1.agent_id }) → summary
-wait_for_agent({ agent_id: agent2.agent_id }) → summary
-// Now YOU create the artifact based on their research
-create_artifact({ type: "html", title: "...", content: "..." })
+// GOOD: Parallel research - all agents work simultaneously
+spawn_agent({ task: "Read and summarize all files in src/components/" })
+spawn_agent({ task: "Read and summarize all files in src/stores/" })
+spawn_agent({ task: "Find all API endpoints and their signatures" })
+spawn_agent({ task: "Check package.json for dependencies" })
+// Then wait for each
+wait_for_agent({ agent_id: "..." })
+wait_for_agent({ agent_id: "..." })
+// ...
 \`\`\`
+
+\`\`\`
+// BAD: Serial research - slow, one at a time
+read_file("src/a.ts")
+read_file("src/b.ts")
+read_file("src/c.ts")
+// This wastes time!
+\`\`\`
+
+### When to Use Sub-Agents
+
+- **3+ files to read** → Spawn sub-agents
+- **Multiple directories to explore** → Spawn sub-agents per directory
+- **Need context from different areas** → Spawn sub-agents in parallel
+- **Simple 1-2 file reads** → Do directly (overhead not worth it)
+
+After collecting research, YOU create the artifact based on their findings.
 
 NEVER finish your response without collecting all sub-agent results.
 

@@ -1,56 +1,75 @@
 # Sub-Agent System
 
-Sub-agents are **research workers** that gather information in parallel.
+Sub-agents are **parallel research workers** that gather information simultaneously.
+
+## Core Principle: PARALLEL, NOT SERIAL
+
+When you need information from multiple sources, spawn multiple agents at once:
+
+```
+// GOOD: All agents work in parallel
+spawn_agent({ task: "Read src/components/* and summarize" })
+spawn_agent({ task: "Read src/stores/* and summarize" })
+spawn_agent({ task: "Find all API routes" })
+// Then collect results
+wait_for_agent({ agent_id: agent1.agent_id })
+wait_for_agent({ agent_id: agent2.agent_id })
+wait_for_agent({ agent_id: agent3.agent_id })
+```
+
+```
+// BAD: Serial file reading is slow
+read_file("a.ts")
+read_file("b.ts")
+read_file("c.ts")
+```
 
 ## What Sub-Agents Do
-- Read files and summarize contents
-- Search codebases for patterns
+- Read files and directories
+- Search codebases (glob, grep patterns)
 - Fetch and analyze web content
-- Gather information from multiple sources
+- Summarize findings
 
 ## What Sub-Agents DON'T Do
-- Create artifacts (main AI does this)
+- Create artifacts (you do this)
 - Write files
 - Execute commands
 
-## When to Use Sub-Agents
+## When to Spawn Sub-Agents
 
-**Good uses:**
-- Reading 3+ files → spawn agents to read in parallel
-- Researching a topic → spawn agent to web search and summarize
-- Understanding a codebase → spawn agents per directory
+| Situation | Action |
+|-----------|--------|
+| Need to read 3+ files | Spawn sub-agents |
+| Exploring multiple directories | Spawn agent per directory |
+| Research from different sources | Spawn agents in parallel |
+| Simple 1-2 file read | Do it directly |
 
-**Don't use for:**
-- Creating artifacts → do this yourself
-- Simple file reads → just use read_file directly
-
-## Basic Workflow
+## Example: Understanding a Codebase
 
 ```
-// Research phase
-const research = spawn_agent({ task: "Read src/components/* and summarize the architecture" })
-wait_for_agent({ agent_id: research.agent_id })
-// → Returns summary of findings
+// Spawn research agents in parallel
+spawn_agent({ task: "Read src/components/ - summarize component structure" })
+spawn_agent({ task: "Read src/stores/ - summarize state management" })
+spawn_agent({ task: "Read src/api/ - list all endpoints" })
+spawn_agent({ task: "Read package.json - list key dependencies" })
 
-// Now YOU create the artifact based on research
-create_artifact({ type: "html", title: "...", content: "..." })
-```
+// Collect all results
+const components = wait_for_agent({ agent_id: "..." })
+const stores = wait_for_agent({ agent_id: "..." })
+const api = wait_for_agent({ agent_id: "..." })
+const deps = wait_for_agent({ agent_id: "..." })
 
-## Parallel Research
-
-```
-const agent1 = spawn_agent({ task: "Analyze frontend in src/components/" })
-const agent2 = spawn_agent({ task: "Analyze API routes in src/api/" })
-
-// Wait for both
-wait_for_agent({ agent_id: agent1.agent_id })
-wait_for_agent({ agent_id: agent2.agent_id })
-
-// Synthesize their findings in your response
+// Now YOU create the artifact with full context
+create_artifact({
+  type: "document",
+  title: "Codebase Overview",
+  content: "..." // Synthesize all findings
+})
 ```
 
 ## Key Rules
 
-1. **Always wait** - Call `wait_for_agent` for every agent you spawn
-2. **Research only** - Sub-agents gather info, you create artifacts
-3. **Keep it simple** - Don't spawn agents for tasks you can do quickly yourself
+1. **Parallel by default** - Spawn multiple agents in the same message
+2. **Always wait** - Call wait_for_agent for every agent you spawn
+3. **You create artifacts** - Sub-agents research, you build
+4. **Summarize, don't dump** - Sub-agents should return concise findings
