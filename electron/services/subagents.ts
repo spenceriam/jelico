@@ -37,15 +37,48 @@ const conversationAgentLimits = new Map<string, number>()
 const conversationAgentCounts = new Map<string, number>()
 
 // Random first names for sub-agents (diverse, gender-neutral mix)
+// 200+ gender-neutral names for sub-agents
 const AGENT_FIRST_NAMES = [
-  'Aiden', 'Aria', 'Blake', 'Casey', 'Dana', 'Drew', 'Eden', 'Ellis',
-  'Finn', 'Gray', 'Harper', 'Jade', 'Jordan', 'Kai', 'Lane', 'Luna',
-  'Max', 'Morgan', 'Nova', 'Parker', 'Quinn', 'Ray', 'Riley', 'River',
-  'Robin', 'Sage', 'Sam', 'Skyler', 'Taylor', 'Wren', 'Alex', 'Ash',
-  'Avery', 'Bailey', 'Cameron', 'Charlie', 'Dakota', 'Emery', 'Hayden',
-  'Jamie', 'Jesse', 'Jules', 'Kit', 'Lee', 'Logan', 'Mika', 'Noel',
-  'Phoenix', 'Reese', 'Rory', 'Rowan', 'Scout', 'Shay', 'Sloane', 'Spencer',
-  'Sydney', 'Toby', 'Val', 'Winter', 'Zara', 'Zeke'
+  // A
+  'Aiden', 'Alex', 'Alexis', 'Ali', 'Angel', 'Ari', 'Aria', 'Ariel', 'Ash', 'Aspen', 'August', 'Avery',
+  // B
+  'Bailey', 'Beck', 'Blake', 'Blue', 'Bobby', 'Brett', 'Brook', 'Brooklyn',
+  // C
+  'Cameron', 'Campbell', 'Carmen', 'Carson', 'Casey', 'Cedar', 'Charlie', 'Chris', 'Clay', 'Coby', 'Cody', 'Colby', 'Corey', 'Cruz',
+  // D
+  'Dakota', 'Dallas', 'Dana', 'Danny', 'Darcy', 'Denver', 'Devon', 'Drew', 'Dylan',
+  // E
+  'Echo', 'Eden', 'Elliott', 'Ellis', 'Ember', 'Emerson', 'Emery', 'Ever',
+  // F
+  'Fallon', 'Finley', 'Finn', 'Florian', 'Flynn', 'Frankie',
+  // G
+  'Gale', 'Gray', 'Greer',
+  // H
+  'Hadley', 'Harley', 'Harper', 'Hayden', 'Haven', 'Hero', 'Hollis', 'Honor',
+  // I-J
+  'Indigo', 'Ivory', 'Jace', 'Jackie', 'Jade', 'Jaden', 'Jamie', 'Jazz', 'Jess', 'Jesse', 'Jo', 'Jordan', 'Jude', 'Jules', 'Justice',
+  // K
+  'Kai', 'Kam', 'Karma', 'Keaton', 'Kelly', 'Kelsey', 'Kendall', 'Kennedy', 'Kerry', 'Kit', 'Koda',
+  // L
+  'Lake', 'Lane', 'Landry', 'Lark', 'Laurel', 'Lee', 'Leigh', 'Lennon', 'Lennox', 'Leo', 'Logan', 'London', 'Luca', 'Luna', 'Lyric',
+  // M
+  'Mackenzie', 'Marley', 'Marlowe', 'Max', 'Memphis', 'Micah', 'Mika', 'Milan', 'Monroe', 'Morgan', 'Murphy',
+  // N
+  'Nash', 'Navy', 'Nico', 'Noel', 'North', 'Nova',
+  // O
+  'Oak', 'Ocean', 'Oakley', 'Olive', 'Onyx', 'Ori',
+  // P
+  'Palmer', 'Parker', 'Pat', 'Payton', 'Peyton', 'Perry', 'Phoenix', 'Piper', 'Presley',
+  // Q-R
+  'Quinn', 'Raven', 'Ray', 'Reagan', 'Reed', 'Reese', 'Remi', 'Remy', 'Riley', 'Rio', 'River', 'Robin', 'Rory', 'Rowan', 'Royal', 'Rumi', 'Ryan',
+  // S
+  'Sage', 'Sam', 'Sasha', 'Sawyer', 'Scout', 'Sean', 'Shay', 'Shea', 'Sidney', 'Sky', 'Skyler', 'Sloane', 'Sol', 'Spencer', 'Storm', 'Story', 'Sunday', 'Sunny', 'Sydney',
+  // T
+  'Tanner', 'Tate', 'Taylor', 'Teagan', 'Terry', 'Theo', 'Toby', 'Tony', 'Tory', 'Tracy', 'True',
+  // V-W
+  'Val', 'Vesper', 'West', 'Whitney', 'Wil', 'Winter', 'Wren', 'Wynne',
+  // X-Z
+  'Xen', 'Yael', 'Yuki', 'Zane', 'Zara', 'Zeke', 'Zen', 'Zion', 'Zoe'
 ]
 
 // Track used names per conversation to avoid duplicates

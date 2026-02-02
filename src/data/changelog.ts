@@ -21,6 +21,16 @@ export interface ChangelogEntry {
 
 export const changelog: ChangelogEntry[] = [
   {
+    version: '0.7.33',
+    date: '2026-02-01',
+    changes: {
+      changed: [
+        'Sub-agent status line uses pulsing braille instead of duplicate spinner',
+        'Expanded name pool from 62 to 141 gender-neutral names',
+      ],
+    },
+  },
+  {
     version: '0.7.32',
     date: '2026-02-01',
     changes: {
