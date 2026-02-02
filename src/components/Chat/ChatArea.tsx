@@ -4,6 +4,7 @@ import { useChatStore } from '../../stores/chat'
 import { useProviderStore } from '../../stores/providers'
 import { useUIStore } from '../../stores/ui'
 import { useContextStore } from '../../stores/context'
+import { useClarificationStore, type ClarificationRequest } from '../../stores/clarification'
 import { MessageList } from './MessageList'
 import { ChatInput } from './ChatInput'
 import { ModeSelector } from '../ModeSelector/ModeSelector'
@@ -11,6 +12,7 @@ import { WorkspaceSelector } from '../Workspace/WorkspaceSelector'
 import { ModelSelector } from '../Model/ModelSelector'
 import { ShimmerText, BrailleLoader } from '../StatusIndicators'
 import { TodoPanel } from '../Todo/TodoPanel'
+import { ClarificationPanel } from '../Clarification/ClarificationPanel'
 import { formatElapsedTime } from '../../utils/format'
 
 // Minimum display time for status messages (ms)
@@ -21,6 +23,7 @@ export function ChatArea() {
   const { activeProviderId, activeModel } = useProviderStore()
   const { isProcessing, processingMessage } = useUIStore()
   const { getContextUsage, isCompacting } = useContextStore()
+  const { setActiveRequest } = useClarificationStore()
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const [showContextBar, setShowContextBar] = useState(false) // Hidden by default, click to show
   const [userName, setUserName] = useState<string | null>(null)
@@ -36,6 +39,22 @@ export function ChatArea() {
       }
     }).catch(() => {})
   }, [])
+
+  // Listen for clarification requests from the AI
+  useEffect(() => {
+    if (!window.jelico?.clarification?.onRequest) return
+
+    const unsubscribe = window.jelico.clarification.onRequest(
+      (request: ClarificationRequest) => {
+        // Only show if it's for the active conversation
+        if (request.conversationId === activeConversationId) {
+          setActiveRequest(request)
+        }
+      }
+    )
+
+    return unsubscribe
+  }, [activeConversationId, setActiveRequest])
 
   // Auto-scroll to bottom when new messages or tool calls arrive
   useEffect(() => {
@@ -263,7 +282,29 @@ export function ChatArea() {
                      }
 
                      if (streamingToolCalls.length > 0) {
-                       return 'Finishing up...'
+                       // Check what tool is pending - show specific status instead of generic "Finishing up"
+                       const pendingTool = streamingToolCalls.find(tc =>
+                         !streamingToolResults.some(tr => tr.toolCallId === tc.id)
+                       )
+                       if (pendingTool) {
+                         const name = pendingTool.name || 'tool'
+                         switch (name) {
+                           case 'spawn_agent': return 'Starting sub-agent...'
+                           case 'wait_for_agent': return 'Waiting for sub-agent...'
+                           case 'create_artifact': return 'Creating artifact...'
+                           case 'update_artifact': return 'Updating artifact...'
+                           case 'read_file': return 'Reading file...'
+                           case 'write_file': return 'Writing file...'
+                           case 'execute_command': return 'Running command...'
+                           case 'search_files': return 'Searching files...'
+                           case 'list_directory': return 'Exploring directory...'
+                           case 'web_search': return 'Searching the web...'
+                           case 'web_fetch': return 'Fetching page...'
+                           case 'ask_user_question': return 'Preparing question...'
+                           default: return `Running ${name.replace(/_/g, ' ')}...`
+                         }
+                       }
+                       return 'Processing response...'
                      }
                      return streamingContent ? 'Responding...' : 'Processing...'
                    })() :
@@ -336,6 +377,9 @@ export function ChatArea() {
           <div className="flex justify-center mb-3">
             <ModeSelector />
           </div>
+
+          {/* Clarification panel - AI asking for user input */}
+          <ClarificationPanel />
 
           {/* Todo panel - shows AI's task progress */}
           <TodoPanel />

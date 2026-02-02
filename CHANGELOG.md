@@ -2,6 +2,29 @@
 
 All notable changes to Jelico will be documented in this file.
 
+## [0.7.28] - 2026-02-01
+
+### Added
+- **Right-click context menu with spellcheck**
+  - Native Chrome-style spellcheck enabled in prompt box and text fields
+  - Misspelled words show correction suggestions at top of menu
+  - "Add to Dictionary" option for personal words
+  - Full editing menu: Undo, Redo, Cut, Copy, Paste, Delete, Select All
+  - Link options: Open in browser, Copy link address
+  - Works on any text selection (chat messages, code blocks, etc.)
+
+- **ClarificationPanel wired to UI**
+  - AI can now ask multiple-choice questions before proceeding
+  - Panel appears inline in chat with accent border styling
+  - Radio buttons for single-select, checkboxes for multi-select
+  - "Other" option with text input for custom answers
+
+### Fixed
+- **"Finishing up" status too generic**
+  - Now shows specific status based on pending tool (e.g., "Creating artifact...", "Running command...")
+  - Falls back to "Running [tool_name]..." for unknown tools
+  - Shows "Processing response..." when no specific tool pending
+
 ## [0.7.25] - 2026-02-01
 
 ### Fixed

@@ -1,4 +1,4 @@
-import { app, BrowserWindow, Menu, shell, dialog } from 'electron'
+import { app, BrowserWindow, Menu, shell, dialog, clipboard } from 'electron'
 import path from 'path'
 import { execSync } from 'child_process'
 import { initDatabase } from './services/database'
@@ -186,6 +186,7 @@ function createWindow() {
       nodeIntegration: false,
       sandbox: false, // Required for some Node APIs
       backgroundThrottling: false, // Keep streaming active when window loses focus
+      spellcheck: true, // Enable native Chrome spellcheck
     },
   })
 
@@ -207,6 +208,71 @@ function createWindow() {
     // Silently reload
     if (mainWindow && !mainWindow.isDestroyed()) {
       mainWindow.reload()
+    }
+  })
+
+  // Enable right-click context menu with spellcheck and all standard editing options
+  mainWindow.webContents.on('context-menu', (_event, params) => {
+    const { isEditable, selectionText, editFlags, misspelledWord, dictionarySuggestions, linkURL } = params
+
+    const menuItems: Electron.MenuItemConstructorOptions[] = []
+
+    // Spellcheck suggestions for misspelled words (top of menu like Chrome)
+    if (misspelledWord && dictionarySuggestions.length > 0) {
+      for (const suggestion of dictionarySuggestions.slice(0, 5)) {
+        menuItems.push({
+          label: suggestion,
+          click: () => mainWindow?.webContents.replaceMisspelling(suggestion)
+        })
+      }
+      if (dictionarySuggestions.length === 0) {
+        menuItems.push({ label: 'No suggestions', enabled: false })
+      }
+      menuItems.push({ type: 'separator' })
+      menuItems.push({
+        label: 'Add to Dictionary',
+        click: () => mainWindow?.webContents.session.addWordToSpellCheckerDictionary(misspelledWord)
+      })
+      menuItems.push({ type: 'separator' })
+    }
+
+    // Link options
+    if (linkURL) {
+      menuItems.push({
+        label: 'Open Link in Browser',
+        click: () => shell.openExternal(linkURL)
+      })
+      menuItems.push({
+        label: 'Copy Link Address',
+        click: () => clipboard.writeText(linkURL)
+      })
+      menuItems.push({ type: 'separator' })
+    }
+
+    // Standard editing options
+    if (isEditable) {
+      menuItems.push(
+        { label: 'Undo', role: 'undo', enabled: editFlags.canUndo },
+        { label: 'Redo', role: 'redo', enabled: editFlags.canRedo },
+        { type: 'separator' },
+        { label: 'Cut', role: 'cut', enabled: editFlags.canCut },
+        { label: 'Copy', role: 'copy', enabled: editFlags.canCopy },
+        { label: 'Paste', role: 'paste', enabled: editFlags.canPaste },
+        { label: 'Delete', role: 'delete', enabled: editFlags.canDelete },
+        { type: 'separator' },
+        { label: 'Select All', role: 'selectAll', enabled: editFlags.canSelectAll }
+      )
+    } else if (selectionText) {
+      // Non-editable but has selection (e.g., reading messages, code blocks)
+      menuItems.push(
+        { label: 'Copy', role: 'copy' },
+        { type: 'separator' },
+        { label: 'Select All', role: 'selectAll' }
+      )
+    }
+
+    if (menuItems.length > 0) {
+      Menu.buildFromTemplate(menuItems).popup()
     }
   })
 }
