@@ -2,6 +2,19 @@
 
 All notable changes to Jelico will be documented in this file.
 
+## [0.7.36] - 2026-02-01
+
+### Added
+- **Artifact summaries in sub-agent results**
+  - `wait_for_agent` now returns compact summaries of each artifact created
+  - Main AI receives context like: "HTML app (45 lines). Features: buttons, inputs, interactivity"
+  - Prevents duplicate creation by giving main AI full awareness of what exists
+
+- **Silent knowledge pre-loading**
+  - System automatically injects relevant documentation based on user's message
+  - AI receives context without needing to announce "let me check the docs"
+  - Matches: artifacts, sub-agents, security review, PR review, tools, etc.
+
 ## [0.7.35] - 2026-02-01
 
 ### Fixed

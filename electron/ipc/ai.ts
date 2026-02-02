@@ -6,7 +6,7 @@ import { createGoogleGenerativeAI } from '@ai-sdk/google'
 import { z } from 'zod'
 import { providerDb } from '../services/database'
 import { keychainService } from '../services/keychain'
-import { getModeSystemPrompt, type AgentMode } from '../lib/modes'
+import { getModeSystemPrompt, type AgentMode, getCachedPrompt } from '../lib/modes'
 import {
   checkPermission,
   requestPermission,
@@ -84,6 +84,83 @@ function isRetryableError(error: any): boolean {
 // Sleep helper for retry delays
 function sleep(ms: number): Promise<void> {
   return new Promise(resolve => setTimeout(resolve, ms))
+}
+
+/**
+ * Contextual Knowledge Loader
+ *
+ * Analyzes the user's message and pre-loads relevant documentation/skills
+ * into the system prompt. This happens silently without the AI announcing
+ * "let me check the documentation."
+ *
+ * The AI receives the context as if it already knew it.
+ */
+interface KnowledgeMatch {
+  keywords: RegExp
+  category: string
+  name: string
+  section?: string  // Optional: only include a specific section (by header)
+}
+
+const KNOWLEDGE_MATCHERS: KnowledgeMatch[] = [
+  // Artifact-related queries
+  { keywords: /\b(artifact|canvas|html|svg|mermaid|diagram|chart|flowchart|document)\b/i, category: 'capabilities', name: 'artifacts' },
+  // Sub-agent queries
+  { keywords: /\b(sub-?agent|spawn|parallel|delegate|worker|orchestrat)/i, category: 'capabilities', name: 'sub-agents' },
+  // Security review
+  { keywords: /\b(security|vulnerabilit|owasp|injection|xss|csrf)\b/i, category: 'agents', name: 'security-review' },
+  // PR review
+  { keywords: /\b(pr|pull request|code review|review pr)\b/i, category: 'agents', name: 'pr-review' },
+  // Planning
+  { keywords: /\b(plan|architect|design|roadmap|strategy)\b/i, category: 'agents', name: 'plan' },
+  // Tools
+  { keywords: /\b(read_file|write_file|execute_command|web_search|tool)\b/i, category: 'capabilities', name: 'tools' },
+]
+
+/**
+ * Get relevant knowledge context based on the user's message.
+ * Returns additional system prompt content to inject.
+ */
+function getContextualKnowledge(messages: Array<{ role: string; content: string }>): string {
+  // Get the last few user messages for context
+  const recentUserMessages = messages
+    .filter(m => m.role === 'user')
+    .slice(-3)
+    .map(m => m.content)
+    .join(' ')
+
+  if (!recentUserMessages) return ''
+
+  const matchedKnowledge: string[] = []
+  const alreadyLoaded = new Set<string>()
+
+  for (const matcher of KNOWLEDGE_MATCHERS) {
+    if (matcher.keywords.test(recentUserMessages)) {
+      const key = `${matcher.category}/${matcher.name}`
+      if (alreadyLoaded.has(key)) continue
+      alreadyLoaded.add(key)
+
+      const content = getCachedPrompt(matcher.category, matcher.name)
+      if (content) {
+        // If section specified, extract just that section
+        if (matcher.section) {
+          const sectionRegex = new RegExp(`(^|\\n)## ${matcher.section}[\\s\\S]*?(?=\\n## |$)`, 'm')
+          const sectionMatch = content.match(sectionRegex)
+          if (sectionMatch) {
+            matchedKnowledge.push(sectionMatch[0].trim())
+          }
+        } else {
+          // Include full content but mark it as reference
+          matchedKnowledge.push(content)
+        }
+      }
+    }
+  }
+
+  if (matchedKnowledge.length === 0) return ''
+
+  // Return as a reference section (the AI won't announce reading this)
+  return `\n\n## Reference Documentation\n${matchedKnowledge.join('\n\n---\n\n')}`
 }
 
 // Debug logger that doesn't override global fetch
@@ -481,10 +558,11 @@ CRITICAL: You MUST call wait_for_agent before finishing your response.`,
           result: status.result,
           progress: status.isComplete ? undefined : status.progress,
           error: status.error,
-          // Include artifact info so main AI knows what was created
+          // Include artifact info with summaries so main AI knows what was created
           artifacts_created: status.createdArtifacts?.map(a => ({
             title: a.title,
             type: a.type,
+            summary: a.summary,
           })),
         }
       },
@@ -580,13 +658,16 @@ If the agent created an artifact:
           const artifactList = result.createdArtifacts?.map(a => ({
             title: a.title,
             type: a.type,
+            summary: a.summary,
           })) || []
 
-          // When artifacts exist, prepend clear notice to prevent duplication
+          // When artifacts exist, include compact summaries so main AI knows what was created
           let message = result.result || ''
           if (artifactList.length > 0) {
-            const names = artifactList.map(a => `"${a.title}"`).join(', ')
-            message = `[Artifacts in Canvas: ${names} - do not recreate] ${message}`
+            const artifactContext = artifactList.map(a =>
+              `• "${a.title}" (${a.type}): ${a.summary}`
+            ).join('\n')
+            message = `[Canvas contains these artifacts - already visible to user, do not recreate]\n${artifactContext}\n\n${message}`
           }
 
           return {
@@ -1540,6 +1621,12 @@ The following artifacts exist in this conversation. You can reference them by ti
 ${artifactList}
 
 When the user asks to modify, update, fix, or improve an existing artifact, use the \`update_artifact\` tool with the artifact's ID instead of creating a new one.`
+      }
+
+      // Load contextual knowledge based on user's message (silent reference injection)
+      const contextualKnowledge = getContextualKnowledge(params.messages)
+      if (contextualKnowledge) {
+        systemPrompt += contextualKnowledge
       }
 
       // Artifact sender function

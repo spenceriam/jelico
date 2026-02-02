@@ -209,6 +209,64 @@ function generateDisplayName(firstName: string, task: string): string {
   return `${firstName}: ${truncated}`
 }
 
+/**
+ * Generate a compact summary of artifact content for main AI context.
+ * Keeps summaries short (~150-200 chars) to minimize context impact.
+ */
+function generateArtifactSummary(type: string, title: string, content: string): string {
+  const maxLen = 200
+
+  if (type === 'html') {
+    // Extract key features from HTML
+    const features: string[] = []
+    if (content.includes('<button')) features.push('buttons')
+    if (content.includes('<input') || content.includes('<form')) features.push('inputs')
+    if (content.includes('<canvas')) features.push('canvas')
+    if (content.includes('fetch(') || content.includes('XMLHttpRequest')) features.push('API calls')
+    if (content.includes('localStorage') || content.includes('sessionStorage')) features.push('storage')
+    if (content.includes('addEventListener') || content.includes('onclick')) features.push('interactivity')
+    if (content.includes('@keyframes') || content.includes('animation')) features.push('animations')
+    if (content.includes('grid') || content.includes('flex')) features.push('modern layout')
+    const featureStr = features.length > 0 ? `Features: ${features.slice(0, 4).join(', ')}` : ''
+    const lineCount = content.split('\n').length
+    return `HTML app "${title}" (${lineCount} lines). ${featureStr}`.slice(0, maxLen)
+  }
+
+  if (type === 'code') {
+    // Extract function/class names
+    const funcMatches = content.match(/(?:function|const|let|var)\s+(\w+)/g)?.slice(0, 5) || []
+    const classMatches = content.match(/class\s+(\w+)/g)?.slice(0, 3) || []
+    const exports = content.match(/export\s+(?:default\s+)?(?:function|class|const)\s+(\w+)/g)?.slice(0, 3) || []
+    const items = [...new Set([...classMatches, ...funcMatches, ...exports])].slice(0, 5)
+    const itemStr = items.length > 0 ? `Defines: ${items.join(', ')}` : ''
+    const lineCount = content.split('\n').length
+    return `Code "${title}" (${lineCount} lines). ${itemStr}`.slice(0, maxLen)
+  }
+
+  if (type === 'mermaid') {
+    // Extract diagram type
+    const diagramType = content.match(/^(flowchart|sequenceDiagram|classDiagram|stateDiagram|erDiagram|gantt|pie|mindmap|gitGraph)/m)?.[1] || 'diagram'
+    const nodeCount = (content.match(/\[.*?\]|\(.*?\)|{.*?}/g) || []).length
+    return `Mermaid ${diagramType} "${title}" with ~${nodeCount} nodes`.slice(0, maxLen)
+  }
+
+  if (type === 'svg') {
+    const elementTypes = [...new Set(content.match(/<(circle|rect|path|line|polygon|text|ellipse|g)/g)?.map(m => m.slice(1)) || [])]
+    return `SVG "${title}" with ${elementTypes.slice(0, 4).join(', ') || 'graphics'}`.slice(0, maxLen)
+  }
+
+  if (type === 'document') {
+    // Extract first heading or sentence
+    const headingMatch = content.match(/^#+ (.+)$/m)
+    const firstLine = headingMatch?.[1] || content.split('\n')[0]?.slice(0, 80) || ''
+    const wordCount = content.split(/\s+/).length
+    return `Document "${title}" (~${wordCount} words). ${firstLine}`.slice(0, maxLen)
+  }
+
+  // Fallback
+  return `${type} artifact "${title}" (${content.length} chars)`.slice(0, maxLen)
+}
+
 export type SubAgentStatus =
   | 'pending'
   | 'running'
@@ -266,6 +324,7 @@ export interface SubAgentRecord {
     id: string
     title: string
     type: string
+    summary: string  // Compact description for main AI context
   }>
   // Auto-continue attempts for premature completion detection
   autoContinueAttempts: number
@@ -967,7 +1026,8 @@ IMPORTANT: You MUST provide all required parameters (type, title, content).`,
         const agentRecord = activeAgents.get(agentContext.agentId)
         if (agentRecord) {
           const artifactId = `${agentContext.agentId}-${Date.now()}`
-          agentRecord.createdArtifacts.push({ id: artifactId, title, type })
+          const summary = generateArtifactSummary(type, title, content)
+          agentRecord.createdArtifacts.push({ id: artifactId, title, type, summary })
         }
 
         // Return content summary for main AI to review
@@ -1731,7 +1791,7 @@ export function getSubAgentStatus(agentId: string): {
   isComplete?: boolean
   hasQuestion?: boolean
   question?: SubAgentQuestion | null
-  createdArtifacts?: Array<{ id: string; title: string; type: string }>
+  createdArtifacts?: Array<{ id: string; title: string; type: string; summary: string }>
   progressUpdates?: ProgressUpdate[]
 } {
   const agent = activeAgents.get(agentId)
@@ -1775,7 +1835,7 @@ export function waitForSubAgent(
   timedOut?: boolean
   hasQuestion?: boolean
   question?: SubAgentQuestion | null
-  createdArtifacts?: Array<{ id: string; title: string; type: string }>
+  createdArtifacts?: Array<{ id: string; title: string; type: string; summary: string }>
   progressUpdates?: ProgressUpdate[]
 }> {
   return new Promise((resolve) => {
