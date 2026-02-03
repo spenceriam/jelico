@@ -21,6 +21,19 @@ export interface ChangelogEntry {
 
 export const changelog: ChangelogEntry[] = [
   {
+    version: '0.8.20',
+    date: '2026-02-03',
+    changes: {
+      changed: [
+        'Canvas header now shows Reveal (folder) and Delete (trash) icons',
+        'Removed footer panel from Canvas - actions consolidated to header',
+        'Document type label shows "Markdown" instead of generic "Document"',
+        'Artifact subtitle shows date/time (e.g., "Markdown • Feb 3, 2026, 10:30 AM")',
+        'DocumentViewer "Rendered" tab renamed to "Preview" for consistency',
+      ],
+    },
+  },
+  {
     version: '0.8.19',
     date: '2026-02-03',
     changes: {

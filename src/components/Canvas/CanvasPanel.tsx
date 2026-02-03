@@ -1,4 +1,4 @@
-import { X, FileCode, FileText, Image, Presentation, ChevronLeft, ChevronRight, ChevronDown, File, History, Download, FolderOpen } from 'lucide-react'
+import { X, FileCode, FileText, Image, Presentation, ChevronLeft, ChevronRight, ChevronDown, File, History, FolderOpen, Trash2 } from 'lucide-react'
 import { useState, useRef, useEffect } from 'react'
 import { useArtifactStore, type Artifact, type ArtifactType } from '../../stores/artifacts'
 import { useChatStore } from '../../stores/chat'
@@ -20,14 +20,25 @@ const DEFAULT_TYPE_ICON = File
 
 const TYPE_LABELS: Record<ArtifactType, string> = {
   code: 'Code',
-  document: 'Document',
-  html: 'HTML Preview',
+  document: 'Markdown',
+  html: 'HTML',
   svg: 'SVG',
-  mermaid: 'Diagram',
+  mermaid: 'Mermaid',
 }
 
 // Fallback label for unknown artifact types
-const DEFAULT_TYPE_LABEL = 'Unknown'
+const DEFAULT_TYPE_LABEL = 'File'
+
+// Format date/time for display
+function formatDateTime(date: Date): string {
+  return date.toLocaleDateString(undefined, {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+  })
+}
 
 export function CanvasPanel() {
   const {
@@ -147,6 +158,8 @@ export function CanvasPanel() {
                     </h3>
                     <span className="text-xs text-text-muted">
                       {TYPE_LABELS[displayArtifact.type] || DEFAULT_TYPE_LABEL}
+                      {' • '}
+                      {formatDateTime(new Date(displayArtifact.createdAt))}
                     </span>
                   </div>
                   {conversationArtifacts.length > 1 && (
@@ -257,6 +270,32 @@ export function CanvasPanel() {
             </>
           )}
 
+          {/* Artifact actions */}
+          {displayArtifact && (
+            <>
+              <button
+                onClick={async () => {
+                  try {
+                    await window.jelico.artifacts.reveal(displayArtifact.id)
+                  } catch (error) {
+                    console.error('Failed to reveal artifact:', error)
+                  }
+                }}
+                className="p-1.5 text-text-muted hover:text-text-primary hover:bg-bg-hover rounded transition-colors"
+                title="Reveal in folder"
+              >
+                <FolderOpen className="w-4 h-4" />
+              </button>
+              <button
+                onClick={() => selectedArtifact && removeArtifact(getBaseArtifactId(selectedArtifact))}
+                className="p-1.5 text-text-muted hover:text-error hover:bg-bg-hover rounded transition-colors"
+                title="Delete artifact"
+              >
+                <Trash2 className="w-4 h-4" />
+              </button>
+            </>
+          )}
+
           {/* Close button */}
           <button
             onClick={closeCanvas}
@@ -277,53 +316,6 @@ export function CanvasPanel() {
         ) : null}
       </div>
 
-      {/* Footer with actions */}
-      {displayArtifact && (
-        <div className="px-4 py-2 border-t border-border flex items-center justify-between flex-shrink-0">
-          <span className="text-xs text-text-faint">
-            {hasMultipleRevisions && currentRevision && currentRevision.id !== revisions[revisions.length - 1].id ? (
-              <>Viewing v{currentRevision.revision} • </>
-            ) : null}
-            Created {new Date(displayArtifact.createdAt).toLocaleTimeString()}
-          </span>
-          <div className="flex items-center gap-3">
-            <button
-              onClick={async () => {
-                try {
-                  await window.jelico.artifacts.reveal(displayArtifact.id)
-                } catch (error) {
-                  console.error('Failed to reveal artifact:', error)
-                }
-              }}
-              className="flex items-center gap-1 text-xs text-text-muted hover:text-text-primary transition-colors"
-              title="Show in folder"
-            >
-              <FolderOpen className="w-3.5 h-3.5" />
-              <span>Reveal</span>
-            </button>
-            <button
-              onClick={async () => {
-                try {
-                  await window.jelico.artifacts.download(displayArtifact.id)
-                } catch (error) {
-                  console.error('Failed to download artifact:', error)
-                }
-              }}
-              className="flex items-center gap-1 text-xs text-text-muted hover:text-text-primary transition-colors"
-              title="Download artifact"
-            >
-              <Download className="w-3.5 h-3.5" />
-              <span>Download</span>
-            </button>
-            <button
-              onClick={() => selectedArtifact && removeArtifact(getBaseArtifactId(selectedArtifact))}
-              className="text-xs text-text-muted hover:text-error transition-colors"
-            >
-              Delete
-            </button>
-          </div>
-        </div>
-      )}
     </div>
   )
 }

@@ -9,14 +9,14 @@ interface DocumentViewerProps {
 }
 
 export function DocumentViewer({ content, isStreaming = false }: DocumentViewerProps) {
-  const [view, setView] = useState<'rendered' | 'source'>(isStreaming ? 'source' : 'rendered')
+  const [view, setView] = useState<'preview' | 'source'>(isStreaming ? 'source' : 'preview')
   const [copied, setCopied] = useState(false)
   const sourceRef = useRef<HTMLPreElement>(null)
 
-  // Switch to rendered when streaming completes
+  // Switch to preview when streaming completes
   useEffect(() => {
     if (!isStreaming) {
-      setView('rendered')
+      setView('preview')
     }
   }, [isStreaming])
 
@@ -49,16 +49,16 @@ export function DocumentViewer({ content, isStreaming = false }: DocumentViewerP
       <div className="flex items-center justify-between px-4 py-2 border-b border-border bg-bg-surface">
         <div className="flex items-center gap-1">
           <button
-            onClick={() => setView('rendered')}
+            onClick={() => setView('preview')}
             className={`
               flex items-center gap-1.5 px-2 py-1 text-xs rounded
-              ${view === 'rendered'
+              ${view === 'preview'
                 ? 'bg-bg-elevated text-text-primary'
                 : 'text-text-muted hover:text-text-secondary'}
             `}
           >
             <Eye className="w-3 h-3" />
-            Rendered
+            Preview
           </button>
           <button
             onClick={() => setView('source')}
@@ -94,7 +94,7 @@ export function DocumentViewer({ content, isStreaming = false }: DocumentViewerP
 
       {/* Content */}
       <div className="flex-1 overflow-auto bg-bg-deep">
-        {view === 'rendered' ? (
+        {view === 'preview' ? (
           <div className="p-6 prose prose-invert prose-sm max-w-none">
             <ReactMarkdown
               remarkPlugins={[remarkGfm]}
