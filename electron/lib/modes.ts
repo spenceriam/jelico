@@ -10,16 +10,28 @@ export type AgentMode = 'auto' | 'explore' | 'execute' | 'plan' | 'review' | 'se
 
 // Get the prompts directory path
 function getPromptsDir(): string {
-  // In development, prompts are in electron/prompts
-  // In production, they're bundled with the app
+  // In development, __dirname is dist-electron after compilation
+  // Prompts are in electron/prompts (source) not dist-electron/prompts
+
+  // Try electron/prompts first (source location)
+  const electronPath = join(__dirname, '..', 'electron', 'prompts')
+  if (existsSync(electronPath)) return electronPath
+
+  // Try relative to dist-electron (compiled location)
   const devPath = join(__dirname, '..', 'prompts')
   if (existsSync(devPath)) return devPath
 
-  // Fallback to relative path from dist-electron
+  // Fallback to prompts inside dist-electron (production bundle)
   const prodPath = join(__dirname, 'prompts')
   if (existsSync(prodPath)) return prodPath
 
-  return devPath // Default to dev path
+  console.error('[Prompts] Could not find prompts directory, tried:', {
+    electronPath,
+    devPath,
+    prodPath,
+    __dirname,
+  })
+  return electronPath // Default
 }
 
 // Load a prompt file and return its contents

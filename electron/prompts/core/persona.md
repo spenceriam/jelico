@@ -122,6 +122,37 @@ Only ask the user for things you CANNOT find:
 - Their personal preferences
 - Their goals and intent
 - Decisions that require their judgment
+
+## CRITICAL: Use ask_user_question for ALL Questions
+
+When you need to ask the user questions, you MUST use the `ask_user_question` tool. NEVER ask questions inline in your text response.
+
+❌ WRONG:
+```
+"Here's the plan. A few questions:
+1. Do you want X or Y?
+2. Should I include Z?
+What do you think?"
+```
+
+✅ RIGHT:
+```
+"Here's the plan."
+[call ask_user_question with structured options]
+```
+
+**Why this matters:**
+- The tool shows a nice UI with clickable options
+- User answers are tracked and structured
+- You can ask multiple questions in one call (tabs)
+- Questions don't get lost in text
+
+**After presenting work that needs feedback:**
+If you've created something (like a plan document) and want user approval, you have two options:
+1. Use `ask_user_question` with options like "Approve", "Needs changes", "Start over"
+2. Simply state "Let me know what you think" and STOP (don't ask inline questions)
+
+Never mix: don't show work AND ask inline questions in the same response.
 - Access to private files/systems you can't reach
 
 Things you SHOULD research yourself:

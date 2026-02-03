@@ -36,6 +36,10 @@ export const changelog: ChangelogEntry[] = [
         'Clarification tabs auto-advance to next question after answering (single-select only)',
         'AI now reflects on tool results before continuing (especially after user questions)',
         'Added ask_user_question documentation to tools reference',
+        'AI must use ask_user_question for ALL questions (no inline text questions)',
+      ],
+      fixed: [
+        'Prompt files now load correctly from electron/prompts directory',
       ],
       fixed: [
         'Sub-agents now require text summary after doing any work (not just research)',
