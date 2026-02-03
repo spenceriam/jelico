@@ -58,6 +58,12 @@ interface Window {
       compact: (params: CompactionParams) => Promise<CompactionResult>
       onProgress: (callback: (progress: CompactionProgress) => void) => () => void
     }
+    updates: {
+      check: () => Promise<UpdateInfo>
+      download: () => Promise<UpdateDownloadResult>
+      openRelease: (url: string) => Promise<boolean>
+      onDownloadProgress: (callback: (progress: UpdateDownloadProgress) => void) => () => void
+    }
     ai: {
       stream: (params: StreamParams) => string
       onStreamChunk: (channelId: string, callback: (chunk: string) => void) => void
@@ -714,6 +720,35 @@ interface CompactionProgress {
   message: string
   tokensBefore?: number
   tokensAfter?: number
+}
+
+// Update types
+interface UpdateAssetInfo {
+  name: string
+  url: string
+  size: number
+}
+
+interface UpdateInfo {
+  currentVersion: string
+  latestVersion: string
+  isUpdateAvailable: boolean
+  releaseUrl: string
+  publishedAt: string
+  assets: UpdateAssetInfo[]
+  recommendedAsset?: UpdateAssetInfo | null
+}
+
+interface UpdateDownloadProgress {
+  received: number
+  total: number
+  percent: number | null
+}
+
+interface UpdateDownloadResult {
+  canceled?: boolean
+  savedTo?: string
+  error?: string
 }
 
 // Clarification types (for AskUserQuestion tool)

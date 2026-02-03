@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react'
-import { Check, Moon, Sun, Monitor, Palette, User, Brain, Sparkles, Package } from 'lucide-react'
+import { Check, Moon, Sun, Monitor, Palette, User, Brain, Sparkles, Package, Download, RefreshCw, ArrowUpRight } from 'lucide-react'
 import { useThemeStore, COLOR_THEMES, type ThemeMode } from '../../stores/theme'
 import { useChatStore } from '../../stores/chat'
+import { useUpdateStore } from '../../stores/updates'
 import type { AgentMode } from '../../lib/modes'
 
 const THEME_MODES: { id: ThemeMode; name: string; icon: typeof Sun }[] = [
@@ -21,6 +22,7 @@ const AGENT_MODES: { id: AgentMode; name: string; description: string }[] = [
 export function GeneralSettings() {
   const { mode, colorThemeId, setMode, setColorTheme } = useThemeStore()
   const { mode: defaultMode, setMode: setDefaultMode } = useChatStore()
+  const { info, isChecking, isDownloading, downloadProgress, lastDownloadedTo, error, checkForUpdates, downloadUpdate } = useUpdateStore()
 
   // User profile state (loaded from soul)
   const [userName, setUserName] = useState('')
@@ -114,6 +116,12 @@ export function GeneralSettings() {
     }
   }, [crossSandboxSearch])
 
+  const handleOpenReleaseNotes = async () => {
+    if (info?.releaseUrl) {
+      await window.jelico.updates.openRelease(info.releaseUrl)
+    }
+  }
+
   return (
     <div className="space-y-8">
       {/* Appearance Section */}
@@ -175,6 +183,90 @@ export function GeneralSettings() {
                 )}
               </button>
             ))}
+          </div>
+        </div>
+      </section>
+
+      {/* Updates Section */}
+      <section>
+        <h3 className="text-lg font-medium text-text-primary mb-4 flex items-center gap-2">
+          <Download className="w-5 h-5" />
+          Updates
+        </h3>
+
+        <div className="space-y-3">
+          <div className="flex flex-col gap-3 p-4 bg-bg-elevated rounded-lg border border-border">
+            <div>
+              <div className="font-medium text-text-primary">Version</div>
+              <div className="text-sm text-text-muted">
+                Current: {info?.currentVersion ?? 'Checking...'}
+              </div>
+              {info?.latestVersion && (
+                <div className="text-sm text-text-muted">
+                  Latest: {info.latestVersion}
+                </div>
+              )}
+              {info?.isUpdateAvailable && (
+                <div className="text-sm text-accent mt-1">Update available</div>
+              )}
+              {error && (
+                <div className="text-sm text-error mt-1">{error}</div>
+              )}
+            </div>
+
+            <div className="flex flex-wrap gap-2">
+              <button
+                onClick={() => checkForUpdates({ force: true })}
+                disabled={isChecking}
+                className="flex items-center gap-2 px-3 py-2 rounded-lg border border-border text-text-secondary hover:text-text-primary hover:border-border-strong transition-colors disabled:opacity-50"
+              >
+                <RefreshCw className={`w-4 h-4 ${isChecking ? 'animate-spin' : ''}`} />
+                {isChecking ? 'Checking...' : 'Check for updates'}
+              </button>
+
+              {info?.isUpdateAvailable && (
+                <button
+                  onClick={() => downloadUpdate()}
+                  disabled={isDownloading}
+                  className="flex items-center gap-2 px-3 py-2 rounded-lg bg-accent text-black hover:bg-accent-bright transition-colors disabled:opacity-50"
+                >
+                  <Download className="w-4 h-4" />
+                  {isDownloading ? 'Downloading...' : 'Download update'}
+                </button>
+              )}
+
+              {info?.releaseUrl && (
+                <button
+                  onClick={handleOpenReleaseNotes}
+                  className="flex items-center gap-2 px-3 py-2 rounded-lg border border-border text-text-secondary hover:text-text-primary hover:border-border-strong transition-colors"
+                >
+                  <ArrowUpRight className="w-4 h-4" />
+                  Release notes
+                </button>
+              )}
+            </div>
+
+            {isDownloading && (
+              <div className="space-y-1">
+                <div className="h-2 bg-bg-deep rounded-full overflow-hidden border border-border">
+                  <div
+                    className="h-full bg-accent transition-all"
+                    style={{ width: `${downloadProgress?.percent ?? 0}%` }}
+                  />
+                </div>
+                <div className="text-xs text-text-muted">
+                  {downloadProgress?.percent !== null && downloadProgress?.percent !== undefined
+                    ? `Downloading... ${downloadProgress.percent}%`
+                    : 'Downloading...'}
+                </div>
+              </div>
+            )}
+
+            {lastDownloadedTo && !isDownloading && (
+              <div className="text-xs text-text-muted">
+                Downloaded to: {lastDownloadedTo}
+              </div>
+            )}
           </div>
         </div>
       </section>

@@ -711,6 +711,11 @@ No environment variables required for basic operation. AI provider API keys are 
 - Electron-builder creates platform-specific installers
 - Single executable distribution for each platform
 
+## Updates
+- Update checks run on startup and use GitHub Releases (latest non-prerelease)
+- Updates can be downloaded inside the app from Settings > Updates
+- Update assets come from release installers attached to GitHub Releases
+
 ---
 
 ## Future Considerations

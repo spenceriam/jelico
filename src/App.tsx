@@ -7,6 +7,7 @@ import { useArtifactStore } from './stores/artifacts'
 import { useWorkspaceStore, initWorkspaceStore } from './stores/workspaces'
 import { usePermissionStore } from './stores/permissions'
 import { useThemeStore } from './stores/theme'
+import { useUpdateStore } from './stores/updates'
 import { Sidebar } from './components/Layout/Sidebar'
 import { Header } from './components/Layout/Header'
 import { ChatArea } from './components/Chat/ChatArea'
@@ -31,6 +32,7 @@ export default function App() {
   const { loadWorkspaces } = useWorkspaceStore()
   const { clearOncePermissions, loadPermissions } = usePermissionStore()
   const { loadFromStorage: loadTheme } = useThemeStore()
+  const { checkForUpdates, startListening } = useUpdateStore()
   const commandPalette = useCommandPalette()
 
   // Resizable canvas panel state
@@ -59,6 +61,12 @@ export default function App() {
         setCanvasWidth(width)
       }
     }
+  }, [])
+
+  useEffect(() => {
+    const stopListening = startListening()
+    checkForUpdates()
+    return () => stopListening()
   }, [])
 
   // Handle resize drag

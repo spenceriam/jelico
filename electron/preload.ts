@@ -199,6 +199,16 @@ contextBridge.exposeInMainWorld('jelico', {
       return () => ipcRenderer.removeListener('compaction:progress', handler)
     },
   },
+  updates: {
+    check: () => ipcRenderer.invoke('updates:check'),
+    download: () => ipcRenderer.invoke('updates:download'),
+    openRelease: (url: string) => ipcRenderer.invoke('updates:openRelease', url),
+    onDownloadProgress: (callback: (progress: any) => void) => {
+      const handler = (_: any, progress: any) => callback(progress)
+      ipcRenderer.on('updates:download-progress', handler)
+      return () => ipcRenderer.removeListener('updates:download-progress', handler)
+    },
+  },
   ai: {
     stream: (params: any) => {
       const channelId = crypto.randomUUID()

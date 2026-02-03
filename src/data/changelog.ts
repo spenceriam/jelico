@@ -21,6 +21,20 @@ export interface ChangelogEntry {
 
 export const changelog: ChangelogEntry[] = [
   {
+    version: '0.9.0',
+    date: '2026-02-03',
+    changes: {
+      added: [
+        'In-app update checks against GitHub releases on startup',
+        'Download updates inside the app with progress tracking',
+        'Updates section in Settings and header indicator when an update is available',
+      ],
+      changed: [
+        'CI workflow now uploads installer artifacts from build runs',
+      ],
+    },
+  },
+  {
     version: '0.8.21',
     date: '2026-02-03',
     changes: {

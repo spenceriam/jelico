@@ -1,7 +1,8 @@
-import { Settings, Presentation } from 'lucide-react'
+import { Settings, Presentation, Download } from 'lucide-react'
 import { useUIStore } from '../../stores/ui'
 import { useArtifactStore } from '../../stores/artifacts'
 import { useChatStore } from '../../stores/chat'
+import { useUpdateStore } from '../../stores/updates'
 import { WorkspaceSelector } from '../Workspace/WorkspaceSelector'
 import { ModelSelector } from '../Model/ModelSelector'
 import { ContextIndicator } from './ContextIndicator'
@@ -10,6 +11,7 @@ export function Header() {
   const { openSettings, sidebarCollapsed } = useUIStore()
   const { artifacts, canvasOpen, toggleCanvas } = useArtifactStore()
   const activeConversationId = useChatStore((state) => state.activeConversationId)
+  const updateAvailable = useUpdateStore((state) => state.info?.isUpdateAvailable)
 
   // Only count artifacts for the CURRENT conversation
   const currentConversationArtifacts = activeConversationId
@@ -27,6 +29,17 @@ export function Header() {
 
       {/* Right - Canvas & Settings */}
       <div className="flex items-center gap-2">
+        {updateAvailable && (
+          <button
+            onClick={() => openSettings('general')}
+            className="p-2 rounded-md transition-colors relative text-accent hover:bg-bg-surface"
+            title="Update available"
+          >
+            <Download className="w-5 h-5" />
+            <span className="absolute -top-0.5 -right-0.5 w-2 h-2 bg-accent rounded-full" />
+          </button>
+        )}
+
         {/* Canvas toggle button */}
         <button
           onClick={toggleCanvas}
