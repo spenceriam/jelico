@@ -5,15 +5,15 @@
  *
  * Storage locations:
  * - With workspace: {workspace}/{filename}.{ext} (directly in project root)
- * - Without workspace (sandbox): ~/.config/jelico/sandbox/{conversation-id}/{filename}.{ext}
- * - Legacy fallback: ~/.config/jelico/artifacts/{conversation-id}/{artifact-id}.{ext}
+ * - Without workspace (sandbox): ~/.jelico/sandbox/{conversation-id}/{filename}.{ext}
+ * - Legacy fallback: ~/.jelico/artifacts/{conversation-id}/{artifact-id}.{ext}
  *
  * Benefits:
  * - Artifacts can be accessed outside of Jelico
  * - Database stays small (metadata only)
  * - AI can read artifacts using normal file tools
  * - Workspace artifacts appear directly in project directory
- * - Sandbox artifacts are isolated per conversation
+ * - Sandbox files (artifacts + runtime) all in same conversation folder
  */
 
 import { app } from 'electron'
@@ -60,9 +60,10 @@ export function getWorkspaceArtifactsPath(workspacePath: string): string {
 
 /**
  * Get the artifacts directory for sandbox (no workspace)
+ * All sandbox files (artifacts + runtime) go in the same conversation folder
  */
 export function getSandboxArtifactsPath(conversationId: string): string {
-  const sandboxPath = path.join(app.getPath('userData'), SANDBOX_DIR, conversationId, ARTIFACTS_DIR)
+  const sandboxPath = path.join(app.getPath('userData'), SANDBOX_DIR, conversationId)
 
   if (!fs.existsSync(sandboxPath)) {
     fs.mkdirSync(sandboxPath, { recursive: true })
