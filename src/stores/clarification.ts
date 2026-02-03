@@ -35,10 +35,14 @@ interface ClarificationState {
   // Active clarification request (only one at a time)
   activeRequest: ClarificationRequest | null
 
+  // Additional details text (shared across all questions)
+  additionalDetails: string
+
   // Resolved requests (for history, keyed by request ID)
   resolvedRequests: Map<string, {
     request: ClarificationRequest
     answers: Record<string, string[]>
+    additionalDetails?: string
     resolvedAt: number
   }>
 
@@ -47,6 +51,7 @@ interface ClarificationState {
   selectOption: (questionId: string, optionLabel: string) => void
   toggleOption: (questionId: string, optionLabel: string) => void
   setOtherText: (questionId: string, text: string) => void
+  setAdditionalDetails: (text: string) => void
   submitAnswers: () => Promise<Record<string, string[]>>
   clearForConversation: (conversationId: string) => void
 
@@ -57,10 +62,16 @@ interface ClarificationState {
 
 export const useClarificationStore = create<ClarificationState>((set, get) => ({
   activeRequest: null,
+  additionalDetails: '',
   resolvedRequests: new Map(),
 
   setActiveRequest: (request) => {
-    set({ activeRequest: request })
+    // Reset additional details when a new request comes in
+    set({ activeRequest: request, additionalDetails: '' })
+  },
+
+  setAdditionalDetails: (text) => {
+    set({ additionalDetails: text })
   },
 
   selectOption: (questionId, optionLabel) => {
@@ -151,7 +162,7 @@ export const useClarificationStore = create<ClarificationState>((set, get) => ({
   },
 
   getAnswers: () => {
-    const { activeRequest } = get()
+    const { activeRequest, additionalDetails } = get()
     if (!activeRequest) return {}
 
     const answers: Record<string, string[]> = {}
@@ -165,11 +176,16 @@ export const useClarificationStore = create<ClarificationState>((set, get) => ({
       })
     }
 
+    // Add additional details as a special key if provided
+    if (additionalDetails.trim()) {
+      answers['_additionalDetails'] = [additionalDetails.trim()]
+    }
+
     return answers
   },
 
   submitAnswers: async () => {
-    const { activeRequest, resolvedRequests } = get()
+    const { activeRequest, additionalDetails, resolvedRequests } = get()
     if (!activeRequest) return {}
 
     const answers = get().getAnswers()
@@ -179,11 +195,13 @@ export const useClarificationStore = create<ClarificationState>((set, get) => ({
     newResolved.set(activeRequest.id, {
       request: activeRequest,
       answers,
+      additionalDetails: additionalDetails.trim() || undefined,
       resolvedAt: Date.now(),
     })
 
     set({
       activeRequest: null,
+      additionalDetails: '',
       resolvedRequests: newResolved,
     })
 
