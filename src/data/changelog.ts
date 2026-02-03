@@ -21,6 +21,20 @@ export interface ChangelogEntry {
 
 export const changelog: ChangelogEntry[] = [
   {
+    version: '0.8.16',
+    date: '2026-02-02',
+    changes: {
+      changed: [
+        'Sub-agent inline prompt now CRITICALLY requires text output after tool use',
+        'Sub-agents explicitly told main AI cannot see their tool call results',
+        'Added debug logging to stopStreaming to diagnose lost content on stop',
+      ],
+      fixed: [
+        'Sub-agent prompt was in wrong file (now fixed in inline buildSubAgentSystemPrompt)',
+      ],
+    },
+  },
+  {
     version: '0.8.15',
     date: '2026-02-02',
     changes: {

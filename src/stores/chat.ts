@@ -900,8 +900,21 @@ export const useChatStore = create<ChatStore>((set, get) => ({
       streamingContent,
       streamingToolCalls,
       streamingToolResults,
+      streamingSegments,
       activeConversationId,
     } = get()
+
+    // Debug: Log what we have when stop is called
+    console.log('[Chat Store] stopStreaming called:', {
+      hasContent: streamingContent.length > 0,
+      contentLength: streamingContent.length,
+      contentPreview: streamingContent.slice(0, 100),
+      toolCallCount: streamingToolCalls.length,
+      toolCallNames: streamingToolCalls.map(tc => tc.name),
+      toolResultCount: streamingToolResults.length,
+      segmentCount: streamingSegments.length,
+      conversationId: activeConversationId,
+    })
 
     if (currentStreamChannelId) {
       window.jelico.ai.stopStream(currentStreamChannelId)
@@ -916,6 +929,8 @@ export const useChatStore = create<ChatStore>((set, get) => ({
     const hasContent = streamingContent.trim().length > 0
     const hasToolCalls = streamingToolCalls.length > 0
 
+    console.log('[Chat Store] Saving partial response:', { hasContent, hasToolCalls })
+
     if (activeConversationId && (hasContent || hasToolCalls)) {
       try {
         // Save the partial response to the database
@@ -926,6 +941,12 @@ export const useChatStore = create<ChatStore>((set, get) => ({
           toolResults: streamingToolResults.length > 0 ? streamingToolResults : undefined,
         })
 
+        console.log('[Chat Store] Partial message saved:', {
+          id: partialMessage.id,
+          contentLength: partialMessage.content?.length,
+          toolCallCount: partialMessage.toolCalls?.length,
+        })
+
         // Add to local messages array
         set((state) => ({
           messages: [...state.messages, partialMessage],
@@ -933,6 +954,8 @@ export const useChatStore = create<ChatStore>((set, get) => ({
       } catch (error) {
         console.error('[Chat Store] Failed to save partial response on stop:', error)
       }
+    } else {
+      console.log('[Chat Store] Nothing to save on stop - no content or tool calls')
     }
 
     set({
