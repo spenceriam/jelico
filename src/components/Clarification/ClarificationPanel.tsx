@@ -140,14 +140,26 @@ function OtherOption({
 }
 
 // Single question view (for tab content)
-function QuestionView({ question }: { question: ClarificationQuestion }) {
+function QuestionView({
+  question,
+  onAnswered,
+}: {
+  question: ClarificationQuestion
+  onAnswered?: () => void
+}) {
   const { selectOption, toggleOption, setOtherText } = useClarificationStore()
 
   const handleSelect = (label: string) => {
     if (question.multiSelect) {
       toggleOption(question.id, label)
+      // Don't auto-advance for multi-select (user may want to select more)
     } else {
       selectOption(question.id, label)
+      // Auto-advance to next tab for single-select (unless selecting "Other" which needs text input)
+      if (label !== 'Other' && onAnswered) {
+        // Small delay so user sees the selection feedback
+        setTimeout(onAnswered, 150)
+      }
     }
   }
 
@@ -249,6 +261,15 @@ export function ClarificationPanel() {
   const answeredCount = questions.filter(q => q.selectedOptions.length > 0).length
   const allAnswered = answeredCount === questions.length
 
+  // Auto-advance to next unanswered tab when current tab is answered
+  const handleQuestionAnswered = () => {
+    // If not on last tab, move to next tab
+    if (activeTab < questions.length - 1) {
+      setActiveTab(activeTab + 1)
+    }
+    // If on last tab, do nothing (user can click submit)
+  }
+
   return (
     <div className="border border-border rounded-lg bg-bg-surface mb-4 overflow-hidden">
       {/* Header with topic */}
@@ -274,7 +295,12 @@ export function ClarificationPanel() {
       )}
 
       {/* Current question */}
-      {currentQuestion && <QuestionView question={currentQuestion} />}
+      {currentQuestion && (
+        <QuestionView
+          question={currentQuestion}
+          onAnswered={handleQuestionAnswered}
+        />
+      )}
 
       {/* Additional details - shared across all tabs */}
       <div className="px-3 pb-3 border-t border-border/50">
