@@ -2,6 +2,29 @@
 
 All notable changes to Jelico will be documented in this file.
 
+## [0.8.22] - 2026-02-03
+
+### Added
+- **Workspace transfer feature with confirmation dialog**
+  - Move conversations between workspaces and sandbox
+  - All artifact files automatically transferred to new location
+  - Shows artifact count warning before transfer
+  - Folder icon button in sidebar (hover to see)
+
+### Changed
+- **Artifact filenames now use title instead of ID**
+  - Files saved as `my-component.tsx` not `abc123.tsx`
+  - Sanitized: lowercase, spaces→hyphens, special chars removed
+  - Falls back to artifact ID if title is empty
+
+- **Simplified storage locations**
+  - Workspace: artifacts go directly in project root (not `.jelico/artifacts/`)
+  - Sandbox: all files in `~/.jelico/sandbox/{conversation-id}/` (no subfolder)
+
+- **Sidebar improvements**
+  - Added "Artifacts" subtitle header in expanded conversations
+  - Transfer button (folder icon) appears on conversation hover
+
 ## [0.7.54] - 2026-02-02
 
 ### Fixed
