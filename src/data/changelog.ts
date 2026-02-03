@@ -21,6 +21,24 @@ export interface ChangelogEntry {
 
 export const changelog: ChangelogEntry[] = [
   {
+    version: '0.8.15',
+    date: '2026-02-02',
+    changes: {
+      changed: [
+        'Sub-agent prompt now STRONGLY requires text output after any tool use',
+        'Sub-agents warned that main AI cannot see their tool results directly',
+        'Artifact documentation clarifies create_artifact vs update_artifact usage',
+        'Copy button now available on ALL assistant messages (not just latest)',
+        'Canvas properly shows artifacts when switching between conversations',
+      ],
+      fixed: [
+        'Sub-agents failing after 3 attempts due to no text summary',
+        'Canvas showing stale artifact from previous conversation',
+        'MessageActions missing on older assistant messages in conversation',
+      ],
+    },
+  },
+  {
     version: '0.8.14',
     date: '2026-02-02',
     changes: {
@@ -40,8 +58,6 @@ export const changelog: ChangelogEntry[] = [
       ],
       fixed: [
         'Prompt files now load correctly from electron/prompts directory',
-      ],
-      fixed: [
         'Sub-agents now require text summary after doing any work (not just research)',
         'Auto-continue prompts correctly guide agents to summarize their findings',
       ],

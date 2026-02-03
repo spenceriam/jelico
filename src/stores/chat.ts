@@ -268,11 +268,20 @@ export const useChatStore = create<ChatStore>((set, get) => ({
       // Pass skipDbUpdate=true since we're restoring from DB, not changing
       useWorkspaceStore.getState().setActiveWorkspace(conversation?.workspaceId || null, true)
 
-      // Load artifacts for this conversation and close canvas if none exist
+      // Load artifacts for this conversation and manage canvas state
+      const wasCanvasOpen = useArtifactStore.getState().canvasOpen
       await useArtifactStore.getState().loadArtifactsForConversation(id)
       const conversationArtifacts = useArtifactStore.getState().getArtifactsByConversation(id)
+
       if (conversationArtifacts.length === 0) {
-        useArtifactStore.getState().closeCanvas()
+        // No artifacts in this conversation - close canvas if it was open
+        if (wasCanvasOpen) {
+          useArtifactStore.getState().closeCanvas()
+        }
+      } else if (wasCanvasOpen) {
+        // Canvas was open and conversation has artifacts - select the latest one
+        const latestArtifact = conversationArtifacts[conversationArtifacts.length - 1]
+        useArtifactStore.getState().selectArtifact(latestArtifact.id)
       }
     } catch (error: any) {
       set({ error: error.message, isLoading: false })

@@ -57,6 +57,23 @@ export function CanvasPanel() {
   const selectedArtifact = artifacts.find((a) => a.id === selectedArtifactId)
   const currentIndex = conversationArtifacts.findIndex((a) => a.id === selectedArtifactId)
 
+  // Auto-select appropriate artifact when conversation changes
+  useEffect(() => {
+    if (!activeConversationId) return
+
+    // If selected artifact doesn't belong to current conversation
+    const selectedBelongsToConversation = selectedArtifact?.conversationId === activeConversationId
+
+    if (!selectedBelongsToConversation && conversationArtifacts.length > 0) {
+      // Select the most recent artifact from current conversation
+      const latestArtifact = conversationArtifacts[conversationArtifacts.length - 1]
+      selectArtifact(latestArtifact.id)
+    } else if (!selectedBelongsToConversation && conversationArtifacts.length === 0) {
+      // No artifacts in this conversation, clear selection
+      selectArtifact(null)
+    }
+  }, [activeConversationId, selectedArtifact?.conversationId, conversationArtifacts.length, selectArtifact])
+
   // Load revisions when artifact changes
   useEffect(() => {
     if (selectedArtifact) {

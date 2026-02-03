@@ -333,14 +333,14 @@ export function Message({
           )}
 
           {/* Message actions for assistant messages (not while streaming) */}
-          {isAssistant && !isStreaming && isLastAssistantMessage && (
+          {isAssistant && !isStreaming && (
             <MessageActions
               content={message.content}
               toolCalls={toolCalls}
               toolResults={toolResults}
-              usage={message.usage}
-              onRegenerate={onRegenerate}
-              isRegenerating={isRegenerating}
+              usage={isLastAssistantMessage ? message.usage : undefined}
+              onRegenerate={isLastAssistantMessage ? onRegenerate : undefined}
+              isRegenerating={isLastAssistantMessage ? isRegenerating : undefined}
             />
           )}
         </div>
