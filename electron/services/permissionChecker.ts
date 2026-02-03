@@ -14,7 +14,6 @@ interface PendingRequest {
   id: string
   resolve: (result: { permission: PermissionAction; remembered: boolean }) => void
   reject: (error: Error) => void
-  timeout: NodeJS.Timeout
 }
 
 interface PermissionRequest {
@@ -284,14 +283,9 @@ export async function requestPermission(
   const requestId = `perm-${Date.now()}-${Math.random().toString(36).slice(2)}`
 
   return new Promise((resolve, reject) => {
-    // Set timeout for permission request (60 seconds)
-    const timeout = setTimeout(() => {
-      pendingRequests.delete(requestId)
-      reject(new Error('Permission request timed out'))
-    }, 60000)
-
+    // No timeout - wait indefinitely for user response
     // Store pending request
-    pendingRequests.set(requestId, { id: requestId, resolve, reject, timeout })
+    pendingRequests.set(requestId, { id: requestId, resolve, reject })
 
     // Send to renderer
     mainWindow.webContents.send('permission:request', {
@@ -318,7 +312,6 @@ export function handlePermissionResponse(
     return
   }
 
-  clearTimeout(pending.timeout)
   pendingRequests.delete(requestId)
 
   // Store in session if "allow_once" or save to session for this session

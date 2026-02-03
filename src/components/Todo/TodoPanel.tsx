@@ -99,12 +99,12 @@ export function TodoPanel() {
           {isExpanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
         </span>
 
-        {/* Show current/next task when collapsed, or "Tasks" header when expanded */}
+        {/* Show current/next task when collapsed, or "Todo" header when expanded */}
         {isExpanded ? (
           <span className="text-xs text-text-muted font-medium uppercase tracking-wide">
-            Tasks
+            Todo
           </span>
-        ) : displayTask ? (
+        ) : displayTask && displayTask.text ? (
           <div className="flex-1 flex items-center gap-2 min-w-0">
             <span className={inProgressTask ? 'text-accent animate-pulse' : 'text-text-muted'}>
               {inProgressTask ? '◉' : '○'}
@@ -112,7 +112,7 @@ export function TodoPanel() {
             <span className="text-sm text-text-primary truncate">{displayTask.text}</span>
           </div>
         ) : (
-          <span className="text-xs text-text-muted">Tasks</span>
+          <span className="text-xs text-text-muted">Todo</span>
         )}
 
         {/* Progress counter */}
@@ -124,7 +124,7 @@ export function TodoPanel() {
       {/* Expanded task list */}
       {isExpanded && (
         <div className="px-3 pb-2 border-t border-border/50">
-          {todos.map(item => (
+          {todos.filter(item => item.text && item.text.trim()).map(item => (
             <TodoRow key={item.id} item={item} />
           ))}
         </div>
