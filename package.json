@@ -1,6 +1,6 @@
 {
   "name": "jelico",
-  "version": "0.8.17",
+  "version": "0.8.18",
   "description": "AI Productivity Desktop - Get stuff done. Frictionlessly.",
   "main": "dist-electron/main.js",
   "scripts": {

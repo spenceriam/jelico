@@ -318,6 +318,15 @@ export interface SubAgentRecord {
     name: string
     input: Record<string, unknown>
     output?: unknown
+    error?: string  // Track tool-level errors
+    duration?: number  // Track how long the tool took
+  }>
+  // Tool failure tracking for debugging
+  toolFailures: Array<{
+    toolName: string
+    error: string
+    input: Record<string, unknown>
+    timestamp: number
   }>
   // Artifacts created by this agent
   createdArtifacts: Array<{
@@ -330,6 +339,8 @@ export interface SubAgentRecord {
   autoContinueAttempts: number
   // Force summary mode - disables tools to force text output
   forceSummaryMode: boolean
+  // Track why the model stopped (for debugging premature completions)
+  lastFinishReason: string | null
   // Provider info for continuation
   providerId: string
   model: string
@@ -571,9 +582,11 @@ export async function spawnSubAgent(params: {
     progressUpdates: [],
     messages: [],
     toolCalls: [],
+    toolFailures: [],
     createdArtifacts: [],
     autoContinueAttempts: 0,
     forceSummaryMode: false,
+    lastFinishReason: null,
     providerId: params.providerId,
     model: params.model,
     workspacePath: params.workspacePath,
@@ -745,6 +758,114 @@ function parseAgentResponse(text: string): { isQuestion: boolean; question?: Sub
   }
 
   return { isQuestion: false, cleanText: text }
+}
+
+/**
+ * Validate text output quality - not just length, but actual content
+ * Detects filler text, repetition, and ensures substantive output
+ * Returns: { isValid: boolean, reason?: string, score: number }
+ */
+function validateOutputQuality(text: string, task: string): { isValid: boolean; reason?: string; score: number } {
+  if (!text || text.trim().length === 0) {
+    return { isValid: false, reason: 'empty output', score: 0 }
+  }
+
+  const cleanText = text.trim()
+  const wordCount = cleanText.split(/\s+/).length
+  const sentenceCount = (cleanText.match(/[.!?]+/g) || []).length
+  const uniqueWords = new Set(cleanText.toLowerCase().split(/\s+/).filter(w => w.length > 3))
+
+  // Minimum thresholds
+  if (cleanText.length < 50) {
+    return { isValid: false, reason: 'too short (< 50 chars)', score: 10 }
+  }
+  if (wordCount < 15) {
+    return { isValid: false, reason: 'too few words (< 15)', score: 15 }
+  }
+
+  // Detect filler/placeholder patterns (expanded)
+  const fillerPatterns = [
+    /^(ok|okay|done|completed|finished|yes|no|sure|alright)\.?$/i,
+    /^i (will|can|am going to|shall) /i,  // Promises without action
+    /^let me /i,  // Setup without content
+    /^here('s| is) (the|my|a) /i,  // Often incomplete
+    /^i('ve| have) (searched|looked|read|found|completed|finished)/i,  // Claims without details
+    /^(task|work|research) (is )?(complete|done|finished)/i,  // Premature completion claims
+    /^(i |the )?(search|analysis|research) (is |was )?(complete|successful)/i,
+    /^based on (my |the )?(research|analysis|findings)/i,  // Often followed by nothing
+  ]
+
+  for (const pattern of fillerPatterns) {
+    if (pattern.test(cleanText) && wordCount < 40) {
+      return { isValid: false, reason: 'filler/placeholder text detected', score: 20 }
+    }
+  }
+
+  // Detect repetitive/padded content (anti-gaming)
+  const wordRatio = uniqueWords.size / wordCount
+  if (wordCount > 30 && wordRatio < 0.3) {
+    return { isValid: false, reason: 'repetitive content detected', score: 25 }
+  }
+
+  // Detect lorem ipsum or obvious filler
+  if (/lorem ipsum|placeholder|example text|sample content/i.test(cleanText)) {
+    return { isValid: false, reason: 'placeholder content detected', score: 15 }
+  }
+
+  // Detect excessive use of generic phrases (anti-gaming)
+  const genericPhrases = [
+    'in conclusion', 'to summarize', 'in summary', 'as mentioned',
+    'it is important', 'it should be noted', 'generally speaking',
+    'in general', 'for the most part', 'as a result'
+  ]
+  const genericCount = genericPhrases.filter(p => cleanText.toLowerCase().includes(p)).length
+  if (genericCount >= 3 && wordCount < 100) {
+    return { isValid: false, reason: 'excessive generic phrases', score: 25 }
+  }
+
+  // Check for actual content indicators
+  let score = 0
+
+  // Good indicators (add points)
+  if (cleanText.includes('found') || cleanText.includes('discovered')) score += 15
+  if (cleanText.includes('result') || cleanText.includes('summary')) score += 10
+  if (/https?:\/\//.test(cleanText)) score += 15  // Actual URLs
+  if (/\.(js|ts|py|go|rs|md|json|html|css)/.test(cleanText)) score += 10  // File references
+  if (sentenceCount >= 3) score += 15  // Multiple sentences
+  if (sentenceCount >= 5) score += 10  // Even more sentences
+  if (wordCount >= 50) score += 15  // Substantial content
+  if (wordCount >= 100) score += 15  // Even more content
+  if (wordCount >= 200) score += 10  // Very detailed
+  if (/\d+/.test(cleanText)) score += 5  // Contains numbers (often data)
+  if (cleanText.includes('\n') && cleanText.split('\n').length >= 3) score += 10  // Structured output
+  if (uniqueWords.size >= 30) score += 10  // Good vocabulary diversity
+  if (/```|`[^`]+`/.test(cleanText)) score += 10  // Code references
+  if (/\*\*|##|- /.test(cleanText)) score += 5  // Markdown formatting (lists, headers)
+
+  // Task-specific validation
+  const taskLower = task.toLowerCase()
+  if (taskLower.includes('search') || taskLower.includes('find')) {
+    // Search tasks should mention what was found or not found
+    if (!cleanText.toLowerCase().includes('found') &&
+        !cleanText.toLowerCase().includes('result') &&
+        !cleanText.toLowerCase().includes('no ') &&
+        !cleanText.toLowerCase().includes("couldn't") &&
+        !cleanText.toLowerCase().includes("didn't")) {
+      score -= 15
+    }
+  }
+  if (taskLower.includes('read') || taskLower.includes('analyze')) {
+    // Analysis tasks should have substantial content
+    if (wordCount < 30) score -= 15
+  }
+
+  // Minimum acceptable score
+  const isValid = score >= 40
+  return {
+    isValid,
+    reason: isValid ? undefined : `low quality score (${score})`,
+    score
+  }
 }
 
 /**
@@ -1286,16 +1407,44 @@ async function runSubAgent(agentId: string): Promise<void> {
           const teToolCallId = part.toolCallId || (part as any).id
           const toolError = (part as any).error || (part as any).message
           const errorMsg = typeof toolError === 'object' ? (toolError?.message || JSON.stringify(toolError)) : (toolError || 'Tool error')
-          console.error(`[SubAgents] ${agent.name} tool error: ${teToolCallId || 'unknown'}`, errorMsg)
 
-          if (teToolCallId) {
-            const toolCall = agent.toolCalls.find(tc => tc.id === teToolCallId)
-            if (toolCall) {
-              toolCall.output = { error: errorMsg }
-            }
+          // Find the tool call to get its name and input
+          const toolCall = teToolCallId ? agent.toolCalls.find(tc => tc.id === teToolCallId) : null
+          const toolName = toolCall?.name || (part as any).toolName || 'unknown'
+          const toolInput = toolCall?.input || {}
+
+          // Log detailed error for debugging
+          console.error(`[SubAgents] ${agent.name} TOOL ERROR:`, {
+            tool: toolName,
+            error: errorMsg,
+            input: JSON.stringify(toolInput).slice(0, 200),
+            callId: teToolCallId || 'unknown',
+          })
+
+          // Track failure for analysis
+          agent.toolFailures.push({
+            toolName,
+            error: errorMsg,
+            input: toolInput,
+            timestamp: Date.now(),
+          })
+
+          if (toolCall) {
+            toolCall.output = { error: errorMsg }
+            toolCall.error = errorMsg
           }
           agent.lastActivityAt = Date.now()
           notifyProgress(agentId, agent)
+          break
+        }
+
+        // Capture finish reason for debugging why model stopped
+        case 'step-finish':
+        case 'finish-step':
+        case 'finish': {
+          const finishReason = (part as any).finishReason || (part as any).finish_reason || (part as any).reason || 'unknown'
+          agent.lastFinishReason = finishReason
+          console.log(`[SubAgents] ${agent.name} step finished: ${finishReason}`)
           break
         }
       }
@@ -1334,8 +1483,9 @@ async function runSubAgent(agentId: string): Promise<void> {
         ['web_search', 'web_fetch', 'read_file', 'list_directory', 'search_files'].includes(tc.name)
       )
 
-      // Text output counts as completion - agent returned findings
-      const hasTextResponse = parsed.cleanText && parsed.cleanText.length > 100
+      // Validate text output quality (not just length)
+      const outputQuality = validateOutputQuality(parsed.cleanText, agent.task)
+      const hasTextResponse = outputQuality.isValid
 
       const calledReportProgress = agent.toolCalls.some(tc => tc.name === 'report_progress')
       const onlyCalledReportProgress = calledReportProgress &&
@@ -1348,24 +1498,32 @@ async function runSubAgent(agentId: string): Promise<void> {
       // Research tasks need research work + text summary, not artifacts
       const taskIsResearch = /\b(research|find|search|look|analyze|investigate|explore)\b/.test(taskLower)
 
-      // Debug logging for premature completion detection
+      // Count tool successes vs failures
+      const toolSuccesses = agent.toolCalls.filter(tc => tc.output && !tc.error).length
+      const toolErrors = agent.toolFailures.length
+
+      // Debug logging for premature completion detection (silent to user, visible in console)
       console.log(`[SubAgents] ${agent.name} completion check:`, {
+        finishReason: agent.lastFinishReason,
         hasArtifacts,
         hasCreativeOutput,
         hasResearchWork,
-        hasTextResponse: !!hasTextResponse,
+        outputQuality: { valid: outputQuality.isValid, score: outputQuality.score, reason: outputQuality.reason },
         calledReportProgress,
         onlyCalledReportProgress,
         taskRequiresCreativeOutput,
         taskIsResearch,
         toolCallNames: agent.toolCalls.map(tc => tc.name),
+        toolSuccesses,
+        toolErrors,
         autoContinueAttempts: agent.autoContinueAttempts,
       })
 
       // Premature completion detection:
       // 1. If only called report_progress with no real work - definitely premature
       // 2. If task requires creative output but none provided - premature
-      // 3. If agent did any actual work but no meaningful text response - premature
+      // 3. If agent did any actual work but no quality text response - premature
+      // 4. If agent had tool failures and no successful output - may need retry
       const hasActualWork = hasResearchWork || hasCreativeOutput || hasArtifacts
       const isPrematureNoOutput = onlyCalledReportProgress && agent.toolCalls.length > 0 && !hasArtifacts
 
@@ -1373,100 +1531,136 @@ async function runSubAgent(agentId: string): Promise<void> {
       const completedCreativeTask = hasCreativeOutput || hasArtifacts
       const isPrematureMissingDeliverable = taskRequiresCreativeOutput && !completedCreativeTask
 
-      // ANY agent that did actual work should provide a text response summarizing what it did
+      // ANY agent that did actual work should provide a quality text response
       // (unless it's a creative task that produced output - that speaks for itself)
       const isPrematureNoSummary = hasActualWork && !hasTextResponse && !completedCreativeTask
 
-      // Log premature detection decision
-      if (isPrematureNoOutput || isPrematureMissingDeliverable || isPrematureNoSummary) {
+      // New: Detect if agent is struggling with tools (many failures, few successes)
+      const isStrugglingWithTools = toolErrors > 2 && toolSuccesses === 0 && !hasTextResponse
+
+      // Log premature detection decision (debug only, not shown to user)
+      if (isPrematureNoOutput || isPrematureMissingDeliverable || isPrematureNoSummary || isStrugglingWithTools) {
         console.log(`[SubAgents] ${agent.name} detected as PREMATURE:`, {
           isPrematureNoOutput,
           isPrematureMissingDeliverable,
           isPrematureNoSummary,
+          isStrugglingWithTools,
           hasActualWork,
-          hasTextResponse: !!hasTextResponse,
+          outputQuality,
+          toolFailures: agent.toolFailures.map(f => ({ tool: f.toolName, error: f.error.slice(0, 100) })),
           autoContinueAttempts: agent.autoContinueAttempts,
         })
       }
 
-      const MAX_AUTO_CONTINUE_ATTEMPTS = 3
-      if (isPrematureNoOutput || isPrematureMissingDeliverable || isPrematureNoSummary) {
+      const MAX_AUTO_CONTINUE_ATTEMPTS = 10
+      const needsRetry = isPrematureNoOutput || isPrematureMissingDeliverable || isPrematureNoSummary || isStrugglingWithTools
+
+      if (needsRetry) {
         agent.autoContinueAttempts++
 
         if (agent.autoContinueAttempts > MAX_AUTO_CONTINUE_ATTEMPTS) {
-          // Too many attempts - fail the agent
+          // Too many attempts - fail the agent silently (don't mention attempt count to user)
           agent.status = 'failed'
-          const reason = isPrematureNoOutput
-            ? `called report_progress ${agent.toolCalls.length} time(s) but never did actual work`
-            : isPrematureNoSummary
-            ? `did work but never provided a summary of findings`
-            : `task required file output but agent never produced output`
-          agent.error = `Agent failed to complete after ${MAX_AUTO_CONTINUE_ATTEMPTS} attempts. Main AI should handle this task directly.`
+          agent.error = `Agent could not complete the task. Main AI should handle this directly.`
           agent.completedAt = Date.now()
           agent.lastActivityAt = Date.now()
           notifyProgress(agentId, agent)
+          // Log detailed reason for debugging (not shown to user)
+          const reason = isPrematureNoOutput
+            ? `called report_progress ${agent.toolCalls.length} time(s) but never did actual work`
+            : isStrugglingWithTools
+            ? `tool failures: ${agent.toolFailures.map(f => `${f.toolName}: ${f.error.slice(0, 50)}`).join('; ')}`
+            : isPrematureNoSummary
+            ? `did work but never provided quality summary (score: ${outputQuality.score})`
+            : `task required file output but agent never produced output`
+          console.error(`[SubAgents] ${agent.name} failed after ${MAX_AUTO_CONTINUE_ATTEMPTS} attempts: ${reason}`)
           return
         }
 
-        // Auto-continue the agent with an URGENT reminder
+        // Auto-continue the agent with context-appropriate reminder
         // If this is a no-summary issue, enable forceSummaryMode to disable tools
-        if (isPrematureNoSummary) {
+        if (isPrematureNoSummary && !isStrugglingWithTools) {
           agent.forceSummaryMode = true
           console.log(`[SubAgents] ${agent.name} enabling forceSummaryMode - tools will be disabled to force text output`)
         }
 
-        const reminderMessage = isPrematureNoOutput
-          ? `STOP. You called report_progress but then stopped. report_progress is NOT completion - it's just a status update. You must actually DO the work.`
-          : isPrematureNoSummary
-          ? `Your tools have been DISABLED. You MUST now write your findings as text. DO NOT try to call any tools - just write your summary.`
-          : `STOP. You ended without producing output. Your task REQUIRES you to complete the work.`
+        // Build context-aware reminder message
+        let reminderContent: string
+        if (isStrugglingWithTools) {
+          // Agent is having tool failures - give specific guidance
+          const failedTools = [...new Set(agent.toolFailures.map(f => f.toolName))].join(', ')
+          const recentErrors = agent.toolFailures.slice(-3).map(f => `- ${f.toolName}: ${f.error.slice(0, 100)}`).join('\n')
+          reminderContent = `Some tools have encountered errors. Here's what failed:
 
-        agent.messages.push({
-          role: 'user',
-          content: isPrematureNoSummary
-            ? `⚠️ FINAL STEP - WRITE YOUR SUMMARY NOW ⚠️
+${recentErrors}
 
-${reminderMessage}
+Try a different approach:
+- If a file path failed, check if it exists first with list_directory
+- If web_fetch failed, try a different URL or use web_search instead
+- If you can't complete the task with tools, explain what you attempted and what went wrong
+
+Your task: ${agent.task}
+
+Either complete the task with working tools, or provide a summary explaining what you tried and why it failed.`
+        } else if (isPrematureNoSummary) {
+          reminderContent = `Your tools have been DISABLED. You MUST now write your findings as text.
 
 Your task was: ${agent.task}
 
-You already completed the research (web searches, file reads, etc.). Now you MUST provide your findings.
+You already completed the research. Now provide your findings.
 
-WRITE YOUR SUMMARY NOW - at least 100 words describing:
+WRITE YOUR SUMMARY NOW - describe:
 1. What you searched for / read
 2. What you found
 3. Key insights or recommendations
 
 DO NOT call any tools. Just write text. Start your response immediately.`
-            : `⚠️ URGENT - YOU HAVE NOT COMPLETED YOUR TASK ⚠️
-
-${reminderMessage}
+        } else if (isPrematureNoOutput) {
+          reminderContent = `You called report_progress but then stopped. report_progress is NOT completion - it's just a status update.
 
 Your task: ${agent.task}
 
-REQUIRED ACTION - Do this RIGHT NOW:
+REQUIRED ACTION:
 1. Actually DO the work (use web_search, read_file, etc.)
 2. Complete the task
-3. Provide a comprehensive summary of your findings/results
+3. Provide a comprehensive summary of your findings
 
-report_progress is just for status updates while working. Your task is NOT complete until you provide a meaningful text response summarizing what you did and what you found.
+Continue working NOW.`
+        } else {
+          reminderContent = `You ended without producing the required output.
 
-Continue working NOW and provide your summary.`,
+Your task: ${agent.task}
+
+This task requires you to create a file or artifact. Complete the work now.`
+        }
+
+        agent.messages.push({
+          role: 'user',
+          content: reminderContent,
         })
         agent.lastActivityAt = Date.now()
 
-        // Recursively run the agent again
+        // Recursively run the agent again (silent - user doesn't see retry)
         runSubAgent(agentId).catch((error) => {
           console.error(`[SubAgents] Error auto-continuing agent ${agentId}:`, error)
           agent.status = 'failed'
-          agent.error = `Premature completion, then failed to continue: ${error.message}`
+          agent.error = `Agent encountered an error. Main AI should handle this directly.`
           agent.completedAt = Date.now()
           notifyProgress(agentId, agent)
         })
         return // Don't mark as completed yet
       }
 
-      // Normal completion
+      // Normal completion - log final stats for debugging
+      console.log(`[SubAgents] ${agent.name} COMPLETED:`, {
+        finishReason: agent.lastFinishReason,
+        toolCalls: agent.toolCalls.length,
+        toolFailures: agent.toolFailures.length,
+        outputQuality: { score: outputQuality.score, valid: outputQuality.isValid },
+        textLength: parsed.cleanText?.length || 0,
+        retries: agent.autoContinueAttempts,
+      })
+
       agent.status = 'completed'
       agent.result = fullText
       agent.completedAt = Date.now()

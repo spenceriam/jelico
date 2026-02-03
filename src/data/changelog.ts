@@ -21,6 +21,28 @@ export interface ChangelogEntry {
 
 export const changelog: ChangelogEntry[] = [
   {
+    version: '0.8.18',
+    date: '2026-02-03',
+    changes: {
+      added: [
+        'Tool failure tracking - sub-agents now track failed tool calls with details',
+        'Output quality validation - detects filler text, repetition, and gaming attempts',
+        'Finish reason tracking - logs why model stopped for debugging premature completions',
+        'Context-aware retry messages - different guidance based on failure type',
+      ],
+      changed: [
+        'Silent retries increased to 10 attempts (was 3), error messages hide attempt count',
+        'Quality validation checks for lorem ipsum, excessive generic phrases, low word diversity',
+        'Tool struggling detection - agents with 3+ failures get specific recovery guidance',
+      ],
+      fixed: [
+        'Sub-agents outputting filler text to game length requirements',
+        'No visibility into why models chose to stop mid-task',
+        'Generic error messages exposed internal retry count to users',
+      ],
+    },
+  },
+  {
     version: '0.8.17',
     date: '2026-02-02',
     changes: {
