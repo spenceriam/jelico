@@ -21,6 +21,26 @@ export interface ChangelogEntry {
 
 export const changelog: ChangelogEntry[] = [
   {
+    version: '0.8.14',
+    date: '2026-02-02',
+    changes: {
+      added: [
+        'Sub-agent status line shows beneath main AI status during streaming',
+        'Each running sub-agent displays name and current activity inline',
+      ],
+      changed: [
+        'Tool call labels now show resource names (e.g., "Write File: main.tsx")',
+        'Tool call result shown directly when expanded (removed nested collapsible)',
+        'Permission dialog simplified: shows action in header, description directly visible',
+        'Permission dialog now shows preview content for file writes and commands',
+      ],
+      fixed: [
+        'Sub-agents now require text summary after doing any work (not just research)',
+        'Auto-continue prompts correctly guide agents to summarize their findings',
+      ],
+    },
+  },
+  {
     version: '0.8.13',
     date: '2026-02-02',
     changes: {

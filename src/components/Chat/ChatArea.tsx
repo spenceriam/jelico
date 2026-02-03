@@ -13,6 +13,7 @@ import { ModelSelector } from '../Model/ModelSelector'
 import { ShimmerText, BrailleLoader } from '../StatusIndicators'
 import { TodoPanel } from '../Todo/TodoPanel'
 import { ClarificationPanel } from '../Clarification/ClarificationPanel'
+import { SubAgentStatusLine } from '../Agents/SubAgentStatusLine'
 import { formatElapsedTime } from '../../utils/format'
 
 // Minimum display time for status messages (ms)
@@ -315,6 +316,9 @@ export function ChatArea() {
               </div>
             </div>
           )}
+
+          {/* Sub-agent status lines - indented beneath main status */}
+          {isStreaming && <SubAgentStatusLine />}
 
           <div ref={messagesEndRef} />
         </div>

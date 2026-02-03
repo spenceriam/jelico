@@ -155,7 +155,6 @@ export function SingleToolCallDisplay({
   isStreaming?: boolean
 }) {
   const [expanded, setExpanded] = useState(false)
-  const [showToolResult, setShowToolResult] = useState(false)
 
   const { agents } = useAgentStore()
   const { selectArtifact, openCanvas, artifacts } = useArtifactStore()
@@ -167,7 +166,7 @@ export function SingleToolCallDisplay({
   const subAgent = agentId ? agents.find(a => a.id === agentId) : null
 
 
-  // Custom label for spawn_agent: use displayName from agent store (e.g., "Maya: Creating Wordle")
+  // Build label with resource name included (e.g., "Write File: bunfig.toml")
   const label: string = (() => {
     if (toolCall.name === 'spawn_agent') {
       // Prefer displayName from agent store (has friendly first name)
@@ -177,7 +176,51 @@ export function SingleToolCallDisplay({
       // Fallback while agent is being spawned (before we have the agent_id)
       return 'Starting sub-agent...'
     }
-    return TOOL_LABELS[toolCall.name] || toolCall.name
+
+    const baseName = TOOL_LABELS[toolCall.name] || toolCall.name
+    const args = toolCall.args || {}
+
+    // Extract resource name based on tool type
+    const getShortPath = (p: string) => {
+      const parts = p.split('/')
+      return parts.length > 2 ? parts.slice(-2).join('/') : parts.slice(-1)[0] || p
+    }
+
+    switch (toolCall.name) {
+      case 'read_file':
+      case 'write_file':
+        if (args.path) return `${baseName}: ${getShortPath(String(args.path))}`
+        break
+      case 'list_directory':
+        if (args.path) return `${baseName}: ${getShortPath(String(args.path))}`
+        break
+      case 'search_files':
+        if (args.pattern) return `${baseName}: "${args.pattern}"`
+        break
+      case 'execute_command': {
+        const cmd = String(args.command || '')
+        const shortCmd = cmd.length > 30 ? cmd.slice(0, 30) + '...' : cmd
+        if (shortCmd) return `Command: ${shortCmd}`
+        break
+      }
+      case 'web_search':
+        if (args.query) return `${baseName}: "${String(args.query).slice(0, 25)}"`
+        break
+      case 'web_fetch': {
+        const url = String(args.url || '')
+        try {
+          const hostname = new URL(url).hostname
+          return `${baseName}: ${hostname}`
+        } catch {}
+        break
+      }
+      case 'create_artifact':
+      case 'update_artifact':
+        if (args.title) return `${baseName}: ${String(args.title).slice(0, 30)}`
+        break
+    }
+
+    return baseName
   })()
 
   const hasResult = toolResult !== undefined
@@ -290,33 +333,14 @@ export function SingleToolCallDisplay({
             </div>
           )}
 
-          {/* Result section - collapsible (not shown for spawn_agent) */}
+          {/* Result - shown directly when expanded (not shown for spawn_agent) */}
           {formattedResult && toolCall.name !== 'spawn_agent' && (
-            <div>
-              <button
-                onClick={() => setShowToolResult(!showToolResult)}
-                className="w-full py-2 flex items-center hover:bg-bg-hover/50 transition-colors"
-              >
-                <div className="w-6 flex-shrink-0 flex justify-center">
-                  {showToolResult ? (
-                    <ChevronDown className={`w-3 h-3 ${formattedResult.isError ? 'text-error' : 'text-text-muted'}`} />
-                  ) : (
-                    <ChevronRight className={`w-3 h-3 ${formattedResult.isError ? 'text-error' : 'text-text-muted'}`} />
-                  )}
-                </div>
-                <span className={`text-[10px] uppercase tracking-wider ${formattedResult.isError ? 'text-error' : 'text-text-muted'}`}>
-                  {formattedResult.isError ? 'Error' : 'Result'}
-                </span>
-              </button>
-              {showToolResult && (
-                <div className="pb-2 pl-8 pr-3">
-                  <pre className={`text-xs font-mono overflow-x-auto max-h-48 overflow-y-auto rounded p-2 ${
-                    formattedResult.isError ? 'text-error bg-error/10' : 'text-text-secondary bg-bg-deep'
-                  }`}>
-                    {formattedResult.content}
-                  </pre>
-                </div>
-              )}
+            <div className="px-3 py-2">
+              <pre className={`text-xs font-mono overflow-x-auto max-h-48 overflow-y-auto rounded p-2 ${
+                formattedResult.isError ? 'text-error bg-error/10' : 'text-text-secondary bg-bg-deep'
+              }`}>
+                {formattedResult.content}
+              </pre>
             </div>
           )}
 

@@ -1,6 +1,6 @@
 import { useEffect } from 'react'
 import { Shield, ShieldX, Clock, FolderOpen } from 'lucide-react'
-import { usePermissionStore, getToolDescription, type PermissionAction } from '../../stores/permissions'
+import { usePermissionStore, type PermissionAction } from '../../stores/permissions'
 
 export function PermissionDialog() {
   const {
@@ -31,7 +31,24 @@ export function PermissionDialog() {
     }
   }
 
-  const description = getToolDescription(activeRequest.toolName, activeRequest.action)
+  // Build a readable action label with resource included
+  const actionLabel = (() => {
+    const getShortPath = (p: string) => {
+      const parts = p.split('/')
+      return parts.length > 2 ? parts.slice(-2).join('/') : parts.slice(-1)[0] || p
+    }
+
+    // Parse action string to extract resource
+    if (activeRequest.action.startsWith('Write to:')) {
+      const path = activeRequest.action.replace('Write to:', '').trim()
+      return `Write File: ${getShortPath(path)}`
+    }
+    if (activeRequest.action.startsWith('Run command')) {
+      return 'Execute Command'
+    }
+
+    return activeRequest.action
+  })()
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-bg-void/80 backdrop-blur-sm">
@@ -43,32 +60,27 @@ export function PermissionDialog() {
           </div>
           <div>
             <h3 className="text-lg font-semibold text-text-primary">Permission Required</h3>
-            <p className="text-sm text-text-muted">Jelico needs your approval</p>
+            <p className="text-sm text-text-muted">{actionLabel}</p>
           </div>
         </div>
 
         {/* Content */}
         <div className="px-6 py-4">
-          {/* Tool and Action info */}
-          <div className="bg-bg-deep rounded-lg p-4 mb-4">
-            <div className="flex items-center gap-2 mb-2">
-              <span className="text-xs text-text-muted uppercase tracking-wide">Tool</span>
-              <span className="text-sm font-mono text-text-primary">{activeRequest.toolName}</span>
-            </div>
-            <div className="flex items-start gap-2">
-              <span className="text-xs text-text-muted uppercase tracking-wide mt-0.5">Action</span>
-              <span className="text-sm font-mono text-text-secondary break-all">{activeRequest.action}</span>
-            </div>
+          {/* Justification/Explanation - use description from main process */}
+          <div className="mb-4">
+            <p className="text-sm text-text-primary">
+              {activeRequest.description || `The AI wants to perform: ${activeRequest.action}`}
+            </p>
           </div>
 
-          {/* Justification/Explanation */}
-          <div className="mb-4">
-            <p className="text-xs text-text-muted uppercase tracking-wide mb-2">Why this is needed</p>
-            <p className="text-sm text-text-primary">{description}</p>
-            {activeRequest.description && activeRequest.description !== description && (
-              <p className="text-sm text-text-secondary mt-2">{activeRequest.description}</p>
-            )}
-          </div>
+          {/* Preview content if available */}
+          {activeRequest.preview && (
+            <div className="bg-bg-deep rounded-lg p-3 mb-4 max-h-32 overflow-y-auto">
+              <pre className="text-xs font-mono text-text-secondary whitespace-pre-wrap break-all">
+                {activeRequest.preview}
+              </pre>
+            </div>
+          )}
         </div>
 
         {/* Actions - vertical button layout */}

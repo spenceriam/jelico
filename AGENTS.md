@@ -72,7 +72,7 @@ The Soul/Memory system should make Jelico increasingly personalized - it learns 
 ## Project overview
 Jelico is an AI Productivity Desktop built with Electron, React, TypeScript, and Vite. It provides a frictionless AI assistant experience with multi-provider support (Anthropic, OpenAI, Google), workspace management, conversation persistence, and a soul/memory system that learns user patterns and preferences over time.
 
-**Current Version:** 0.8.13
+**Current Version:** 0.8.14
 
 ## Development workflow discipline
 - **CRITICAL**: NEVER commit or push changes without explicit user approval
@@ -395,6 +395,16 @@ Sub-agents can create artifacts that appear in the Canvas panel:
 - Why: Complete the implementation workflow
 - Alternative: I can provide exact PR details for you to create"
 ```
+
+### Sub-Agent Status Line
+A compact status line shows beneath the main AI status during streaming:
+- Each running sub-agent displays its name and current activity
+- Indented below main status to show hierarchy
+- Shows latest tool or progress update
+- Only visible when agents are running for current conversation
+
+**Files:**
+- `src/components/Agents/SubAgentStatusLine.tsx` - Inline status component
 
 ### Sibling Awareness
 Main AI can inform sub-agents about other agents working in parallel:

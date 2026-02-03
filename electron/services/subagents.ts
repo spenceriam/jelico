@@ -1355,18 +1355,32 @@ async function runSubAgent(agentId: string): Promise<void> {
       // Premature completion detection:
       // 1. If only called report_progress with no real work - definitely premature
       // 2. If task requires creative output but none provided - premature
-      // 3. For research tasks, having research work + text response is enough
+      // 3. If agent did any actual work but no meaningful text response - premature
       const hasActualWork = hasResearchWork || hasCreativeOutput || hasArtifacts
       const isPrematureNoOutput = onlyCalledReportProgress && agent.toolCalls.length > 0 && !hasArtifacts
 
       // For creative tasks, require artifact/file output
-      // For research tasks, require research work + meaningful text response
       const completedCreativeTask = hasCreativeOutput || hasArtifacts
-      const completedResearchTask = hasResearchWork && hasTextResponse
-      const isPrematureMissingDeliverable = taskRequiresCreativeOutput && !completedCreativeTask && !taskIsResearch
+      const isPrematureMissingDeliverable = taskRequiresCreativeOutput && !completedCreativeTask
+
+      // ANY agent that did actual work should provide a text response summarizing what it did
+      // (unless it's a creative task that produced output - that speaks for itself)
+      const isPrematureNoSummary = hasActualWork && !hasTextResponse && !completedCreativeTask
+
+      // Log premature detection decision
+      if (isPrematureNoOutput || isPrematureMissingDeliverable || isPrematureNoSummary) {
+        console.log(`[SubAgents] ${agent.name} detected as PREMATURE:`, {
+          isPrematureNoOutput,
+          isPrematureMissingDeliverable,
+          isPrematureNoSummary,
+          hasActualWork,
+          hasTextResponse: !!hasTextResponse,
+          autoContinueAttempts: agent.autoContinueAttempts,
+        })
+      }
 
       const MAX_AUTO_CONTINUE_ATTEMPTS = 3
-      if (isPrematureNoOutput || isPrematureMissingDeliverable) {
+      if (isPrematureNoOutput || isPrematureMissingDeliverable || isPrematureNoSummary) {
         agent.autoContinueAttempts++
 
         if (agent.autoContinueAttempts > MAX_AUTO_CONTINUE_ATTEMPTS) {
@@ -1374,7 +1388,9 @@ async function runSubAgent(agentId: string): Promise<void> {
           agent.status = 'failed'
           const reason = isPrematureNoOutput
             ? `called report_progress ${agent.toolCalls.length} time(s) but never did actual work`
-            : `task required file output but agent never called write_file`
+            : isPrematureNoSummary
+            ? `did work but never provided a summary of findings`
+            : `task required file output but agent never produced output`
           agent.error = `Agent failed to complete after ${MAX_AUTO_CONTINUE_ATTEMPTS} attempts. Main AI should handle this task directly.`
           agent.completedAt = Date.now()
           agent.lastActivityAt = Date.now()
@@ -1385,6 +1401,8 @@ async function runSubAgent(agentId: string): Promise<void> {
         // Auto-continue the agent with an URGENT reminder
         const reminderMessage = isPrematureNoOutput
           ? `STOP. You called report_progress but then stopped. report_progress is NOT completion - it's just a status update. You must actually DO the work.`
+          : isPrematureNoSummary
+          ? `STOP. You did work (tools were called) but stopped without providing your findings. You MUST summarize what you did and what you found.`
           : `STOP. You ended without producing output. Your task REQUIRES you to complete the work.`
 
         agent.messages.push({
@@ -1396,15 +1414,13 @@ ${reminderMessage}
 Your task: ${agent.task}
 
 REQUIRED ACTION - Do this RIGHT NOW:
-1. Actually DO the research/work (use web_search, read_file, etc.)
-2. Complete the analysis
-3. Provide a comprehensive summary of your findings
+${isPrematureNoSummary ? `You already did the work. Now SUMMARIZE YOUR FINDINGS in a detailed response (at least 100 words describing what you found or accomplished).` : `1. Actually DO the work (use web_search, read_file, etc.)
+2. Complete the task
+3. Provide a comprehensive summary of your findings/results`}
 
-report_progress is just for status updates while working. Your task is NOT complete until you:
-- Have actually called the tools needed (web_search, read_file, etc.)
-- Provided a meaningful response summarizing your findings
+report_progress is just for status updates while working. Your task is NOT complete until you provide a meaningful text response summarizing what you did and what you found.
 
-Continue working NOW.`,
+Continue working NOW and provide your summary.`,
         })
         agent.lastActivityAt = Date.now()
 
