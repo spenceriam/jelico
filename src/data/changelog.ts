@@ -34,6 +34,8 @@ export const changelog: ChangelogEntry[] = [
         'Permission dialog simplified: shows action in header, description directly visible',
         'Permission dialog now shows preview content for file writes and commands',
         'Clarification tabs auto-advance to next question after answering (single-select only)',
+        'AI now reflects on tool results before continuing (especially after user questions)',
+        'Added ask_user_question documentation to tools reference',
       ],
       fixed: [
         'Sub-agents now require text summary after doing any work (not just research)',

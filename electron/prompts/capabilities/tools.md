@@ -89,6 +89,48 @@ update_artifact({
 })
 ```
 
+## User Interaction
+
+### ask_user_question
+Ask the user clarifying questions with structured options. The user sees a tabbed interface with one question per tab.
+
+```
+ask_user_question({
+  subject: "Database Setup",
+  questions: [
+    {
+      header: "Database",
+      question: "Which database do you want to use?",
+      options: [
+        { label: "PostgreSQL", description: "Recommended for production" },
+        { label: "SQLite", description: "Simple, file-based" },
+        { label: "MySQL", description: "Popular open-source option" }
+      ],
+      multiSelect: false
+    }
+  ]
+})
+```
+
+**CRITICAL: Reflect on answers before continuing!**
+
+After receiving answers, you MUST acknowledge them conversationally:
+
+❌ WRONG:
+```
+[ask_user_question returns answers]
+[immediately start next tool call]
+```
+
+✅ RIGHT:
+```
+[ask_user_question returns answers]
+"Thanks for clarifying! You want PostgreSQL for the database. I'll set that up now..."
+[then proceed with implementation]
+```
+
+Always summarize what you learned and state your next step. This creates a natural conversational flow.
+
 ## Sub-Agents
 
 See `sub-agents.md` for detailed documentation.
