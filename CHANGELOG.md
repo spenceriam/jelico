@@ -2,6 +2,19 @@
 
 All notable changes to Jelico will be documented in this file.
 
+## [0.8.24] - 2026-02-03
+
+### Added
+- **Complete app icon set for all platforms**
+  - SVG source icon with gold gradient and black "J"
+  - Windows: icon.ico (multi-resolution)
+  - macOS: icon.iconset (generates icns during CI build)
+  - Linux: PNG icons at 16, 32, 48, 64, 128, 256, 512, 1024px
+
+### Changed
+- GitHub Actions macOS build now generates icon.icns from iconset
+- Welcome screen logo updated to circular design matching app icon
+
 ## [0.8.23] - 2026-02-03
 
 ### Added

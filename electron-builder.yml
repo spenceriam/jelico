@@ -40,6 +40,7 @@ mac:
         - x64
         - arm64
   category: public.app-category.productivity
+  # icon.icns generated from icon.iconset during macOS CI build
   icon: build/icon.icns
   hardenedRuntime: true
   gatekeeperAssess: false
