@@ -21,6 +21,16 @@ export interface ChangelogEntry {
 
 export const changelog: ChangelogEntry[] = [
   {
+    version: '0.9.1',
+    date: '2026-02-03',
+    changes: {
+      changed: [
+        'Release workflow disables implicit electron-builder publishing during build jobs',
+        'Release job now declares write permissions for GitHub release creation',
+      ],
+    },
+  },
+  {
     version: '0.9.0',
     date: '2026-02-03',
     changes: {

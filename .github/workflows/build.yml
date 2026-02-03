@@ -17,6 +17,8 @@ env:
 
 jobs:
   build-linux:
+    permissions:
+      contents: read
     runs-on: ubuntu-latest
     strategy:
       matrix:
@@ -38,7 +40,7 @@ jobs:
         run: npm ci
 
       - name: Build app
-        run: npm run build:${{ matrix.arch }}
+        run: npm run build:${{ matrix.arch }} -- --publish never
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
@@ -53,6 +55,8 @@ jobs:
           if-no-files-found: warn
 
   build-windows:
+    permissions:
+      contents: read
     runs-on: windows-latest
     strategy:
       matrix:
@@ -73,7 +77,7 @@ jobs:
         run: npm ci
 
       - name: Build app
-        run: npm run build:${{ matrix.arch }}
+        run: npm run build:${{ matrix.arch }} -- --publish never
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
@@ -87,6 +91,8 @@ jobs:
           if-no-files-found: warn
 
   build-macos:
+    permissions:
+      contents: read
     runs-on: macos-latest
     strategy:
       matrix:
@@ -112,7 +118,7 @@ jobs:
           ls -la icon.icns
 
       - name: Build app
-        run: npm run build:${{ matrix.arch }}
+        run: npm run build:${{ matrix.arch }} -- --publish never
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           # For code signing (configure secrets when ready):
@@ -135,6 +141,8 @@ jobs:
     needs: [build-linux, build-windows, build-macos]
     runs-on: ubuntu-latest
     if: startsWith(github.ref, 'refs/tags/v') || (github.event_name == 'workflow_dispatch' && github.event.inputs.release == 'true')
+    permissions:
+      contents: write
 
     steps:
       - name: Checkout
