@@ -328,6 +328,8 @@ export interface SubAgentRecord {
   }>
   // Auto-continue attempts for premature completion detection
   autoContinueAttempts: number
+  // Force summary mode - disables tools to force text output
+  forceSummaryMode: boolean
   // Provider info for continuation
   providerId: string
   model: string
@@ -571,6 +573,7 @@ export async function spawnSubAgent(params: {
     toolCalls: [],
     createdArtifacts: [],
     autoContinueAttempts: 0,
+    forceSummaryMode: false,
     providerId: params.providerId,
     model: params.model,
     workspacePath: params.workspacePath,
@@ -1124,11 +1127,18 @@ async function runSubAgent(agentId: string): Promise<void> {
     }
 
     // Get tools for this sub-agent based on its mode
-    const tools = getSubAgentTools(agent.mode, agent.workspacePath, {
-      agentId,
-      agentName: agent.name,
-      sendArtifact,
-    })
+    // In forceSummaryMode, disable all tools to force text output
+    const tools = agent.forceSummaryMode
+      ? {}  // No tools - forces model to output text only
+      : getSubAgentTools(agent.mode, agent.workspacePath, {
+          agentId,
+          agentName: agent.name,
+          sendArtifact,
+        })
+
+    if (agent.forceSummaryMode) {
+      console.log(`[SubAgents] ${agent.name} in forceSummaryMode - tools disabled to force text output`)
+    }
 
     // Stream response
     // IMPORTANT: Use .chat() to get Chat Completions API endpoint
@@ -1399,24 +1409,45 @@ async function runSubAgent(agentId: string): Promise<void> {
         }
 
         // Auto-continue the agent with an URGENT reminder
+        // If this is a no-summary issue, enable forceSummaryMode to disable tools
+        if (isPrematureNoSummary) {
+          agent.forceSummaryMode = true
+          console.log(`[SubAgents] ${agent.name} enabling forceSummaryMode - tools will be disabled to force text output`)
+        }
+
         const reminderMessage = isPrematureNoOutput
           ? `STOP. You called report_progress but then stopped. report_progress is NOT completion - it's just a status update. You must actually DO the work.`
           : isPrematureNoSummary
-          ? `STOP. You did work (tools were called) but stopped without providing your findings. You MUST summarize what you did and what you found.`
+          ? `Your tools have been DISABLED. You MUST now write your findings as text. DO NOT try to call any tools - just write your summary.`
           : `STOP. You ended without producing output. Your task REQUIRES you to complete the work.`
 
         agent.messages.push({
           role: 'user',
-          content: `⚠️ URGENT - YOU HAVE NOT COMPLETED YOUR TASK ⚠️
+          content: isPrematureNoSummary
+            ? `⚠️ FINAL STEP - WRITE YOUR SUMMARY NOW ⚠️
+
+${reminderMessage}
+
+Your task was: ${agent.task}
+
+You already completed the research (web searches, file reads, etc.). Now you MUST provide your findings.
+
+WRITE YOUR SUMMARY NOW - at least 100 words describing:
+1. What you searched for / read
+2. What you found
+3. Key insights or recommendations
+
+DO NOT call any tools. Just write text. Start your response immediately.`
+            : `⚠️ URGENT - YOU HAVE NOT COMPLETED YOUR TASK ⚠️
 
 ${reminderMessage}
 
 Your task: ${agent.task}
 
 REQUIRED ACTION - Do this RIGHT NOW:
-${isPrematureNoSummary ? `You already did the work. Now SUMMARIZE YOUR FINDINGS in a detailed response (at least 100 words describing what you found or accomplished).` : `1. Actually DO the work (use web_search, read_file, etc.)
+1. Actually DO the work (use web_search, read_file, etc.)
 2. Complete the task
-3. Provide a comprehensive summary of your findings/results`}
+3. Provide a comprehensive summary of your findings/results
 
 report_progress is just for status updates while working. Your task is NOT complete until you provide a meaningful text response summarizing what you did and what you found.
 

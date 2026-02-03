@@ -21,6 +21,21 @@ export interface ChangelogEntry {
 
 export const changelog: ChangelogEntry[] = [
   {
+    version: '0.8.17',
+    date: '2026-02-02',
+    changes: {
+      changed: [
+        'Sub-agents now have tools DISABLED when forcing summary output',
+        'When agent does work but no text, tools are removed to force text-only response',
+        'Clearer final message tells agent tools are disabled and to write summary immediately',
+      ],
+      fixed: [
+        'Sub-agents failing because model kept calling tools instead of writing text summary',
+        'forceSummaryMode added to agent record to track when tools should be disabled',
+      ],
+    },
+  },
+  {
     version: '0.8.16',
     date: '2026-02-02',
     changes: {
