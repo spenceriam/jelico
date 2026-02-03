@@ -2,6 +2,14 @@ import { app } from 'electron'
 import path from 'path'
 import fs from 'fs'
 import { v4 as uuid } from 'uuid'
+import {
+  writeArtifactFile,
+  readArtifactFile,
+  deleteArtifactFile,
+  deleteConversationArtifacts,
+  getArtifactFilePath,
+  artifactFileExists,
+} from './artifactFiles'
 
 // Simple JSON file-based storage for Phase 1
 // More reliable than sql.js with Electron bundling
@@ -64,9 +72,61 @@ function saveDb(): void {
   }
 }
 
+/**
+ * One-time migration: Move artifact content from database to files
+ * This runs once and migrates all existing artifacts that have content in database
+ * but no file on disk. After migration, content is cleared from database.
+ */
+function migrateArtifactsToFiles(): void {
+  let migratedCount = 0
+  let skippedCount = 0
+
+  for (const artifact of db.artifacts) {
+    // Skip if artifact already has a file and the file exists
+    if (artifact.file_path && fs.existsSync(artifact.file_path)) {
+      skippedCount++
+      continue
+    }
+
+    // Skip if artifact has no content to migrate
+    if (!artifact.content || artifact.content.length === 0) {
+      skippedCount++
+      continue
+    }
+
+    try {
+      // Write content to file
+      const filePath = writeArtifactFile(
+        artifact.id,
+        artifact.conversation_id,
+        artifact.type,
+        artifact.language,
+        artifact.content
+      )
+
+      // Update artifact record with file path and clear content
+      artifact.file_path = filePath
+      artifact.content = '' // Clear content from database
+
+      migratedCount++
+      console.log(`[Migration] Migrated artifact ${artifact.id} (${artifact.title}) to file: ${filePath}`)
+    } catch (error) {
+      console.error(`[Migration] Failed to migrate artifact ${artifact.id}:`, error)
+    }
+  }
+
+  if (migratedCount > 0) {
+    saveDb()
+    console.log(`[Migration] Artifact migration complete: ${migratedCount} migrated, ${skippedCount} skipped`)
+  }
+}
+
 export async function initDatabase(): Promise<void> {
   loadDb()
   console.log('Database initialized at:', getDbPath())
+
+  // Run one-time migration for existing artifacts
+  migrateArtifactsToFiles()
 }
 
 // Provider operations
@@ -480,13 +540,28 @@ interface ArtifactInput {
 }
 
 // Artifact operations
+// NOTE: Artifact content is stored as files on disk, not in the database.
+// The database only stores metadata and file_path references.
+// Files are stored at: ~/.config/jelico/artifacts/{conversation-id}/{artifact-id}.{ext}
 export const artifactDb = {
   list(): ArtifactRow[] {
     return [...db.artifacts].sort((a, b) => b.updated_at - a.updated_at)
   },
 
   get(id: string): ArtifactRow | null {
-    return db.artifacts.find(a => a.id === id) || null
+    const artifact = db.artifacts.find(a => a.id === id)
+    if (!artifact) return null
+
+    // Load content from file if file_path exists
+    if (artifact.file_path && artifactFileExists(artifact.file_path)) {
+      const content = readArtifactFile(artifact.file_path)
+      if (content !== null) {
+        return { ...artifact, content }
+      }
+    }
+
+    // Fallback to database content (for legacy artifacts not yet migrated)
+    return artifact
   },
 
   getByConversation(conversationId: string): ArtifactRow[] {
@@ -503,22 +578,47 @@ export const artifactDb = {
       }
     }
 
-    return [...latestByBase.values()].sort((a, b) => b.updated_at - a.updated_at)
+    // Load content from files for each artifact
+    const result: ArtifactRow[] = []
+    for (const artifact of latestByBase.values()) {
+      if (artifact.file_path && artifactFileExists(artifact.file_path)) {
+        const content = readArtifactFile(artifact.file_path)
+        if (content !== null) {
+          result.push({ ...artifact, content })
+          continue
+        }
+      }
+      // Fallback to database content
+      result.push(artifact)
+    }
+
+    return result.sort((a, b) => b.updated_at - a.updated_at)
   },
 
-  // Get all revisions of an artifact (by base id)
+  // Get all revisions of an artifact (by base id) - with content loaded from files
   getRevisions(baseArtifactId: string): ArtifactRow[] {
     // Get the base artifact
     const base = db.artifacts.find(a => a.id === baseArtifactId)
     if (!base) return []
 
     // Get all artifacts with this base_artifact_id OR the base itself
-    return db.artifacts
+    const artifacts = db.artifacts
       .filter(a => a.id === baseArtifactId || a.base_artifact_id === baseArtifactId)
       .sort((a, b) => a.revision - b.revision)  // Sort by revision ascending
+
+    // Load content from files for each revision
+    return artifacts.map(artifact => {
+      if (artifact.file_path && artifactFileExists(artifact.file_path)) {
+        const content = readArtifactFile(artifact.file_path)
+        if (content !== null) {
+          return { ...artifact, content }
+        }
+      }
+      return artifact
+    })
   },
 
-  // Get the latest revision of an artifact
+  // Get the latest revision of an artifact - with content loaded from file
   getLatestRevision(baseArtifactId: string): ArtifactRow | null {
     const revisions = this.getRevisions(baseArtifactId)
     return revisions.length > 0 ? revisions[revisions.length - 1] : null
@@ -536,14 +636,23 @@ export const artifactDb = {
       }
     })
 
+    // Write content to file and get file path
+    const filePath = writeArtifactFile(
+      id,
+      artifact.conversationId || null,
+      artifact.type,
+      artifact.language || null,
+      artifact.content
+    )
+
     const record: ArtifactRow = {
       id,
       conversation_id: artifact.conversationId || null,
       type: artifact.type,
       title: artifact.title,
-      content: artifact.content,
+      content: '', // Content is now stored in file, not database
       language: artifact.language || null,
-      file_path: artifact.filePath || null,
+      file_path: filePath, // Always set file_path now
       created_at: now,
       updated_at: now,
       base_artifact_id: artifact.baseArtifactId || null,
@@ -552,7 +661,9 @@ export const artifactDb = {
 
     db.artifacts.push(record)
     saveDb()
-    return record
+
+    // Return with content populated (for immediate use)
+    return { ...record, content: artifact.content }
   },
 
   // Get the next revision number for a base artifact
@@ -615,11 +726,23 @@ export const artifactDb = {
     if (!artifact) return
 
     const baseId = artifact.base_artifact_id || artifact.id
+
+    // Delete artifact files for base and all revisions
+    const toDelete = db.artifacts.filter(a => a.id === baseId || a.base_artifact_id === baseId)
+    for (const a of toDelete) {
+      if (a.file_path) {
+        deleteArtifactFile(a.file_path)
+      }
+    }
+
     db.artifacts = db.artifacts.filter(a => a.id !== baseId && a.base_artifact_id !== baseId)
     saveDb()
   },
 
   deleteByConversation(conversationId: string): void {
+    // Delete all artifact files for this conversation
+    deleteConversationArtifacts(conversationId)
+
     db.artifacts = db.artifacts.filter(a => a.conversation_id !== conversationId)
     saveDb()
   },

@@ -21,6 +21,23 @@ export interface ChangelogEntry {
 
 export const changelog: ChangelogEntry[] = [
   {
+    version: '0.8.19',
+    date: '2026-02-03',
+    changes: {
+      added: [
+        'File-based artifact storage - artifacts now saved as actual files, not JSON blobs',
+        'Reveal in folder button - open artifact location in file manager',
+        'Download artifact button - save artifacts to user-chosen location',
+        'One-time migration - existing artifacts automatically converted to file storage',
+      ],
+      changed: [
+        'Artifact database now stores metadata and file path, not content',
+        'Artifacts stored in ~/.config/jelico/artifacts/{conversation-id}/',
+        'File extensions determined by artifact type (html, svg, md, code language)',
+      ],
+    },
+  },
+  {
     version: '0.8.18',
     date: '2026-02-03',
     changes: {

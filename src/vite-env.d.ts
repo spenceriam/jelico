@@ -93,6 +93,11 @@ interface Window {
       deleteByConversation: (conversationId: string) => Promise<{ success: boolean }>
       getRevisions: (baseArtifactId: string) => Promise<ArtifactRow[]>
       getLatestRevision: (baseArtifactId: string) => Promise<ArtifactRow | null>
+      // File-based artifact operations
+      getFilePath: (id: string) => Promise<{ success: boolean; filePath?: string; error?: string }>
+      reveal: (id: string) => Promise<{ success: boolean; error?: string }>
+      download: (id: string) => Promise<{ success: boolean; savedTo?: string; canceled?: boolean; error?: string }>
+      getBasePath: () => Promise<{ success: boolean; basePath: string }>
     }
     sandbox: {
       getPath: () => Promise<string>

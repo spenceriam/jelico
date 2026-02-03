@@ -1,4 +1,4 @@
-import { X, FileCode, FileText, Image, Presentation, ChevronLeft, ChevronRight, ChevronDown, File, History } from 'lucide-react'
+import { X, FileCode, FileText, Image, Presentation, ChevronLeft, ChevronRight, ChevronDown, File, History, Download, FolderOpen } from 'lucide-react'
 import { useState, useRef, useEffect } from 'react'
 import { useArtifactStore, type Artifact, type ArtifactType } from '../../stores/artifacts'
 import { useChatStore } from '../../stores/chat'
@@ -286,12 +286,42 @@ export function CanvasPanel() {
             ) : null}
             Created {new Date(displayArtifact.createdAt).toLocaleTimeString()}
           </span>
-          <button
-            onClick={() => selectedArtifact && removeArtifact(getBaseArtifactId(selectedArtifact))}
-            className="text-xs text-text-muted hover:text-error transition-colors"
-          >
-            Delete
-          </button>
+          <div className="flex items-center gap-3">
+            <button
+              onClick={async () => {
+                try {
+                  await window.jelico.artifacts.reveal(displayArtifact.id)
+                } catch (error) {
+                  console.error('Failed to reveal artifact:', error)
+                }
+              }}
+              className="flex items-center gap-1 text-xs text-text-muted hover:text-text-primary transition-colors"
+              title="Show in folder"
+            >
+              <FolderOpen className="w-3.5 h-3.5" />
+              <span>Reveal</span>
+            </button>
+            <button
+              onClick={async () => {
+                try {
+                  await window.jelico.artifacts.download(displayArtifact.id)
+                } catch (error) {
+                  console.error('Failed to download artifact:', error)
+                }
+              }}
+              className="flex items-center gap-1 text-xs text-text-muted hover:text-text-primary transition-colors"
+              title="Download artifact"
+            >
+              <Download className="w-3.5 h-3.5" />
+              <span>Download</span>
+            </button>
+            <button
+              onClick={() => selectedArtifact && removeArtifact(getBaseArtifactId(selectedArtifact))}
+              className="text-xs text-text-muted hover:text-error transition-colors"
+            >
+              Delete
+            </button>
+          </div>
         </div>
       )}
     </div>

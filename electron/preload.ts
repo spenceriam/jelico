@@ -57,6 +57,11 @@ contextBridge.exposeInMainWorld('jelico', {
     update: (id: string, updates: any) => ipcRenderer.invoke('artifacts:update', id, updates),
     delete: (id: string) => ipcRenderer.invoke('artifacts:delete', id),
     deleteByConversation: (conversationId: string) => ipcRenderer.invoke('artifacts:deleteByConversation', conversationId),
+    // File-based artifact operations
+    getFilePath: (id: string) => ipcRenderer.invoke('artifacts:getFilePath', id),
+    reveal: (id: string) => ipcRenderer.invoke('artifacts:reveal', id),
+    download: (id: string) => ipcRenderer.invoke('artifacts:download', id),
+    getBasePath: () => ipcRenderer.invoke('artifacts:getBasePath'),
   },
   sandbox: {
     getPath: () => ipcRenderer.invoke('sandbox:getPath'),

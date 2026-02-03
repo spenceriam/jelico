@@ -1,5 +1,7 @@
-import { ipcMain } from 'electron'
+import { ipcMain, shell, dialog, BrowserWindow } from 'electron'
 import { artifactDb } from '../services/database.js'
+import { copyArtifactFile, getArtifactsBasePath } from '../services/artifactFiles.js'
+import * as path from 'path'
 
 export function registerArtifactHandlers() {
   // List all artifacts
@@ -62,5 +64,68 @@ export function registerArtifactHandlers() {
   ipcMain.handle('artifacts:deleteByConversation', async (_, conversationId: string) => {
     artifactDb.deleteByConversation(conversationId)
     return { success: true }
+  })
+
+  // Get artifact file path (for external access)
+  ipcMain.handle('artifacts:getFilePath', async (_, id: string) => {
+    const artifact = artifactDb.get(id)
+    if (!artifact) return { success: false, error: 'Artifact not found' }
+    if (!artifact.file_path) return { success: false, error: 'Artifact has no file path' }
+    return { success: true, filePath: artifact.file_path }
+  })
+
+  // Reveal artifact in file manager
+  ipcMain.handle('artifacts:reveal', async (_, id: string) => {
+    const artifact = artifactDb.get(id)
+    if (!artifact) return { success: false, error: 'Artifact not found' }
+    if (!artifact.file_path) return { success: false, error: 'Artifact has no file path' }
+
+    try {
+      shell.showItemInFolder(artifact.file_path)
+      return { success: true }
+    } catch (error) {
+      return { success: false, error: String(error) }
+    }
+  })
+
+  // Download artifact (save to user-chosen location)
+  ipcMain.handle('artifacts:download', async (_, id: string) => {
+    const artifact = artifactDb.get(id)
+    if (!artifact) return { success: false, error: 'Artifact not found' }
+    if (!artifact.file_path) return { success: false, error: 'Artifact has no file path' }
+
+    const win = BrowserWindow.getFocusedWindow()
+    if (!win) return { success: false, error: 'No active window' }
+
+    // Get the filename from the existing file path
+    const filename = path.basename(artifact.file_path)
+
+    try {
+      const result = await dialog.showSaveDialog(win, {
+        title: 'Download Artifact',
+        defaultPath: filename,
+        filters: [
+          { name: 'All Files', extensions: ['*'] }
+        ]
+      })
+
+      if (result.canceled || !result.filePath) {
+        return { success: false, canceled: true }
+      }
+
+      const copied = copyArtifactFile(artifact.file_path, result.filePath)
+      if (copied) {
+        return { success: true, savedTo: result.filePath }
+      } else {
+        return { success: false, error: 'Failed to copy file' }
+      }
+    } catch (error) {
+      return { success: false, error: String(error) }
+    }
+  })
+
+  // Get artifacts base directory path
+  ipcMain.handle('artifacts:getBasePath', async () => {
+    return { success: true, basePath: getArtifactsBasePath() }
   })
 }
