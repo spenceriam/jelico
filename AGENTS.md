@@ -74,6 +74,11 @@ Jelico is an AI Productivity Desktop built with Electron, React, TypeScript, and
 
 **Current Version:** 0.8.24
 
+**License:** GNU General Public License v3.0 (GPL-3.0-or-later)
+- See LICENSE file in project root
+- Copyleft: derivative works must also be GPL-3.0
+- Users have freedom to run, study, share, and modify the software
+
 ## Development workflow discipline
 - **CRITICAL**: NEVER commit or push changes without explicit user approval
 - **ALWAYS** ask for user confirmation before any git operations
