@@ -21,6 +21,15 @@ export interface ChangelogEntry {
 
 export const changelog: ChangelogEntry[] = [
   {
+    version: '0.9.2',
+    date: '2026-02-03',
+    changes: {
+      changed: [
+        'Release workflow builds once per OS to avoid duplicate artifacts',
+      ],
+    },
+  },
+  {
     version: '0.9.1',
     date: '2026-02-03',
     changes: {

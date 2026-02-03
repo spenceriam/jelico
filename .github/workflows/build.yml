@@ -20,11 +20,6 @@ jobs:
     permissions:
       contents: read
     runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        arch: [x64]
-        # ARM64 Linux builds require self-hosted runners or QEMU
-        # Uncomment when ready: arch: [x64, arm64]
 
     steps:
       - name: Checkout
@@ -40,14 +35,14 @@ jobs:
         run: npm ci
 
       - name: Build app
-        run: npm run build:${{ matrix.arch }} -- --publish never
+        run: npm run build:linux -- --publish never
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Upload Linux artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: linux-${{ matrix.arch }}
+          name: linux
           path: |
             release/*.AppImage
             release/*.deb
@@ -58,10 +53,6 @@ jobs:
     permissions:
       contents: read
     runs-on: windows-latest
-    strategy:
-      matrix:
-        arch: [x64]
-        # ARM64 Windows: arch: [x64, arm64]
 
     steps:
       - name: Checkout
@@ -77,14 +68,14 @@ jobs:
         run: npm ci
 
       - name: Build app
-        run: npm run build:${{ matrix.arch }} -- --publish never
+        run: npm run build:win -- --publish never
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Upload Windows artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: windows-${{ matrix.arch }}
+          name: windows
           path: |
             release/*.exe
             release/*.msi
@@ -94,9 +85,6 @@ jobs:
     permissions:
       contents: read
     runs-on: macos-latest
-    strategy:
-      matrix:
-        arch: [x64, arm64]
 
     steps:
       - name: Checkout
@@ -118,7 +106,7 @@ jobs:
           ls -la icon.icns
 
       - name: Build app
-        run: npm run build:${{ matrix.arch }} -- --publish never
+        run: npm run build:mac -- --publish never
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           # For code signing (configure secrets when ready):
@@ -131,7 +119,7 @@ jobs:
       - name: Upload macOS artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: macos-${{ matrix.arch }}
+          name: macos
           path: |
             release/*.dmg
             release/*.zip
