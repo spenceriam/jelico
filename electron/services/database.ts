@@ -135,12 +135,114 @@ function migrateArtifactsToFiles(): void {
   }
 }
 
+/**
+ * ONE-TIME MIGRATION: Relocate artifacts to correct workspace/sandbox locations
+ * This moves existing artifact files from the old centralized location
+ * to their proper workspace or sandbox directories.
+ *
+ * Run once during development to sync existing artifacts.
+ * Can be safely removed after running.
+ */
+function relocateArtifactsToWorkspaces(): void {
+  console.log('[Migration] Starting artifact relocation to workspace/sandbox locations...')
+  let relocatedCount = 0
+  let skippedCount = 0
+
+  for (const artifact of db.artifacts) {
+    // Skip artifacts without files
+    if (!artifact.file_path) {
+      skippedCount++
+      continue
+    }
+
+    // Determine where artifact SHOULD be stored
+    let workspacePath: string | null = null
+    if (artifact.conversation_id) {
+      const conversation = db.conversations.find(c => c.id === artifact.conversation_id)
+      if (conversation?.workspace_id) {
+        const workspace = db.workspaces.find(w => w.id === conversation.workspace_id)
+        if (workspace) {
+          workspacePath = workspace.path
+        }
+      }
+    }
+
+    // Calculate the correct file path
+    const correctPath = getArtifactFilePath(
+      artifact.id,
+      artifact.conversation_id,
+      artifact.type,
+      artifact.language,
+      workspacePath
+    )
+
+    // If already in correct location, skip
+    if (artifact.file_path === correctPath) {
+      skippedCount++
+      continue
+    }
+
+    try {
+      // Read content from old location
+      let content: string
+      if (fs.existsSync(artifact.file_path)) {
+        content = fs.readFileSync(artifact.file_path, 'utf-8')
+      } else if (artifact.content && artifact.content.length > 0) {
+        // Fallback to database content if file doesn't exist
+        content = artifact.content
+      } else {
+        console.warn(`[Migration] Skipping ${artifact.id}: no file or content found`)
+        skippedCount++
+        continue
+      }
+
+      // Write to correct location
+      const newPath = writeArtifactFile(
+        artifact.id,
+        artifact.conversation_id,
+        artifact.type,
+        artifact.language,
+        content,
+        workspacePath
+      )
+
+      // Delete old file if it exists and is different
+      if (artifact.file_path !== newPath && fs.existsSync(artifact.file_path)) {
+        try {
+          fs.unlinkSync(artifact.file_path)
+        } catch (e) {
+          console.warn(`[Migration] Could not delete old file: ${artifact.file_path}`)
+        }
+      }
+
+      // Update artifact record
+      artifact.file_path = newPath
+      artifact.content = '' // Ensure content is cleared
+
+      relocatedCount++
+      const location = workspacePath ? `workspace: ${workspacePath}` : 'sandbox'
+      console.log(`[Migration] Relocated artifact ${artifact.id} (${artifact.title}) to ${location}: ${newPath}`)
+    } catch (error) {
+      console.error(`[Migration] Failed to relocate artifact ${artifact.id}:`, error)
+    }
+  }
+
+  if (relocatedCount > 0) {
+    saveDb()
+  }
+  console.log(`[Migration] Artifact relocation complete: ${relocatedCount} relocated, ${skippedCount} skipped`)
+}
+
 export async function initDatabase(): Promise<void> {
   loadDb()
   console.log('Database initialized at:', getDbPath())
 
   // Run one-time migration for existing artifacts
   migrateArtifactsToFiles()
+
+  // ONE-TIME: Relocate artifacts to workspace/sandbox locations
+  // This can be removed after running once in development
+  relocateArtifactsToWorkspaces()
 }
 
 // Provider operations
