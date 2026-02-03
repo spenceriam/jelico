@@ -21,6 +21,35 @@ export interface ChangelogEntry {
 
 export const changelog: ChangelogEntry[] = [
   {
+    version: '0.8.13',
+    date: '2026-02-02',
+    changes: {
+      changed: [
+        'Permission dialog redesigned with vertical button layout and justification text',
+        'Permission options reordered: Allow Once, Allow in Session, Allow in Project, Deny',
+        'ClarificationPanel redesigned with tabbed interface (one question per tab)',
+        'Added "Additional details" shared textarea to clarification questions',
+        'TodoPanel label changed from "Tasks" to "Todo"',
+        'Context bar restored to original size (w-40 h-2.5)',
+        'Workspace and Model selector backgrounds now match ModeSelector styling',
+      ],
+      fixed: [
+        'Stream timeout overflow causing immediate abort (Infinity → 0 for disabled)',
+        'Permission timeout removed entirely (was 60s, now waits indefinitely)',
+        'Workspace not persisting when manually changed during conversation',
+        'New Chat not resetting workspace to Sandbox',
+        'Workspace re-selection no longer causes welcome message reset',
+        'Workspace no longer reset when submitting first message',
+        'Empty todo items filtered from display',
+        '"Other" option in clarification questions now clickable and functional',
+      ],
+      removed: [
+        'Permission request timeout (users have unlimited time to respond)',
+        'Stream timeouts (both activity and max timeout disabled)',
+      ],
+    },
+  },
+  {
     version: '0.8.4',
     date: '2026-02-02',
     changes: {
