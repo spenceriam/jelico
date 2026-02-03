@@ -1,5 +1,5 @@
 import { ipcMain } from 'electron'
-import { conversationDb, messageDb } from '../services/database'
+import { conversationDb, messageDb, artifactDb, workspaceDb } from '../services/database'
 
 // Convert database row to API format
 function toConversationApi(row: any) {
@@ -82,11 +82,45 @@ export function registerConversationHandlers() {
     return conversation ? toConversationApi(conversation) : null
   })
 
-  // Update conversation workspace
+  // Update conversation workspace (without transferring files)
   ipcMain.handle('conversations:updateWorkspaceId', async (_, id: string, workspaceId: string | null) => {
     conversationDb.updateWorkspaceId(id, workspaceId)
     const conversation = conversationDb.get(id)
     return conversation ? toConversationApi(conversation) : null
+  })
+
+  // Transfer conversation to new workspace (moves artifact files)
+  ipcMain.handle('conversations:transferToWorkspace', async (_, id: string, workspaceId: string | null) => {
+    // Get the workspace path if workspaceId provided
+    let workspacePath: string | null = null
+    if (workspaceId) {
+      const workspace = workspaceDb.get(workspaceId)
+      if (!workspace) {
+        return { success: false, error: 'Workspace not found' }
+      }
+      workspacePath = workspace.path
+    }
+
+    // Transfer artifact files
+    const result = artifactDb.transferToWorkspace(id, workspacePath)
+
+    // Update conversation workspace_id
+    conversationDb.updateWorkspaceId(id, workspaceId)
+
+    const conversation = conversationDb.get(id)
+    return {
+      success: result.failed === 0,
+      transferred: result.transferred,
+      failed: result.failed,
+      errors: result.errors,
+      conversation: conversation ? toConversationApi(conversation) : null
+    }
+  })
+
+  // Get artifact count for a conversation (for transfer confirmation)
+  ipcMain.handle('conversations:getArtifactCount', async (_, id: string) => {
+    const artifacts = artifactDb.getByConversation(id)
+    return artifacts.length
   })
 
   // Delete a conversation

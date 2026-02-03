@@ -1,9 +1,10 @@
 import { useState, useEffect } from 'react'
-import { Plus, Settings, Trash2, FileCode, FileText, Presentation, Image, ChevronDown, ChevronRight, File } from 'lucide-react'
+import { Plus, Settings, Trash2, FileCode, FileText, Presentation, Image, ChevronDown, ChevronRight, File, FolderOpen } from 'lucide-react'
 import { useChatStore } from '../../stores/chat'
 import { useUIStore } from '../../stores/ui'
 import { useArtifactStore, type ArtifactType } from '../../stores/artifacts'
 import { useSandboxStore } from '../../stores/sandbox'
+import { TransferDialog } from '../Conversations/TransferDialog'
 
 const ARTIFACT_ICONS: Record<ArtifactType, React.ComponentType<{ className?: string }>> = {
   code: FileCode,
@@ -93,6 +94,8 @@ export function Sidebar() {
   const [expandedConversations, setExpandedConversations] = useState<Set<string>>(new Set())
   // Track sandbox file counts per conversation (flat list for sidebar display)
   const [sandboxFileCounts, setSandboxFileCounts] = useState<Record<string, string[]>>({})
+  // Transfer dialog state
+  const [transferDialogConv, setTransferDialogConv] = useState<{ id: string; title: string; workspaceId: string | null } | null>(null)
 
   // Load sandbox files for all conversations on mount
   useEffect(() => {
@@ -171,6 +174,15 @@ export function Sidebar() {
     if (confirm('Delete this conversation?')) {
       deleteConversation(id)
     }
+  }
+
+  const handleOpenTransferDialog = (e: React.MouseEvent, conv: { id: string; title: string; workspaceId?: string | null }) => {
+    e.stopPropagation()
+    setTransferDialogConv({
+      id: conv.id,
+      title: conv.title,
+      workspaceId: conv.workspaceId || null,
+    })
   }
 
   // Group conversations by date
@@ -257,6 +269,13 @@ export function Sidebar() {
                       </span>
                     )}
                     <button
+                      onClick={(e) => handleOpenTransferDialog(e, conv)}
+                      title="Move to workspace..."
+                      className="opacity-0 group-hover:opacity-100 p-1 hover:bg-bg-hover rounded text-text-muted hover:text-accent flex-shrink-0"
+                    >
+                      <FolderOpen className="w-3 h-3" />
+                    </button>
+                    <button
                       onClick={(e) => handleDeleteConversation(e, conv.id)}
                       className="opacity-0 group-hover:opacity-100 p-1 hover:bg-bg-hover rounded text-text-muted hover:text-error flex-shrink-0"
                     >
@@ -339,6 +358,20 @@ export function Sidebar() {
           Settings
         </button>
       </div>
+
+      {/* Transfer Dialog */}
+      {transferDialogConv && (
+        <TransferDialog
+          conversationId={transferDialogConv.id}
+          conversationTitle={transferDialogConv.title}
+          currentWorkspaceId={transferDialogConv.workspaceId}
+          onClose={() => setTransferDialogConv(null)}
+          onTransferComplete={() => {
+            // Refresh conversations to get updated workspace assignment
+            // The chat store should handle this automatically via its list method
+          }}
+        />
+      )}
     </div>
   )
 }

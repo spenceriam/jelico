@@ -25,6 +25,14 @@ interface Window {
       updateMessage: (messageId: string, updates: Partial<MessageInput>) => Promise<Message | null>
       updateTitle: (id: string, title: string) => Promise<void>
       updateWorkspaceId: (id: string, workspaceId: string | null) => Promise<Conversation | null>
+      transferToWorkspace: (id: string, workspaceId: string | null) => Promise<{
+        success: boolean
+        transferred: number
+        failed: number
+        errors: string[]
+        conversation: Conversation | null
+      }>
+      getArtifactCount: (id: string) => Promise<number>
       delete: (id: string) => Promise<void>
     }
     workspaces: {

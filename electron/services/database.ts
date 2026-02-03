@@ -9,6 +9,7 @@ import {
   deleteConversationArtifacts,
   getArtifactFilePath,
   artifactFileExists,
+  sanitizeFilename,
 } from './artifactFiles'
 
 // Simple JSON file-based storage for Phase 1
@@ -880,6 +881,76 @@ export const artifactDb = {
 
     db.artifacts = db.artifacts.filter(a => a.conversation_id !== conversationId)
     saveDb()
+  },
+
+  /**
+   * Transfer all artifacts for a conversation to a new workspace location
+   * @param conversationId - The conversation whose artifacts to transfer
+   * @param newWorkspacePath - The new workspace path (null for sandbox)
+   * @returns Object with counts of transferred and failed artifacts
+   */
+  transferToWorkspace(
+    conversationId: string,
+    newWorkspacePath: string | null
+  ): { transferred: number; failed: number; errors: string[] } {
+    const artifacts = db.artifacts.filter(a => a.conversation_id === conversationId)
+    let transferred = 0
+    let failed = 0
+    const errors: string[] = []
+
+    for (const artifact of artifacts) {
+      try {
+        // Read content from current location
+        let content: string | null = null
+        if (artifact.file_path && artifactFileExists(artifact.file_path)) {
+          content = readArtifactFile(artifact.file_path)
+        } else if (artifact.content) {
+          content = artifact.content
+        }
+
+        if (!content) {
+          errors.push(`${artifact.title}: No content found`)
+          failed++
+          continue
+        }
+
+        // Calculate new file path
+        const newPath = getArtifactFilePath(
+          artifact.id,
+          conversationId,
+          artifact.type,
+          artifact.language,
+          newWorkspacePath,
+          artifact.title
+        )
+
+        // Ensure destination directory exists
+        const dir = path.dirname(newPath)
+        if (!fs.existsSync(dir)) {
+          fs.mkdirSync(dir, { recursive: true })
+        }
+
+        // Write to new location
+        fs.writeFileSync(newPath, content, 'utf-8')
+
+        // Delete old file if different location
+        if (artifact.file_path && artifact.file_path !== newPath && fs.existsSync(artifact.file_path)) {
+          fs.unlinkSync(artifact.file_path)
+        }
+
+        // Update artifact record
+        artifact.file_path = newPath
+        artifact.updated_at = Date.now()
+
+        transferred++
+      } catch (err) {
+        errors.push(`${artifact.title}: ${err instanceof Error ? err.message : String(err)}`)
+        failed++
+      }
+    }
+
+    saveDb()
+    return { transferred, failed, errors }
   },
 }
 
