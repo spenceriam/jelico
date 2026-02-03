@@ -21,6 +21,22 @@ export interface ChangelogEntry {
 
 export const changelog: ChangelogEntry[] = [
   {
+    version: '0.8.21',
+    date: '2026-02-03',
+    changes: {
+      added: [
+        'Workspace-based artifact storage - artifacts stored in project directory when workspace active',
+        'Sandbox artifact storage - artifacts stored in sandbox when no workspace selected',
+      ],
+      changed: [
+        'Canvas file type label now shows actual type (JavaScript, Python, etc.) not generic "Code"',
+        'Artifacts with workspace go to {workspace}/.jelico/artifacts/',
+        'Artifacts without workspace go to sandbox/{conversation-id}/artifacts/',
+        'Migration updates existing artifacts to proper workspace/sandbox locations',
+      ],
+    },
+  },
+  {
     version: '0.8.20',
     date: '2026-02-03',
     changes: {

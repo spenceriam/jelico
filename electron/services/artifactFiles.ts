@@ -2,13 +2,18 @@
  * Artifact File Storage Service
  *
  * Stores artifact content as actual files on disk instead of in the database.
- * Files are organized by conversation: ~/.config/jelico/artifacts/{conversation-id}/{artifact-id}.{ext}
+ *
+ * Storage locations:
+ * - With workspace: {workspace}/.jelico/artifacts/{artifact-id}.{ext}
+ * - Without workspace (sandbox): ~/.config/jelico/sandbox/{conversation-id}/artifacts/{artifact-id}.{ext}
+ * - Legacy fallback: ~/.config/jelico/artifacts/{conversation-id}/{artifact-id}.{ext}
  *
  * Benefits:
  * - Artifacts can be accessed outside of Jelico
  * - Database stays small (metadata only)
  * - AI can read artifacts using normal file tools
- * - Easy backup/sync of artifact files
+ * - Workspace artifacts are in the project directory
+ * - Sandbox artifacts are isolated per conversation
  */
 
 import { app } from 'electron'
@@ -16,11 +21,13 @@ import * as fs from 'fs'
 import * as path from 'path'
 
 const ARTIFACTS_DIR = 'artifacts'
+const JELICO_DIR = '.jelico'
+const SANDBOX_DIR = 'sandbox'
 
 /**
- * Get the base artifacts directory path
+ * Get the legacy artifacts directory path (for migration/fallback)
  */
-export function getArtifactsBasePath(): string {
+export function getLegacyArtifactsBasePath(): string {
   const artifactsPath = path.join(app.getPath('userData'), ARTIFACTS_DIR)
 
   if (!fs.existsSync(artifactsPath)) {
@@ -31,12 +38,58 @@ export function getArtifactsBasePath(): string {
 }
 
 /**
- * Get the directory for a conversation's artifacts
+ * Get the base artifacts directory path
+ * Now returns the sandbox base when no workspace
  */
-export function getConversationArtifactsPath(conversationId: string | null): string {
-  const basePath = getArtifactsBasePath()
-  const convDir = conversationId || '_global'
-  const conversationPath = path.join(basePath, convDir)
+export function getArtifactsBasePath(): string {
+  return getLegacyArtifactsBasePath()
+}
+
+/**
+ * Get the artifacts directory for a workspace
+ */
+export function getWorkspaceArtifactsPath(workspacePath: string): string {
+  const artifactsPath = path.join(workspacePath, JELICO_DIR, ARTIFACTS_DIR)
+
+  if (!fs.existsSync(artifactsPath)) {
+    fs.mkdirSync(artifactsPath, { recursive: true })
+  }
+
+  return artifactsPath
+}
+
+/**
+ * Get the artifacts directory for sandbox (no workspace)
+ */
+export function getSandboxArtifactsPath(conversationId: string): string {
+  const sandboxPath = path.join(app.getPath('userData'), SANDBOX_DIR, conversationId, ARTIFACTS_DIR)
+
+  if (!fs.existsSync(sandboxPath)) {
+    fs.mkdirSync(sandboxPath, { recursive: true })
+  }
+
+  return sandboxPath
+}
+
+/**
+ * Get the directory for a conversation's artifacts
+ * @param conversationId - The conversation ID
+ * @param workspacePath - Optional workspace path. If provided, artifacts go in workspace.
+ */
+export function getConversationArtifactsPath(conversationId: string | null, workspacePath?: string | null): string {
+  // If workspace path provided, use workspace storage
+  if (workspacePath) {
+    return getWorkspaceArtifactsPath(workspacePath)
+  }
+
+  // If conversation ID provided but no workspace, use sandbox
+  if (conversationId) {
+    return getSandboxArtifactsPath(conversationId)
+  }
+
+  // Fallback to legacy path for global artifacts
+  const basePath = getLegacyArtifactsBasePath()
+  const conversationPath = path.join(basePath, '_global')
 
   if (!fs.existsSync(conversationPath)) {
     fs.mkdirSync(conversationPath, { recursive: true })
@@ -133,29 +186,33 @@ export function getArtifactExtension(type: string, language: string | null): str
 
 /**
  * Generate the full file path for an artifact
+ * @param workspacePath - Optional workspace path for workspace-based storage
  */
 export function getArtifactFilePath(
   artifactId: string,
   conversationId: string | null,
   type: string,
-  language: string | null
+  language: string | null,
+  workspacePath?: string | null
 ): string {
-  const conversationPath = getConversationArtifactsPath(conversationId)
+  const conversationPath = getConversationArtifactsPath(conversationId, workspacePath)
   const ext = getArtifactExtension(type, language)
   return path.join(conversationPath, `${artifactId}.${ext}`)
 }
 
 /**
  * Write artifact content to file
+ * @param workspacePath - Optional workspace path for workspace-based storage
  */
 export function writeArtifactFile(
   artifactId: string,
   conversationId: string | null,
   type: string,
   language: string | null,
-  content: string
+  content: string,
+  workspacePath?: string | null
 ): string {
-  const filePath = getArtifactFilePath(artifactId, conversationId, type, language)
+  const filePath = getArtifactFilePath(artifactId, conversationId, type, language, workspacePath)
 
   // Ensure directory exists
   const dir = path.dirname(filePath)

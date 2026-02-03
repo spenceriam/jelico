@@ -95,13 +95,26 @@ function migrateArtifactsToFiles(): void {
     }
 
     try {
-      // Write content to file
+      // Look up workspace path for this conversation
+      let workspacePath: string | null = null
+      if (artifact.conversation_id) {
+        const conversation = db.conversations.find(c => c.id === artifact.conversation_id)
+        if (conversation?.workspace_id) {
+          const workspace = db.workspaces.find(w => w.id === conversation.workspace_id)
+          if (workspace) {
+            workspacePath = workspace.path
+          }
+        }
+      }
+
+      // Write content to file (workspace or sandbox based on lookup)
       const filePath = writeArtifactFile(
         artifact.id,
         artifact.conversation_id,
         artifact.type,
         artifact.language,
-        artifact.content
+        artifact.content,
+        workspacePath
       )
 
       // Update artifact record with file path and clear content
@@ -109,7 +122,8 @@ function migrateArtifactsToFiles(): void {
       artifact.content = '' // Clear content from database
 
       migratedCount++
-      console.log(`[Migration] Migrated artifact ${artifact.id} (${artifact.title}) to file: ${filePath}`)
+      const location = workspacePath ? `workspace: ${workspacePath}` : 'sandbox'
+      console.log(`[Migration] Migrated artifact ${artifact.id} (${artifact.title}) to ${location}: ${filePath}`)
     } catch (error) {
       console.error(`[Migration] Failed to migrate artifact ${artifact.id}:`, error)
     }
@@ -636,13 +650,28 @@ export const artifactDb = {
       }
     })
 
+    // Look up workspace path for this conversation
+    let workspacePath: string | null = null
+    if (artifact.conversationId) {
+      const conversation = db.conversations.find(c => c.id === artifact.conversationId)
+      if (conversation?.workspace_id) {
+        const workspace = db.workspaces.find(w => w.id === conversation.workspace_id)
+        if (workspace) {
+          workspacePath = workspace.path
+        }
+      }
+    }
+
     // Write content to file and get file path
+    // If workspace exists, store in workspace/.jelico/artifacts/
+    // Otherwise store in sandbox/{conversation-id}/artifacts/
     const filePath = writeArtifactFile(
       id,
       artifact.conversationId || null,
       artifact.type,
       artifact.language || null,
-      artifact.content
+      artifact.content,
+      workspacePath
     )
 
     const record: ArtifactRow = {

@@ -18,16 +18,80 @@ const TYPE_ICONS: Record<ArtifactType, React.ComponentType<{ className?: string 
 // Fallback icon for unknown artifact types
 const DEFAULT_TYPE_ICON = File
 
-const TYPE_LABELS: Record<ArtifactType, string> = {
-  code: 'Code',
-  document: 'Markdown',
-  html: 'HTML',
-  svg: 'SVG',
-  mermaid: 'Mermaid',
-}
+// Get display label for artifact's actual file type
+function getFileTypeLabel(artifact: Artifact): string {
+  // For code artifacts, show the language
+  if (artifact.type === 'code' && artifact.language) {
+    const languageLabels: Record<string, string> = {
+      javascript: 'JavaScript',
+      js: 'JavaScript',
+      typescript: 'TypeScript',
+      ts: 'TypeScript',
+      tsx: 'TypeScript React',
+      jsx: 'JavaScript React',
+      python: 'Python',
+      py: 'Python',
+      rust: 'Rust',
+      rs: 'Rust',
+      go: 'Go',
+      java: 'Java',
+      c: 'C',
+      cpp: 'C++',
+      'c++': 'C++',
+      csharp: 'C#',
+      'c#': 'C#',
+      ruby: 'Ruby',
+      rb: 'Ruby',
+      php: 'PHP',
+      swift: 'Swift',
+      kotlin: 'Kotlin',
+      kt: 'Kotlin',
+      json: 'JSON',
+      yaml: 'YAML',
+      yml: 'YAML',
+      xml: 'XML',
+      css: 'CSS',
+      scss: 'SCSS',
+      sass: 'SCSS',
+      sql: 'SQL',
+      shell: 'Shell',
+      bash: 'Bash',
+      sh: 'Shell',
+      powershell: 'PowerShell',
+      ps1: 'PowerShell',
+      markdown: 'Markdown',
+      md: 'Markdown',
+      html: 'HTML',
+      text: 'Text',
+      txt: 'Text',
+    }
+    return languageLabels[artifact.language.toLowerCase()] || artifact.language.toUpperCase()
+  }
 
-// Fallback label for unknown artifact types
-const DEFAULT_TYPE_LABEL = 'File'
+  // For document type, check if language specifies format
+  if (artifact.type === 'document') {
+    if (artifact.language) {
+      if (artifact.language.toLowerCase() === 'text' || artifact.language.toLowerCase() === 'txt') {
+        return 'Text'
+      }
+      if (artifact.language.toLowerCase() === 'markdown' || artifact.language.toLowerCase() === 'md') {
+        return 'Markdown'
+      }
+      return artifact.language
+    }
+    return 'Markdown' // Default for documents
+  }
+
+  // For other types, use type-specific labels
+  const typeLabels: Record<ArtifactType, string> = {
+    code: 'Code',
+    document: 'Markdown',
+    html: 'HTML',
+    svg: 'SVG',
+    mermaid: 'Mermaid',
+  }
+  return typeLabels[artifact.type] || 'File'
+}
 
 // Format date/time for display
 function formatDateTime(date: Date): string {
@@ -157,7 +221,7 @@ export function CanvasPanel() {
                       {displayArtifact.title}
                     </h3>
                     <span className="text-xs text-text-muted">
-                      {TYPE_LABELS[displayArtifact.type] || DEFAULT_TYPE_LABEL}
+                      {getFileTypeLabel(displayArtifact)}
                       {' • '}
                       {formatDateTime(new Date(displayArtifact.createdAt))}
                     </span>
@@ -186,7 +250,7 @@ export function CanvasPanel() {
                           <Icon className="w-4 h-4 text-text-muted flex-shrink-0" />
                           <div className="flex-1 min-w-0">
                             <div className="text-sm text-text-primary truncate">{artifact.title}</div>
-                            <div className="text-xs text-text-muted">{TYPE_LABELS[artifact.type] || DEFAULT_TYPE_LABEL}</div>
+                            <div className="text-xs text-text-muted">{getFileTypeLabel(artifact)}</div>
                           </div>
                         </button>
                       )
