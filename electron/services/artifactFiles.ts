@@ -4,15 +4,15 @@
  * Stores artifact content as actual files on disk instead of in the database.
  *
  * Storage locations:
- * - With workspace: {workspace}/.jelico/artifacts/{artifact-id}.{ext}
- * - Without workspace (sandbox): ~/.config/jelico/sandbox/{conversation-id}/artifacts/{artifact-id}.{ext}
+ * - With workspace: {workspace}/{filename}.{ext} (directly in project root)
+ * - Without workspace (sandbox): ~/.config/jelico/sandbox/{conversation-id}/{filename}.{ext}
  * - Legacy fallback: ~/.config/jelico/artifacts/{conversation-id}/{artifact-id}.{ext}
  *
  * Benefits:
  * - Artifacts can be accessed outside of Jelico
  * - Database stays small (metadata only)
  * - AI can read artifacts using normal file tools
- * - Workspace artifacts are in the project directory
+ * - Workspace artifacts appear directly in project directory
  * - Sandbox artifacts are isolated per conversation
  */
 
@@ -47,15 +47,15 @@ export function getArtifactsBasePath(): string {
 
 /**
  * Get the artifacts directory for a workspace
+ * Artifacts go directly in the workspace root (no hidden subfolder)
  */
 export function getWorkspaceArtifactsPath(workspacePath: string): string {
-  const artifactsPath = path.join(workspacePath, JELICO_DIR, ARTIFACTS_DIR)
-
-  if (!fs.existsSync(artifactsPath)) {
-    fs.mkdirSync(artifactsPath, { recursive: true })
+  // Ensure workspace directory exists
+  if (!fs.existsSync(workspacePath)) {
+    fs.mkdirSync(workspacePath, { recursive: true })
   }
 
-  return artifactsPath
+  return workspacePath
 }
 
 /**
