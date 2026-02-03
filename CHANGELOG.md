@@ -2,6 +2,24 @@
 
 All notable changes to Jelico will be documented in this file.
 
+## [0.8.23] - 2026-02-03
+
+### Added
+- **GitHub Actions CI/CD for cross-platform builds**
+  - Builds for macOS (Intel + Apple Silicon), Windows (x64), Linux (x64, ARM64)
+  - CI workflow: TypeScript checks and build tests on all platforms
+  - Release workflow: Auto-creates draft releases from version tags
+  - Outputs: DMG, ZIP (macOS), NSIS installer (Windows), AppImage/DEB/RPM (Linux)
+
+- **App logo and branding**
+  - Circular logo with gold gradient and black outline
+  - "J" in black using Instrument Serif font style
+  - Welcome screen logo updated to match new circular design
+
+### Changed
+- Package.json: Added architecture-specific build scripts
+- electron-builder.yml: Full multi-platform configuration
+
 ## [0.8.22] - 2026-02-03
 
 ### Added
