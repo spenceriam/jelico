@@ -72,7 +72,7 @@ The Soul/Memory system should make Jelico increasingly personalized - it learns 
 ## Project overview
 Jelico is an AI Productivity Desktop built with Electron, React, TypeScript, and Vite. It provides a frictionless AI assistant experience with multi-provider support (Anthropic, OpenAI, Google), workspace management, conversation persistence, and a soul/memory system that learns user patterns and preferences over time.
 
-**Current Version:** 0.8.14
+**Current Version:** 0.8.16
 
 ## Development workflow discipline
 - **CRITICAL**: NEVER commit or push changes without explicit user approval
@@ -879,15 +879,14 @@ Current specialized sub-agent types (implemented):
 | `execute` | Make changes to files/code | Full access |
 | `review` | General code review | Read + limited execute |
 
-**Agent Prompts Location:** `electron/prompts/agents/`
-- `explore.md` - Fast exploration specialist
-- `plan.md` - Implementation planner
-- `security-review.md` - Security analysis
-- `pr-review.md` - PR review specialist
-- `general.md` - Default sub-agent behavior
+**Agent System Prompt Location:**
+- **Primary:** `buildSubAgentSystemPrompt()` function in `electron/services/subagents.ts` - This is the ACTUAL prompt used by sub-agents
+- **Reference Files:** `electron/prompts/agents/*.md` - Documentation/reference only (NOT loaded by sub-agents)
+
+**IMPORTANT:** Sub-agent prompts are built inline in `buildSubAgentSystemPrompt()`, not loaded from files. To modify sub-agent behavior, edit that function directly.
 
 **Adding New Agent Types:**
-1. Create prompt file in `electron/prompts/agents/`
-2. Add mode to `AgentMode` type in `electron/lib/modes.ts`
-3. Update `buildSubAgentSystemPrompt` in `electron/services/subagents.ts`
-4. Update `getSubAgentTools` to set appropriate tool access
+1. Add mode to `AgentMode` type in `electron/lib/modes.ts`
+2. Update `buildSubAgentSystemPrompt` in `electron/services/subagents.ts` with mode-specific instructions
+3. Update `getSubAgentTools` to set appropriate tool access
+4. Optionally update `electron/prompts/agents/` files as documentation reference
