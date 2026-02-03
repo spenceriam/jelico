@@ -50,7 +50,7 @@ jobs:
         run: npm ci
 
       - name: Build
-        run: npm run build
+        run: tsc && vite build && electron-builder --publish never
         env:
           # Skip code signing for CI builds
           CSC_IDENTITY_AUTO_DISCOVERY: false
