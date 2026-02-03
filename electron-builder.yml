@@ -1,0 +1,123 @@
+# Electron Builder Configuration
+# https://www.electron.build/configuration
+
+appId: com.jelico.app
+productName: Jelico
+copyright: Copyright © 2026 Jelico
+
+# Directories
+directories:
+  output: release
+  buildResources: build
+
+# Files to include in the app
+files:
+  - dist/**/*
+  - dist-electron/**/*
+  - package.json
+
+# Ensure native dependencies are rebuilt for each platform
+npmRebuild: true
+buildDependenciesFromSource: false
+
+# ASAR archive (faster load times)
+asar: true
+asarUnpack:
+  # Unpack native modules that need direct file access
+  - "**/*.node"
+  - "**/node_modules/sharp/**/*"
+  - "**/node_modules/@xenova/transformers/**/*"
+
+# macOS Configuration
+mac:
+  target:
+    - target: dmg
+      arch:
+        - x64
+        - arm64
+    - target: zip
+      arch:
+        - x64
+        - arm64
+  category: public.app-category.productivity
+  icon: build/icon.icns
+  hardenedRuntime: true
+  gatekeeperAssess: false
+  entitlements: build/entitlements.mac.plist
+  entitlementsInherit: build/entitlements.mac.plist
+  notarize: false  # Set to true and configure for production
+
+dmg:
+  contents:
+    - x: 130
+      y: 220
+    - x: 410
+      y: 220
+      type: link
+      path: /Applications
+
+# Windows Configuration
+win:
+  target:
+    - target: nsis
+      arch:
+        - x64
+        - arm64
+    - target: portable
+      arch:
+        - x64
+  icon: build/icon.ico
+  artifactName: "${productName}-${version}-${os}-${arch}.${ext}"
+
+nsis:
+  oneClick: false
+  allowToChangeInstallationDirectory: true
+  deleteAppDataOnUninstall: false
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
+
+# Linux Configuration
+linux:
+  target:
+    - target: AppImage
+      arch:
+        - x64
+        - arm64
+    - target: deb
+      arch:
+        - x64
+        - arm64
+    - target: rpm
+      arch:
+        - x64
+  category: Office
+  icon: build/icons
+  artifactName: "${productName}-${version}-${os}-${arch}.${ext}"
+  synopsis: AI Productivity Desktop
+  description: Get stuff done. Frictionlessly.
+
+appImage:
+  license: LICENSE
+
+deb:
+  depends:
+    - gconf2
+    - gconf-service
+    - libnotify4
+    - libappindicator1
+    - libxtst6
+    - libnss3
+
+rpm:
+  depends:
+    - libnotify
+    - libappindicator
+    - libXtst
+    - nss
+
+# Auto-updater configuration (for future use)
+publish:
+  provider: github
+  owner: spenceriam
+  repo: jelico
+  releaseType: release

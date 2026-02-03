@@ -6,9 +6,29 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc && vite build && electron-builder",
+    "build:x64": "tsc && vite build && electron-builder --x64",
+    "build:arm64": "tsc && vite build && electron-builder --arm64",
+    "build:mac": "tsc && vite build && electron-builder --mac",
+    "build:mac:x64": "tsc && vite build && electron-builder --mac --x64",
+    "build:mac:arm64": "tsc && vite build && electron-builder --mac --arm64",
+    "build:mac:universal": "tsc && vite build && electron-builder --mac --universal",
+    "build:win": "tsc && vite build && electron-builder --win",
+    "build:win:x64": "tsc && vite build && electron-builder --win --x64",
+    "build:linux": "tsc && vite build && electron-builder --linux",
+    "build:linux:x64": "tsc && vite build && electron-builder --linux --x64",
+    "build:linux:arm64": "tsc && vite build && electron-builder --linux --arm64",
+    "build:all": "tsc && vite build && electron-builder -mwl",
     "preview": "vite preview"
   },
-  "author": "",
+  "author": {
+    "name": "Jelico",
+    "email": "jelico@example.com"
+  },
+  "homepage": "https://github.com/spenceriam/jelico",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/spenceriam/jelico.git"
+  },
   "license": "MIT",
   "overrides": {
     "sharp": "^0.33.0"
