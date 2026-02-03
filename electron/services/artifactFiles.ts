@@ -185,7 +185,27 @@ export function getArtifactExtension(type: string, language: string | null): str
 }
 
 /**
+ * Sanitize a title to create a valid filename
+ * - Lowercase
+ * - Replace spaces with hyphens
+ * - Remove special characters
+ * - Limit length
+ */
+export function sanitizeFilename(title: string): string {
+  return title
+    .toLowerCase()
+    .trim()
+    .replace(/\s+/g, '-')           // Replace spaces with hyphens
+    .replace(/[^a-z0-9\-_.]/g, '')  // Remove special characters
+    .replace(/-+/g, '-')            // Collapse multiple hyphens
+    .replace(/^-|-$/g, '')          // Remove leading/trailing hyphens
+    .slice(0, 100)                  // Limit length
+    || 'untitled'                   // Fallback if empty
+}
+
+/**
  * Generate the full file path for an artifact
+ * @param title - Artifact title (used for human-readable filename)
  * @param workspacePath - Optional workspace path for workspace-based storage
  */
 export function getArtifactFilePath(
@@ -193,16 +213,22 @@ export function getArtifactFilePath(
   conversationId: string | null,
   type: string,
   language: string | null,
-  workspacePath?: string | null
+  workspacePath?: string | null,
+  title?: string
 ): string {
   const conversationPath = getConversationArtifactsPath(conversationId, workspacePath)
   const ext = getArtifactExtension(type, language)
-  return path.join(conversationPath, `${artifactId}.${ext}`)
+
+  // Use sanitized title for filename if provided, otherwise fall back to artifact ID
+  const filename = title ? sanitizeFilename(title) : artifactId
+
+  return path.join(conversationPath, `${filename}.${ext}`)
 }
 
 /**
  * Write artifact content to file
  * @param workspacePath - Optional workspace path for workspace-based storage
+ * @param title - Artifact title (used for human-readable filename)
  */
 export function writeArtifactFile(
   artifactId: string,
@@ -210,9 +236,10 @@ export function writeArtifactFile(
   type: string,
   language: string | null,
   content: string,
-  workspacePath?: string | null
+  workspacePath?: string | null,
+  title?: string
 ): string {
-  const filePath = getArtifactFilePath(artifactId, conversationId, type, language, workspacePath)
+  const filePath = getArtifactFilePath(artifactId, conversationId, type, language, workspacePath, title)
 
   // Ensure directory exists
   const dir = path.dirname(filePath)

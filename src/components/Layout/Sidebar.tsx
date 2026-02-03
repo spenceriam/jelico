@@ -267,7 +267,10 @@ export function Sidebar() {
                   {/* Expandable sub-tree (artifacts with sandbox files indented beneath) */}
                   {hasExpandableContent && isExpanded && (
                     <div className="ml-6 pl-2 border-l border-border/50 mt-1 mb-2">
-                      {/* Artifacts */}
+                      {/* Artifacts section */}
+                      {hasArtifacts && (
+                        <div className="text-[10px] text-text-faint uppercase tracking-wider mb-1">Artifacts</div>
+                      )}
                       {convArtifacts.map((artifact) => {
                         const Icon = ARTIFACT_ICONS[artifact.type] || DEFAULT_ARTIFACT_ICON
                         return (

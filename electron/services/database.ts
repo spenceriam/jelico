@@ -114,7 +114,8 @@ function migrateArtifactsToFiles(): void {
         artifact.type,
         artifact.language,
         artifact.content,
-        workspacePath
+        workspacePath,
+        artifact.title  // Use title for human-readable filename
       )
 
       // Update artifact record with file path and clear content
@@ -173,7 +174,8 @@ function relocateArtifactsToWorkspaces(): void {
       artifact.conversation_id,
       artifact.type,
       artifact.language,
-      workspacePath
+      workspacePath,
+      artifact.title  // Use title for human-readable filename
     )
 
     // If already in correct location, skip
@@ -203,7 +205,8 @@ function relocateArtifactsToWorkspaces(): void {
         artifact.type,
         artifact.language,
         content,
-        workspacePath
+        workspacePath,
+        artifact.title  // Use title for human-readable filename
       )
 
       // Delete old file if it exists and is different
@@ -773,7 +776,8 @@ export const artifactDb = {
       artifact.type,
       artifact.language || null,
       artifact.content,
-      workspacePath
+      workspacePath,
+      artifact.title  // Use title for human-readable filename
     )
 
     const record: ArtifactRow = {
