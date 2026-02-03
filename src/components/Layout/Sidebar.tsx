@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { Plus, Settings, Trash2, FileCode, FileText, Presentation, Image, ChevronDown, ChevronRight, File, Package } from 'lucide-react'
+import { Plus, Settings, Trash2, FileCode, FileText, Presentation, Image, ChevronDown, ChevronRight, File } from 'lucide-react'
 import { useChatStore } from '../../stores/chat'
 import { useUIStore } from '../../stores/ui'
 import { useArtifactStore, type ArtifactType } from '../../stores/artifacts'
@@ -256,12 +256,6 @@ export function Sidebar() {
                         {daysOld}d
                       </span>
                     )}
-                    {/* Sandbox indicator badge */}
-                    {hasSandboxFiles && (
-                      <span className="px-1.5 py-0.5 text-[10px] bg-accent/20 text-accent rounded" title="Has sandbox files">
-                        <Package className="w-2.5 h-2.5 inline" />
-                      </span>
-                    )}
                     <button
                       onClick={(e) => handleDeleteConversation(e, conv.id)}
                       className="opacity-0 group-hover:opacity-100 p-1 hover:bg-bg-hover rounded text-text-muted hover:text-error flex-shrink-0"
@@ -270,41 +264,31 @@ export function Sidebar() {
                     </button>
                   </div>
 
-                  {/* Expandable sub-tree (artifacts + sandbox files) */}
+                  {/* Expandable sub-tree (artifacts with sandbox files indented beneath) */}
                   {hasExpandableContent && isExpanded && (
                     <div className="ml-6 pl-2 border-l border-border/50 mt-1 mb-2">
-                      {/* Artifacts section */}
-                      {hasArtifacts && (
-                        <>
-                          {hasSandboxFiles && (
-                            <div className="text-[10px] text-text-faint uppercase tracking-wider mb-1">Artifacts</div>
-                          )}
-                          {convArtifacts.map((artifact) => {
-                            const Icon = ARTIFACT_ICONS[artifact.type] || DEFAULT_ARTIFACT_ICON
-                            return (
-                              <button
-                                key={artifact.id}
-                                onClick={() => {
-                                  setActiveConversation(conv.id)
-                                  selectArtifact(artifact.id)
-                                  openCanvas()
-                                }}
-                                className="w-full flex items-center gap-2 px-2 py-1 text-xs text-text-muted hover:text-text-primary hover:bg-bg-hover rounded transition-colors"
-                              >
-                                <Icon className="w-3 h-3 flex-shrink-0" />
-                                <span className="truncate">{artifact.title}</span>
-                              </button>
-                            )
-                          })}
-                        </>
-                      )}
+                      {/* Artifacts */}
+                      {convArtifacts.map((artifact) => {
+                        const Icon = ARTIFACT_ICONS[artifact.type] || DEFAULT_ARTIFACT_ICON
+                        return (
+                          <button
+                            key={artifact.id}
+                            onClick={() => {
+                              setActiveConversation(conv.id)
+                              selectArtifact(artifact.id)
+                              openCanvas()
+                            }}
+                            className="w-full flex items-center gap-2 px-2 py-1 text-xs text-text-muted hover:text-text-primary hover:bg-bg-hover rounded transition-colors"
+                          >
+                            <Icon className="w-3 h-3 flex-shrink-0" />
+                            <span className="truncate">{artifact.title}</span>
+                          </button>
+                        )
+                      })}
 
-                      {/* Sandbox files section */}
+                      {/* Sandbox files - indented under artifacts */}
                       {hasSandboxFiles && (
-                        <>
-                          {hasArtifacts && (
-                            <div className="text-[10px] text-text-faint uppercase tracking-wider mt-2 mb-1">Sandbox Files</div>
-                          )}
+                        <div className="ml-3 mt-1">
                           {convSandboxFileList.slice(0, 10).map((filePath) => {
                             const fileName = filePath.split('/').pop() || filePath
                             const ext = fileName.split('.').pop()?.toLowerCase()
@@ -318,10 +302,10 @@ export function Sidebar() {
                                   const sandboxPath = await window.jelico.sandbox.getConversationPath(conv.id)
                                   console.log(`Opening sandbox file: ${sandboxPath}/${filePath}`)
                                 }}
-                                className="w-full flex items-center gap-2 px-2 py-1 text-xs text-text-muted hover:text-text-primary hover:bg-bg-hover rounded transition-colors"
+                                className="w-full flex items-center gap-2 px-2 py-1 text-xs text-text-faint hover:text-text-primary hover:bg-bg-hover rounded transition-colors"
                                 title={filePath}
                               >
-                                <Icon className="w-3 h-3 flex-shrink-0 text-accent/70" />
+                                <Icon className="w-3 h-3 flex-shrink-0" />
                                 <span className="truncate">{fileName}</span>
                               </button>
                             )
@@ -331,7 +315,7 @@ export function Sidebar() {
                               +{convSandboxFileList.length - 10} more files
                             </div>
                           )}
-                        </>
+                        </div>
                       )}
                     </div>
                   )}
