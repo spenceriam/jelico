@@ -1,4 +1,5 @@
-import { app, BrowserWindow, Menu, shell, dialog, clipboard } from 'electron'
+import { app, BrowserWindow, Menu, shell, dialog, clipboard, nativeImage } from 'electron'
+import { existsSync } from 'fs'
 import path from 'path'
 import { execSync } from 'child_process'
 import { initDatabase } from './services/database'
@@ -278,10 +279,24 @@ function createWindow() {
   })
 }
 
+function setDockIcon() {
+  if (process.platform !== 'darwin') return
+  const iconPath = path.join(app.getAppPath(), 'build', 'icon.png')
+  if (!existsSync(iconPath)) {
+    console.warn('[Main] Dock icon not found at', iconPath)
+    return
+  }
+  const icon = nativeImage.createFromPath(iconPath)
+  if (!icon.isEmpty()) {
+    app.dock.setIcon(icon)
+  }
+}
+
 // Initialize app
 app.whenReady().then(async () => {
   // Create application menu
   createMenu()
+  setDockIcon()
 
   // Initialize database (async)
   await initDatabase()

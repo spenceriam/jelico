@@ -37,3 +37,6 @@ keys.json
 
 # Local screenshots for debugging
 screenshot/
+
+# Codex local config
+.codex/

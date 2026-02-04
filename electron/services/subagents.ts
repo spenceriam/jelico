@@ -25,6 +25,7 @@ import { keychainService } from './keychain'
 import { validateArtifact } from './artifactValidator'
 import { artifactStreamManager } from './artifactStreamManager'
 import { extractPartialArtifactContent } from './artifactUtils'
+import { normalizeToolSchemas, createToolCallRepair } from '../lib/tooling'
 
 // Configuration
 const ORPHAN_CHECK_INTERVAL_MS = 60 * 1000 // Check for orphans every minute
@@ -1177,7 +1178,7 @@ Call this tool at natural checkpoints:
     })
   }
 
-  return tools
+  return normalizeToolSchemas(tools)
 }
 
 /**
@@ -1265,13 +1266,15 @@ async function runSubAgent(agentId: string): Promise<void> {
     // IMPORTANT: Use .chat() to get Chat Completions API endpoint
     // Using client(model) defaults to Responses API which doesn't support
     // tool calling on most providers (OpenRouter, Ollama, Z.ai, etc.)
+    const chatModel = client.chat(agent.model)
     const response = await streamText({
-      model: client.chat(agent.model),
+      model: chatModel,
       messages: agent.messages,
       tools,
       toolChoice: 'auto',
       maxSteps: 5, // Allow up to 5 tool call steps per agent run
       abortSignal: abortController.signal,
+      experimental_repairToolCall: createToolCallRepair(chatModel),
     })
 
     // Accumulate the result using fullStream to handle text AND tool calls

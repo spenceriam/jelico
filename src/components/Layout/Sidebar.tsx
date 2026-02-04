@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { Plus, Settings, Trash2, FileCode, FileText, Presentation, Image, ChevronDown, ChevronRight, File, FolderOpen } from 'lucide-react'
+import { Plus, Settings, Trash2, FileCode, FileText, Presentation, Image, ChevronDown, ChevronRight, File, FolderOpen, FolderUp } from 'lucide-react'
 import { useChatStore } from '../../stores/chat'
 import { useUIStore } from '../../stores/ui'
 import { useArtifactStore, type ArtifactType } from '../../stores/artifacts'
@@ -194,7 +194,10 @@ export function Sidebar() {
   }
 
   return (
-    <div className="w-64 bg-bg-deep border-r border-border flex flex-col">
+    <div
+      className="w-64 bg-bg-deep border-r border-border flex flex-col"
+      style={{ paddingTop: 'var(--titlebar-padding)' }}
+    >
       {/* Header */}
       <div className="p-4">
         <div className="font-display text-xl font-normal text-text-primary tracking-tight">Jelico</div>
@@ -230,6 +233,7 @@ export function Sidebar() {
               const hasExpandableContent = hasArtifacts || hasSandboxFiles
               const isExpanded = expandedConversations.has(conv.id)
               const isActive = activeConversationId === conv.id
+              const isSandboxConversation = !conv.workspaceId
 
               const daysOld = getDaysOld(conv.createdAt)
 
@@ -269,13 +273,6 @@ export function Sidebar() {
                       </span>
                     )}
                     <button
-                      onClick={(e) => handleOpenTransferDialog(e, conv)}
-                      title="Move to workspace..."
-                      className="opacity-0 group-hover:opacity-100 p-1 hover:bg-bg-hover rounded text-text-muted hover:text-accent flex-shrink-0"
-                    >
-                      <FolderOpen className="w-3 h-3" />
-                    </button>
-                    <button
                       onClick={(e) => handleDeleteConversation(e, conv.id)}
                       className="opacity-0 group-hover:opacity-100 p-1 hover:bg-bg-hover rounded text-text-muted hover:text-error flex-shrink-0"
                     >
@@ -293,18 +290,46 @@ export function Sidebar() {
                       {convArtifacts.map((artifact) => {
                         const Icon = ARTIFACT_ICONS[artifact.type] || DEFAULT_ARTIFACT_ICON
                         return (
-                          <button
+                          <div
                             key={artifact.id}
-                            onClick={() => {
-                              setActiveConversation(conv.id)
-                              selectArtifact(artifact.id)
-                              openCanvas()
-                            }}
-                            className="w-full flex items-center gap-2 px-2 py-1 text-xs text-text-muted hover:text-text-primary hover:bg-bg-hover rounded transition-colors"
+                            className="group flex items-center gap-2 px-2 py-1 text-xs text-text-muted hover:text-text-primary hover:bg-bg-hover rounded transition-colors"
                           >
-                            <Icon className="w-3 h-3 flex-shrink-0" />
-                            <span className="truncate">{artifact.title}</span>
-                          </button>
+                            <button
+                              onClick={() => {
+                                setActiveConversation(conv.id)
+                                selectArtifact(artifact.id)
+                                openCanvas()
+                              }}
+                              className="flex items-center gap-2 flex-1 min-w-0 text-left"
+                            >
+                              <Icon className="w-3 h-3 flex-shrink-0" />
+                              <span className="truncate">{artifact.title}</span>
+                            </button>
+                            {isSandboxConversation ? (
+                              <button
+                                onClick={(e) => handleOpenTransferDialog(e, conv)}
+                                title="Move to workspace..."
+                                className="opacity-0 group-hover:opacity-100 p-1 hover:bg-bg-hover rounded text-text-muted hover:text-accent flex-shrink-0"
+                              >
+                                <FolderUp className="w-3 h-3" />
+                              </button>
+                            ) : (
+                              <button
+                                onClick={async (e) => {
+                                  e.stopPropagation()
+                                  try {
+                                    await window.jelico.artifacts.reveal(artifact.id)
+                                  } catch (error) {
+                                    console.error('Failed to reveal artifact:', error)
+                                  }
+                                }}
+                                title="Reveal in folder"
+                                className="opacity-0 group-hover:opacity-100 p-1 hover:bg-bg-hover rounded text-text-muted hover:text-accent flex-shrink-0"
+                              >
+                                <FolderOpen className="w-3 h-3" />
+                              </button>
+                            )}
+                          </div>
                         )
                       })}
 

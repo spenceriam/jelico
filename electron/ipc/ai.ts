@@ -34,6 +34,7 @@ import {
 } from '../services/subagents'
 import { validateArtifact } from '../services/artifactValidator'
 import { extractPartialArtifactContent } from '../services/artifactUtils'
+import { normalizeToolSchemas, createToolCallRepair } from '../lib/tooling'
 import {
   getConversationSandboxPath,
   writeSandboxFile,
@@ -885,8 +886,8 @@ Types:
 IMPORTANT: You MUST provide all required parameters (type, title, content). Do not call this tool with empty arguments.`,
     parameters: z.object({
       type: z.enum(['code', 'document', 'html', 'svg', 'mermaid']).describe('The type of artifact'),
-      title: z.string().describe('A short, descriptive title'),
-      content: z.string().describe('The artifact content'),
+      title: z.string().min(1).describe('A short, descriptive title'),
+      content: z.string().min(1).describe('The artifact content'),
       language: z.string().optional().describe('For code artifacts: the programming language (e.g., javascript, python)'),
     }).passthrough(), // Allow extra fields from models
     execute: async ({ type, title, content, language }) => {
@@ -939,10 +940,10 @@ You must know the artifact ID from the existing artifacts context.
 
 IMPORTANT: You MUST provide id, type, and content parameters. Do not call this tool with empty arguments.`,
     parameters: z.object({
-      id: z.string().describe('The ID of the artifact to update'),
+      id: z.string().min(1).describe('The ID of the artifact to update'),
       type: z.enum(['code', 'document', 'html', 'svg', 'mermaid']).describe('The type of artifact (needed for validation)'),
       title: z.string().optional().describe('New title (if changing)'),
-      content: z.string().describe('The updated content'),
+      content: z.string().min(1).describe('The updated content'),
       language: z.string().optional().describe('For code artifacts: the programming language (if changing)'),
     }),
     execute: async ({ id, type, title, content, language }) => {
@@ -1401,9 +1402,9 @@ Note: If recommended option, list it first with "(Recommended)" suffix.`,
   // Write file tool - only if canWrite
   if (canWrite) {
     tools.write_file = tool({
-      description: 'Write content to a file at the specified path. You MUST provide both path and content parameters. When no workspace is selected, files are written to a sandbox directory.',
+      description: 'Write content to a file at the specified path. You MUST provide both path and content parameters. With a workspace selected, relative paths are resolved inside the workspace and blocked if they escape. When no workspace is selected, files are written to a sandbox directory.',
       parameters: z.object({
-        path: z.string().describe('The file path to write to (relative paths work best in sandbox mode)'),
+        path: z.string().min(1).describe('The file path to write to (relative paths work best in sandbox mode)'),
         content: z.string().describe('The content to write'),
       }),
       execute: async ({ path, content }) => {
@@ -1422,12 +1423,34 @@ Note: If recommended option, list it first with "(Recommended)" suffix.`,
           const pathModule = await import('path')
           const fs = await import('fs/promises')
 
+          const workspacePath = streamContext.workspacePath
           // SANDBOX MODE: When no workspace is selected, use per-conversation sandbox
-          const useSandbox = !streamContext.workspacePath && streamContext.conversationId
+          const useSandbox = !workspacePath && streamContext.conversationId
           let actualPath = path
+          let permissionPath = path
           let sandboxRelativePath: string | undefined
 
-          if (useSandbox) {
+          if (workspacePath) {
+            // Resolve relative paths inside the active workspace
+            const normalizedInput = path.replace(/\\/g, '/')
+            const resolvedPath = pathModule.isAbsolute(normalizedInput)
+              ? pathModule.resolve(normalizedInput)
+              : pathModule.resolve(workspacePath, normalizedInput)
+            const relativePath = pathModule.relative(workspacePath, resolvedPath)
+            const normalizedRelative = relativePath.replace(/\\/g, '/')
+
+            // Block writes outside the workspace root
+            if (normalizedRelative.startsWith('..') || pathModule.isAbsolute(relativePath)) {
+              console.error(`[AI] Workspace escape attempt blocked: ${path} -> ${resolvedPath}`)
+              return {
+                success: false,
+                error: 'Path must be within the active workspace. Use a relative path inside the workspace.',
+              }
+            }
+
+            actualPath = resolvedPath
+            permissionPath = normalizedRelative || pathModule.basename(resolvedPath)
+          } else if (useSandbox) {
             const sandboxDir = getConversationSandboxPath(streamContext.conversationId!)
 
             // Sanitize path to prevent sandbox escape
@@ -1451,17 +1474,18 @@ Note: If recommended option, list it first with "(Recommended)" suffix.`,
               }
             }
 
-            sandboxRelativePath = relativePath
+            sandboxRelativePath = relativePath.replace(/\\/g, '/')
             actualPath = resolvedPath
+            permissionPath = `[Sandbox] ${sandboxRelativePath}`
 
             console.log(`[AI] Sandbox mode: Writing to ${actualPath} (relative: ${sandboxRelativePath})`)
           }
 
-          // Check permission before writing (use actual path for permission check)
-          const permCheck = await checkPermission('write_file', { path: actualPath, content }, streamContext.workspacePath)
+          // Check permission before writing (use permission path for consistent "remember" behavior)
+          const permCheck = await checkPermission('write_file', { path: permissionPath, content }, streamContext.workspacePath)
           if (!permCheck.allowed && permCheck.reason === 'needs_approval') {
             // Request permission from user
-            const displayPath = useSandbox ? `[Sandbox] ${sandboxRelativePath}` : path
+            const displayPath = permissionPath
             const result = await requestPermission({
               toolName: 'write_file',
               action: `Write to: ${displayPath}`,
@@ -1587,7 +1611,7 @@ Note: If recommended option, list it first with "(Recommended)" suffix.`,
     })
   }
 
-  return tools
+  return normalizeToolSchemas(tools)
 }
 
 // Build context from tool executions for summary
@@ -1722,7 +1746,7 @@ export function registerAIHandlers() {
       // Build workspace context if provided
       const workspaceContext = params.workspacePath
         ? `${params.workspacePath}\nUse this as the base path for file operations. When reading, writing, or searching files, use paths relative to this workspace unless the user specifies an absolute path.`
-        : undefined
+        : 'Sandbox (no workspace selected).\nIf you suggest exporting or saving files, explicitly mention this is because no workspace is selected.'
 
       // Get soul learnings (the core differentiator!)
       const soulLearnings = formatSoulForContext()
@@ -1883,14 +1907,16 @@ If you find yourself frequently hitting limits, suggest breaking the task into m
 
         try {
           // Stream the response with tools
+          const chatModel = provider.chat(modelId)
           const result = await streamText({
-            model: provider.chat(modelId),
+            model: chatModel,
             system: systemPrompt,
             messages,
             tools,
             toolChoice: 'auto',
             stopWhen: stepCountIs(MAX_TOOL_STEPS),
             abortSignal: abortController.signal,
+            experimental_repairToolCall: createToolCallRepair(chatModel),
             onStepFinish: ({ toolCalls, toolResults, text, finishReason }) => {
               stepCount++
               if (DEBUG_API_REQUESTS) {

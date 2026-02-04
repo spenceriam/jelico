@@ -144,6 +144,7 @@ interface ChatStore {
   regenerateLastResponse: (providerId: string, model: string) => Promise<void>
   addSystemNotification: (notification: Omit<SystemNotification, 'id' | 'timestamp'>) => void
   clearSystemNotifications: () => void
+  setConversationWorkspaceId: (id: string, workspaceId: string | null) => void
 }
 
 let currentStreamChannelId: string | null = null
@@ -236,8 +237,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
         reasoningContent: '',
         error: null,
       })
-      // New Chat = reset to Sandbox
-      useWorkspaceStore.getState().setActiveWorkspace(null, true)
+      // New Chat: keep current workspace selection (user can switch to Sandbox explicitly)
       // No conversation = no artifacts to show
       useArtifactStore.getState().closeCanvas()
       return
@@ -1103,5 +1103,12 @@ export const useChatStore = create<ChatStore>((set, get) => ({
 
   clearSystemNotifications: () => {
     set({ systemNotifications: [] })
+  },
+  setConversationWorkspaceId: (id, workspaceId) => {
+    set((state) => ({
+      conversations: state.conversations.map((conv) =>
+        conv.id === id ? { ...conv, workspaceId: workspaceId || undefined } : conv
+      ),
+    }))
   },
 }))
