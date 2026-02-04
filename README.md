@@ -98,6 +98,8 @@ GPL-3.0-or-later. See `LICENSE` for details.
 
 Contributions are welcome. Please read `CONTRIBUTING.md` for setup, workflow, and guidelines.
 
+[sbp]
+
 ## Status
 
 Current version: 0.9.2
