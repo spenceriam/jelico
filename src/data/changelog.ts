@@ -21,6 +21,19 @@ export interface ChangelogEntry {
 
 export const changelog: ChangelogEntry[] = [
   {
+    version: '0.9.3',
+    date: '2026-02-04',
+    changes: {
+      fixed: [
+        'Queued permission requests now surface on renderer startup to prevent tool-call hangs',
+        'Workspace selection now updates the active conversation workspace so artifacts route correctly',
+      ],
+      security: [
+        'HTML artifact previews no longer use allow-same-origin, preventing access to the parent app DOM',
+      ],
+    },
+  },
+  {
     version: '0.9.2',
     date: '2026-02-03',
     changes: {

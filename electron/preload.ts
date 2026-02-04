@@ -115,6 +115,7 @@ contextBridge.exposeInMainWorld('jelico', {
       action: string
       workspaceId?: string
     }) => ipcRenderer.invoke('permission:respond', data),
+    getPendingRequests: () => ipcRenderer.invoke('permission:getPending'),
     getAllowAll: () => ipcRenderer.invoke('permission:getAllowAll'),
     setAllowAll: (allow: boolean) => ipcRenderer.invoke('permission:setAllowAll', allow),
     getSessionPermissions: () => ipcRenderer.invoke('permission:getSessionPermissions'),

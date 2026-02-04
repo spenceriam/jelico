@@ -282,7 +282,7 @@ export function HtmlViewer({ html, isStreaming = false, onSave }: HtmlViewerProp
             key={refreshKey}
             srcDoc={sandboxedHtml}
             className="w-full h-full border-0 bg-white"
-            sandbox="allow-scripts allow-same-origin allow-forms allow-modals allow-popups"
+            sandbox="allow-scripts allow-forms allow-modals allow-popups"
             title="HTML Preview"
           />
         ) : view === 'diff' ? (
