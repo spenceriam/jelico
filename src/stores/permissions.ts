@@ -212,6 +212,14 @@ export const usePermissionStore = create<PermissionStore>((set, get) => ({
     }
 
     set({ mainProcessRequest: null })
+    try {
+      const nextRequest = await window.jelico.permissions.getPendingRequests()
+      if (nextRequest && !get().mainProcessRequest) {
+        get().setMainProcessRequest(nextRequest)
+      }
+    } catch (error) {
+      console.error('Failed to load pending permission request:', error)
+    }
   },
 
   // Session settings
@@ -258,6 +266,16 @@ export const usePermissionStore = create<PermissionStore>((set, get) => ({
     const cleanup = window.jelico.permissions.onPermissionRequest((request) => {
       get().setMainProcessRequest(request)
     })
+    void (async () => {
+      try {
+        const pending = await window.jelico.permissions.getPendingRequests()
+        if (pending && !get().mainProcessRequest) {
+          get().setMainProcessRequest(pending)
+        }
+      } catch (error) {
+        console.error('Failed to load pending permission request:', error)
+      }
+    })()
     return cleanup
   },
 }))

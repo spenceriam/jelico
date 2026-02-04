@@ -517,6 +517,10 @@ Jelico protects users from destructive AI actions with an approval workflow.
 - "Allow All (This Session)" toggle with warning
 - View session permissions
 - View workspace permissions
+- Pending permission requests are queued in the main process and fetched by the renderer on startup to prevent missed prompts.
+
+**HTML Artifact Preview Safety:**
+- HTML previews run in a sandboxed iframe without `allow-same-origin` to prevent access to the parent app DOM.
 
 **Files:**
 - `electron/services/permissionChecker.ts` - Core permission checking

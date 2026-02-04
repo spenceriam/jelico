@@ -12,6 +12,7 @@ export type ActionType = 'read' | 'write' | 'delete' | 'execute' | 'web' | 'spaw
 
 interface PendingRequest {
   id: string
+  request: PermissionRequest
   resolve: (result: { permission: PermissionAction; remembered: boolean }) => void
   reject: (error: Error) => void
 }
@@ -285,7 +286,7 @@ export async function requestPermission(
   return new Promise((resolve, reject) => {
     // No timeout - wait indefinitely for user response
     // Store pending request
-    pendingRequests.set(requestId, { id: requestId, resolve, reject })
+    pendingRequests.set(requestId, { id: requestId, request, resolve, reject })
 
     // Send to renderer
     mainWindow.webContents.send('permission:request', {
@@ -293,6 +294,15 @@ export async function requestPermission(
       ...request,
     })
   })
+}
+
+function getOldestPendingRequest(): (PermissionRequest & { requestId: string }) | null {
+  const pending = pendingRequests.values().next().value as PendingRequest | undefined
+  if (!pending) return null
+  return {
+    requestId: pending.id,
+    ...pending.request,
+  }
 }
 
 /**
@@ -398,6 +408,7 @@ ipcMain.handle('permission:setAllowAll', (_, allow: boolean) => {
   setAllowAllSession(allow)
   return { success: true }
 })
+ipcMain.handle('permission:getPending', () => getOldestPendingRequest())
 
 // Get session permissions
 ipcMain.handle('permission:getSessionPermissions', () => getSessionPermissions())

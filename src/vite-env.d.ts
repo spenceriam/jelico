@@ -150,6 +150,7 @@ interface Window {
       request: (request: PermissionRequest) => Promise<PermissionRequestResult>
       // New permission checker methods
       respond: (data: PermissionRespondData) => Promise<{ success: boolean }>
+      getPendingRequests: () => Promise<MainProcessPermissionRequest | null>
       getAllowAll: () => Promise<boolean>
       setAllowAll: (allow: boolean) => Promise<{ success: boolean }>
       getSessionPermissions: () => Promise<Array<{ key: string; permission: PermissionAction }>>

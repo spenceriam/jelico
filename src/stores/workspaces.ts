@@ -49,10 +49,8 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
       if (workspace) {
         // Reload workspaces and set as active
         const workspaces = await window.jelico.workspaces.list()
-        set({
-          workspaces,
-          activeWorkspaceId: workspace.id,
-        })
+        set({ workspaces })
+        get().setActiveWorkspace(workspace.id)
         return workspace
       }
       return null
