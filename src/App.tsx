@@ -177,7 +177,10 @@ export default function App() {
 
       <Sidebar />
 
-      <main className="flex-1 flex flex-col min-w-0">
+      <main
+        className="flex-1 flex flex-col min-w-0"
+        style={{ paddingTop: 'var(--titlebar-padding)' }}
+      >
         {!showNewChatUI && <Header />}
         <div className="flex-1 flex min-h-0">
           <div className="flex-1 flex flex-col min-w-0">

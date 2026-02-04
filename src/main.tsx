@@ -4,6 +4,9 @@ import App from './App'
 import './styles/globals.css'
 import { initArtifactListeners } from './stores/artifacts'
 
+const isMac = navigator.platform.toUpperCase().includes('MAC')
+document.documentElement.classList.toggle('os-mac', isMac)
+
 // Initialize global listeners for sub-agent artifacts
 initArtifactListeners()
 

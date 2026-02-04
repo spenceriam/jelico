@@ -1,5 +1,7 @@
 import { useState, useEffect } from 'react'
 import { FolderOpen, FolderX, AlertTriangle, Check } from 'lucide-react'
+import { useChatStore } from '../../stores/chat'
+import { useWorkspaceStore } from '../../stores/workspaces'
 
 interface Workspace {
   id: string
@@ -28,6 +30,8 @@ export function TransferDialog({
   const [isTransferring, setIsTransferring] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [result, setResult] = useState<{ transferred: number; failed: number } | null>(null)
+  const { loadConversations, activeConversationId, setConversationWorkspaceId } = useChatStore()
+  const { setActiveWorkspace } = useWorkspaceStore()
 
   // Load workspaces and artifact count
   useEffect(() => {
@@ -56,6 +60,19 @@ export function TransferDialog({
       )
 
       if (response.success) {
+        const nextWorkspaceId = response.conversation?.workspaceId ?? selectedWorkspaceId ?? null
+
+        // Refresh conversations so the workspace change is reflected in the sidebar
+        await loadConversations()
+
+        // Update the local conversation record immediately
+        setConversationWorkspaceId(conversationId, nextWorkspaceId)
+
+        // If we're viewing this conversation, update the active workspace in UI
+        if (activeConversationId === conversationId) {
+          setActiveWorkspace(nextWorkspaceId, true)
+        }
+
         setResult({ transferred: response.transferred, failed: response.failed })
         // Auto-close after success
         setTimeout(() => {

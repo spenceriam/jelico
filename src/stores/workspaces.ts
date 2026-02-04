@@ -76,9 +76,15 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
     if (!skipDbUpdate) {
       const activeConversationId = useChatStore.getState().activeConversationId
       if (activeConversationId) {
-        window.jelico.conversations.updateWorkspaceId(activeConversationId, id).catch((err) => {
-          console.error('Failed to update conversation workspace:', err)
-        })
+        window.jelico.conversations
+          .updateWorkspaceId(activeConversationId, id)
+          .then((conversation) => {
+            const nextId = conversation?.workspaceId ?? id ?? null
+            useChatStore.getState().setConversationWorkspaceId(activeConversationId, nextId)
+          })
+          .catch((err) => {
+            console.error('Failed to update conversation workspace:', err)
+          })
       }
     }
   },

@@ -45,6 +45,9 @@
     --radius-md: 10px;
     --radius-lg: 14px;
     --radius-xl: 20px;
+
+    /* Titlebar spacing (macOS traffic lights) */
+    --titlebar-padding: 0px;
   }
 
   /* Light mode overrides */
@@ -64,6 +67,10 @@
     --border: #e0e0e0;
     --border-subtle: #f0f0f0;
     --border-strong: #d0d0d0;
+  }
+
+  :root.os-mac {
+    --titlebar-padding: env(titlebar-area-height, 28px);
   }
 
   html, body, #root {

@@ -21,6 +21,21 @@ export interface ChangelogEntry {
 
 export const changelog: ChangelogEntry[] = [
   {
+    version: '0.9.4',
+    date: '2026-02-04',
+    changes: {
+      fixed: [
+        'macOS titlebar spacing now accounts for traffic lights in the sidebar and main chat',
+        'Conversation workspace moves now persist and sync with the active workspace',
+        'Tool calls with missing parameters now auto-repair instead of hanging',
+        'App icons now use the corrected centered glyph across PNG/ICO/ICNS outputs',
+      ],
+      changed: [
+        'Conversation rows show per-artifact Move/Reveal actions instead of a folder icon',
+      ],
+    },
+  },
+  {
     version: '0.9.3',
     date: '2026-02-04',
     changes: {

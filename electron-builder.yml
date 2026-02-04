@@ -15,6 +15,7 @@ files:
   - dist/**/*
   - dist-electron/**/*
   - package.json
+  - build/icon.png
 
 # Ensure native dependencies are rebuilt for each platform
 npmRebuild: true
