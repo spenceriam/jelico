@@ -507,6 +507,7 @@ export const messageDb = {
       tool_calls: message.toolCalls,
       tool_results: message.toolResults,
       attachments: message.attachments,
+      usage: message.usage,
       created_at: now,
     }
 
@@ -528,9 +529,23 @@ export const messageDb = {
     if (updates.toolCalls !== undefined) message.tool_calls = updates.toolCalls
     if (updates.toolResults !== undefined) message.tool_results = updates.toolResults
     if (updates.attachments !== undefined) message.attachments = updates.attachments
+    if (updates.usage !== undefined) message.usage = updates.usage
 
     saveDb()
     return message
+  },
+
+  delete(id: string): boolean {
+    const index = db.messages.findIndex(m => m.id === id)
+    if (index === -1) return false
+
+    const conversationId = db.messages[index].conversation_id
+    db.messages.splice(index, 1)
+
+    // Keep conversation ordering fresh after message deletion.
+    conversationDb.touch(conversationId)
+    saveDb()
+    return true
   },
 
   getByConversation(conversationId: string): MessageRow[] {
@@ -598,6 +613,14 @@ interface MessageAttachment {
   data: string // base64 for images, text content for text files
 }
 
+interface MessageUsageRow {
+  promptTokens: number
+  completionTokens: number
+  totalTokens: number
+  tokensPerSecond?: number
+  durationMs?: number
+}
+
 interface MessageRow {
   id: string
   conversation_id: string
@@ -606,6 +629,7 @@ interface MessageRow {
   tool_calls?: ToolCallRow[]
   tool_results?: ToolResultRow[]
   attachments?: MessageAttachment[]
+  usage?: MessageUsageRow
   created_at: number
 }
 
@@ -615,6 +639,7 @@ interface MessageInput {
   toolCalls?: ToolCallRow[]
   toolResults?: ToolResultRow[]
   attachments?: MessageAttachment[]
+  usage?: MessageUsageRow
 }
 
 interface WorkspaceRow {

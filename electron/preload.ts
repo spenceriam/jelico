@@ -24,10 +24,13 @@ contextBridge.exposeInMainWorld('jelico', {
     get: (id: string) => ipcRenderer.invoke('conversations:get', id),
     create: (conversation: any) => ipcRenderer.invoke('conversations:create', conversation),
     addMessage: (convId: string, message: any) => ipcRenderer.invoke('conversations:addMessage', convId, message),
+    deleteMessage: (messageId: string) => ipcRenderer.invoke('conversations:deleteMessage', messageId),
     updateMessage: (messageId: string, updates: any) => ipcRenderer.invoke('conversations:updateMessage', messageId, updates),
     updateTitle: (id: string, title: string) => ipcRenderer.invoke('conversations:updateTitle', id, title),
-    updateWorkspaceId: (id: string, workspaceId: string | null) => ipcRenderer.invoke('conversations:updateWorkspaceId', id, workspaceId),
-    transferToWorkspace: (id: string, workspaceId: string | null) => ipcRenderer.invoke('conversations:transferToWorkspace', id, workspaceId),
+    updateWorkspaceId: (id: string, workspaceId: string | null) =>
+      ipcRenderer.invoke('conversations:updateWorkspaceId', id, workspaceId),
+    transferToWorkspace: (id: string, workspaceId: string | null) =>
+      ipcRenderer.invoke('conversations:transferToWorkspace', id, workspaceId),
     getArtifactCount: (id: string) => ipcRenderer.invoke('conversations:getArtifactCount', id),
     delete: (id: string) => ipcRenderer.invoke('conversations:delete', id),
   },

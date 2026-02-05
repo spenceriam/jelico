@@ -4,6 +4,7 @@ type SettingsTab = 'general' | 'providers' | 'skills' | 'backup'
 
 interface UIStore {
   sidebarCollapsed: boolean
+  showContextText: boolean
   settingsOpen: boolean
   settingsTab: SettingsTab
   providerSetupOpen: boolean
@@ -18,6 +19,8 @@ interface UIStore {
   onboardingStep: number
 
   toggleSidebar: () => void
+  toggleContextText: () => void
+  setShowContextText: (show: boolean) => void
   openSettings: (tab?: SettingsTab) => void
   closeSettings: () => void
   setSettingsTab: (tab: SettingsTab) => void
@@ -42,8 +45,14 @@ const getInitialOnboardingState = (): boolean => {
   return stored === 'true'
 }
 
+const getInitialContextTextState = (): boolean => {
+  const stored = localStorage.getItem('jelico:showContextText')
+  return stored === 'true'
+}
+
 export const useUIStore = create<UIStore>((set) => ({
   sidebarCollapsed: false,
+  showContextText: getInitialContextTextState(),
   settingsOpen: false,
   settingsTab: 'general',
   providerSetupOpen: false,
@@ -58,6 +67,15 @@ export const useUIStore = create<UIStore>((set) => ({
   onboardingStep: 0,
 
   toggleSidebar: () => set((state) => ({ sidebarCollapsed: !state.sidebarCollapsed })),
+  toggleContextText: () => set((state) => {
+    const next = !state.showContextText
+    localStorage.setItem('jelico:showContextText', String(next))
+    return { showContextText: next }
+  }),
+  setShowContextText: (show) => {
+    localStorage.setItem('jelico:showContextText', String(show))
+    set({ showContextText: show })
+  },
 
   openSettings: (tab = 'general') => set({ settingsOpen: true, settingsTab: tab }),
 

@@ -22,6 +22,7 @@ interface Window {
       get: (id: string) => Promise<Conversation | null>
       create: (conversation: ConversationInput) => Promise<Conversation>
       addMessage: (convId: string, message: MessageInput) => Promise<Message>
+      deleteMessage: (messageId: string) => Promise<{ success: boolean }>
       updateMessage: (messageId: string, updates: Partial<MessageInput>) => Promise<Message | null>
       updateTitle: (id: string, title: string) => Promise<void>
       updateWorkspaceId: (id: string, workspaceId: string | null) => Promise<Conversation | null>
@@ -249,6 +250,7 @@ interface Message {
   attachments?: MessageAttachmentData[]
   toolCalls?: ToolCallEvent[]
   toolResults?: ToolResultEvent[]
+  usage?: MessageUsageData
   createdAt: number
 }
 
@@ -266,6 +268,15 @@ interface MessageInput {
   toolCalls?: ToolCallEvent[]
   toolResults?: ToolResultEvent[]
   attachments?: MessageAttachmentData[]
+  usage?: MessageUsageData
+}
+
+interface MessageUsageData {
+  promptTokens: number
+  completionTokens: number
+  totalTokens: number
+  tokensPerSecond?: number
+  durationMs?: number
 }
 
 interface StreamParams {
