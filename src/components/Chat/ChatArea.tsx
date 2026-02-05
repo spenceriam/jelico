@@ -80,7 +80,7 @@ export function ChatArea() {
   // New chat / Welcome UI - centered stack
   if (showNewChatUI) {
     return (
-      <div className="flex-1 flex flex-col min-h-0">
+      <div className="flex-1 flex flex-col min-h-0" data-window-toggle="ignore">
         <div className="flex-1 flex items-center justify-center p-6">
           <div className="w-full max-w-xl">
             <NewChatView
@@ -95,9 +95,9 @@ export function ChatArea() {
 
   // Active conversation UI - normal chat layout
   return (
-    <div className="flex-1 flex flex-col min-h-0">
+    <div className="flex-1 flex flex-col min-h-0" data-window-toggle="ignore">
       {/* Messages area */}
-      <div className="flex-1 overflow-y-auto">
+      <div className="flex-1 overflow-y-auto select-text">
         <div className="max-w-3xl mx-auto py-6 px-4">
           <MessageList
             messages={messages}

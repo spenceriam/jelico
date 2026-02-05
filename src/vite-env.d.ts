@@ -64,6 +64,12 @@ interface Window {
       openRelease: (url: string) => Promise<boolean>
       onDownloadProgress: (callback: (progress: UpdateDownloadProgress) => void) => () => void
     }
+    window: {
+      toggleMaximize: () => Promise<{ success: boolean; state?: 'maximized' | 'restored'; error?: string }>
+      startDrag: (mouseScreenX: number, mouseScreenY: number) => Promise<{ success: boolean; error?: string }>
+      updateDrag: (mouseScreenX: number, mouseScreenY: number) => Promise<{ success: boolean; error?: string }>
+      endDrag: () => Promise<{ success: boolean; error?: string }>
+    }
     ai: {
       stream: (params: StreamParams) => string
       onStreamChunk: (channelId: string, callback: (chunk: string) => void) => void

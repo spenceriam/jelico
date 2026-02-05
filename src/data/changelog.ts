@@ -21,6 +21,21 @@ export interface ChangelogEntry {
 
 export const changelog: ChangelogEntry[] = [
   {
+    version: '0.10.0',
+    date: '2026-02-05',
+    changes: {
+      added: [
+        'Double-click on non-interactive app surfaces now toggles the window between maximized and restored states',
+        'Click-hold and drag on non-interactive app surfaces now repositions the window',
+      ],
+      fixed: [
+        'Canvas divider drag now stays responsive when cursor passes over preview content such as iframes',
+        'Sidebar and header text no longer gets accidentally selected during window drag/maximize interactions',
+        'Chat area now ignores window drag/maximize gestures so text selection behaves normally in conversation content',
+      ],
+    },
+  },
+  {
     version: '0.9.4',
     date: '2026-02-04',
     changes: {

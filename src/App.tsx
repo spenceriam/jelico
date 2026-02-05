@@ -23,6 +23,33 @@ import { WelcomeScreen, type OnboardingProfile } from './components/Onboarding/W
 const DEFAULT_CANVAS_WIDTH = 500
 const MIN_CANVAS_WIDTH = 300
 const MAX_CANVAS_WIDTH = 800
+const WINDOW_DRAG_START_THRESHOLD = 2
+const INTERACTIVE_DOUBLE_CLICK_SELECTOR = [
+  'button',
+  'a',
+  'input',
+  'textarea',
+  'select',
+  'option',
+  'label',
+  '[role="button"]',
+  '[role="link"]',
+  '[contenteditable="true"]',
+  '[contenteditable="plaintext-only"]',
+  '[contenteditable=""]',
+  'iframe',
+  '.monaco-editor',
+  '.monaco-editor *',
+].join(',')
+
+interface WindowDragSession {
+  originScreenX: number
+  originScreenY: number
+  starting: boolean
+  started: boolean
+  onMouseMove: (event: MouseEvent) => void
+  onMouseUp: (event: MouseEvent) => void
+}
 
 export default function App() {
   const { providers, loadProviders, isLoading } = useProviderStore()
@@ -39,6 +66,13 @@ export default function App() {
   const [canvasWidth, setCanvasWidth] = useState(DEFAULT_CANVAS_WIDTH)
   const [isResizing, setIsResizing] = useState(false)
   const resizeRef = useRef<{ startX: number; startWidth: number } | null>(null)
+  const windowDragRef = useRef<WindowDragSession | null>(null)
+  const isInteractiveTarget = useCallback((target: HTMLElement | null) => {
+    if (!target) return false
+    if (target.closest('[data-resize-handle]')) return true
+    if (target.closest('[data-window-toggle="ignore"]')) return true
+    return Boolean(target.closest(INTERACTIVE_DOUBLE_CLICK_SELECTOR))
+  }, [])
 
   useEffect(() => {
     loadProviders()
@@ -68,6 +102,107 @@ export default function App() {
     checkForUpdates()
     return () => stopListening()
   }, [])
+
+  const stopWindowDrag = useCallback(() => {
+    const dragSession = windowDragRef.current
+    if (!dragSession) return
+
+    document.removeEventListener('mousemove', dragSession.onMouseMove)
+    document.removeEventListener('mouseup', dragSession.onMouseUp)
+    windowDragRef.current = null
+
+    document.body.style.userSelect = ''
+    document.body.style.cursor = ''
+
+    if (dragSession.started) {
+      window.jelico.window.endDrag().catch((error) => {
+        console.error('Failed to end window drag:', error)
+      })
+    }
+  }, [])
+
+  const handleAppMouseDown = useCallback((event: React.MouseEvent<HTMLDivElement>) => {
+    if (event.button !== 0) return
+    if (event.detail > 1) return
+    if (isResizing) return
+
+    const target = event.target as HTMLElement | null
+    if (isInteractiveTarget(target)) return
+
+    stopWindowDrag()
+
+    const onMouseMove = (moveEvent: MouseEvent) => {
+      const dragSession = windowDragRef.current
+      if (!dragSession) return
+
+      if (!dragSession.started) {
+        const movedX = Math.abs(moveEvent.screenX - dragSession.originScreenX)
+        const movedY = Math.abs(moveEvent.screenY - dragSession.originScreenY)
+        if (movedX < WINDOW_DRAG_START_THRESHOLD && movedY < WINDOW_DRAG_START_THRESHOLD) {
+          return
+        }
+        if (dragSession.starting) return
+
+        dragSession.starting = true
+        window.jelico.window.startDrag(moveEvent.screenX, moveEvent.screenY)
+          .then((result) => {
+            const activeDragSession = windowDragRef.current
+            if (!activeDragSession) return
+
+            activeDragSession.starting = false
+            if (!result.success) {
+              stopWindowDrag()
+              return
+            }
+
+            activeDragSession.started = true
+            document.body.style.userSelect = 'none'
+            document.body.style.cursor = 'move'
+
+            return window.jelico.window.updateDrag(moveEvent.screenX, moveEvent.screenY)
+          })
+          .catch((error) => {
+            console.error('Failed to start window drag:', error)
+            stopWindowDrag()
+          })
+        return
+      }
+
+      window.jelico.window.updateDrag(moveEvent.screenX, moveEvent.screenY).catch((error) => {
+        console.error('Failed to update window drag:', error)
+        stopWindowDrag()
+      })
+    }
+
+    const onMouseUp = () => {
+      stopWindowDrag()
+    }
+
+    windowDragRef.current = {
+      originScreenX: event.screenX,
+      originScreenY: event.screenY,
+      starting: false,
+      started: false,
+      onMouseMove,
+      onMouseUp,
+    }
+
+    document.addEventListener('mousemove', onMouseMove)
+    document.addEventListener('mouseup', onMouseUp)
+  }, [isInteractiveTarget, isResizing, stopWindowDrag])
+
+  useEffect(() => {
+    return () => stopWindowDrag()
+  }, [stopWindowDrag])
+
+  const handleAppDoubleClick = useCallback((event: React.MouseEvent<HTMLDivElement>) => {
+    if (isResizing) return
+    const target = event.target as HTMLElement | null
+    if (isInteractiveTarget(target)) return
+    window.jelico.window.toggleMaximize().catch((error) => {
+      console.error('Failed to toggle window maximize:', error)
+    })
+  }, [isResizing, isInteractiveTarget])
 
   // Handle resize drag
   const handleResizeStart = useCallback((e: React.MouseEvent) => {
@@ -154,8 +289,12 @@ export default function App() {
   // Hide header when in new chat view (no conversation or empty conversation)
   const showNewChatUI = !activeConversationId || (messages.length === 0 && !isStreaming)
 
-  return (
-    <div className="h-screen flex bg-bg-void text-text-primary overflow-hidden relative">
+    return (
+    <div
+      className="h-screen flex bg-bg-void text-text-primary overflow-hidden relative select-none"
+      onDoubleClick={handleAppDoubleClick}
+      onMouseDown={handleAppMouseDown}
+    >
       {/* Floating sidebar toggle button at left edge */}
       <button
         onClick={toggleSidebar}
@@ -193,11 +332,15 @@ export default function App() {
                 className={`w-1 cursor-col-resize hover:bg-accent/50 transition-colors flex-shrink-0 ${
                   isResizing ? 'bg-accent' : 'bg-transparent hover:bg-border'
                 }`}
+                data-resize-handle
                 onMouseDown={handleResizeStart}
                 title="Drag to resize"
               />
               {/* Canvas panel with dynamic width */}
-              <div style={{ width: canvasWidth }} className="flex-shrink-0">
+              <div
+                style={{ width: canvasWidth }}
+                className={`flex-shrink-0 ${isResizing ? 'pointer-events-none' : ''}`}
+              >
                 <CanvasPanel />
               </div>
             </>

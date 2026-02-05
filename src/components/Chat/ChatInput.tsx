@@ -458,7 +458,7 @@ export function ChatInput({ disabled, isStreaming, centered }: ChatInputProps) {
           }
           disabled={disabled}
           rows={centered ? 4 : 1}
-          className={`flex-1 bg-transparent text-text-primary placeholder:text-text-muted outline-none resize-none disabled:cursor-not-allowed focus:outline-none focus:ring-0 border-none leading-6 p-3 pb-0 ${
+          className={`flex-1 bg-transparent text-text-primary placeholder:text-text-muted outline-none resize-none disabled:cursor-not-allowed focus:outline-none focus:ring-0 border-none leading-6 p-3 pb-0 select-text ${
             centered ? 'min-h-[96px] max-h-[200px]' : 'min-h-[24px] max-h-[150px]'
           }`}
         />
