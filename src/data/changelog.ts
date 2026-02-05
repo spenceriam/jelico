@@ -21,6 +21,21 @@ export interface ChangelogEntry {
 
 export const changelog: ChangelogEntry[] = [
   {
+    version: '0.10.1',
+    date: '2026-02-05',
+    changes: {
+      changed: [
+        'Header context indicator now uses a circular meter with a subtle dotted ghost ring and accent progress arc',
+        'Clicking the context ring now toggles inline "Context: XX%" text, and this visibility preference is remembered globally',
+      ],
+      fixed: [
+        'Conversation context usage now restores after app restart/update instead of resetting to 0%',
+        'Message usage stats are now persisted so context restoration uses actual token data when available',
+        'Regenerating the last response now removes the replaced assistant message from storage to keep persisted context accurate',
+      ],
+    },
+  },
+  {
     version: '0.10.0',
     date: '2026-02-05',
     changes: {

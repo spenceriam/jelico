@@ -24,6 +24,7 @@ function toMessageApi(row: any) {
     toolCalls: row.tool_calls,
     toolResults: row.tool_results,
     attachments: row.attachments,
+    usage: row.usage,
     createdAt: row.created_at,
   }
 }
@@ -60,8 +61,14 @@ export function registerConversationHandlers() {
       toolCalls: messageInput.toolCalls,
       toolResults: messageInput.toolResults,
       attachments: messageInput.attachments,
+      usage: messageInput.usage,
     })
     return toMessageApi(message)
+  })
+
+  // Delete a message from a conversation
+  ipcMain.handle('conversations:deleteMessage', async (_, messageId: string) => {
+    return { success: messageDb.delete(messageId) }
   })
 
   // Update a message (for adding tool calls/results)
@@ -71,6 +78,7 @@ export function registerConversationHandlers() {
       toolCalls: updates.toolCalls,
       toolResults: updates.toolResults,
       attachments: updates.attachments,
+      usage: updates.usage,
     })
     return message ? toMessageApi(message) : null
   })

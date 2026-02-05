@@ -4,7 +4,7 @@ import { useArtifactStore } from './artifacts'
 import { useWorkspaceStore } from './workspaces'
 import { useAgentStore } from './agents'
 import { useSkillStore } from './skills'
-import { useContextStore } from './context'
+import { useContextStore, estimateTokens } from './context'
 import { useSandboxStore } from './sandbox'
 import { useTodoStore } from './todos'
 
@@ -150,6 +150,22 @@ interface ChatStore {
 let currentStreamChannelId: string | null = null
 let modeTransitionTimeoutId: ReturnType<typeof setTimeout> | null = null
 
+function getRestoredTokenCount(messages: Message[]): number {
+  if (messages.length === 0) return 0
+
+  // Prefer provider-reported totals from the most recent assistant message.
+  const latestUsage = [...messages]
+    .reverse()
+    .find((msg) => msg.role === 'assistant' && typeof msg.usage?.totalTokens === 'number' && msg.usage.totalTokens > 0)
+
+  if (latestUsage?.usage?.totalTokens) {
+    return latestUsage.usage.totalTokens
+  }
+
+  // Fallback for legacy conversations created before usage persistence.
+  return messages.reduce((sum, msg) => sum + estimateTokens(msg.content || ''), 0)
+}
+
 export const useChatStore = create<ChatStore>((set, get) => ({
   conversations: [],
   activeConversationId: null,
@@ -246,9 +262,11 @@ export const useChatStore = create<ChatStore>((set, get) => ({
     set({ isLoading: true })
     try {
       const conversation = await window.jelico.conversations.get(id)
+      const loadedMessages = conversation?.messages || []
+
       set({
         activeConversationId: id,
-        messages: conversation?.messages || [],
+        messages: loadedMessages,
         isLoading: false,
         // Clear streaming state when switching to prevent old stream data appearing
         isStreaming: false,
@@ -263,6 +281,24 @@ export const useChatStore = create<ChatStore>((set, get) => ({
         isReasoning: false,
         reasoningContent: '',
       })
+
+      // Ensure context usage survives conversation reloads.
+      if (conversation) {
+        const contextState = useContextStore.getState()
+        const existing = contextState.conversationContexts[id]
+
+        if (!existing) {
+          await contextState.initConversationContext(id, conversation.providerId, conversation.model)
+        }
+
+        const shouldHydrate = !existing || existing.currentTokenCount === 0
+        if (shouldHydrate) {
+          const restoredTokenCount = getRestoredTokenCount(loadedMessages)
+          if (restoredTokenCount > 0) {
+            contextState.updateTokenCount(id, restoredTokenCount)
+          }
+        }
+      }
 
       // Restore workspace associated with this conversation (or reset to Sandbox if none)
       // Pass skipDbUpdate=true since we're restoring from DB, not changing
@@ -735,6 +771,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
           content: fullContent || '(Used tools)', // Ensure non-empty for DB
           toolCalls: streamingToolCalls.length > 0 ? streamingToolCalls : undefined,
           toolResults: streamingToolResults.length > 0 ? streamingToolResults : undefined,
+          usage,
         })
 
         // Attach usage to the message object for display
@@ -1081,9 +1118,12 @@ export const useChatStore = create<ChatStore>((set, get) => ({
     const messagesWithoutLast = messages.slice(0, lastAssistantIndex)
     set({ messages: messagesWithoutLast })
 
-    // Note: Old assistant message stays in DB (no deleteMessage API yet)
-    // This is fine - new message replaces it in UI, and conversation reload works correctly
-    // because we load messages by conversation and the new response overwrites conceptually
+    // Keep DB aligned with the UI so reloads don't resurrect regenerated responses.
+    try {
+      await window.jelico.conversations.deleteMessage(messages[lastAssistantIndex].id)
+    } catch (error) {
+      console.error('[Chat Store] Failed to delete regenerated assistant message from DB:', error)
+    }
 
     // Start streaming with existing messages (don't re-add user message)
     // The _isRegenerate flag tells sendMessage to skip adding user message
