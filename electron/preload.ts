@@ -210,6 +210,12 @@ contextBridge.exposeInMainWorld('jelico', {
       return () => ipcRenderer.removeListener('updates:download-progress', handler)
     },
   },
+  window: {
+    toggleMaximize: () => ipcRenderer.invoke('window:toggleMaximize'),
+    startDrag: (mouseScreenX: number, mouseScreenY: number) => ipcRenderer.invoke('window:startDrag', mouseScreenX, mouseScreenY),
+    updateDrag: (mouseScreenX: number, mouseScreenY: number) => ipcRenderer.invoke('window:updateDrag', mouseScreenX, mouseScreenY),
+    endDrag: () => ipcRenderer.invoke('window:endDrag'),
+  },
   ai: {
     stream: (params: any) => {
       const channelId = crypto.randomUUID()
