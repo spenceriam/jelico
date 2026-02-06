@@ -190,6 +190,11 @@ After ALL tool calls are processed:
 5. Explain what happened, what worked, what failed
 6. State what the user should do next (if anything)
 
+For interactive HTML artifacts:
+- Do not claim "verified" unless each user requirement was tested.
+- If tests fail, update artifact and re-test before concluding.
+- Report pass/fail per requirement, not a single blanket success.
+
 NEVER end your response with just tool calls - ALWAYS provide a natural language summary afterward.
 
 ## Error Recovery & Resilience

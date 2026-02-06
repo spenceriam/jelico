@@ -13,12 +13,15 @@ import { useUIStore } from '../../stores/ui'
 
 export function ContextIndicator() {
   const { activeConversationId, messages, isStreaming } = useChatStore()
-  const { getContextUsage, isCompacting } = useContextStore()
+  const { getContextUsage, isConversationCompacting } = useContextStore()
   const { activeModel } = useProviderStore()
   const { showContextText, toggleContextText } = useUIStore()
 
   // Get context usage for current conversation
   const contextUsage = activeConversationId ? getContextUsage(activeConversationId) : null
+  const isCompacting = activeConversationId
+    ? isConversationCompacting(activeConversationId)
+    : false
 
   // Only show when there's context to display
   const conversationMessages = messages.filter(m => m.conversationId === activeConversationId)

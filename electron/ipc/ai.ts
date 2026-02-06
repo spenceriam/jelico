@@ -40,6 +40,17 @@ import {
   writeSandboxFile,
   listSandboxFiles,
 } from '../services/sandbox'
+import {
+  openArtifactTestSession,
+  closeArtifactTestSession,
+  listArtifactTestSessions,
+  artifactTestClick,
+  artifactTestType,
+  artifactTestEvaluate,
+  artifactTestExtract,
+  artifactTestWaitFor,
+  artifactTestScreenshot,
+} from '../services/artifactTester'
 
 // Start orphan cleanup on module load
 startOrphanCleanup()
@@ -60,10 +71,6 @@ const pendingClarifications = new Map<string, PendingClarification>()
 
 // Debug flag - controlled by environment
 const DEBUG_API_REQUESTS = process.env.DEBUG_AI === 'true' || process.env.NODE_ENV === 'development'
-
-// Store accumulated tool input by toolCallId - needed because some providers stream args
-// via tool-input-delta but don't populate the final tool-call args (SDK bug workaround)
-const accumulatedToolInputByCallId = new Map<string, string>()
 
 // Stream timeouts - DISABLED (set to 0 to disable)
 // In the age of long-running agents, arbitrary timeouts cause more problems than they solve.
@@ -301,6 +308,7 @@ function getBuiltInTools(
     providerId: string
     model: string
     workspacePath?: string
+    conversationId?: string
     resetActivityTimeout?: () => void  // Allows blocking tools to keep stream alive
   },
   toolTracker: Map<string, ToolExecution>,
@@ -883,7 +891,9 @@ Types:
 - svg: SVG graphics
 - mermaid: Mermaid diagram syntax
 
-IMPORTANT: You MUST provide all required parameters (type, title, content). Do not call this tool with empty arguments.`,
+IMPORTANT: You MUST provide all required parameters (type, title, content). Do not call this tool with empty arguments.
+
+For type="html": after creating it, self-test with artifact_test before claiming it works (unless user explicitly says skip testing).`,
     parameters: z.object({
       type: z.enum(['code', 'document', 'html', 'svg', 'mermaid']).describe('The type of artifact'),
       title: z.string().min(1).describe('A short, descriptive title'),
@@ -925,7 +935,9 @@ IMPORTANT: You MUST provide all required parameters (type, title, content). Do n
       }
       return {
         success: true,
-        message: `Artifact "${title}" created successfully`,
+        message: type === 'html'
+          ? `Artifact "${title}" created successfully. Next step required: run artifact_test and verify behavior before claiming success.`
+          : `Artifact "${title}" created successfully`,
         warnings: validation.warnings.length > 0 ? validation.warnings : undefined,
       }
     },
@@ -938,7 +950,9 @@ IMPORTANT: You MUST provide all required parameters (type, title, content). Do n
 Use this to modify, improve, or fix content in an artifact that already exists.
 You must know the artifact ID from the existing artifacts context.
 
-IMPORTANT: You MUST provide id, type, and content parameters. Do not call this tool with empty arguments.`,
+IMPORTANT: You MUST provide id, type, and content parameters. Do not call this tool with empty arguments.
+
+For type="html": after updating it, self-test with artifact_test before claiming the fix works (unless user explicitly says skip testing).`,
     parameters: z.object({
       id: z.string().min(1).describe('The ID of the artifact to update'),
       type: z.enum(['code', 'document', 'html', 'svg', 'mermaid']).describe('The type of artifact (needed for validation)'),
@@ -981,8 +995,172 @@ IMPORTANT: You MUST provide id, type, and content parameters. Do not call this t
       }
       return {
         success: true,
-        message: `Artifact "${id}" updated successfully`,
+        message: type === 'html'
+          ? `Artifact "${id}" updated successfully. Next step required: run artifact_test and verify behavior before claiming success.`
+          : `Artifact "${id}" updated successfully`,
         warnings: validation.warnings.length > 0 ? validation.warnings : undefined,
+      }
+    },
+  })
+
+  // Artifact test tool - lets AI open and interact with HTML artifacts for verification.
+  tools.artifact_test = tool({
+    description: `Open and test HTML artifacts in a hidden browser session.
+Use this to verify artifact behavior (click buttons, type input, wait for updates, evaluate JS, capture screenshots).
+When user requirements are given, test each requirement explicitly before claiming success.
+
+Actions:
+- open: Open a test session from artifact_id (latest revision) or raw html
+- list_sessions: List active test sessions
+- click: Click element by CSS selector and verify observable change by default
+- type: Type into input/textarea/contenteditable
+- evaluate: Run JavaScript and return result
+- extract: Read text/html from page or selector
+- wait_for: Wait until text and/or selector appears
+- screenshot: Capture PNG screenshot path
+- close: Close a test session
+
+Notes:
+- open with artifact_id always targets latest revision of that artifact's base.
+- A click should be treated as failed if no observable UI change occurs (unless expect_change=false).
+- These sessions are isolated and hidden from users.`,
+    parameters: z.object({
+      action: z.enum([
+        'open',
+        'list_sessions',
+        'click',
+        'type',
+        'evaluate',
+        'extract',
+        'wait_for',
+        'screenshot',
+        'close',
+      ]).describe('Artifact test action to run'),
+      session_id: z.string().optional().describe('Session ID for actions after open'),
+      artifact_id: z.string().optional().describe('Artifact ID (for open action)'),
+      html: z.string().optional().describe('Raw HTML content (for open action when no artifact_id)'),
+      selector: z.string().optional().describe('CSS selector for click/type/extract/wait_for'),
+      text: z.string().optional().describe('Text content for type or wait_for'),
+      append: z.boolean().optional().describe('When typing, append to existing content (default false)'),
+      expect_change: z.boolean().optional().describe('For click: require observable UI change (default true)'),
+      wait_after_ms: z.number().int().min(0).max(5000).optional().describe('For click: wait before checking observable change (default 300ms)'),
+      expression: z.string().optional().describe('JavaScript expression for evaluate'),
+      timeout_ms: z.number().int().min(250).max(60000).optional().describe('Timeout for wait_for in ms'),
+      width: z.number().int().min(320).max(2560).optional().describe('Viewport width for open'),
+      height: z.number().int().min(240).max(1600).optional().describe('Viewport height for open'),
+    }).passthrough(),
+    execute: async (args) => {
+      try {
+        const normalizedArgs = {
+          action: args.action,
+          session_id: args.session_id ?? (args as any).sessionId,
+          artifact_id: args.artifact_id ?? (args as any).artifactId,
+          html: args.html,
+          selector: args.selector,
+          text: args.text,
+          append: args.append,
+          expect_change: args.expect_change ?? (args as any).expectChange,
+          wait_after_ms: args.wait_after_ms ?? (args as any).waitAfterMs,
+          expression: args.expression,
+          timeout_ms: args.timeout_ms ?? (args as any).timeoutMs,
+          width: args.width,
+          height: args.height,
+        }
+
+        switch (normalizedArgs.action) {
+          case 'open': {
+            if (!normalizedArgs.artifact_id && !normalizedArgs.html) {
+              return {
+                success: false,
+                error: 'open action requires artifact_id or html',
+              }
+            }
+            const result = await openArtifactTestSession({
+              artifactId: normalizedArgs.artifact_id,
+              html: normalizedArgs.html,
+              width: normalizedArgs.width,
+              height: normalizedArgs.height,
+            })
+            return { success: true, ...result }
+          }
+
+          case 'list_sessions': {
+            return {
+              success: true,
+              sessions: listArtifactTestSessions(),
+            }
+          }
+
+          case 'click': {
+            if (!normalizedArgs.session_id || !normalizedArgs.selector) {
+              return { success: false, error: 'click action requires session_id and selector' }
+            }
+            return await artifactTestClick(
+              normalizedArgs.session_id,
+              normalizedArgs.selector,
+              normalizedArgs.expect_change ?? true,
+              normalizedArgs.wait_after_ms ?? 300
+            )
+          }
+
+          case 'type': {
+            if (!normalizedArgs.session_id || !normalizedArgs.selector || normalizedArgs.text === undefined) {
+              return { success: false, error: 'type action requires session_id, selector, and text' }
+            }
+            return await artifactTestType(normalizedArgs.session_id, normalizedArgs.selector, normalizedArgs.text, !!normalizedArgs.append)
+          }
+
+          case 'evaluate': {
+            if (!normalizedArgs.session_id || !normalizedArgs.expression) {
+              return { success: false, error: 'evaluate action requires session_id and expression' }
+            }
+            return await artifactTestEvaluate(normalizedArgs.session_id, normalizedArgs.expression)
+          }
+
+          case 'extract': {
+            if (!normalizedArgs.session_id) {
+              return { success: false, error: 'extract action requires session_id' }
+            }
+            return await artifactTestExtract(normalizedArgs.session_id, normalizedArgs.selector)
+          }
+
+          case 'wait_for': {
+            if (!normalizedArgs.session_id) {
+              return { success: false, error: 'wait_for action requires session_id' }
+            }
+            return await artifactTestWaitFor({
+              sessionId: normalizedArgs.session_id,
+              text: normalizedArgs.text,
+              selector: normalizedArgs.selector,
+              timeoutMs: normalizedArgs.timeout_ms,
+            })
+          }
+
+          case 'screenshot': {
+            if (!normalizedArgs.session_id) {
+              return { success: false, error: 'screenshot action requires session_id' }
+            }
+            return await artifactTestScreenshot(normalizedArgs.session_id)
+          }
+
+          case 'close': {
+            if (!normalizedArgs.session_id) {
+              return { success: false, error: 'close action requires session_id' }
+            }
+            return await closeArtifactTestSession(normalizedArgs.session_id)
+          }
+
+          default:
+            return {
+              success: false,
+              error: `Unknown artifact_test action: ${(normalizedArgs as any).action}`,
+            }
+        }
+      } catch (error: any) {
+        return {
+          success: false,
+          error: error?.message || String(error),
+        }
       }
     },
   })
@@ -1711,6 +1889,8 @@ export function registerAIHandlers() {
 
     // Track tool executions with results
     const toolTracker = new Map<string, ToolExecution>()
+    // Keep tool input accumulation scoped to this stream to avoid cross-chat bleed.
+    const accumulatedToolInputByCallId = new Map<string, string>()
 
     try {
       // Get provider config
@@ -1944,6 +2124,7 @@ If you find yourself frequently hitting limits, suggest breaking the task into m
           // Track text generated after last tool result
           let textAfterLastToolResult = ''
           let totalStreamedTextLength = 0  // Track total text sent to prevent duplicate sending
+          let streamedTextTail = '' // Track tail for spacing decisions
           let hadAnyToolCalls = false
 
           // Track tool completion for potential future todo/status integration
@@ -1980,6 +2161,7 @@ If you find yourself frequently hitting limits, suggest breaking the task into m
                   event.sender.send(`ai:chunk:${channelId}`, textChunk)
                   textAfterLastToolResult += textChunk
                   totalStreamedTextLength += textChunk.length  // Track total to prevent duplicate sending
+                  streamedTextTail = (streamedTextTail + textChunk).slice(-4)
                   // Mark that AI provided text since last tool result (harness tracking)
                   textSentSinceLastResult = true
                 }
@@ -2030,6 +2212,33 @@ If you find yourself frequently hitting limits, suggest breaking the task into m
                   currentToolInputId = startToolId
                 }
 
+                // Emit a tool call early so UI shows it before tool input progress
+                if (startToolId) {
+                  const toolName = startToolName || 'unknown_tool'
+                  if (!toolTracker.has(startToolId)) {
+                    toolTracker.set(startToolId, {
+                      id: startToolId,
+                      name: toolName,
+                      args: {},
+                      startTime: Date.now(),
+                    })
+                    event.sender.send(`ai:toolCalls:${channelId}`, [{
+                      id: startToolId,
+                      name: toolName,
+                      args: {},
+                      status: 'starting',
+                    }])
+                  } else {
+                    event.sender.send(`ai:toolCallUpdate:${channelId}`, {
+                      id: startToolId,
+                      name: toolName,
+                      args: toolTracker.get(startToolId)?.args || {},
+                      status: 'starting',
+                    })
+                  }
+                  hadAnyToolCalls = true
+                }
+
                 if (DEBUG_API_REQUESTS) {
                   console.log('[AI] tool-input-start:', { toolName: startToolName, toolId: startToolId })
                 }
@@ -2047,6 +2256,24 @@ If you find yourself frequently hitting limits, suggest breaking the task into m
                 } else if (endInput && typeof endInput === 'object' && Object.keys(endInput).length > 0) {
                   // If it's already an object, stringify it for consistency
                   accumulatedToolInput = JSON.stringify(endInput)
+                }
+
+                if (currentToolInputId && accumulatedToolInput.trim()) {
+                  accumulatedToolInputByCallId.set(currentToolInputId, accumulatedToolInput)
+
+                  const exec = toolTracker.get(currentToolInputId)
+                  if (exec && (!exec.args || Object.keys(exec.args).length === 0)) {
+                    const typeMatch = accumulatedToolInput.match(/"type"\s*:\s*"([^"]+)"/)
+                    if (typeMatch?.[1]) {
+                      exec.args = { ...exec.args, type: typeMatch[1] }
+                      event.sender.send(`ai:toolCallUpdate:${channelId}`, {
+                        id: currentToolInputId,
+                        name: exec.name,
+                        args: exec.args,
+                        status: 'starting',
+                      })
+                    }
+                  }
                 }
                 break
               }
@@ -2068,6 +2295,9 @@ If you find yourself frequently hitting limits, suggest breaking the task into m
 
                 accumulatedToolInput += safeInputDelta
                 toolInputCharCount += safeInputDelta.length
+                if (currentToolInputId) {
+                  accumulatedToolInputByCallId.set(currentToolInputId, accumulatedToolInput)
+                }
 
                 // Send progress update every 500ms or 1000 chars to avoid flooding
                 const now = Date.now()
@@ -2081,6 +2311,22 @@ If you find yourself frequently hitting limits, suggest breaking the task into m
                     toolName,
                     charCount: toolInputCharCount,
                   })
+
+                  if (toolName === 'create_artifact' && currentToolInputId) {
+                    const exec = toolTracker.get(currentToolInputId)
+                    if (exec && !exec.args?.type) {
+                      const typeMatch = accumulatedToolInput.match(/"type"\s*:\s*"([^"]+)"/)
+                      if (typeMatch?.[1]) {
+                        exec.args = { ...exec.args, type: typeMatch[1] }
+                        event.sender.send(`ai:toolCallUpdate:${channelId}`, {
+                          id: currentToolInputId,
+                          name: exec.name,
+                          args: exec.args,
+                          status: 'starting',
+                        })
+                      }
+                    }
+                  }
 
                   // Disabled: Don't stream artifact preview - wait for completion
                   // This was causing Monaco editor issues and confusing UX
@@ -2103,18 +2349,27 @@ If you find yourself frequently hitting limits, suggest breaking the task into m
                 currentToolInputName = toolName
                 toolInputCharCount = 0
 
-                toolTracker.set(toolCallId, {
-                  id: toolCallId,
-                  name: toolName,
-                  args: {},
-                  startTime: Date.now(),
-                })
-                event.sender.send(`ai:toolCalls:${channelId}`, [{
-                  id: toolCallId,
-                  name: toolName,
-                  args: {},
-                  status: 'starting',
-                }])
+                if (!toolTracker.has(toolCallId)) {
+                  toolTracker.set(toolCallId, {
+                    id: toolCallId,
+                    name: toolName,
+                    args: {},
+                    startTime: Date.now(),
+                  })
+                  event.sender.send(`ai:toolCalls:${channelId}`, [{
+                    id: toolCallId,
+                    name: toolName,
+                    args: {},
+                    status: 'starting',
+                  }])
+                } else {
+                  event.sender.send(`ai:toolCallUpdate:${channelId}`, {
+                    id: toolCallId,
+                    name: toolName,
+                    args: toolTracker.get(toolCallId)?.args || {},
+                    status: 'starting',
+                  })
+                }
                 hadAnyToolCalls = true
                 break
               }
@@ -2291,6 +2546,8 @@ If you find yourself frequently hitting limits, suggest breaking the task into m
           if (finalText && totalStreamedTextLength === 0) {
             event.sender.send(`ai:chunk:${channelId}`, finalText)
             textAfterLastToolResult = finalText
+            totalStreamedTextLength += finalText.length
+            streamedTextTail = (streamedTextTail + finalText).slice(-4)
           }
 
           // Get usage stats
@@ -2408,10 +2665,25 @@ Be concise but informative. The user needs to understand what happened.`,
 
               clearTimeout(summaryTimeout)
 
+              // Ensure a blank line before the summary if text already streamed
+              const needsBlankLine = totalStreamedTextLength > 0
+              if (needsBlankLine) {
+                const hasDoubleNewline = streamedTextTail.endsWith('\n\n')
+                const hasSingleNewline = !hasDoubleNewline && streamedTextTail.endsWith('\n')
+                const prefix = hasDoubleNewline ? '' : (hasSingleNewline ? '\n' : '\n\n')
+                if (prefix) {
+                  event.sender.send(`ai:chunk:${channelId}`, prefix)
+                  totalStreamedTextLength += prefix.length
+                  streamedTextTail = (streamedTextTail + prefix).slice(-4)
+                }
+              }
+
               // Stream the summary
               for await (const chunk of summaryResult.textStream) {
                 if (abortController.signal.aborted) break
                 event.sender.send(`ai:chunk:${channelId}`, chunk)
+                totalStreamedTextLength += chunk.length
+                streamedTextTail = (streamedTextTail + chunk).slice(-4)
               }
 
               // Add summary usage to totals
@@ -2424,12 +2696,32 @@ Be concise but informative. The user needs to understand what happened.`,
             } catch (summaryError: any) {
               console.warn('[AI] Failed to generate summary:', summaryError.message)
               // Send a fallback message with tool results and artifacts
-              let fallbackSummary = `\n\n---\n**Task Complete**\n${buildToolContext(toolTracker)}`
+              let fallbackSummary = `---\n**Task Complete**\n${buildToolContext(toolTracker)}`
               if (subAgentArtifacts.length > 0) {
                 fallbackSummary += `\n\n**Artifacts Created:**\n${subAgentArtifacts.map(a => `- ${a.title} (${a.type})`).join('\n')}\n\nCheck the Canvas panel to view.`
               }
+              if (totalStreamedTextLength > 0) {
+                const hasDoubleNewline = streamedTextTail.endsWith('\n\n')
+                const hasSingleNewline = !hasDoubleNewline && streamedTextTail.endsWith('\n')
+                const prefix = hasDoubleNewline ? '' : (hasSingleNewline ? '\n' : '\n\n')
+                if (prefix) {
+                  fallbackSummary = prefix + fallbackSummary
+                }
+              }
               event.sender.send(`ai:chunk:${channelId}`, fallbackSummary)
             }
+          }
+
+          // Some providers occasionally end after tools without returning assistant text.
+          // Emit a small fallback so the renderer doesn't persist an opaque placeholder.
+          if (!abortController.signal.aborted && totalStreamedTextLength === 0) {
+            const usedToolsOrAgents = toolTracker.size > 0 || activeAgents.length > 0
+            const fallbackText = usedToolsOrAgents
+              ? 'Completed requested tool actions.'
+              : 'No response text was returned. Please retry.'
+            event.sender.send(`ai:chunk:${channelId}`, fallbackText)
+            totalStreamedTextLength += fallbackText.length
+            streamedTextTail = (streamedTextTail + fallbackText).slice(-4)
           }
 
           const totalTokens = promptTokens + completionTokens

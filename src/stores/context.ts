@@ -28,7 +28,9 @@ interface ContextState {
   warningThreshold: number   // Default 0.70 (70%)
   autoCompact: boolean
 
-  // Compaction state
+  // Per-conversation compaction state
+  compactingConversations: Record<string, boolean>
+  // Backward-compatible aggregate flag (true if any conversation is compacting)
   isCompacting: boolean
 
   // Actions
@@ -53,7 +55,8 @@ interface ContextState {
   clearConversationContext: (conversationId: string) => void
   setAutoCompact: (enabled: boolean) => void
   setCompactionThreshold: (threshold: number) => void
-  setIsCompacting: (isCompacting: boolean) => void
+  isConversationCompacting: (conversationId: string) => boolean
+  setConversationCompacting: (conversationId: string, isCompacting: boolean) => void
 }
 
 export const useContextStore = create<ContextState>((set, get) => ({
@@ -61,6 +64,7 @@ export const useContextStore = create<ContextState>((set, get) => ({
   compactionThreshold: COMPACTION_THRESHOLDS.COMPACT,
   warningThreshold: COMPACTION_THRESHOLDS.WARNING,
   autoCompact: true,
+  compactingConversations: {},
   isCompacting: false,
 
   initConversationContext: async (conversationId, providerId, modelId) => {
@@ -170,7 +174,12 @@ export const useContextStore = create<ContextState>((set, get) => ({
   clearConversationContext: (conversationId) => {
     set((state) => {
       const { [conversationId]: _, ...rest } = state.conversationContexts
-      return { conversationContexts: rest }
+      const { [conversationId]: __, ...restCompacting } = state.compactingConversations
+      return {
+        conversationContexts: rest,
+        compactingConversations: restCompacting,
+        isCompacting: Object.values(restCompacting).some(Boolean),
+      }
     })
   },
 
@@ -178,7 +187,22 @@ export const useContextStore = create<ContextState>((set, get) => ({
 
   setCompactionThreshold: (threshold) => set({ compactionThreshold: threshold }),
 
-  setIsCompacting: (isCompacting) => set({ isCompacting }),
+  isConversationCompacting: (conversationId) => !!get().compactingConversations[conversationId],
+
+  setConversationCompacting: (conversationId, isCompacting) => {
+    set((state) => {
+      const nextCompacting = { ...state.compactingConversations }
+      if (isCompacting) {
+        nextCompacting[conversationId] = true
+      } else {
+        delete nextCompacting[conversationId]
+      }
+      return {
+        compactingConversations: nextCompacting,
+        isCompacting: Object.values(nextCompacting).some(Boolean),
+      }
+    })
+  },
 }))
 
 // Utility function to estimate tokens (rough approximation: ~4 chars per token)

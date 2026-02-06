@@ -35,6 +35,12 @@ const ACCEPTED_EXTENSIONS = '.png,.jpg,.jpeg,.gif,.webp,.txt,.md,.json,.pdf,.doc
 
 // Line threshold for collapsing pasted content
 const PASTE_COLLAPSE_THRESHOLD = 10
+const NEW_CHAT_DRAFT_KEY = '__new__'
+const chatDraftsByConversation = new Map<string, string>()
+
+function getDraftKey(conversationId: string | null): string {
+  return conversationId || NEW_CHAT_DRAFT_KEY
+}
 
 interface ChatInputProps {
   disabled?: boolean
@@ -61,6 +67,30 @@ export function ChatInput({ disabled, isStreaming, centered }: ChatInputProps) {
   // const recordingTimerRef = useRef<NodeJS.Timeout | null>(null)
   const { sendMessage, stopStreaming, messageQueue, activeConversationId } = useChatStore()
   const { activeProviderId, activeModel } = useProviderStore()
+
+  const resizeTextarea = useCallback((content: string) => {
+    const textarea = textareaRef.current
+    if (!textarea) return
+
+    textarea.style.height = 'auto'
+    // Chat view (not centered): compact 1-line style, grows as needed
+    // Welcome screen (centered): taller 4-line style
+    const minHeight = centered ? 96 : 24
+    const maxHeight = centered ? 200 : 150
+    if (!content) {
+      textarea.style.height = `${minHeight}px`
+      return
+    }
+    const newHeight = Math.max(textarea.scrollHeight, minHeight)
+    textarea.style.height = `${Math.min(newHeight, maxHeight)}px`
+  }, [centered])
+
+  // Restore draft when switching conversations (including new-chat view)
+  useEffect(() => {
+    const draft = chatDraftsByConversation.get(getDraftKey(activeConversationId)) || ''
+    setInput(draft)
+    resizeTextarea(draft)
+  }, [activeConversationId, resizeTextarea])
 
   // Robust focus management - handles view transitions and dialog dismissals
   useEffect(() => {
@@ -242,6 +272,7 @@ export function ChatInput({ disabled, isStreaming, centered }: ChatInputProps) {
 
   const handleSubmit = useCallback(async () => {
     if ((!input.trim() && attachments.length === 0) || !activeProviderId || !activeModel) return
+    const trimmedInput = input.trim()
 
     // Convert attachments to MessageAttachment format
     const messageAttachments: MessageAttachment[] = await Promise.all(
@@ -275,20 +306,21 @@ export function ChatInput({ disabled, isStreaming, centered }: ChatInputProps) {
       })
     )
 
-    sendMessage(
-      input.trim(),
-      activeProviderId,
-      activeModel,
-      messageAttachments.length > 0 ? messageAttachments : undefined
-    )
-    setInput('')
-    setAttachments([])
-
-    // Reset textarea height to appropriate min for context
-    if (textareaRef.current) {
-      textareaRef.current.style.height = 'auto'
+    try {
+      await sendMessage(
+        trimmedInput,
+        activeProviderId,
+        activeModel,
+        messageAttachments.length > 0 ? messageAttachments : undefined
+      )
+      setInput('')
+      chatDraftsByConversation.delete(getDraftKey(activeConversationId))
+      setAttachments([])
+      resizeTextarea('')
+    } catch (error) {
+      console.error('[ChatInput] Failed to send message:', error)
     }
-  }, [input, attachments, activeProviderId, activeModel, sendMessage, centered])
+  }, [input, attachments, activeProviderId, activeModel, sendMessage, activeConversationId, resizeTextarea])
 
   const handleKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === 'Enter' && !e.shiftKey) {
@@ -298,19 +330,15 @@ export function ChatInput({ disabled, isStreaming, centered }: ChatInputProps) {
   }
 
   const handleInput = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
-    setInput(e.target.value)
-
-    // Auto-resize textarea (only grow beyond min height)
-    const textarea = textareaRef.current
-    if (textarea) {
-      textarea.style.height = 'auto'
-      // Chat view (not centered): compact 1-line style, grows as needed
-      // Welcome screen (centered): taller 4-line style
-      const minHeight = centered ? 96 : 24 // 4 lines vs 1 line
-      const maxHeight = centered ? 200 : 150 // Allow less growth in chat view
-      const newHeight = Math.max(textarea.scrollHeight, minHeight)
-      textarea.style.height = `${Math.min(newHeight, maxHeight)}px`
+    const nextValue = e.target.value
+    setInput(nextValue)
+    const draftKey = getDraftKey(activeConversationId)
+    if (nextValue) {
+      chatDraftsByConversation.set(draftKey, nextValue)
+    } else {
+      chatDraftsByConversation.delete(draftKey)
     }
+    resizeTextarea(nextValue)
   }
 
   const handleStop = () => {

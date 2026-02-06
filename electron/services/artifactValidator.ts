@@ -16,6 +16,7 @@ export interface ValidationResult {
 function validateHtml(content: string): ValidationResult {
   const errors: string[] = []
   const warnings: string[] = []
+  let hasMalformedUndefinedAttribute = false
 
   try {
     // Check for basic HTML structure
@@ -29,6 +30,12 @@ function validateHtml(content: string): ValidationResult {
     while ((match = tagRegex.exec(content)) !== null) {
       const fullMatch = match[0]
       const tagName = match[1].toLowerCase()
+
+      // Guard against malformed tool-call repairs that inject "undefined" into quoted attributes
+      // Example bad pattern: id=undefinedgameCanvasundefined (expected id="gameCanvas")
+      if (!hasMalformedUndefinedAttribute && /\s[a-zA-Z_:][\w:.-]*\s*=\s*undefined[^>\s]*undefined/i.test(fullMatch)) {
+        hasMalformedUndefinedAttribute = true
+      }
 
       // Skip self-closing tags and void elements
       const voidElements = ['area', 'base', 'br', 'col', 'embed', 'hr', 'img', 'input', 'link', 'meta', 'param', 'source', 'track', 'wbr']
@@ -72,6 +79,10 @@ function validateHtml(content: string): ValidationResult {
     // Check for common issues
     if (content.includes('undefined') && content.includes('<script')) {
       warnings.push('Content contains "undefined" - possible uninitialized variable')
+    }
+
+    if (hasMalformedUndefinedAttribute) {
+      errors.push('Malformed HTML attribute values detected (contains "undefined...undefined" around attribute values). Regenerate with proper quoted attributes.')
     }
 
   } catch (e: any) {

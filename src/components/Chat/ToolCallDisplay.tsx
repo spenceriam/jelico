@@ -31,6 +31,7 @@ const TOOL_LABELS: Record<string, string> = {
   // Artifacts
   create_artifact: 'Create Artifact',
   update_artifact: 'Update Artifact',
+  artifact_test: 'Test Artifact',
   // Sub-agents - spawn_agent handled specially below
   spawn_agent: 'Sub-agent',
   get_agent_status: 'Check Agent',
@@ -138,6 +139,32 @@ function formatToolResult(result: unknown): { content: string; isError: boolean 
       return { content: String(obj.message), isError: false }
     }
 
+    // Artifact test sessions list
+    if (obj.sessions && Array.isArray(obj.sessions)) {
+      if (obj.sessions.length === 0) {
+        return { content: 'No active artifact test sessions', isError: false }
+      }
+      const content = obj.sessions
+        .map((session: any) => {
+          const title = session.artifactTitle || session.artifactId || 'Untitled'
+          return `• ${session.sessionId} (${title})`
+        })
+        .join('\n')
+      return { content, isError: false }
+    }
+
+    // Artifact test open/screenshot summaries
+    if (obj.sessionId || (obj.path && obj.width && obj.height)) {
+      const lines: string[] = []
+      if (obj.sessionId) lines.push(`Session: ${obj.sessionId}`)
+      if (obj.artifactTitle) lines.push(`Artifact: ${obj.artifactTitle}`)
+      if (obj.revision) lines.push(`Revision: v${obj.revision}`)
+      if (obj.path) lines.push(`Screenshot: ${obj.path}`)
+      if (obj.width && obj.height) lines.push(`Viewport: ${obj.width}x${obj.height}`)
+      if (obj.value !== undefined) lines.push(`Value: ${JSON.stringify(obj.value)}`)
+      return { content: lines.join('\n') || JSON.stringify(obj, null, 2), isError: false }
+    }
+
     // Default: pretty JSON
     return { content: JSON.stringify(result, null, 2), isError: false }
   }
@@ -218,6 +245,25 @@ export function SingleToolCallDisplay({
       case 'update_artifact':
         if (args.title) return `${baseName}: ${String(args.title).slice(0, 30)}`
         break
+      case 'artifact_test': {
+        const action = args.action ? String(args.action).replace(/_/g, ' ') : ''
+        if (action === 'click' && args.selector) {
+          return `${baseName}: click ${String(args.selector).slice(0, 30)}`
+        }
+        if (action === 'type' && args.selector) {
+          return `${baseName}: type ${String(args.selector).slice(0, 30)}`
+        }
+        if (action === 'wait for' && (args.selector || args.text)) {
+          return `${baseName}: wait for`
+        }
+        if (action === 'open' && args.artifact_id) {
+          return `${baseName}: open ${String(args.artifact_id).slice(0, 12)}`
+        }
+        if (action) {
+          return `${baseName}: ${action}`
+        }
+        break
+      }
     }
 
     return baseName
@@ -226,9 +272,64 @@ export function SingleToolCallDisplay({
   const hasResult = toolResult !== undefined
   const formattedResult = hasResult ? formatToolResult(toolResult.result) : null
 
+  const formatArtifactType = () => {
+    const rawType = String(toolCall.args?.type || '').toLowerCase()
+    const rawLang = String(toolCall.args?.language || '').toLowerCase()
+    const rawTitle = String(toolCall.args?.title || '').toLowerCase()
+    const rawContent = typeof toolCall.args?.content === 'string'
+      ? toolCall.args.content.slice(0, 240).toLowerCase()
+      : ''
+    const capitalize = (value: string) => value ? value.charAt(0).toUpperCase() + value.slice(1) : value
+
+    switch (rawType) {
+      case 'html':
+        return 'HTML page'
+      case 'svg':
+        return 'SVG graphic'
+      case 'mermaid':
+        return 'diagram'
+      case 'document':
+        return 'document'
+      case 'code':
+        return rawLang ? `${capitalize(rawLang)} code` : 'code'
+      default:
+        if (rawTitle.endsWith('.html') || rawTitle.endsWith('.htm') || rawContent.includes('<html')) {
+          return 'HTML page'
+        }
+        if (rawTitle.endsWith('.svg') || rawContent.includes('<svg')) {
+          return 'SVG graphic'
+        }
+        if (
+          rawTitle.endsWith('.mmd') ||
+          rawContent.includes('graph ') ||
+          rawContent.includes('flowchart') ||
+          rawContent.includes('sequencediagram')
+        ) {
+          return 'diagram'
+        }
+        if (rawTitle.endsWith('.md') || rawTitle.endsWith('.markdown')) {
+          return 'markdown document'
+        }
+        if (rawTitle.endsWith('.txt')) {
+          return 'text document'
+        }
+        if (rawLang) {
+          return `${capitalize(rawLang)} code`
+        }
+        return rawType ? rawType : 'artifact'
+    }
+  }
+
   // Use explicit status if available, otherwise infer from result presence
   const status = toolCall.status || (hasResult ? 'complete' : (isStreaming ? 'executing' : 'complete'))
   const isInProgress = status === 'starting' || status === 'executing'
+
+  const isExpandable = (() => {
+    if (toolCall.name === 'create_artifact' && !hasResult && !formattedResult?.isError) {
+      return false
+    }
+    return true
+  })()
 
   // Get artifact info if this is a create_artifact call
   const artifactTitle = toolCall.name === 'create_artifact' && toolCall.args?.title
@@ -249,13 +350,19 @@ export function SingleToolCallDisplay({
     <div className="border border-border rounded-lg overflow-hidden bg-bg-deep">
       {/* Header */}
       <button
-        onClick={() => setExpanded(!expanded)}
-        className="w-full flex items-center gap-2 px-3 py-2 hover:bg-bg-hover transition-colors text-left"
+        onClick={isExpandable ? () => setExpanded(!expanded) : undefined}
+        className={`w-full flex items-center gap-2 px-3 py-2 text-left ${
+          isExpandable ? 'hover:bg-bg-hover transition-colors' : ''
+        }`}
       >
-        {expanded ? (
-          <ChevronDown className="w-4 h-4 text-text-muted flex-shrink-0" />
+        {isExpandable ? (
+          expanded ? (
+            <ChevronDown className="w-4 h-4 text-text-muted flex-shrink-0" />
+          ) : (
+            <ChevronRight className="w-4 h-4 text-text-muted flex-shrink-0" />
+          )
         ) : (
-          <ChevronRight className="w-4 h-4 text-text-muted flex-shrink-0" />
+          <span className="w-4 h-4 flex-shrink-0" />
         )}
 
         <span className="text-sm font-medium text-accent flex-1 truncate">{label}</span>
@@ -291,7 +398,7 @@ export function SingleToolCallDisplay({
         <div className="px-3 py-2 border-t border-border bg-bg-surface flex items-center gap-2">
           <Loader2 className="w-3 h-3 animate-spin text-accent" />
           <span className="text-xs text-text-muted">
-            Creating {toolCall.args?.title ? `"${String(toolCall.args.title)}"` : 'artifact'}...
+            Creating {formatArtifactType()}...
           </span>
         </div>
       )}
@@ -318,7 +425,7 @@ export function SingleToolCallDisplay({
       )}
 
       {/* Expanded content - collapsible sections */}
-      {expanded && (
+      {expanded && isExpandable && (
         <div className="border-t border-border bg-bg-surface">
           {/* Sub-agent live status when expanded - pulsing dot instead of spinner (header already has spinner) */}
           {toolCall.name === 'spawn_agent' && subAgent && (subAgent.status === 'running' || subAgent.status === 'pending') && subAgent.latestUpdate && (
@@ -387,7 +494,17 @@ export function ToolCallDisplay({ toolCalls, toolResults = [], isStreaming }: To
 
   return (
     <div className="space-y-2 my-3">
-      {/* Completed actions - collapsible section */}
+      {/* Active tool calls - shown normally */}
+      {activeTools.map((toolCall, index) => (
+        <SingleToolCallDisplay
+          key={toolCall.id || `active-${index}`}
+          toolCall={toolCall}
+          toolResult={resultsMap.get(toolCall.id)}
+          isStreaming={isStreaming}
+        />
+      ))}
+
+      {/* Completed actions - collapsible section (shown last) */}
       {completedTools.length > 0 && (
         <div className="border border-border rounded-lg overflow-hidden bg-bg-deep">
           <button
@@ -419,16 +536,6 @@ export function ToolCallDisplay({ toolCalls, toolResults = [], isStreaming }: To
           )}
         </div>
       )}
-
-      {/* Active tool calls - shown normally */}
-      {activeTools.map((toolCall, index) => (
-        <SingleToolCallDisplay
-          key={toolCall.id || `active-${index}`}
-          toolCall={toolCall}
-          toolResult={resultsMap.get(toolCall.id)}
-          isStreaming={isStreaming}
-        />
-      ))}
     </div>
   )
 }

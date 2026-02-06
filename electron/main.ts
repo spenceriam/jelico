@@ -18,9 +18,21 @@ import { registerCompactionHandlers } from './ipc/compaction'
 import { registerUpdateHandlers } from './ipc/updates'
 import { registerWindowHandlers } from './ipc/window'
 
+const APP_DISPLAY_NAME = 'Jelico'
+
 // Get version and git info
 const packageJson = require('../package.json')
 const APP_VERSION = packageJson.version
+
+// Ensure OS-level app naming is consistent in dev and production.
+// NOTE: Changing app name in dev can invalidate safeStorage key context and make
+// previously saved API keys unreadable. Keep the default Electron name in dev.
+if (app.isPackaged) {
+  app.setName(APP_DISPLAY_NAME)
+  if (process.platform === 'win32') {
+    app.setAppUserModelId('com.jelico.app')
+  }
+}
 
 function getGitHash(): string {
   try {
@@ -180,6 +192,7 @@ function createWindow() {
     height: 900,
     minWidth: 800,
     minHeight: 600,
+    title: APP_DISPLAY_NAME,
     frame: true,
     titleBarStyle: process.platform === 'darwin' ? 'hiddenInset' : 'default',
     backgroundColor: '#08080a',

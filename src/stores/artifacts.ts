@@ -120,6 +120,40 @@ export const useArtifactStore = create<ArtifactStore>((set, get) => ({
 
   addArtifact: async (artifact) => {
     try {
+      const normalizedTitle = artifact.title.trim().toLowerCase()
+      const existing = get()
+        .artifacts
+        .filter((a) =>
+          a.conversationId === artifact.conversationId &&
+          a.type === artifact.type &&
+          a.title.trim().toLowerCase() === normalizedTitle
+        )
+        .sort((a, b) => b.updatedAt - a.updatedAt)[0]
+
+      if (existing) {
+        const updatedRow: ArtifactRow | null = await window.jelico.artifacts.update(existing.id, {
+          conversationId: artifact.conversationId,
+          type: artifact.type,
+          title: artifact.title,
+          content: artifact.content,
+          language: artifact.language,
+          filePath: artifact.filePath,
+        })
+
+        if (updatedRow) {
+          const updatedArtifact = rowToArtifact(updatedRow)
+          set((state) => ({
+            artifacts: state.artifacts.map((a) =>
+              a.id === existing.id ? updatedArtifact : a
+            ),
+            selectedArtifactId: updatedArtifact.id,
+            selectedRevisionId: null,
+            canvasOpen: true,
+          }))
+          return updatedArtifact
+        }
+      }
+
       const row: ArtifactRow = await window.jelico.artifacts.create({
         conversationId: artifact.conversationId,
         type: artifact.type,

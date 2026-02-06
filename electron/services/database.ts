@@ -690,7 +690,29 @@ interface ArtifactInput {
 // Files are stored at: ~/.config/jelico/artifacts/{conversation-id}/{artifact-id}.{ext}
 export const artifactDb = {
   list(): ArtifactRow[] {
-    return [...db.artifacts].sort((a, b) => b.updated_at - a.updated_at)
+    // Return only the latest revision for each base artifact across all conversations.
+    const latestByBase = new Map<string, ArtifactRow>()
+    for (const artifact of db.artifacts) {
+      const baseId = artifact.base_artifact_id || artifact.id
+      const existing = latestByBase.get(baseId)
+      if (!existing || artifact.revision > existing.revision) {
+        latestByBase.set(baseId, artifact)
+      }
+    }
+
+    const result: ArtifactRow[] = []
+    for (const artifact of latestByBase.values()) {
+      if (artifact.file_path && artifactFileExists(artifact.file_path)) {
+        const content = readArtifactFile(artifact.file_path)
+        if (content !== null) {
+          result.push({ ...artifact, content })
+          continue
+        }
+      }
+      result.push(artifact)
+    }
+
+    return result.sort((a, b) => b.updated_at - a.updated_at)
   },
 
   get(id: string): ArtifactRow | null {
