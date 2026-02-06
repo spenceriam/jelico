@@ -1,7 +1,11 @@
-import { ipcMain, BrowserWindow, shell } from 'electron'
+import { app, ipcMain, BrowserWindow, shell } from 'electron'
 import { checkForUpdates, downloadLatestUpdate } from '../services/updates'
 
 export function registerUpdateHandlers() {
+  ipcMain.handle('updates:currentVersion', async () => {
+    return app.getVersion()
+  })
+
   ipcMain.handle('updates:check', async () => {
     return checkForUpdates()
   })

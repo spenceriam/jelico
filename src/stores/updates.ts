@@ -2,12 +2,14 @@ import { create } from 'zustand'
 
 interface UpdatesState {
   info: UpdateInfo | null
+  currentVersion: string | null
   isChecking: boolean
   isDownloading: boolean
   downloadProgress: UpdateDownloadProgress | null
   lastChecked: number | null
   lastDownloadedTo: string | null
   error: string | null
+  loadCurrentVersion: () => Promise<string | null>
   checkForUpdates: (options?: { force?: boolean }) => Promise<UpdateInfo | null>
   downloadUpdate: () => Promise<UpdateDownloadResult | null>
   startListening: () => () => void
@@ -15,12 +17,23 @@ interface UpdatesState {
 
 export const useUpdateStore = create<UpdatesState>((set, get) => ({
   info: null,
+  currentVersion: null,
   isChecking: false,
   isDownloading: false,
   downloadProgress: null,
   lastChecked: null,
   lastDownloadedTo: null,
   error: null,
+
+  loadCurrentVersion: async () => {
+    try {
+      const version = await window.jelico.updates.getCurrentVersion()
+      set({ currentVersion: version })
+      return version
+    } catch {
+      return null
+    }
+  },
 
   checkForUpdates: async (options) => {
     const { isChecking, lastChecked, info } = get()
@@ -37,6 +50,7 @@ export const useUpdateStore = create<UpdatesState>((set, get) => ({
       const info = await window.jelico.updates.check()
       set({
         info,
+        currentVersion: info.currentVersion,
         isChecking: false,
         lastChecked: Date.now(),
       })
@@ -45,6 +59,7 @@ export const useUpdateStore = create<UpdatesState>((set, get) => ({
       set({
         isChecking: false,
         error: error instanceof Error ? error.message : 'Update check failed.',
+        lastChecked: Date.now(),
       })
       return null
     }

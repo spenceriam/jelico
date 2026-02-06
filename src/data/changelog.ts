@@ -21,6 +21,20 @@ export interface ChangelogEntry {
 
 export const changelog: ChangelogEntry[] = [
   {
+    version: '0.11.1',
+    date: '2026-02-06',
+    changes: {
+      changed: [
+        'Update checks are now manual-only from Settings to reduce GitHub API pressure and avoid startup rate-limit noise',
+        'Update attention indicator now appears on Settings instead of a dedicated download icon in the header',
+      ],
+      fixed: [
+        'Updates panel now shows explicit status for all outcomes: up to date, update available, or running newer than latest release',
+        'Current version now displays immediately from local app metadata without requiring a release API call',
+      ],
+    },
+  },
+  {
     version: '0.11.0',
     date: '2026-02-06',
     changes: {

@@ -1,4 +1,4 @@
-import { Settings, Presentation, Download } from 'lucide-react'
+import { Settings, Presentation } from 'lucide-react'
 import { useUIStore } from '../../stores/ui'
 import { useArtifactStore } from '../../stores/artifacts'
 import { useChatStore } from '../../stores/chat'
@@ -29,17 +29,6 @@ export function Header() {
 
       {/* Right - Canvas & Settings */}
       <div className="flex items-center gap-2">
-        {updateAvailable && (
-          <button
-            onClick={() => openSettings('general')}
-            className="p-2 rounded-md transition-colors relative text-accent hover:bg-bg-surface"
-            title="Update available"
-          >
-            <Download className="w-5 h-5" />
-            <span className="absolute -top-0.5 -right-0.5 w-2 h-2 bg-accent rounded-full" />
-          </button>
-        )}
-
         {/* Canvas toggle button */}
         <button
           onClick={toggleCanvas}
@@ -61,10 +50,13 @@ export function Header() {
         {sidebarCollapsed && (
           <button
             onClick={() => openSettings()}
-            className="p-2 text-text-muted hover:text-text-primary hover:bg-bg-surface rounded-md transition-colors"
+            className="p-2 text-text-muted hover:text-text-primary hover:bg-bg-surface rounded-md transition-colors relative"
             title="Settings"
           >
             <Settings className="w-5 h-5" />
+            {updateAvailable && (
+              <span className="absolute -top-0.5 -right-0.5 w-2 h-2 bg-accent rounded-full" />
+            )}
           </button>
         )}
       </div>

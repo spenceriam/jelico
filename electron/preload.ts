@@ -204,6 +204,7 @@ contextBridge.exposeInMainWorld('jelico', {
     },
   },
   updates: {
+    getCurrentVersion: () => ipcRenderer.invoke('updates:currentVersion'),
     check: () => ipcRenderer.invoke('updates:check'),
     download: () => ipcRenderer.invoke('updates:download'),
     openRelease: (url: string) => ipcRenderer.invoke('updates:openRelease', url),
