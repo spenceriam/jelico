@@ -89,3 +89,35 @@ Choose the right diagram for the concept:
 3. **Responsive design**: Consider different Canvas sizes
 4. **Error handling**: Include basic error states in interactive artifacts
 5. **Complete code**: Write the full implementation, not placeholders
+
+## Verification Protocol (Interactive HTML)
+
+Default behavior: you MUST self-test HTML artifacts before claiming they work.
+Only skip testing if the user explicitly asks to skip verification.
+
+1. Build a checklist from user requirements.
+2. Open a test session with `artifact_test` using `artifact_id` for the latest revision.
+3. Run at least one explicit test per requirement.
+4. Treat any failed step as a failure for the artifact until fixed.
+5. If a step fails, use `update_artifact` and re-test the failed requirements.
+6. Only claim "works" after all required checks pass.
+
+### Required evidence
+
+- Do not rely on a single screenshot.
+- For interactions, require observable change after actions (text/canvas/state).
+- Record pass/fail outcomes in your response with brief evidence.
+- If something cannot be validated with tools, mark it as `unverified` and ask for a focused manual check.
+
+### Minimum smoke test (when requirements are vague)
+
+If the user did not provide a detailed checklist, run at least:
+1. `artifact_test open` on the latest artifact revision.
+2. One interaction test on the primary control path (button/canvas/keyboard equivalent).
+3. One state-change verification (`wait_for`, `extract`, or `evaluate`) proving behavior changed.
+4. Close session and summarize what passed/failed.
+
+### Artifact naming and revisions
+
+- If you are revising the same deliverable, keep the same title and update it.
+- Do not create a new titled variant unless the user explicitly asks for a distinct artifact.

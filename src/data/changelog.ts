@@ -21,6 +21,28 @@ export interface ChangelogEntry {
 
 export const changelog: ChangelogEntry[] = [
   {
+    version: '0.11.0',
+    date: '2026-02-06',
+    changes: {
+      added: [
+        'Artifact testing tool now supports hidden browser sessions for open/click/type/evaluate/extract/wait/screenshot workflows',
+        'Regenerate now warns before deleting artifacts created by the last assistant turn',
+        'Regenerate impact preview now lists affected artifacts before confirmation',
+      ],
+      changed: [
+        'HTML artifact workflow now requires self-testing by default unless users explicitly ask to skip verification',
+        'Artifact verification guidance now enforces requirement-by-requirement pass/fail reporting',
+        'Regenerate artifact cleanup now targets artifacts created by the assistant turn instead of broad timestamp-only matching',
+      ],
+      fixed: [
+        'Artifact test open no longer times out after successful loads due to load-event race conditions',
+        'Artifact test click now fails when no observable UI change occurs, preventing false-positive validation claims',
+        'Artifact test now accepts both snake_case and camelCase session/action parameter aliases',
+        'HTML artifact validation now rejects malformed undefined-wrapped attribute values before artifact creation',
+      ],
+    },
+  },
+  {
     version: '0.10.1',
     date: '2026-02-05',
     changes: {

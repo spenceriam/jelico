@@ -20,10 +20,32 @@ import { formatElapsedTime } from '../../utils/format'
 const MIN_STATUS_DISPLAY_MS = 600
 
 export function ChatArea() {
-  const { messages, isStreaming, streamingContent, streamingToolCalls, streamingToolResults, streamingSegments, systemNotifications, activeConversationId, regenerateLastResponse, modeSwitchReason, modeTransitioning, lastCompletedTool, statusDisplayQueue, toolInputProgress, streamingStartTime } = useChatStore()
+  const {
+    messages,
+    isStreaming,
+    streamingContent,
+    streamingToolCalls,
+    streamingToolResults,
+    streamingSegments,
+    systemNotifications,
+    activeConversationId,
+    regenerateLastResponse,
+    modeSwitchReason,
+    modeTransitioning,
+    lastCompletedTool,
+    statusDisplayQueue,
+    toolInputProgress,
+    streamingStartTime,
+    interruptedConversations,
+    resumeInterruptedConversation,
+    dismissInterruptedConversation,
+    getRegenerateArtifactImpact,
+    error,
+    clearError,
+  } = useChatStore()
   const { activeProviderId, activeModel } = useProviderStore()
   const { isProcessing, processingMessage } = useUIStore()
-  const { isCompacting } = useContextStore()
+  const { isConversationCompacting } = useContextStore()
   const { setActiveRequest } = useClarificationStore()
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const [userName, setUserName] = useState<string | null>(null)
@@ -71,8 +93,85 @@ export function ChatArea() {
   // Handler for regenerating the last response
   const handleRegenerate = useCallback(async () => {
     if (!activeProviderId || !activeModel) return
+
+    const impact = getRegenerateArtifactImpact()
+    if (impact.artifacts.length > 0) {
+      const previewLines = impact.artifacts
+        .slice(0, 5)
+        .map((artifact) => `- ${artifact.title}`)
+      const remaining = impact.artifacts.length - previewLines.length
+      const body = [
+        `Regenerating this response will delete ${impact.artifacts.length} artifact(s) created by that turn.`,
+        '',
+        ...previewLines,
+        remaining > 0 ? `- ...and ${remaining} more` : null,
+        '',
+        'This also removes their files from the workspace/sandbox.',
+        'Do you want to continue?',
+      ]
+        .filter(Boolean)
+        .join('\n')
+
+      if (!window.confirm(body)) {
+        return
+      }
+    }
+
     await regenerateLastResponse(activeProviderId, activeModel)
-  }, [activeProviderId, activeModel, regenerateLastResponse])
+  }, [activeProviderId, activeModel, getRegenerateArtifactImpact, regenerateLastResponse])
+
+  const interruptedStream = activeConversationId
+    ? interruptedConversations[activeConversationId]
+    : null
+  const isCompacting = activeConversationId
+    ? isConversationCompacting(activeConversationId)
+    : false
+
+  const formatArtifactType = (args: Record<string, unknown>) => {
+    const rawType = String(args.type || '').toLowerCase()
+    const rawLang = String(args.language || '').toLowerCase()
+    const rawTitle = String(args.title || '').toLowerCase()
+    const capitalize = (value: string) => (value ? value.charAt(0).toUpperCase() + value.slice(1) : value)
+
+    if (rawType === 'html' || rawTitle.endsWith('.html') || rawTitle.endsWith('.htm')) return 'HTML page'
+    if (rawType === 'svg' || rawTitle.endsWith('.svg')) return 'SVG graphic'
+    if (rawType === 'mermaid' || rawTitle.endsWith('.mmd')) return 'diagram'
+    if (rawType === 'document') return rawTitle.endsWith('.md') ? 'markdown document' : 'document'
+    if (rawType === 'code') return rawLang ? `${capitalize(rawLang)} code` : 'code'
+    if (rawLang) return `${capitalize(rawLang)} code`
+    return rawType || 'artifact'
+  }
+
+  const formatArtifactTestStatus = (args: Record<string, unknown>, completed: boolean) => {
+    const action = String(args.action || '').toLowerCase()
+    if (completed) {
+      switch (action) {
+        case 'open': return 'Artifact test session ready'
+        case 'click': return 'Artifact interaction complete'
+        case 'type': return 'Artifact input complete'
+        case 'evaluate': return 'Artifact check complete'
+        case 'extract': return 'Artifact content captured'
+        case 'wait_for': return 'Artifact state confirmed'
+        case 'screenshot': return 'Artifact screenshot captured'
+        case 'close': return 'Artifact test session closed'
+        case 'list_sessions': return 'Artifact sessions listed'
+        default: return 'Artifact test complete'
+      }
+    }
+
+    switch (action) {
+      case 'open': return 'Opening artifact test session...'
+      case 'click': return 'Testing artifact interaction...'
+      case 'type': return 'Typing into artifact...'
+      case 'evaluate': return 'Evaluating artifact state...'
+      case 'extract': return 'Extracting artifact content...'
+      case 'wait_for': return 'Waiting for artifact state...'
+      case 'screenshot': return 'Capturing artifact screenshot...'
+      case 'close': return 'Closing artifact test session...'
+      case 'list_sessions': return 'Checking artifact test sessions...'
+      default: return 'Testing artifact...'
+    }
+  }
 
   // Show new chat UI when no conversation selected OR empty conversation
   const showNewChatUI = !activeConversationId || (messages.length === 0 && !isStreaming)
@@ -109,6 +208,40 @@ export function ChatArea() {
             onRegenerate={handleRegenerate}
             userName={userName || undefined}
           />
+
+          {interruptedStream && !isStreaming && (
+            <div className="mt-4 rounded-lg border border-border bg-bg-surface px-3 py-2 flex items-center justify-between gap-3">
+              <p className="text-xs text-text-secondary">
+                Looks like this response stopped. Restart where it left off?
+              </p>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => resumeInterruptedConversation(activeConversationId || undefined)}
+                  className="px-2 py-1 text-xs font-medium rounded-md bg-accent text-bg-surface hover:opacity-90 transition-opacity"
+                >
+                  Restart
+                </button>
+                <button
+                  onClick={() => dismissInterruptedConversation(activeConversationId || undefined)}
+                  className="px-2 py-1 text-xs font-medium rounded-md border border-border text-text-muted hover:text-text-primary hover:border-border-strong transition-colors"
+                >
+                  Dismiss
+                </button>
+              </div>
+            </div>
+          )}
+
+          {error && (
+            <div className="mt-4 rounded-lg border border-error/40 bg-error/10 px-3 py-2 flex items-center justify-between gap-3">
+              <p className="text-xs text-error">{error}</p>
+              <button
+                onClick={clearError}
+                className="px-2 py-1 text-xs font-medium rounded-md border border-error/40 text-error hover:bg-error/10 transition-colors"
+              >
+                Dismiss
+              </button>
+            </div>
+          )}
 
           {/* Status indicator - final row in chat view with braille animation */}
           {(isStreaming || isCompacting || isProcessing || modeTransitioning) && (
@@ -152,9 +285,11 @@ export function ChatArea() {
                              }
                            }
                            case 'create_artifact':
-                             return args.title ? `Created: ${String(args.title).slice(0, 25)}` : 'Artifact created'
+                             return `Created ${formatArtifactType(args)}`
                            case 'update_artifact':
-                             return args.title ? `Updated: ${String(args.title).slice(0, 25)}` : 'Artifact updated'
+                             return `Updated ${formatArtifactType(args)}`
+                           case 'artifact_test':
+                             return formatArtifactTestStatus(args, true)
                            case 'spawn_agent':
                              return args.name ? `Started: ${args.name}` : 'Sub-agent started'
                            case 'wait_for_agent':
@@ -210,9 +345,11 @@ export function ChatArea() {
                              }
                            }
                            case 'create_artifact':
-                             return args.title ? `Creating: ${String(args.title).slice(0, 30)}` : 'Creating artifact...'
+                             return `Creating ${formatArtifactType(args)}...`
                            case 'update_artifact':
-                             return args.title ? `Updating: ${String(args.title).slice(0, 30)}` : 'Updating artifact...'
+                             return `Updating ${formatArtifactType(args)}...`
+                           case 'artifact_test':
+                             return formatArtifactTestStatus(args, false)
                            case 'spawn_agent':
                              return args.name ? `Starting sub-agent: ${args.name}` : 'Starting sub-agent...'
                            case 'wait_for_agent':
@@ -266,9 +403,23 @@ export function ChatArea() {
                        const { toolName } = toolInputProgress
                        switch (toolName) {
                          case 'create_artifact':
-                           return 'Generating artifact...'
+                           return `Creating ${
+                             formatArtifactType(
+                               [...streamingToolCalls]
+                                 .reverse()
+                                 .find((tc) => tc.name === 'create_artifact')
+                                 ?.args || {}
+                             )
+                           }...`
                          case 'update_artifact':
-                           return 'Updating artifact...'
+                           return `Updating ${
+                             formatArtifactType(
+                               [...streamingToolCalls]
+                                 .reverse()
+                                 .find((tc) => tc.name === 'update_artifact')
+                                 ?.args || {}
+                             )
+                           }...`
                          case 'write_file':
                            return 'Writing file...'
                          case 'execute_command':
@@ -288,8 +439,10 @@ export function ChatArea() {
                          switch (name) {
                            case 'spawn_agent': return 'Starting sub-agent...'
                            case 'wait_for_agent': return 'Waiting for sub-agent...'
-                           case 'create_artifact': return 'Creating artifact...'
-                           case 'update_artifact': return 'Updating artifact...'
+                           case 'create_artifact':
+                             return `Creating ${formatArtifactType(pendingTool.args || {})}...`
+                           case 'update_artifact':
+                             return `Updating ${formatArtifactType(pendingTool.args || {})}...`
                            case 'read_file': return 'Reading file...'
                            case 'write_file': return 'Writing file...'
                            case 'execute_command': return 'Running command...'
@@ -297,6 +450,8 @@ export function ChatArea() {
                            case 'list_directory': return 'Exploring directory...'
                            case 'web_search': return 'Searching the web...'
                            case 'web_fetch': return 'Fetching page...'
+                           case 'artifact_test':
+                             return formatArtifactTestStatus(pendingTool.args || {}, false)
                            case 'ask_user_question': return 'Preparing question...'
                            default: return `Running ${name.replace(/_/g, ' ')}...`
                          }

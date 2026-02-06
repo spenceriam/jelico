@@ -89,6 +89,9 @@ export function Message({
   const toolResults = isStreaming ? streamingToolResults : message.toolResults
   // Segments are only available during streaming
   const segments = isStreaming ? streamingSegments : undefined
+  const normalizedContent = message.content === '(Used tools)' && ((toolCalls?.length || 0) > 0 || (toolResults?.length || 0) > 0)
+    ? 'Completed requested tool actions.'
+    : message.content
 
   const handleCopy = async () => {
     try {
@@ -293,8 +296,9 @@ export function Message({
             <>
               {segments.map((segment, idx) => {
                 if (segment.type === 'text') {
+                  const needsSpacing = segments[idx - 1]?.type === 'tool'
                   return (
-                    <div key={`text-${idx}`}>
+                    <div key={`text-${idx}`} className={needsSpacing ? 'mt-3' : undefined}>
                       {renderMarkdown(segment.content || (isStreaming ? '▊' : ''))}
                     </div>
                   )
@@ -319,7 +323,9 @@ export function Message({
             </>
           ) : (
             <>
-              {/* Fallback: Show tool calls first (for saved messages without segments) */}
+              {/* Fallback: Show text first (for saved messages without segments) */}
+              {renderMarkdown(normalizedContent || (isStreaming ? '▊' : ''))}
+              {/* Then show tool calls */}
               {toolCalls && toolCalls.length > 0 && (
                 <ToolCallDisplay
                   toolCalls={toolCalls}
@@ -327,15 +333,13 @@ export function Message({
                   isStreaming={isStreaming}
                 />
               )}
-              {/* Then show text content */}
-              {renderMarkdown(message.content || (isStreaming ? '▊' : ''))}
             </>
           )}
 
           {/* Message actions for assistant messages (not while streaming) */}
           {isAssistant && !isStreaming && (
-            <MessageActions
-              content={message.content}
+              <MessageActions
+              content={normalizedContent}
               toolCalls={toolCalls}
               toolResults={toolResults}
               usage={isLastAssistantMessage ? message.usage : undefined}

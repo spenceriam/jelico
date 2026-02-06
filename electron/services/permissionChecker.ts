@@ -178,6 +178,9 @@ export function classifyAction(toolName: string, args: Record<string, unknown>):
     case 'update_artifact':
       return { type: 'write', description: `Create/update artifact: ${args.title || args.id}`, isDestructive: false }
 
+    case 'artifact_test':
+      return { type: 'read', description: `Artifact test action: ${args.action || 'unknown'}`, isDestructive: false }
+
     case 'execute_command': {
       const cmd = String(args.command || '')
       const classification = classifyCommand(cmd)
@@ -239,7 +242,7 @@ export async function checkPermission(
   }
 
   // Artifacts (create/update) are generally safe
-  if (toolName === 'create_artifact' || toolName === 'update_artifact') {
+  if (toolName === 'create_artifact' || toolName === 'update_artifact' || toolName === 'artifact_test') {
     return { allowed: true, reason: 'artifact_safe' }
   }
 

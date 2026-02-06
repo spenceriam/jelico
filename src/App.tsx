@@ -65,7 +65,7 @@ export default function App() {
   // Resizable canvas panel state
   const [canvasWidth, setCanvasWidth] = useState(DEFAULT_CANVAS_WIDTH)
   const [isResizing, setIsResizing] = useState(false)
-  const resizeRef = useRef<{ startX: number; startWidth: number } | null>(null)
+  const resizeRef = useRef<{ startX: number; startWidth: number; currentWidth: number } | null>(null)
   const windowDragRef = useRef<WindowDragSession | null>(null)
   const isInteractiveTarget = useCallback((target: HTMLElement | null) => {
     if (!target) return false
@@ -204,50 +204,57 @@ export default function App() {
     })
   }, [isResizing, isInteractiveTarget])
 
+  const finishResize = useCallback(() => {
+    const current = resizeRef.current
+    if (!current) return
+    resizeRef.current = null
+    setIsResizing(false)
+    localStorage.setItem('jelico-canvas-width', String(current.currentWidth))
+    document.body.style.userSelect = ''
+    document.body.style.cursor = ''
+  }, [])
+
   // Handle resize drag
   const handleResizeStart = useCallback((e: React.MouseEvent) => {
     e.preventDefault()
+    e.stopPropagation()
     setIsResizing(true)
-    resizeRef.current = { startX: e.clientX, startWidth: canvasWidth }
-  }, [canvasWidth])
-
-  useEffect(() => {
-    if (!isResizing) return
-
-    let currentWidth = canvasWidth
-
-    const handleMouseMove = (e: MouseEvent) => {
-      if (!resizeRef.current) return
-
-      // Moving left increases width, moving right decreases
-      const delta = resizeRef.current.startX - e.clientX
-      const newWidth = Math.min(MAX_CANVAS_WIDTH, Math.max(MIN_CANVAS_WIDTH, resizeRef.current.startWidth + delta))
-      currentWidth = newWidth
-      setCanvasWidth(newWidth)
+    resizeRef.current = {
+      startX: e.clientX,
+      startWidth: canvasWidth,
+      currentWidth: canvasWidth,
     }
-
-    const handleMouseUp = () => {
-      setIsResizing(false)
-      resizeRef.current = null
-      // Save to localStorage using tracked width
-      localStorage.setItem('jelico-canvas-width', String(currentWidth))
-    }
-
-    // Add listeners to document so they fire even if mouse leaves the handle
-    document.addEventListener('mousemove', handleMouseMove)
-    document.addEventListener('mouseup', handleMouseUp)
-
-    // Prevent text selection during drag
     document.body.style.userSelect = 'none'
     document.body.style.cursor = 'col-resize'
+  }, [canvasWidth])
 
+  const handleResizeMove = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
+    const current = resizeRef.current
+    if (!current) return
+
+    // Mouse released outside normal flow (e.g., over iframe), force-finish resize.
+    if ((e.buttons & 1) === 0) {
+      finishResize()
+      return
+    }
+
+    // Moving left increases width, moving right decreases.
+    const delta = current.startX - e.clientX
+    const newWidth = Math.min(MAX_CANVAS_WIDTH, Math.max(MIN_CANVAS_WIDTH, current.startWidth + delta))
+    current.currentWidth = newWidth
+    setCanvasWidth(newWidth)
+  }, [finishResize])
+
+  const handleResizeEnd = useCallback(() => {
+    finishResize()
+  }, [finishResize])
+
+  useEffect(() => {
     return () => {
-      document.removeEventListener('mousemove', handleMouseMove)
-      document.removeEventListener('mouseup', handleMouseUp)
       document.body.style.userSelect = ''
       document.body.style.cursor = ''
     }
-  }, [isResizing]) // Only depend on isResizing - don't re-add listeners on width change
+  }, [])
 
   // Handle onboarding completion - save profile to soul system
   const handleOnboardingComplete = useCallback(async (profile: OnboardingProfile) => {
@@ -339,7 +346,8 @@ export default function App() {
               {/* Canvas panel with dynamic width */}
               <div
                 style={{ width: canvasWidth }}
-                className={`flex-shrink-0 ${isResizing ? 'pointer-events-none' : ''}`}
+                className="flex-shrink-0"
+                data-window-toggle="ignore"
               >
                 <CanvasPanel />
               </div>
@@ -347,6 +355,16 @@ export default function App() {
           )}
         </div>
       </main>
+
+      {isResizing && (
+        <div
+          className="fixed inset-0 z-[60] cursor-col-resize"
+          data-window-toggle="ignore"
+          onMouseMove={handleResizeMove}
+          onMouseUp={handleResizeEnd}
+          onMouseLeave={handleResizeEnd}
+        />
+      )}
 
       {/* Settings modal */}
       {settingsOpen && (

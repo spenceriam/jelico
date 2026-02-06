@@ -5,6 +5,7 @@ import { useUIStore } from '../../stores/ui'
 import { useArtifactStore, type ArtifactType } from '../../stores/artifacts'
 import { useSandboxStore } from '../../stores/sandbox'
 import { TransferDialog } from '../Conversations/TransferDialog'
+import { BrailleLoader } from '../StatusIndicators'
 
 const ARTIFACT_ICONS: Record<ArtifactType, React.ComponentType<{ className?: string }>> = {
   code: FileCode,
@@ -86,7 +87,7 @@ function getDaysOld(timestamp: number): number {
 }
 
 export function Sidebar() {
-  const { conversations, activeConversationId, setActiveConversation, deleteConversation } = useChatStore()
+  const { conversations, activeConversationId, setActiveConversation, deleteConversation, conversationStreams } = useChatStore()
   const { sidebarCollapsed, openSettings } = useUIStore()
   const { artifacts, selectArtifact, openCanvas } = useArtifactStore()
   const { loadFiles: loadSandboxFiles } = useSandboxStore()
@@ -234,6 +235,7 @@ export function Sidebar() {
               const isExpanded = expandedConversations.has(conv.id)
               const isActive = activeConversationId === conv.id
               const isSandboxConversation = !conv.workspaceId
+              const isProcessing = conversationStreams[conv.id]?.isStreaming === true
 
               const daysOld = getDaysOld(conv.createdAt)
 
@@ -265,7 +267,12 @@ export function Sidebar() {
                     ) : (
                       <div className="w-4 flex-shrink-0" /> /* Spacer for alignment */
                     )}
-                    <span className="flex-1 break-words">{conv.title}</span>
+                    <div className="flex-1 min-w-0 flex items-center gap-1.5">
+                      {isProcessing && (
+                        <BrailleLoader className="text-xs text-accent flex-shrink-0" />
+                      )}
+                      <span className="break-words">{conv.title}</span>
+                    </div>
                     {/* Days old badge (only for chats 2+ days old) */}
                     {daysOld >= 2 && (
                       <span className="text-[10px] text-text-faint tabular-nums mr-1">

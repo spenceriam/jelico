@@ -1,6 +1,7 @@
 import { create } from 'zustand'
 import type { AgentMode } from '../lib/modes'
 import { useArtifactStore } from './artifacts'
+import type { Artifact } from './artifacts'
 import { useWorkspaceStore } from './workspaces'
 import { useAgentStore } from './agents'
 import { useSkillStore } from './skills'
@@ -73,6 +74,7 @@ interface QueuedMessage {
   attachments?: MessageAttachment[]
   providerId: string
   model: string
+  conversationId?: string | null
 }
 
 // System notifications that appear inline in chat
@@ -100,10 +102,36 @@ interface StatusDisplayItem {
   completedAt?: number
 }
 
+interface ConversationStreamState {
+  isStreaming: boolean
+  streamingContent: string
+  streamingToolCalls: ToolCall[]
+  streamingToolResults: ToolResult[]
+  streamingSegments: StreamingSegment[]
+  statusDisplayQueue: StatusDisplayItem[]
+  toolInputProgress: { toolName: string; charCount: number } | null
+  isReasoning: boolean
+  reasoningContent: string
+  streamingStartTime: number | null
+  lastCompletedTool: { name: string; args: Record<string, unknown>; completedAt: number } | null
+}
+
+interface PendingStreamCheckpoint {
+  providerId: string
+  model: string
+  startedAt: number
+}
+
+interface InterruptedConversationState extends PendingStreamCheckpoint {
+  detectedAt: number
+}
+
 interface ChatStore {
   conversations: Conversation[]
   activeConversationId: string | null
   messages: Message[]
+  conversationStreams: Record<string, ConversationStreamState>
+  interruptedConversations: Record<string, InterruptedConversationState>
   isStreaming: boolean
   streamingContent: string
   streamingToolCalls: ToolCall[]
@@ -133,7 +161,7 @@ interface ChatStore {
   createConversation: (providerId: string, model: string) => Promise<string>
   setActiveConversation: (id: string | null) => Promise<void>
   sendMessage: (content: string, providerId: string, model: string, attachments?: MessageAttachment[]) => Promise<void>
-  queueMessage: (content: string, providerId: string, model: string, attachments?: MessageAttachment[]) => void
+  queueMessage: (content: string, providerId: string, model: string, attachments?: MessageAttachment[], conversationId?: string | null) => void
   processQueue: () => Promise<void>
   stopStreaming: () => Promise<void>
   deleteConversation: (id: string) => Promise<void>
@@ -142,13 +170,93 @@ interface ChatStore {
   handleModeSwitch: (fromMode: AgentMode, toMode: AgentMode, reason: string) => void
   clearError: () => void
   regenerateLastResponse: (providerId: string, model: string) => Promise<void>
+  resumeInterruptedConversation: (conversationId?: string) => Promise<void>
+  dismissInterruptedConversation: (conversationId?: string) => void
   addSystemNotification: (notification: Omit<SystemNotification, 'id' | 'timestamp'>) => void
   clearSystemNotifications: () => void
   setConversationWorkspaceId: (id: string, workspaceId: string | null) => void
+  getRegenerateArtifactImpact: () => { artifacts: Array<{ id: string; title: string; type: string }> }
 }
 
-let currentStreamChannelId: string | null = null
+const streamChannelByConversation = new Map<string, string>()
 let modeTransitionTimeoutId: ReturnType<typeof setTimeout> | null = null
+const PENDING_STREAMS_STORAGE_KEY = 'jelico.pending_streams.v1'
+
+function readPendingStreamCheckpoints(): Record<string, PendingStreamCheckpoint> {
+  try {
+    if (typeof window === 'undefined' || !window.localStorage) {
+      return {}
+    }
+    const raw = window.localStorage.getItem(PENDING_STREAMS_STORAGE_KEY)
+    if (!raw) return {}
+
+    const parsed = JSON.parse(raw)
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+      return {}
+    }
+
+    const entries = Object.entries(parsed).filter(([conversationId, value]) => {
+      if (!conversationId || typeof conversationId !== 'string') return false
+      if (!value || typeof value !== 'object' || Array.isArray(value)) return false
+      const checkpoint = value as Record<string, unknown>
+      return (
+        typeof checkpoint.providerId === 'string' &&
+        typeof checkpoint.model === 'string' &&
+        typeof checkpoint.startedAt === 'number'
+      )
+    }) as Array<[string, PendingStreamCheckpoint]>
+
+    return Object.fromEntries(entries)
+  } catch {
+    return {}
+  }
+}
+
+function writePendingStreamCheckpoints(checkpoints: Record<string, PendingStreamCheckpoint>) {
+  try {
+    if (typeof window === 'undefined' || !window.localStorage) {
+      return
+    }
+    window.localStorage.setItem(PENDING_STREAMS_STORAGE_KEY, JSON.stringify(checkpoints))
+  } catch {
+    // Ignore localStorage write failures
+  }
+}
+
+function getPendingStreamCheckpoint(conversationId: string): PendingStreamCheckpoint | null {
+  return readPendingStreamCheckpoints()[conversationId] || null
+}
+
+function setPendingStreamCheckpoint(conversationId: string, checkpoint: PendingStreamCheckpoint) {
+  const checkpoints = readPendingStreamCheckpoints()
+  checkpoints[conversationId] = checkpoint
+  writePendingStreamCheckpoints(checkpoints)
+}
+
+function clearPendingStreamCheckpoint(conversationId: string) {
+  const checkpoints = readPendingStreamCheckpoints()
+  if (!checkpoints[conversationId]) return
+  delete checkpoints[conversationId]
+  writePendingStreamCheckpoints(checkpoints)
+}
+
+function getLatestUnansweredUserMessage(messages: Message[]): Message | null {
+  let lastAssistantIndex = -1
+  for (let i = messages.length - 1; i >= 0; i -= 1) {
+    if (messages[i].role === 'assistant') {
+      lastAssistantIndex = i
+      break
+    }
+  }
+
+  for (let i = messages.length - 1; i > lastAssistantIndex; i -= 1) {
+    if (messages[i].role === 'user') {
+      return messages[i]
+    }
+  }
+
+  return null
+}
 
 function getRestoredTokenCount(messages: Message[]): number {
   if (messages.length === 0) return 0
@@ -166,10 +274,132 @@ function getRestoredTokenCount(messages: Message[]): number {
   return messages.reduce((sum, msg) => sum + estimateTokens(msg.content || ''), 0)
 }
 
+function getLastAssistantAndUser(messages: Message[]): {
+  lastAssistantIndex: number
+  lastAssistant: Message | null
+  lastUser: Message | null
+} {
+  let lastAssistantIndex = -1
+  for (let i = messages.length - 1; i >= 0; i -= 1) {
+    if (messages[i].role === 'assistant') {
+      lastAssistantIndex = i
+      break
+    }
+  }
+
+  if (lastAssistantIndex === -1) {
+    return { lastAssistantIndex, lastAssistant: null, lastUser: null }
+  }
+
+  let lastUser: Message | null = null
+  for (let i = lastAssistantIndex - 1; i >= 0; i -= 1) {
+    if (messages[i].role === 'user') {
+      lastUser = messages[i]
+      break
+    }
+  }
+
+  return {
+    lastAssistantIndex,
+    lastAssistant: messages[lastAssistantIndex] || null,
+    lastUser,
+  }
+}
+
+function getArtifactsCreatedByLastAssistantTurn(
+  activeConversationId: string | null,
+  messages: Message[],
+  artifacts: Artifact[]
+): Artifact[] {
+  if (!activeConversationId || messages.length < 2) return []
+
+  const { lastAssistant, lastUser } = getLastAssistantAndUser(messages)
+  if (!lastAssistant || !lastUser) return []
+
+  const createCalls = (lastAssistant.toolCalls || [])
+    .filter((tc) => tc.name === 'create_artifact')
+    .map((tc) => ({
+      title: typeof tc.args?.title === 'string' ? tc.args.title : undefined,
+      type: typeof tc.args?.type === 'string' ? tc.args.type.toLowerCase() : undefined,
+    }))
+
+  if (createCalls.length === 0) return []
+
+  const candidates = artifacts
+    .filter((artifact) =>
+      artifact.conversationId === activeConversationId &&
+      artifact.createdAt > lastUser.createdAt
+    )
+    .sort((a, b) => b.createdAt - a.createdAt)
+
+  if (candidates.length === 0) return []
+
+  const usedIds = new Set<string>()
+  const matched: Artifact[] = []
+
+  for (const call of createCalls) {
+    const callTitle = call.title?.trim().toLowerCase()
+    const callType = call.type
+
+    const hit = candidates.find((artifact) => {
+      if (usedIds.has(artifact.id)) return false
+      const typeMatches = callType ? artifact.type.toLowerCase() === callType : true
+      const titleMatches = callTitle ? artifact.title.trim().toLowerCase() === callTitle : true
+      return typeMatches && titleMatches
+    })
+
+    if (hit) {
+      usedIds.add(hit.id)
+      matched.push(hit)
+    }
+  }
+
+  // Fallback when model omitted/mangled title args: best-effort newest artifacts from this turn.
+  if (matched.length === 0) {
+    return candidates.slice(0, createCalls.length)
+  }
+
+  return matched
+}
+
+function createEmptyConversationStreamState(): ConversationStreamState {
+  return {
+    isStreaming: false,
+    streamingContent: '',
+    streamingToolCalls: [],
+    streamingToolResults: [],
+    streamingSegments: [],
+    statusDisplayQueue: [],
+    toolInputProgress: null,
+    isReasoning: false,
+    reasoningContent: '',
+    streamingStartTime: null,
+    lastCompletedTool: null,
+  }
+}
+
+function projectStreamStateToActiveFields(streamState: ConversationStreamState) {
+  return {
+    isStreaming: streamState.isStreaming,
+    streamingContent: streamState.streamingContent,
+    streamingToolCalls: streamState.streamingToolCalls,
+    streamingToolResults: streamState.streamingToolResults,
+    streamingSegments: streamState.streamingSegments,
+    statusDisplayQueue: streamState.statusDisplayQueue,
+    toolInputProgress: streamState.toolInputProgress,
+    isReasoning: streamState.isReasoning,
+    reasoningContent: streamState.reasoningContent,
+    streamingStartTime: streamState.streamingStartTime,
+    lastCompletedTool: streamState.lastCompletedTool,
+  }
+}
+
 export const useChatStore = create<ChatStore>((set, get) => ({
   conversations: [],
   activeConversationId: null,
   messages: [],
+  conversationStreams: {},
+  interruptedConversations: {},
   modeTransitioning: false,
   modeSwitchReason: null,
   lastCompletedTool: null,
@@ -239,19 +469,10 @@ export const useChatStore = create<ChatStore>((set, get) => ({
       set({
         activeConversationId: null,
         messages: [],
-        isStreaming: false,
-        streamingStartTime: null,
-        streamingContent: '',
-        streamingToolCalls: [],
-        streamingToolResults: [],
-        streamingSegments: [],
-        statusDisplayQueue: [],
-        toolInputProgress: null,
         modeTransitioning: false,
         modeSwitchReason: null,
-        isReasoning: false,
-        reasoningContent: '',
         error: null,
+        ...projectStreamStateToActiveFields(createEmptyConversationStreamState()),
       })
       // New Chat: keep current workspace selection (user can switch to Sandbox explicitly)
       // No conversation = no artifacts to show
@@ -264,23 +485,46 @@ export const useChatStore = create<ChatStore>((set, get) => ({
       const conversation = await window.jelico.conversations.get(id)
       const loadedMessages = conversation?.messages || []
 
-      set({
-        activeConversationId: id,
-        messages: loadedMessages,
-        isLoading: false,
-        // Clear streaming state when switching to prevent old stream data appearing
-        isStreaming: false,
-        streamingContent: '',
-        streamingToolCalls: [],
-        streamingToolResults: [],
-        streamingSegments: [],
-        statusDisplayQueue: [],
-        toolInputProgress: null,
-        modeTransitioning: false,
-        modeSwitchReason: null,
-        isReasoning: false,
-        reasoningContent: '',
+      set((state) => {
+        const streamState = state.conversationStreams[id] || createEmptyConversationStreamState()
+        return {
+          activeConversationId: id,
+          messages: loadedMessages,
+          isLoading: false,
+          modeTransitioning: false,
+          modeSwitchReason: null,
+          ...projectStreamStateToActiveFields(streamState),
+        }
       })
+
+      const activeStreamState = get().conversationStreams[id]
+      const pendingCheckpoint = getPendingStreamCheckpoint(id)
+      const unansweredUser = getLatestUnansweredUserMessage(loadedMessages)
+
+      if (pendingCheckpoint && !streamChannelByConversation.has(id) && !activeStreamState?.isStreaming && unansweredUser) {
+        set((state) => {
+          if (state.interruptedConversations[id]) return {}
+          return {
+            interruptedConversations: {
+              ...state.interruptedConversations,
+              [id]: {
+                ...pendingCheckpoint,
+                detectedAt: Date.now(),
+              },
+            },
+          }
+        })
+      } else {
+        set((state) => {
+          const { [id]: _removed, ...rest } = state.interruptedConversations
+          return { interruptedConversations: rest }
+        })
+
+        // Remove stale checkpoints when there is nothing to resume.
+        if (pendingCheckpoint && !unansweredUser) {
+          clearPendingStreamCheckpoint(id)
+        }
+      }
 
       // Ensure context usage survives conversation reloads.
       if (conversation) {
@@ -325,13 +569,22 @@ export const useChatStore = create<ChatStore>((set, get) => ({
   },
 
   // Internal flag to track if this is a regenerate (skips adding user message)
-  sendMessage: async (content, providerId, model, attachments, _isRegenerate = false) => {
-    const { activeConversationId, messages, mode, isStreaming } = get()
-    const { isCompacting } = useContextStore.getState()
+  sendMessage: async (content, providerId, model, attachments, _isRegenerate = false, _forcedConversationId: string | null = null) => {
+    const { activeConversationId, messages, mode } = get()
+    const requestedConversationId = _forcedConversationId ?? activeConversationId
+    const contextStore = useContextStore.getState()
 
-    // If already streaming or compacting, queue the message (unless regenerating)
-    if ((isStreaming || isCompacting) && !_isRegenerate) {
-      get().queueMessage(content, providerId, model, attachments)
+    const activeStreamState = requestedConversationId
+      ? get().conversationStreams[requestedConversationId]
+      : undefined
+
+    const compactingActiveConversation =
+      requestedConversationId !== null &&
+      contextStore.isConversationCompacting(requestedConversationId)
+
+    // If this conversation is already streaming or compacting, queue the message (unless regenerating)
+    if (((activeStreamState?.isStreaming ?? false) || compactingActiveConversation) && !_isRegenerate) {
+      get().queueMessage(content, providerId, model, attachments, requestedConversationId)
       return
     }
 
@@ -349,7 +602,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
       }
     }
 
-    let conversationId = activeConversationId
+    let conversationId = requestedConversationId
 
     // Create conversation if needed (never happens during regenerate)
     if (!conversationId) {
@@ -364,8 +617,50 @@ export const useChatStore = create<ChatStore>((set, get) => ({
       }
     }
 
+    if (!conversationId) return
+
+    const targetConversationId = conversationId
+    const updateConversationStreamState = (updater: (current: ConversationStreamState) => ConversationStreamState) => {
+      set((state) => {
+        const current = state.conversationStreams[targetConversationId] || createEmptyConversationStreamState()
+        const next = updater(current)
+        const nextConversationStreams = {
+          ...state.conversationStreams,
+          [targetConversationId]: next,
+        }
+
+        if (state.activeConversationId !== targetConversationId) {
+          return { conversationStreams: nextConversationStreams }
+        }
+
+        return {
+          conversationStreams: nextConversationStreams,
+          ...projectStreamStateToActiveFields(next),
+        }
+      })
+    }
+
+    const clearConversationStreamState = () => {
+      set((state) => {
+        const { [targetConversationId]: _removed, ...rest } = state.conversationStreams
+        if (state.activeConversationId !== targetConversationId) {
+          return { conversationStreams: rest }
+        }
+        return {
+          conversationStreams: rest,
+          ...projectStreamStateToActiveFields(createEmptyConversationStreamState()),
+        }
+      })
+    }
+
+    let contextMessages = messages
+    if (targetConversationId !== activeConversationId) {
+      const conversation = await window.jelico.conversations.get(targetConversationId)
+      contextMessages = conversation?.messages || []
+    }
+
     // For regenerate, use existing messages; otherwise add user message
-    let updatedMessages = messages
+    let updatedMessages = contextMessages
     if (!_isRegenerate) {
       // Add user message (show original content, not expanded skill)
       const userMessage = await window.jelico.conversations.addMessage(conversationId, {
@@ -376,7 +671,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
 
       // Update title if this is the first message - use truncated content or placeholder
       // AI will generate a proper title in the background
-      if (messages.length === 0) {
+      if (contextMessages.length === 0) {
         // Truncate to 50 chars max for initial display (AI generates better title)
         let titleSource = content.trim().slice(0, 50) + (content.trim().length > 50 ? '...' : '')
 
@@ -439,22 +734,32 @@ export const useChatStore = create<ChatStore>((set, get) => ({
         })
       }
 
-      updatedMessages = [...messages, userMessage]
-      set({ messages: updatedMessages })
+      updatedMessages = [...contextMessages, userMessage]
+      set((state) => (
+        state.activeConversationId === targetConversationId
+          ? { messages: updatedMessages }
+          : {}
+      ))
     }
 
-    // Set streaming state
-    set({
+    const streamStartedAt = Date.now()
+
+    // Set streaming state for this conversation
+    updateConversationStreamState(() => ({
+      ...createEmptyConversationStreamState(),
       isStreaming: true,
-      streamingStartTime: Date.now(),
-      streamingContent: '',
-      streamingToolCalls: [],
-      streamingToolResults: [],
-      streamingSegments: [],
-      statusDisplayQueue: [],
-      toolInputProgress: null,
-      isReasoning: false,
-      reasoningContent: '',
+      streamingStartTime: streamStartedAt,
+    }))
+
+    set((state) => {
+      const { [targetConversationId]: _removedInterrupted, ...restInterrupted } = state.interruptedConversations
+      return { interruptedConversations: restInterrupted }
+    })
+
+    setPendingStreamCheckpoint(targetConversationId, {
+      providerId,
+      model,
+      startedAt: streamStartedAt,
     })
 
     // Get workspace path for context
@@ -488,16 +793,25 @@ export const useChatStore = create<ChatStore>((set, get) => ({
     }))
 
     // Start streaming with mode, workspace, and artifact context
-    const channelId = window.jelico.ai.stream({
-      providerId,
-      model,
-      mode: finalMode,
-      messages: aiMessages,
-      workspacePath: activeWorkspace?.path,
-      artifacts: artifactContext,
-      conversationId,  // Pass conversation ID for state isolation
-    })
-    currentStreamChannelId = channelId
+    let channelId: string
+    try {
+      channelId = window.jelico.ai.stream({
+        providerId,
+        model,
+        mode: finalMode,
+        messages: aiMessages,
+        workspacePath: activeWorkspace?.path,
+        artifacts: artifactContext,
+        conversationId: targetConversationId,  // Pass conversation ID for state isolation
+      })
+    } catch (error: any) {
+      console.error('[Chat Store] Failed to start stream:', error)
+      clearPendingStreamCheckpoint(targetConversationId)
+      clearConversationStreamState()
+      set({ error: error?.message || 'Failed to start AI stream' })
+      return
+    }
+    streamChannelByConversation.set(targetConversationId, channelId)
 
     let fullContent = ''
     const streamStartTime = Date.now()
@@ -514,9 +828,9 @@ export const useChatStore = create<ChatStore>((set, get) => ({
         }
         lastChunkTime = now
         fullContent += chunk
-        set((state) => {
+        updateConversationStreamState((current) => {
           // Find or create the current text segment
-          const segments = [...state.streamingSegments]
+          const segments = [...current.streamingSegments]
           const lastSegment = segments[segments.length - 1]
 
           if (lastSegment?.type === 'text') {
@@ -531,6 +845,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
           }
 
           return {
+            ...current,
             streamingContent: fullContent,
             streamingSegments: segments,
           }
@@ -543,19 +858,39 @@ export const useChatStore = create<ChatStore>((set, get) => ({
     window.jelico.ai.onToolCalls(channelId, (toolCalls) => {
       console.log('[Chat Store] Received tool calls:', toolCalls)
       const now = Date.now()
-      set((state) => {
+      updateConversationStreamState((current) => {
+        // If a text segment ends with a colon, drop it to avoid "text:" before tool calls
+        const segments = [...current.streamingSegments]
+        const lastSegment = segments[segments.length - 1]
+        if (lastSegment?.type === 'text') {
+          const trimmed = lastSegment.content.replace(/[ \t]+$/g, '')
+          if (trimmed.endsWith(':')) {
+            segments[segments.length - 1] = {
+              type: 'text',
+              content: trimmed.slice(0, -1),
+            }
+          }
+        }
+
         // Add tool segments for each new tool call
         const newSegments: StreamingSegment[] = toolCalls.map(tc => ({
           type: 'tool' as const,
           toolCallId: tc.id,
         }))
 
+        const nextStreamingContent = segments.reduce((acc, seg) => {
+          return seg.type === 'text' ? acc + seg.content : acc
+        }, '')
+        fullContent = nextStreamingContent
+
         return {
-          streamingToolCalls: [...state.streamingToolCalls, ...toolCalls],
-          streamingSegments: [...state.streamingSegments, ...newSegments],
+          ...current,
+          streamingToolCalls: [...current.streamingToolCalls, ...toolCalls],
+          streamingSegments: [...segments, ...newSegments],
+          streamingContent: nextStreamingContent,
           // Add to status display queue for graceful UX
           statusDisplayQueue: [
-            ...state.statusDisplayQueue,
+            ...current.statusDisplayQueue,
             ...toolCalls.map(tc => ({
               id: tc.id,
               toolName: tc.name,
@@ -572,19 +907,19 @@ export const useChatStore = create<ChatStore>((set, get) => ({
       console.log('[Chat Store] Received tool results:', toolResults)
       const now = Date.now()
 
-      set((state) => {
+      updateConversationStreamState((current) => {
         // Update tool call statuses to 'complete' when their results arrive
         const completedIds = new Set(toolResults.map(r => r.toolCallId))
-        const updatedToolCalls = state.streamingToolCalls.map((tc) =>
+        const updatedToolCalls = current.streamingToolCalls.map((tc) =>
           completedIds.has(tc.id) ? { ...tc, status: 'complete' as const } : tc
         )
 
         // Track the last completed tool for status line display
         const lastResult = toolResults[toolResults.length - 1]
-        const completedToolCall = state.streamingToolCalls.find(tc => tc.id === lastResult?.toolCallId)
+        const completedToolCall = current.streamingToolCalls.find(tc => tc.id === lastResult?.toolCallId)
 
         // Update status display queue - mark items as completed but keep for minimum display time
-        const updatedQueue = state.statusDisplayQueue.map(item => {
+        const updatedQueue = current.statusDisplayQueue.map(item => {
           if (completedIds.has(item.id) && !item.completedAt) {
             return { ...item, completedAt: now }
           }
@@ -592,14 +927,15 @@ export const useChatStore = create<ChatStore>((set, get) => ({
         })
 
         return {
+          ...current,
           streamingToolCalls: updatedToolCalls,
-          streamingToolResults: [...state.streamingToolResults, ...toolResults],
+          streamingToolResults: [...current.streamingToolResults, ...toolResults],
           statusDisplayQueue: updatedQueue,
           lastCompletedTool: completedToolCall ? {
             name: completedToolCall.name,
             args: completedToolCall.args,
             completedAt: now,
-          } : state.lastCompletedTool,
+          } : current.lastCompletedTool,
           // Clear tool input progress when tool completes - fixes status stuck on "Generating spawn_agent"
           toolInputProgress: null,
         }
@@ -609,8 +945,9 @@ export const useChatStore = create<ChatStore>((set, get) => ({
     // Handle tool call updates - updates status and args for existing tool calls
     window.jelico.ai.onToolCallUpdate(channelId, (update) => {
       console.log('[Chat Store] Tool call update:', update)
-      set((state) => ({
-        streamingToolCalls: state.streamingToolCalls.map((tc) =>
+      updateConversationStreamState((current) => ({
+        ...current,
+        streamingToolCalls: current.streamingToolCalls.map((tc) =>
           tc.id === update.id
             ? { ...tc, args: update.args, status: update.status }
             : tc
@@ -628,7 +965,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
         useArtifactStore.getState().clearStreamingPreview()
 
         const newArtifact = await useArtifactStore.getState().addArtifact({
-          conversationId: conversationId!,
+          conversationId: targetConversationId,
           type: artifact.type,
           title: artifact.title,
           content: artifact.content,
@@ -666,7 +1003,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
         displayName: agent.displayName,  // Friendly name like "Maya: Creating Wordle"
         task: agent.task,
         mode: agent.mode,
-        conversationId,  // Track which conversation this agent belongs to
+        conversationId: targetConversationId,  // Track which conversation this agent belongs to
       })
     })
 
@@ -710,22 +1047,33 @@ export const useChatStore = create<ChatStore>((set, get) => ({
 
     // Handle tool input progress (for large artifacts)
     window.jelico.ai.onToolInputProgress(channelId, (progress) => {
-      set({ toolInputProgress: progress })
+      updateConversationStreamState((current) => ({
+        ...current,
+        toolInputProgress: progress,
+      }))
     })
 
     // Handle reasoning/thinking events for thinking models (Kimi K2.5, o1, o3, etc.)
     window.jelico.ai.onReasoningStart(channelId, () => {
-      set({ isReasoning: true, reasoningContent: '' })
+      updateConversationStreamState((current) => ({
+        ...current,
+        isReasoning: true,
+        reasoningContent: '',
+      }))
     })
 
     window.jelico.ai.onReasoning(channelId, (data) => {
-      set((state) => ({
-        reasoningContent: state.reasoningContent + data.content,
+      updateConversationStreamState((current) => ({
+        ...current,
+        reasoningContent: current.reasoningContent + data.content,
       }))
     })
 
     window.jelico.ai.onReasoningEnd(channelId, () => {
-      set({ isReasoning: false })
+      updateConversationStreamState((current) => ({
+        ...current,
+        isReasoning: false,
+      }))
       // Note: reasoningContent is preserved until stream ends so UI can display it
     })
 
@@ -738,9 +1086,15 @@ export const useChatStore = create<ChatStore>((set, get) => ({
     // Handle stream end
     window.jelico.ai.onStreamEnd(channelId, async (stats) => {
       window.jelico.ai.removeListeners(channelId)
-      currentStreamChannelId = null
+      const activeChannel = streamChannelByConversation.get(targetConversationId)
+      if (activeChannel === channelId) {
+        streamChannelByConversation.delete(targetConversationId)
+      }
+      clearPendingStreamCheckpoint(targetConversationId)
 
-      const { streamingToolCalls, streamingToolResults } = get()
+      const streamSnapshot = get().conversationStreams[targetConversationId] || createEmptyConversationStreamState()
+      const streamingToolCalls = streamSnapshot.streamingToolCalls
+      const streamingToolResults = streamSnapshot.streamingToolResults
       const totalDurationMs = Date.now() - streamStartTime
       // Calculate actual generation time (first chunk to last chunk)
       // This excludes tool execution time and gives accurate tok/s
@@ -765,20 +1119,24 @@ export const useChatStore = create<ChatStore>((set, get) => ({
           }
         }
 
-        // Save assistant message with tool calls/results - even if content is empty
-        const assistantMessage = await window.jelico.conversations.addMessage(conversationId!, {
+        const hasToolActivity = streamingToolCalls.length > 0 || streamingToolResults.length > 0
+        const assistantContent = fullContent && fullContent.trim().length > 0
+          ? fullContent
+          : (hasToolActivity ? 'Completed requested tool actions.' : 'No response text was returned.')
+
+        // Save assistant message with tool calls/results
+        const assistantMessage = await window.jelico.conversations.addMessage(targetConversationId, {
           role: 'assistant',
-          content: fullContent || '(Used tools)', // Ensure non-empty for DB
+          content: assistantContent,
           toolCalls: streamingToolCalls.length > 0 ? streamingToolCalls : undefined,
           toolResults: streamingToolResults.length > 0 ? streamingToolResults : undefined,
           usage,
         })
 
         // Attach usage to the message object for display
-        // Restore original content (could be empty) for display
         const messageWithTools: Message = {
           ...assistantMessage,
-          content: fullContent, // Keep original empty if it was empty
+          content: assistantContent,
           usage,
         }
 
@@ -790,46 +1148,40 @@ export const useChatStore = create<ChatStore>((set, get) => ({
         })
 
         // Update context window token count from actual usage
-        if (conversationId && usage?.totalTokens) {
-          useContextStore.getState().updateTokenCount(conversationId, usage.totalTokens)
-        } else if (conversationId) {
+        if (usage?.totalTokens) {
+          useContextStore.getState().updateTokenCount(targetConversationId, usage.totalTokens)
+        } else {
           // No fallback estimation - we need actual token counts from the API
           console.warn('[Chat Store] No usage stats received from provider - context tracking requires API to report token usage')
         }
 
-        set((state) => ({
-          messages: [...state.messages, messageWithTools],
-          isStreaming: false,
-          streamingStartTime: null,
-          streamingContent: '',
-          streamingToolCalls: [],
-          streamingToolResults: [],
-          streamingSegments: [],
-          statusDisplayQueue: [],
-          toolInputProgress: null,
-          isReasoning: false,
-          reasoningContent: '',
-          lastCompletedTool: null,
-        }))
+        set((state) => {
+          const nextMessages = state.activeConversationId === targetConversationId
+            ? [...state.messages, messageWithTools]
+            : state.messages
+
+          const { [targetConversationId]: _removed, ...restStreams } = state.conversationStreams
+          const { [targetConversationId]: _removedInterrupted, ...restInterrupted } = state.interruptedConversations
+          const updates: Partial<ChatStore> = {
+            messages: nextMessages,
+            conversationStreams: restStreams,
+            interruptedConversations: restInterrupted,
+          }
+
+          if (state.activeConversationId === targetConversationId) {
+            Object.assign(updates, projectStreamStateToActiveFields(createEmptyConversationStreamState()))
+          }
+
+          return updates as Partial<ChatStore>
+        })
 
         // Title is generated ONCE when user sends first message (see sendMessage)
         // No second generation here - we don't want AI response to change the title
       } catch (error) {
         console.error('[Chat Store] Error in onStreamEnd:', error)
         // Still need to end streaming state even on error
-        set({
-          isStreaming: false,
-          streamingStartTime: null,
-          streamingContent: '',
-          streamingToolCalls: [],
-          streamingToolResults: [],
-          streamingSegments: [],
-          statusDisplayQueue: [],
-          lastCompletedTool: null,
-          isReasoning: false,
-          reasoningContent: '',
-          error: `Failed to save message: ${error}`,
-        })
+        clearConversationStreamState()
+        set({ error: `Failed to save message: ${error}` })
       }
 
       // Add system notification for created artifacts
@@ -841,46 +1193,46 @@ export const useChatStore = create<ChatStore>((set, get) => ({
       }
 
       // Check context usage and trigger compaction if needed
-      if (conversationId) {
-        const contextStore = useContextStore.getState()
-        const contextUsage = contextStore.getContextUsage(conversationId)
+      const contextStore = useContextStore.getState()
+      const contextUsage = contextStore.getContextUsage(targetConversationId)
 
-        if (contextUsage.shouldCompact && contextStore.autoCompact) {
-          // Start compaction - set flag to block new messages
-          contextStore.setIsCompacting(true)
+      if (contextUsage.shouldCompact && contextStore.autoCompact) {
+        // Start compaction for this conversation only.
+        contextStore.setConversationCompacting(targetConversationId, true)
 
-          // Run compaction async
-          window.jelico.compaction.compact({
-            conversationId,
-            providerId,
-            model,
-          }).then(async (result) => {
-            if (result.success) {
-              // Update context with new token count
-              if (result.tokensAfter !== undefined) {
-                contextStore.updateTokenCount(conversationId, result.tokensAfter)
-              }
-
-              // Show compaction complete notification
-              get().addSystemNotification({
-                type: 'compaction_complete',
-              })
-
-              // Reload messages to get the compacted version
-              await get().setActiveConversation(conversationId)
-            } else {
-              console.error('[Chat] Compaction failed:', result.error)
+        // Run compaction async
+        window.jelico.compaction.compact({
+          conversationId: targetConversationId,
+          providerId,
+          model,
+        }).then(async (result) => {
+          if (result.success) {
+            // Update context with new token count
+            if (result.tokensAfter !== undefined) {
+              contextStore.updateTokenCount(targetConversationId, result.tokensAfter)
             }
 
-            // Clear compacting flag and process any queued messages
-            contextStore.setIsCompacting(false)
-            get().processQueue()
-          }).catch((error) => {
-            console.error('[Chat] Compaction error:', error)
-            contextStore.setIsCompacting(false)
-            get().processQueue()
-          })
-        }
+            // Show compaction complete notification
+            get().addSystemNotification({
+              type: 'compaction_complete',
+            })
+
+            // Reload messages only if this conversation is currently visible.
+            if (get().activeConversationId === targetConversationId) {
+              await get().setActiveConversation(targetConversationId)
+            }
+          } else {
+            console.error('[Chat] Compaction failed:', result.error)
+          }
+
+          // Clear compacting flag for this conversation and process queued messages.
+          contextStore.setConversationCompacting(targetConversationId, false)
+          get().processQueue()
+        }).catch((error) => {
+          console.error('[Chat] Compaction error:', error)
+          contextStore.setConversationCompacting(targetConversationId, false)
+          get().processQueue()
+        })
       }
 
       // Process any queued messages
@@ -890,23 +1242,22 @@ export const useChatStore = create<ChatStore>((set, get) => ({
     // Handle stream error
     window.jelico.ai.onStreamError(channelId, (error) => {
       window.jelico.ai.removeListeners(channelId)
-      currentStreamChannelId = null
+      const activeChannel = streamChannelByConversation.get(targetConversationId)
+      if (activeChannel === channelId) {
+        streamChannelByConversation.delete(targetConversationId)
+      }
+      clearPendingStreamCheckpoint(targetConversationId)
 
       // Clear streaming preview to prevent stale artifact content
       useArtifactStore.getState().clearStreamingPreview()
 
-      set({
-        isStreaming: false,
-        streamingStartTime: null,
-        streamingContent: '',
-        streamingToolCalls: [],
-        streamingToolResults: [],
-        streamingSegments: [],
-        statusDisplayQueue: [],
-        toolInputProgress: null,
-        isReasoning: false,
-        reasoningContent: '',
-        error: error,
+      clearConversationStreamState()
+      set((state) => {
+        const { [targetConversationId]: _removedInterrupted, ...restInterrupted } = state.interruptedConversations
+        return {
+          interruptedConversations: restInterrupted,
+          error,
+        }
       })
 
       // Still try to process queue on error
@@ -914,9 +1265,9 @@ export const useChatStore = create<ChatStore>((set, get) => ({
     })
   },
 
-  queueMessage: (content, providerId, model, attachments) => {
+  queueMessage: (content, providerId, model, attachments, conversationId) => {
     set((state) => ({
-      messageQueue: [...state.messageQueue, { content, attachments, providerId, model }],
+      messageQueue: [...state.messageQueue, { content, attachments, providerId, model, conversationId }],
     }))
   },
 
@@ -929,17 +1280,27 @@ export const useChatStore = create<ChatStore>((set, get) => ({
     set({ messageQueue: remaining })
 
     // Send the queued message
-    await get().sendMessage(nextMessage.content, nextMessage.providerId, nextMessage.model, nextMessage.attachments)
+    await (get().sendMessage as any)(
+      nextMessage.content,
+      nextMessage.providerId,
+      nextMessage.model,
+      nextMessage.attachments,
+      false,
+      nextMessage.conversationId ?? null
+    )
   },
 
   stopStreaming: async () => {
+    const { activeConversationId, conversationStreams } = get()
+    if (!activeConversationId) return
+
+    const streamState = conversationStreams[activeConversationId] || createEmptyConversationStreamState()
     const {
       streamingContent,
       streamingToolCalls,
       streamingToolResults,
       streamingSegments,
-      activeConversationId,
-    } = get()
+    } = streamState
 
     // Debug: Log what we have when stop is called
     console.log('[Chat Store] stopStreaming called:', {
@@ -953,11 +1314,13 @@ export const useChatStore = create<ChatStore>((set, get) => ({
       conversationId: activeConversationId,
     })
 
-    if (currentStreamChannelId) {
-      window.jelico.ai.stopStream(currentStreamChannelId)
-      window.jelico.ai.removeListeners(currentStreamChannelId)
-      currentStreamChannelId = null
+    const streamChannelId = streamChannelByConversation.get(activeConversationId)
+    if (streamChannelId) {
+      window.jelico.ai.stopStream(streamChannelId)
+      window.jelico.ai.removeListeners(streamChannelId)
+      streamChannelByConversation.delete(activeConversationId)
     }
+    clearPendingStreamCheckpoint(activeConversationId)
 
     // Clear streaming preview to prevent stale artifact content
     useArtifactStore.getState().clearStreamingPreview()
@@ -995,22 +1358,27 @@ export const useChatStore = create<ChatStore>((set, get) => ({
       console.log('[Chat Store] Nothing to save on stop - no content or tool calls')
     }
 
-    set({
-      isStreaming: false,
-      streamingStartTime: null,
-      streamingContent: '',
-      streamingToolCalls: [],
-      streamingToolResults: [],
-      streamingSegments: [],
-      statusDisplayQueue: [],
-      toolInputProgress: null,
-      isReasoning: false,
-      reasoningContent: '',
+    set((state) => {
+      const { [activeConversationId]: _removed, ...restStreams } = state.conversationStreams
+      const { [activeConversationId]: _removedInterrupted, ...restInterrupted } = state.interruptedConversations
+      return {
+        conversationStreams: restStreams,
+        interruptedConversations: restInterrupted,
+        ...projectStreamStateToActiveFields(createEmptyConversationStreamState()),
+      }
     })
   },
 
   deleteConversation: async (id) => {
     try {
+      const streamChannelId = streamChannelByConversation.get(id)
+      if (streamChannelId) {
+        window.jelico.ai.stopStream(streamChannelId)
+        window.jelico.ai.removeListeners(streamChannelId)
+        streamChannelByConversation.delete(id)
+      }
+      clearPendingStreamCheckpoint(id)
+
       // Delete artifacts for this conversation
       await useArtifactStore.getState().clearConversationArtifacts(id)
 
@@ -1027,21 +1395,27 @@ export const useChatStore = create<ChatStore>((set, get) => ({
 
       if (activeConversationId === id) {
         // Clear all state when deleting the active conversation
+        const { [id]: _removedStream, ...restStreams } = get().conversationStreams
+        const { [id]: _removedInterrupted, ...restInterrupted } = get().interruptedConversations
         set({
           conversations,
           activeConversationId: null,
           messages: [],
-          isStreaming: false,
-          streamingStartTime: null,
-          streamingContent: '',
-          streamingToolCalls: [],
-          streamingToolResults: [],
-          streamingSegments: [],
-          statusDisplayQueue: [],
+          conversationStreams: restStreams,
+          interruptedConversations: restInterrupted,
+          ...projectStreamStateToActiveFields(createEmptyConversationStreamState()),
           error: null,
         })
       } else {
-        set({ conversations })
+        set((state) => {
+          const { [id]: _removedStream, ...restStreams } = state.conversationStreams
+          const { [id]: _removedInterrupted, ...restInterrupted } = state.interruptedConversations
+          return {
+            conversations,
+            conversationStreams: restStreams,
+            interruptedConversations: restInterrupted,
+          }
+        })
       }
     } catch (error: any) {
       set({ error: error.message })
@@ -1081,36 +1455,18 @@ export const useChatStore = create<ChatStore>((set, get) => ({
 
     if (isStreaming || !activeConversationId || messages.length < 2) return
 
-    // Find the last assistant message
-    let lastAssistantIndex = -1
-    for (let i = messages.length - 1; i >= 0; i--) {
-      if (messages[i].role === 'assistant') {
-        lastAssistantIndex = i
-        break
-      }
-    }
+    const { lastAssistantIndex, lastUser } = getLastAssistantAndUser(messages)
+    if (lastAssistantIndex === -1 || !lastUser) return
 
-    if (lastAssistantIndex === -1) return
-
-    // Find the user message before the assistant message
-    let lastUserMessage: Message | null = null
-    for (let i = lastAssistantIndex - 1; i >= 0; i--) {
-      if (messages[i].role === 'user') {
-        lastUserMessage = messages[i]
-        break
-      }
-    }
-
-    if (!lastUserMessage) return
-
-    // Remove artifacts created during this turn
-    // We identify them by looking at artifacts created after the user message
+    // Remove artifacts created during this turn (create_artifact calls only)
     const artifactStore = useArtifactStore.getState()
-    const artifacts = artifactStore.artifacts.filter(
-      a => a.conversationId === activeConversationId &&
-           a.createdAt > lastUserMessage!.createdAt
+    const artifactsToDelete = getArtifactsCreatedByLastAssistantTurn(
+      activeConversationId,
+      messages,
+      artifactStore.artifacts
     )
-    for (const artifact of artifacts) {
+
+    for (const artifact of artifactsToDelete) {
       await artifactStore.removeArtifact(artifact.id)
     }
 
@@ -1127,7 +1483,83 @@ export const useChatStore = create<ChatStore>((set, get) => ({
 
     // Start streaming with existing messages (don't re-add user message)
     // The _isRegenerate flag tells sendMessage to skip adding user message
-    await (get().sendMessage as any)(lastUserMessage.content, providerId, model, undefined, true)
+    await (get().sendMessage as any)(lastUser.content, providerId, model, undefined, true)
+  },
+
+  getRegenerateArtifactImpact: () => {
+    const { messages, activeConversationId } = get()
+    if (!activeConversationId || messages.length < 2) {
+      return { artifacts: [] }
+    }
+
+    const artifacts = getArtifactsCreatedByLastAssistantTurn(
+      activeConversationId,
+      messages,
+      useArtifactStore.getState().artifacts
+    )
+
+    return {
+      artifacts: artifacts.map((artifact) => ({
+        id: artifact.id,
+        title: artifact.title,
+        type: artifact.type,
+      })),
+    }
+  },
+
+  resumeInterruptedConversation: async (conversationId) => {
+    const targetConversationId = conversationId || get().activeConversationId
+    if (!targetConversationId) return
+
+    const streamState = get().conversationStreams[targetConversationId]
+    if (streamState?.isStreaming) return
+
+    try {
+      const conversation = await window.jelico.conversations.get(targetConversationId)
+      if (!conversation) return
+
+      const pendingCheckpoint = getPendingStreamCheckpoint(targetConversationId)
+      const unansweredUser = getLatestUnansweredUserMessage(conversation.messages || [])
+
+      if (!unansweredUser) {
+        clearPendingStreamCheckpoint(targetConversationId)
+        set((state) => {
+          const { [targetConversationId]: _removed, ...rest } = state.interruptedConversations
+          return { interruptedConversations: rest }
+        })
+        return
+      }
+
+      const providerId = pendingCheckpoint?.providerId || conversation.providerId
+      const model = pendingCheckpoint?.model || conversation.model
+
+      set((state) => {
+        const { [targetConversationId]: _removed, ...rest } = state.interruptedConversations
+        return { interruptedConversations: rest }
+      })
+
+      await (get().sendMessage as any)(
+        unansweredUser.content,
+        providerId,
+        model,
+        unansweredUser.attachments,
+        true,
+        targetConversationId
+      )
+    } catch (error: any) {
+      set({ error: error.message || String(error) })
+    }
+  },
+
+  dismissInterruptedConversation: (conversationId) => {
+    const targetConversationId = conversationId || get().activeConversationId
+    if (!targetConversationId) return
+
+    clearPendingStreamCheckpoint(targetConversationId)
+    set((state) => {
+      const { [targetConversationId]: _removed, ...rest } = state.interruptedConversations
+      return { interruptedConversations: rest }
+    })
   },
 
   addSystemNotification: (notification) => {

@@ -13,6 +13,39 @@ interface KeyStore {
   [providerId: string]: string // encrypted base64 string
 }
 
+function isLikelyApiKey(value: string): boolean {
+  if (!value) return false
+  const trimmed = value.trim()
+  if (trimmed.length < 12 || trimmed.length > 512) return false
+  if (/\s/.test(trimmed)) return false
+  // Restrict to printable ASCII to avoid returning decrypted garbage bytes.
+  return /^[\x20-\x7E]+$/.test(trimmed)
+}
+
+function tryDecryptWithLegacyAppNames(buffer: Buffer): string | null {
+  const originalName = app.getName()
+  const legacyNames = ['Electron', 'jelico', 'Jelico'].filter((name) => name !== originalName)
+
+  try {
+    for (const legacyName of legacyNames) {
+      try {
+        app.setName(legacyName)
+        const value = safeStorage.decryptString(buffer)
+        if (isLikelyApiKey(value)) {
+          return value
+        }
+      } catch {
+        // Try next legacy name
+      }
+    }
+  } finally {
+    // Always restore current app name for consistent app behavior.
+    app.setName(originalName)
+  }
+
+  return null
+}
+
 function loadKeys(): KeyStore {
   try {
     const keysPath = getKeysPath()
@@ -57,10 +90,51 @@ export const keychainService = {
     try {
       if (safeStorage.isEncryptionAvailable()) {
         const buffer = Buffer.from(encrypted, 'base64')
-        return safeStorage.decryptString(buffer)
+        let recoveredApiKey: string | null = null
+
+        try {
+          const currentValue = safeStorage.decryptString(buffer)
+          if (isLikelyApiKey(currentValue)) {
+            recoveredApiKey = currentValue
+          }
+        } catch {
+          // Ignore and attempt compatibility fallbacks below.
+        }
+
+        // Compatibility fallback for legacy app-name encryption contexts.
+        if (!recoveredApiKey) {
+          recoveredApiKey = tryDecryptWithLegacyAppNames(buffer)
+          if (recoveredApiKey) {
+            // Migrate to current app identity for stable future decrypts.
+            try {
+              keys[providerId] = safeStorage.encryptString(recoveredApiKey).toString('base64')
+              saveKeys(keys)
+            } catch {
+              // Keep using recovered key even if migration write fails.
+            }
+          }
+        }
+
+        // Legacy fallback: some historical runs stored plain base64 while
+        // encryption availability changed across environments.
+        if (!recoveredApiKey) {
+          const legacyPlain = buffer.toString('utf-8')
+          if (isLikelyApiKey(legacyPlain)) {
+            recoveredApiKey = legacyPlain
+            try {
+              keys[providerId] = safeStorage.encryptString(legacyPlain).toString('base64')
+              saveKeys(keys)
+            } catch {
+              // Keep using recovered key even if migration write fails.
+            }
+          }
+        }
+
+        return recoveredApiKey
       } else {
         // Fallback: decode base64
-        return Buffer.from(encrypted, 'base64').toString('utf-8')
+        const decoded = Buffer.from(encrypted, 'base64').toString('utf-8')
+        return isLikelyApiKey(decoded) ? decoded : null
       }
     } catch {
       return null

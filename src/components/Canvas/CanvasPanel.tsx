@@ -200,7 +200,7 @@ export function CanvasPanel() {
   const hasMultipleRevisions = revisions.length > 1
 
   return (
-    <div className="w-full h-full bg-bg-surface flex flex-col overflow-hidden">
+    <div className="w-full h-full bg-bg-surface flex flex-col overflow-hidden" data-window-toggle="ignore">
       {/* Header */}
       <div className="h-14 flex items-center justify-between px-4 border-b border-border flex-shrink-0">
         <div className="flex items-center gap-2 min-w-0 flex-1">
