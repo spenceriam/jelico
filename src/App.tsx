@@ -59,7 +59,7 @@ export default function App() {
   const { loadWorkspaces } = useWorkspaceStore()
   const { clearOncePermissions, loadPermissions } = usePermissionStore()
   const { loadFromStorage: loadTheme } = useThemeStore()
-  const { checkForUpdates, startListening } = useUpdateStore()
+  const { startListening, loadCurrentVersion } = useUpdateStore()
   const commandPalette = useCommandPalette()
 
   // Resizable canvas panel state
@@ -99,7 +99,7 @@ export default function App() {
 
   useEffect(() => {
     const stopListening = startListening()
-    checkForUpdates()
+    loadCurrentVersion()
     return () => stopListening()
   }, [])
 

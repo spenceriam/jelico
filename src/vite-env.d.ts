@@ -60,6 +60,7 @@ interface Window {
       onProgress: (callback: (progress: CompactionProgress) => void) => () => void
     }
     updates: {
+      getCurrentVersion: () => Promise<string>
       check: () => Promise<UpdateInfo>
       download: () => Promise<UpdateDownloadResult>
       openRelease: (url: string) => Promise<boolean>

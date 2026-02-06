@@ -4,6 +4,7 @@ import { useChatStore } from '../../stores/chat'
 import { useUIStore } from '../../stores/ui'
 import { useArtifactStore, type ArtifactType } from '../../stores/artifacts'
 import { useSandboxStore } from '../../stores/sandbox'
+import { useUpdateStore } from '../../stores/updates'
 import { TransferDialog } from '../Conversations/TransferDialog'
 import { BrailleLoader } from '../StatusIndicators'
 
@@ -91,6 +92,7 @@ export function Sidebar() {
   const { sidebarCollapsed, openSettings } = useUIStore()
   const { artifacts, selectArtifact, openCanvas } = useArtifactStore()
   const { loadFiles: loadSandboxFiles } = useSandboxStore()
+  const updateAvailable = useUpdateStore((state) => state.info?.isUpdateAvailable)
   // Track which conversations have their artifact trees expanded
   const [expandedConversations, setExpandedConversations] = useState<Set<string>>(new Set())
   // Track sandbox file counts per conversation (flat list for sidebar display)
@@ -388,6 +390,9 @@ export function Sidebar() {
         >
           <Settings className="w-4 h-4" />
           Settings
+          {updateAvailable && (
+            <span className="ml-auto w-2 h-2 bg-accent rounded-full" />
+          )}
         </button>
       </div>
 

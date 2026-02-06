@@ -19,10 +19,43 @@ const AGENT_MODES: { id: AgentMode; name: string; description: string }[] = [
   { id: 'review', name: 'Review', description: 'Quality assurance and feedback' },
 ]
 
+function parseSemver(version: string): [number, number, number] {
+  const cleaned = version.trim().replace(/^v/i, '')
+  const main = cleaned.split('-')[0] || cleaned
+  const parts = main.split('.')
+  return [
+    Number(parts[0]) || 0,
+    Number(parts[1]) || 0,
+    Number(parts[2]) || 0,
+  ]
+}
+
+function compareSemver(a: string, b: string): number {
+  const [aMajor, aMinor, aPatch] = parseSemver(a)
+  const [bMajor, bMinor, bPatch] = parseSemver(b)
+
+  if (aMajor !== bMajor) return aMajor > bMajor ? 1 : -1
+  if (aMinor !== bMinor) return aMinor > bMinor ? 1 : -1
+  if (aPatch !== bPatch) return aPatch > bPatch ? 1 : -1
+  return 0
+}
+
 export function GeneralSettings() {
   const { mode, colorThemeId, setMode, setColorTheme } = useThemeStore()
   const { mode: defaultMode, setMode: setDefaultMode } = useChatStore()
-  const { info, isChecking, isDownloading, downloadProgress, lastDownloadedTo, error, checkForUpdates, downloadUpdate } = useUpdateStore()
+  const { info, currentVersion, isChecking, isDownloading, downloadProgress, lastDownloadedTo, error, checkForUpdates, downloadUpdate } = useUpdateStore()
+  const versionStatus = (() => {
+    if (!info) return null
+
+    const comparison = compareSemver(info.currentVersion, info.latestVersion)
+    if (comparison < 0) {
+      return { text: 'Update available', className: 'text-accent' }
+    }
+    if (comparison > 0) {
+      return { text: 'Running newer than latest release', className: 'text-text-muted' }
+    }
+    return { text: 'Up to date', className: 'text-text-secondary' }
+  })()
 
   // User profile state (loaded from soul)
   const [userName, setUserName] = useState('')
@@ -199,15 +232,15 @@ export function GeneralSettings() {
             <div>
               <div className="font-medium text-text-primary">Version</div>
               <div className="text-sm text-text-muted">
-                Current: {info?.currentVersion ?? 'Checking...'}
+                Current: {currentVersion ?? info?.currentVersion ?? 'Unknown'}
               </div>
               {info?.latestVersion && (
                 <div className="text-sm text-text-muted">
                   Latest: {info.latestVersion}
                 </div>
               )}
-              {info?.isUpdateAvailable && (
-                <div className="text-sm text-accent mt-1">Update available</div>
+              {versionStatus && (
+                <div className={`text-sm mt-1 ${versionStatus.className}`}>{versionStatus.text}</div>
               )}
               {error && (
                 <div className="text-sm text-error mt-1">{error}</div>
@@ -216,12 +249,12 @@ export function GeneralSettings() {
 
             <div className="flex flex-wrap gap-2">
               <button
-                onClick={() => checkForUpdates({ force: true })}
+                onClick={() => checkForUpdates()}
                 disabled={isChecking}
                 className="flex items-center gap-2 px-3 py-2 rounded-lg border border-border text-text-secondary hover:text-text-primary hover:border-border-strong transition-colors disabled:opacity-50"
               >
                 <RefreshCw className={`w-4 h-4 ${isChecking ? 'animate-spin' : ''}`} />
-                {isChecking ? 'Checking...' : 'Check for updates'}
+                Check for updates
               </button>
 
               {info?.isUpdateAvailable && (
