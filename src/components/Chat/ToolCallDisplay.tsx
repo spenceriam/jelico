@@ -53,12 +53,26 @@ export const HIDDEN_TOOLS = new Set([
   'todo_check',          // Internal status check
 ])
 
+function isCanceledResultPayload(result: unknown): boolean {
+  if (!result || typeof result !== 'object') return false
+  const payload = result as Record<string, unknown>
+  if (payload.canceled === true || payload.cancelled === true) return true
+  const error = String(payload.error || '')
+  return error.toLowerCase().includes('canceled: stream stopped by user')
+}
+
 function formatToolResult(result: unknown): { content: string; isError: boolean } {
   if (typeof result === 'object' && result !== null) {
     const obj = result as Record<string, unknown>
 
     // Handle errors
     if (obj.success === false) {
+      if (isCanceledResultPayload(obj)) {
+        return {
+          content: 'Canceled by user',
+          isError: false,
+        }
+      }
       return {
         content: String(obj.error || 'Unknown error'),
         isError: true
@@ -271,6 +285,7 @@ export function SingleToolCallDisplay({
 
   const hasResult = toolResult !== undefined
   const formattedResult = hasResult ? formatToolResult(toolResult.result) : null
+  const isCanceled = toolCall.status === 'canceled' || toolCall.status === 'cancelled' || isCanceledResultPayload(toolResult?.result)
 
   const formatArtifactType = () => {
     const rawType = String(toolCall.args?.type || '').toLowerCase()
@@ -321,7 +336,10 @@ export function SingleToolCallDisplay({
   }
 
   // Use explicit status if available, otherwise infer from result presence
-  const status = toolCall.status || (hasResult ? 'complete' : (isStreaming ? 'executing' : 'complete'))
+  const inferredStatus = toolCall.status || (hasResult ? 'complete' : (isStreaming ? 'executing' : 'complete'))
+  const status = (!isStreaming && !hasResult && (inferredStatus === 'starting' || inferredStatus === 'executing'))
+    ? 'canceled'
+    : inferredStatus
   const isInProgress = status === 'starting' || status === 'executing'
 
   const isExpandable = (() => {
@@ -383,10 +401,13 @@ export function SingleToolCallDisplay({
             {isInProgress && (
               <Loader2 className="w-4 h-4 text-accent animate-spin flex-shrink-0" />
             )}
-            {hasResult && !formattedResult?.isError && (
+            {isCanceled && (
+              <XCircle className="w-4 h-4 text-text-muted flex-shrink-0" />
+            )}
+            {hasResult && !formattedResult?.isError && !isCanceled && (
               <CheckCircle className="w-4 h-4 text-green-500 flex-shrink-0" />
             )}
-            {(hasResult && formattedResult?.isError) || status === 'error' ? (
+            {!isCanceled && ((hasResult && formattedResult?.isError) || status === 'error') ? (
               <XCircle className="w-4 h-4 text-error flex-shrink-0" />
             ) : null}
           </>
@@ -473,8 +494,6 @@ export function SingleToolCallDisplay({
 }
 
 export function ToolCallDisplay({ toolCalls, toolResults = [], isStreaming }: ToolCallDisplayProps) {
-  const [completedExpanded, setCompletedExpanded] = useState(false)
-
   // Filter out "plumbing" tools that users don't need to see
   const visibleToolCalls = toolCalls.filter(tc => !HIDDEN_TOOLS.has(tc.name))
 
@@ -483,59 +502,16 @@ export function ToolCallDisplay({ toolCalls, toolResults = [], isStreaming }: To
   // Map results by toolCallId for easy lookup
   const resultsMap = new Map(toolResults.map(r => [r.toolCallId, r]))
 
-  // Separate completed vs active tool calls
-  // A tool is complete if it has a result OR its status is 'complete'
-  const completedTools = visibleToolCalls.filter(tc =>
-    resultsMap.has(tc.id) || tc.status === 'complete'
-  )
-  const activeTools = visibleToolCalls.filter(tc =>
-    !resultsMap.has(tc.id) && tc.status !== 'complete'
-  )
-
   return (
     <div className="space-y-2 my-3">
-      {/* Active tool calls - shown normally */}
-      {activeTools.map((toolCall, index) => (
+      {visibleToolCalls.map((toolCall, index) => (
         <SingleToolCallDisplay
-          key={toolCall.id || `active-${index}`}
+          key={toolCall.id || `tool-${index}`}
           toolCall={toolCall}
           toolResult={resultsMap.get(toolCall.id)}
           isStreaming={isStreaming}
         />
       ))}
-
-      {/* Completed actions - collapsible section (shown last) */}
-      {completedTools.length > 0 && (
-        <div className="border border-border rounded-lg overflow-hidden bg-bg-deep">
-          <button
-            onClick={() => setCompletedExpanded(!completedExpanded)}
-            className="w-full flex items-center gap-2 px-3 py-2 hover:bg-bg-hover transition-colors text-left"
-            aria-expanded={completedExpanded}
-            aria-controls="completed-actions-content"
-          >
-            {completedExpanded ? (
-              <ChevronDown className="w-4 h-4 text-text-muted flex-shrink-0" />
-            ) : (
-              <ChevronRight className="w-4 h-4 text-text-muted flex-shrink-0" />
-            )}
-            <CheckCircle className="w-4 h-4 text-green-500 flex-shrink-0" />
-            <span className="text-sm text-text-muted">Completed actions</span>
-          </button>
-
-          {completedExpanded && (
-            <div id="completed-actions-content" className="border-t border-border bg-bg-surface p-2 space-y-2">
-              {completedTools.map((toolCall, index) => (
-                <SingleToolCallDisplay
-                  key={toolCall.id || `completed-${index}`}
-                  toolCall={toolCall}
-                  toolResult={resultsMap.get(toolCall.id)}
-                  isStreaming={false}
-                />
-              ))}
-            </div>
-          )}
-        </div>
-      )}
     </div>
   )
 }

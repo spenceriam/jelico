@@ -48,6 +48,15 @@ export function WorkspaceSelector() {
     loadWorkspaces()
   }, [])
 
+  // If we have an active workspace id but no matching metadata, refresh list.
+  useEffect(() => {
+    if (!activeWorkspaceId) return
+    const hasActiveWorkspace = workspaces.some((workspace) => workspace.id === activeWorkspaceId)
+    if (!hasActiveWorkspace) {
+      loadWorkspaces()
+    }
+  }, [activeWorkspaceId, workspaces, loadWorkspaces])
+
   // Load sandbox files when dropdown opens and no workspace is selected
   useEffect(() => {
     if (dropdownOpen && !activeWorkspaceId && activeConversationId) {
@@ -128,6 +137,14 @@ export function WorkspaceSelector() {
                   {activeWorkspace.gitBranch}
                 </span>
               )}
+            </div>
+          </>
+        ) : activeWorkspaceId ? (
+          <>
+            <Folder className="w-4 h-4 text-accent flex-shrink-0" />
+            <div className="flex flex-col items-start leading-tight">
+              <span className="text-text-primary">Workspace</span>
+              <span className="text-xs text-text-muted">Loading...</span>
             </div>
           </>
         ) : (

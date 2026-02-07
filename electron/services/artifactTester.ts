@@ -101,9 +101,19 @@ async function resolveHtmlFromArtifact(artifactId: string): Promise<{
   artifactTitle: string
   revision: number
 }> {
-  const artifact = artifactDb.get(artifactId)
+  const identifier = artifactId.trim()
+  let artifact = artifactDb.get(identifier)
   if (!artifact) {
-    throw new Error(`Artifact not found: ${artifactId}`)
+    // Some models pass artifact title instead of ID. Accept that as a fallback.
+    const htmlArtifacts = artifactDb.list().filter((row) => row.type === 'html')
+    artifact =
+      htmlArtifacts.find((row) => row.title === identifier) ||
+      htmlArtifacts.find((row) => row.title.toLowerCase() === identifier.toLowerCase()) ||
+      null
+  }
+
+  if (!artifact) {
+    throw new Error(`Artifact not found: ${artifactId}. Provide artifact ID or exact HTML title.`)
   }
 
   const baseId = artifact.base_artifact_id || artifact.id
@@ -263,16 +273,20 @@ export async function artifactTestClick(
     const canvas = document.querySelector('canvas')
     if (!(canvas instanceof HTMLCanvasElement)) return null
     try {
-      const ctx = canvas.getContext('2d')
-      if (!ctx) return null
-      const width = Math.max(1, Math.min(canvas.width || 1, 64))
-      const height = Math.max(1, Math.min(canvas.height || 1, 64))
-      const data = ctx.getImageData(0, 0, width, height).data
+      const sampleSize = 32
+      const sampleCanvas = document.createElement('canvas')
+      sampleCanvas.width = sampleSize
+      sampleCanvas.height = sampleSize
+      const sampleCtx = sampleCanvas.getContext('2d', { willReadFrequently: true })
+      if (!sampleCtx) return null
+      sampleCtx.clearRect(0, 0, sampleSize, sampleSize)
+      sampleCtx.drawImage(canvas, 0, 0, sampleSize, sampleSize)
+      const data = sampleCtx.getImageData(0, 0, sampleSize, sampleSize).data
       let checksum = 0
-      for (let i = 0; i < data.length; i += 16) {
+      for (let i = 0; i < data.length; i += 8) {
         checksum = (checksum + data[i] + data[i + 1] + data[i + 2] + data[i + 3]) % 1000000007
       }
-      return width + 'x' + height + ':' + checksum
+      return sampleSize + 'x' + sampleSize + ':' + checksum
     } catch {
       return null
     }
@@ -397,8 +411,52 @@ export async function artifactTestEvaluate(sessionId: string, expression: string
   if (!session) return { success: false, error: `Session not found: ${sessionId}` }
 
   try {
-    const value = await executeInSession(session, expression)
+    const expressionJson = JSON.stringify(expression)
+    const wrapped = await executeInSession<{
+      success: boolean
+      value?: unknown
+      error?: string
+      stack?: string
+    }>(session, `
+(() => {
+  const expression = ${expressionJson}
+  try {
+    const value = (0, eval)(expression)
     return { success: true, value }
+  } catch (error) {
+    const name = error && typeof error === 'object' && 'name' in error ? String(error.name) : 'Error'
+    const message = error && typeof error === 'object' && 'message' in error ? String(error.message) : String(error)
+    const stack = error && typeof error === 'object' && 'stack' in error
+      ? String(error.stack || '').split('\\n').slice(0, 4).join('\\n')
+      : undefined
+    return { success: false, error: name + ': ' + message, stack }
+  }
+})()
+`)
+
+    if (!wrapped?.success) {
+      return {
+        success: false,
+        error: wrapped?.error || 'Evaluation failed',
+        stack: wrapped?.stack,
+      }
+    }
+
+    const rawValue = wrapped.value
+    const valueType =
+      rawValue === undefined
+        ? 'undefined'
+        : rawValue === null
+          ? 'null'
+          : Array.isArray(rawValue)
+            ? 'array'
+            : typeof rawValue
+
+    return {
+      success: true,
+      value: rawValue === undefined ? null : rawValue,
+      valueType,
+    }
   } catch (error) {
     return { success: false, error: asErrorMessage(error) }
   }

@@ -504,6 +504,7 @@ export const messageDb = {
       conversation_id: conversationId,
       role: message.role,
       content: message.content,
+      segments: message.segments,
       tool_calls: message.toolCalls,
       tool_results: message.toolResults,
       attachments: message.attachments,
@@ -526,6 +527,7 @@ export const messageDb = {
     if (!message) return null
 
     if (updates.content !== undefined) message.content = updates.content
+    if (updates.segments !== undefined) message.segments = updates.segments
     if (updates.toolCalls !== undefined) message.tool_calls = updates.toolCalls
     if (updates.toolResults !== undefined) message.tool_results = updates.toolResults
     if (updates.attachments !== undefined) message.attachments = updates.attachments
@@ -596,7 +598,7 @@ interface ToolCallRow {
   id: string
   name: string
   args: Record<string, unknown>
-  status?: 'starting' | 'executing' | 'complete' | 'error'
+  status?: 'starting' | 'executing' | 'complete' | 'error' | 'canceled' | 'cancelled'
 }
 
 interface ToolResultRow {
@@ -604,6 +606,10 @@ interface ToolResultRow {
   result: unknown
   error?: string
 }
+
+type MessageSegmentRow =
+  | { type: 'text'; content: string }
+  | { type: 'tool'; toolCallId: string }
 
 interface MessageAttachment {
   id: string
@@ -626,6 +632,7 @@ interface MessageRow {
   conversation_id: string
   role: string
   content: string
+  segments?: MessageSegmentRow[]
   tool_calls?: ToolCallRow[]
   tool_results?: ToolResultRow[]
   attachments?: MessageAttachment[]
@@ -636,6 +643,7 @@ interface MessageRow {
 interface MessageInput {
   role: string
   content: string
+  segments?: MessageSegmentRow[]
   toolCalls?: ToolCallRow[]
   toolResults?: ToolResultRow[]
   attachments?: MessageAttachment[]

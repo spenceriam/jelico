@@ -1022,7 +1022,9 @@ Actions:
 
 Notes:
 - open with artifact_id always targets latest revision of that artifact's base.
+- Use the session_id returned by open. Do not invent placeholder session IDs.
 - A click should be treated as failed if no observable UI change occurs (unless expect_change=false).
+- For canvas/game interactions, prefer expect_change=false and verify behavior via evaluate/wait_for.
 - These sessions are isolated and hidden from users.`,
     parameters: z.object({
       action: z.enum([

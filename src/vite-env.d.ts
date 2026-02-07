@@ -248,12 +248,17 @@ interface Message {
   conversationId: string
   role: 'user' | 'assistant' | 'system'
   content: string
+  segments?: MessageSegmentData[]
   attachments?: MessageAttachmentData[]
   toolCalls?: ToolCallEvent[]
   toolResults?: ToolResultEvent[]
   usage?: MessageUsageData
   createdAt: number
 }
+
+type MessageSegmentData =
+  | { type: 'text'; content: string }
+  | { type: 'tool'; toolCallId: string }
 
 interface MessageAttachmentData {
   id: string
@@ -266,6 +271,7 @@ interface MessageAttachmentData {
 interface MessageInput {
   role: Message['role']
   content: string
+  segments?: MessageSegmentData[]
   toolCalls?: ToolCallEvent[]
   toolResults?: ToolResultEvent[]
   attachments?: MessageAttachmentData[]
@@ -309,14 +315,14 @@ interface ToolCallEvent {
   id: string
   name: string
   args: Record<string, unknown>
-  status?: 'starting' | 'executing' | 'complete' | 'error'
+  status?: 'starting' | 'executing' | 'complete' | 'error' | 'canceled' | 'cancelled'
 }
 
 interface ToolCallUpdateEvent {
   id: string
   name: string
   args: Record<string, unknown>
-  status: 'starting' | 'executing' | 'complete' | 'error'
+  status: 'starting' | 'executing' | 'complete' | 'error' | 'canceled' | 'cancelled'
 }
 
 interface ToolResultEvent {

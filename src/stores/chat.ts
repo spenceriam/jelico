@@ -30,6 +30,7 @@ export interface Message {
   conversationId: string
   role: 'user' | 'assistant' | 'system' | 'tool'
   content: string
+  segments?: StreamingSegment[]
   attachments?: MessageAttachment[]
   createdAt: number
   toolCalls?: ToolCall[]
@@ -41,7 +42,7 @@ export interface ToolCall {
   id: string
   name: string
   args: Record<string, unknown>
-  status?: 'starting' | 'executing' | 'complete' | 'error'
+  status?: 'starting' | 'executing' | 'complete' | 'error' | 'canceled' | 'cancelled'
 }
 
 export interface ToolResult {
@@ -181,6 +182,99 @@ interface ChatStore {
 const streamChannelByConversation = new Map<string, string>()
 let modeTransitionTimeoutId: ReturnType<typeof setTimeout> | null = null
 const PENDING_STREAMS_STORAGE_KEY = 'jelico.pending_streams.v1'
+const INLINE_TOOL_CALL_BEGIN_TOKEN = '<|tool_call_begin|>'
+const INLINE_TOOL_CALL_ARGUMENT_BEGIN_TOKEN = '<|tool_call_argument_begin|>'
+const INLINE_TOOL_CALL_END_TOKEN = '<|tool_call_end|>'
+
+function getTrailingTokenOverlap(value: string, token: string): number {
+  const max = Math.min(value.length, token.length - 1)
+  for (let size = max; size > 0; size -= 1) {
+    if (value.endsWith(token.slice(0, size))) {
+      return size
+    }
+  }
+  return 0
+}
+
+function getMaxTrailingTokenOverlap(value: string, tokens: string[]): number {
+  return tokens.reduce((max, token) => Math.max(max, getTrailingTokenOverlap(value, token)), 0)
+}
+
+function createInlineToolProtocolFilter() {
+  const startTokens = [INLINE_TOOL_CALL_BEGIN_TOKEN, INLINE_TOOL_CALL_ARGUMENT_BEGIN_TOKEN]
+  let carry = ''
+  let inProtocol = false
+
+  const consume = (chunk: string): string => {
+    if (!chunk) return ''
+
+    let input = carry + chunk
+    carry = ''
+    let output = ''
+    let cursor = 0
+
+    while (cursor < input.length) {
+      if (inProtocol) {
+        const endIndex = input.indexOf(INLINE_TOOL_CALL_END_TOKEN, cursor)
+        if (endIndex === -1) {
+          const remaining = input.slice(cursor)
+          const overlap = getTrailingTokenOverlap(remaining, INLINE_TOOL_CALL_END_TOKEN)
+          carry = overlap > 0 ? remaining.slice(-overlap) : ''
+          return output
+        }
+
+        cursor = endIndex + INLINE_TOOL_CALL_END_TOKEN.length
+        inProtocol = false
+        continue
+      }
+
+      let nextStartIndex = -1
+      let matchedStartToken = ''
+      for (const token of startTokens) {
+        const idx = input.indexOf(token, cursor)
+        if (idx !== -1 && (nextStartIndex === -1 || idx < nextStartIndex)) {
+          nextStartIndex = idx
+          matchedStartToken = token
+        }
+      }
+
+      if (nextStartIndex === -1) {
+        const remaining = input.slice(cursor)
+        const overlap = getMaxTrailingTokenOverlap(remaining, startTokens)
+        if (overlap > 0) {
+          output += remaining.slice(0, -overlap)
+          carry = remaining.slice(-overlap)
+        } else {
+          output += remaining
+        }
+        return output
+      }
+
+      output += input.slice(cursor, nextStartIndex)
+      cursor = nextStartIndex + matchedStartToken.length
+      inProtocol = true
+    }
+
+    return output
+  }
+
+  const flush = (): string => {
+    if (inProtocol) {
+      inProtocol = false
+      carry = ''
+      return ''
+    }
+
+    const tail = carry
+    carry = ''
+
+    if (!tail) return ''
+    if (tail.includes('<|tool_call')) return ''
+    return tail
+  }
+
+  return { consume, flush }
+}
 
 function readPendingStreamCheckpoints(): Record<string, PendingStreamCheckpoint> {
   try {
@@ -817,39 +911,49 @@ export const useChatStore = create<ChatStore>((set, get) => ({
     const streamStartTime = Date.now()
     let firstChunkTime: number | null = null
     let lastChunkTime: number | null = null
+    const inlineToolProtocolFilter = createInlineToolProtocolFilter()
+
+    const appendStreamTextChunk = (chunk: string) => {
+      fullContent += chunk
+      updateConversationStreamState((current) => {
+        // Find or create the current text segment
+        const segments = [...current.streamingSegments]
+        const lastSegment = segments[segments.length - 1]
+
+        if (lastSegment?.type === 'text') {
+          // Append to existing text segment
+          segments[segments.length - 1] = {
+            type: 'text',
+            content: lastSegment.content + chunk,
+          }
+        } else {
+          // Create new text segment (first text, or text after a tool)
+          segments.push({ type: 'text', content: chunk })
+        }
+
+        return {
+          ...current,
+          streamingContent: fullContent,
+          streamingSegments: segments,
+        }
+      })
+    }
 
     // Handle stream chunks - track text segments for interleaving
     window.jelico.ai.onStreamChunk(channelId, (chunk) => {
       // Guard against undefined chunks (can happen with some stream events)
       if (chunk !== undefined && chunk !== null) {
+        const sanitizedChunk = inlineToolProtocolFilter.consume(chunk)
+        if (!sanitizedChunk) {
+          return
+        }
+
         const now = Date.now()
         if (firstChunkTime === null) {
           firstChunkTime = now
         }
         lastChunkTime = now
-        fullContent += chunk
-        updateConversationStreamState((current) => {
-          // Find or create the current text segment
-          const segments = [...current.streamingSegments]
-          const lastSegment = segments[segments.length - 1]
-
-          if (lastSegment?.type === 'text') {
-            // Append to existing text segment
-            segments[segments.length - 1] = {
-              type: 'text',
-              content: lastSegment.content + chunk,
-            }
-          } else {
-            // Create new text segment (first text, or text after a tool)
-            segments.push({ type: 'text', content: chunk })
-          }
-
-          return {
-            ...current,
-            streamingContent: fullContent,
-            streamingSegments: segments,
-          }
-        })
+        appendStreamTextChunk(sanitizedChunk)
       }
     })
 
@@ -1086,6 +1190,10 @@ export const useChatStore = create<ChatStore>((set, get) => ({
     // Handle stream end
     window.jelico.ai.onStreamEnd(channelId, async (stats) => {
       window.jelico.ai.removeListeners(channelId)
+      const trailingSanitizedText = inlineToolProtocolFilter.flush()
+      if (trailingSanitizedText) {
+        appendStreamTextChunk(trailingSanitizedText)
+      }
       const activeChannel = streamChannelByConversation.get(targetConversationId)
       if (activeChannel === channelId) {
         streamChannelByConversation.delete(targetConversationId)
@@ -1128,6 +1236,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
         const assistantMessage = await window.jelico.conversations.addMessage(targetConversationId, {
           role: 'assistant',
           content: assistantContent,
+          segments: streamSnapshot.streamingSegments.length > 0 ? streamSnapshot.streamingSegments : undefined,
           toolCalls: streamingToolCalls.length > 0 ? streamingToolCalls : undefined,
           toolResults: streamingToolResults.length > 0 ? streamingToolResults : undefined,
           usage,
@@ -1331,14 +1440,41 @@ export const useChatStore = create<ChatStore>((set, get) => ({
 
     console.log('[Chat Store] Saving partial response:', { hasContent, hasToolCalls })
 
+    // Normalize tool call state on manual stop so UI never shows stale "running" actions.
+    const completedResultIds = new Set(streamingToolResults.map((result) => result.toolCallId))
+    const normalizedToolCalls = streamingToolCalls.map((toolCall) => {
+      if (completedResultIds.has(toolCall.id)) {
+        return toolCall.status === 'complete' ? toolCall : { ...toolCall, status: 'complete' as const }
+      }
+      if (toolCall.status === 'error' || toolCall.status === 'canceled' || toolCall.status === 'cancelled') {
+        return toolCall
+      }
+      return { ...toolCall, status: 'canceled' as const }
+    })
+
+    const interruptedToolResults: ToolResult[] = normalizedToolCalls
+      .filter((toolCall) => !completedResultIds.has(toolCall.id))
+      .map((toolCall) => ({
+        toolCallId: toolCall.id,
+        result: {
+          success: false,
+          canceled: true,
+          error: 'Canceled: stream stopped by user',
+        },
+        error: 'Canceled: stream stopped by user',
+      }))
+
+    const normalizedToolResults = [...streamingToolResults, ...interruptedToolResults]
+
     if (activeConversationId && (hasContent || hasToolCalls)) {
       try {
         // Save the partial response to the database
         const partialMessage = await window.jelico.conversations.addMessage(activeConversationId, {
           role: 'assistant',
           content: hasContent ? streamingContent : '(Stopped)',
-          toolCalls: hasToolCalls ? streamingToolCalls : undefined,
-          toolResults: streamingToolResults.length > 0 ? streamingToolResults : undefined,
+          segments: streamingSegments.length > 0 ? streamingSegments : undefined,
+          toolCalls: hasToolCalls ? normalizedToolCalls : undefined,
+          toolResults: normalizedToolResults.length > 0 ? normalizedToolResults : undefined,
         })
 
         console.log('[Chat Store] Partial message saved:', {

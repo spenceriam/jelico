@@ -21,6 +21,23 @@ export interface ChangelogEntry {
 
 export const changelog: ChangelogEntry[] = [
   {
+    version: '0.11.2',
+    date: '2026-02-07',
+    changes: {
+      changed: [
+        'Assistant turns now preserve interleaved text/tool history after streaming instead of collapsing tools under a separate completed-actions bucket',
+        'Sandbox conversation trees now show artifact rows directly with a reveal action and a clear Transfer to Workspace action at the artifact section level',
+        'Transfer dialog now always uses explicit folder picking for workspace transfer targets instead of auto-selecting the last active workspace',
+      ],
+      fixed: [
+        'Stopping a streaming turn now marks in-flight tools as canceled and records canceled results, preventing stale running states in chat history',
+        'Inline tool protocol tokens are now filtered from streamed assistant text to avoid leaking raw tool-call markers into conversation output',
+        'HTML canvas previews now support full interaction in-app via safer storage shims and iframe capability updates',
+        'Artifact test open now accepts HTML artifact titles as a fallback and evaluate now returns clearer execution errors and value typing',
+      ],
+    },
+  },
+  {
     version: '0.11.1',
     date: '2026-02-06',
     changes: {

@@ -27,11 +27,13 @@ export function TransferDialog({
   const [workspaces, setWorkspaces] = useState<Workspace[]>([])
   const [artifactCount, setArtifactCount] = useState(0)
   const [selectedWorkspaceId, setSelectedWorkspaceId] = useState<string | null>(null)
+  const [selectedWorkspace, setSelectedWorkspace] = useState<Workspace | null>(null)
+  const [isPickingWorkspace, setIsPickingWorkspace] = useState(false)
   const [isTransferring, setIsTransferring] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [result, setResult] = useState<{ transferred: number; failed: number } | null>(null)
   const { loadConversations, activeConversationId, setConversationWorkspaceId } = useChatStore()
-  const { setActiveWorkspace } = useWorkspaceStore()
+  const { setActiveWorkspace, loadWorkspaces } = useWorkspaceStore()
 
   // Load workspaces and artifact count
   useEffect(() => {
@@ -49,6 +51,29 @@ export function TransferDialog({
   const currentWorkspace = workspaces.find(w => w.id === currentWorkspaceId)
   const isInSandbox = !currentWorkspaceId
 
+  const handlePickFolder = async () => {
+    setIsPickingWorkspace(true)
+    setError(null)
+
+    try {
+      const workspace = await window.jelico.workspaces.selectFolder()
+      if (!workspace) return
+
+      // Ensure we always transfer to explicitly picked folder, not implicit last selection.
+      setSelectedWorkspaceId(workspace.id)
+      setSelectedWorkspace(workspace)
+
+      // Keep local workspace metadata fresh in case this was a newly created workspace record.
+      const refreshed = await window.jelico.workspaces.list()
+      setWorkspaces(refreshed)
+      await loadWorkspaces()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to pick folder')
+    } finally {
+      setIsPickingWorkspace(false)
+    }
+  }
+
   const handleTransfer = async () => {
     setIsTransferring(true)
     setError(null)
@@ -64,6 +89,7 @@ export function TransferDialog({
 
         // Refresh conversations so the workspace change is reflected in the sidebar
         await loadConversations()
+        await loadWorkspaces()
 
         // Update the local conversation record immediately
         setConversationWorkspaceId(conversationId, nextWorkspaceId)
@@ -90,7 +116,7 @@ export function TransferDialog({
   }
 
   const targetLabel = selectedWorkspaceId
-    ? workspaces.find(w => w.id === selectedWorkspaceId)?.name || 'Unknown'
+    ? selectedWorkspace?.name || workspaces.find(w => w.id === selectedWorkspaceId)?.name || 'Unknown'
     : 'Sandbox'
 
   return (
@@ -146,7 +172,10 @@ export function TransferDialog({
                   {/* Sandbox option */}
                   {!isInSandbox && (
                     <button
-                      onClick={() => setSelectedWorkspaceId(null)}
+                      onClick={() => {
+                        setSelectedWorkspaceId(null)
+                        setSelectedWorkspace(null)
+                      }}
                       className={`w-full flex items-center gap-2 px-3 py-2 text-sm rounded-lg transition-colors text-left ${
                         selectedWorkspaceId === null
                           ? 'bg-accent/10 text-accent border border-accent/30'
@@ -158,30 +187,28 @@ export function TransferDialog({
                     </button>
                   )}
 
-                  {/* Workspace options */}
-                  {workspaces
-                    .filter(w => w.id !== currentWorkspaceId)
-                    .map(workspace => (
-                      <button
-                        key={workspace.id}
-                        onClick={() => setSelectedWorkspaceId(workspace.id)}
-                        className={`w-full flex items-center gap-2 px-3 py-2 text-sm rounded-lg transition-colors text-left ${
-                          selectedWorkspaceId === workspace.id
-                            ? 'bg-accent/10 text-accent border border-accent/30'
-                            : 'text-text-secondary hover:bg-bg-hover border border-transparent'
-                        }`}
-                      >
-                        <FolderOpen className="w-4 h-4" />
-                        <div className="flex-1 min-w-0">
-                          <div className="truncate">{workspace.name}</div>
-                          <div className="text-xs text-text-faint truncate">{workspace.path}</div>
-                        </div>
-                      </button>
-                    ))}
+                  {/* Explicit folder picker - mirrors workspace selector behavior */}
+                  <button
+                    onClick={handlePickFolder}
+                    disabled={isPickingWorkspace || isTransferring}
+                    className={`w-full flex items-center gap-2 px-3 py-2 text-sm rounded-lg transition-colors text-left ${
+                      selectedWorkspaceId
+                        ? 'bg-accent/10 text-accent border border-accent/30'
+                        : 'text-text-secondary hover:bg-bg-hover border border-transparent'
+                    } disabled:opacity-50 disabled:cursor-not-allowed`}
+                  >
+                    <FolderOpen className="w-4 h-4" />
+                    <span>{isPickingWorkspace ? 'Opening folder picker...' : 'Pick folder...'}</span>
+                  </button>
 
-                  {workspaces.length === 0 && isInSandbox && (
-                    <div className="text-sm text-text-muted py-2">
-                      No workspaces available. Create a workspace first.
+                  {selectedWorkspaceId && (
+                    <div className="px-3 py-2 rounded-lg border border-border bg-bg-deep">
+                      <div className="text-sm text-text-primary truncate">
+                        {selectedWorkspace?.name || workspaces.find(w => w.id === selectedWorkspaceId)?.name || 'Selected workspace'}
+                      </div>
+                      <div className="text-xs text-text-faint truncate">
+                        {selectedWorkspace?.path || workspaces.find(w => w.id === selectedWorkspaceId)?.path || ''}
+                      </div>
                     </div>
                   )}
                 </div>
@@ -209,6 +236,7 @@ export function TransferDialog({
               onClick={handleTransfer}
               disabled={
                 isTransferring ||
+                isPickingWorkspace ||
                 (selectedWorkspaceId === null && isInSandbox) ||
                 (selectedWorkspaceId === currentWorkspaceId)
               }
