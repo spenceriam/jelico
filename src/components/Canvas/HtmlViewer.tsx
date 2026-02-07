@@ -10,6 +10,65 @@ interface HtmlViewerProps {
   onSave?: (content: string) => void
 }
 
+const PREVIEW_STORAGE_SHIM = `<script>
+(() => {
+  const createMemoryStorage = () => {
+    const store = Object.create(null)
+    return {
+      getItem: (key) => (Object.prototype.hasOwnProperty.call(store, key) ? store[String(key)] : null),
+      setItem: (key, value) => { store[String(key)] = String(value) },
+      removeItem: (key) => { delete store[String(key)] },
+      clear: () => {
+        for (const key of Object.keys(store)) {
+          delete store[key]
+        }
+      },
+      key: (index) => Object.keys(store)[index] ?? null,
+      get length() { return Object.keys(store).length },
+    }
+  }
+
+  const ensureStorage = (name) => {
+    try {
+      const existing = window[name]
+      const probe = '__jelico_storage_probe__'
+      existing.setItem(probe, '1')
+      existing.removeItem(probe)
+      return
+    } catch {}
+
+    const fallback = createMemoryStorage()
+    try {
+      Object.defineProperty(window, name, {
+        configurable: true,
+        enumerable: true,
+        value: fallback,
+      })
+      return
+    } catch {}
+
+    try {
+      window[name] = fallback
+    } catch {}
+  }
+
+  ensureStorage('localStorage')
+  ensureStorage('sessionStorage')
+})()
+</script>`
+
+function injectPreviewShim(html: string): string {
+  if (/<head[^>]*>/i.test(html)) {
+    return html.replace(/<head[^>]*>/i, (match) => `${match}\n${PREVIEW_STORAGE_SHIM}`)
+  }
+
+  if (/<body[^>]*>/i.test(html)) {
+    return html.replace(/<body[^>]*>/i, (match) => `${match}\n${PREVIEW_STORAGE_SHIM}`)
+  }
+
+  return `${PREVIEW_STORAGE_SHIM}\n${html}`
+}
+
 // Debounce hook
 function useDebounce<T>(value: T, delay: number): T {
   const [debouncedValue, setDebouncedValue] = useState<T>(value)
@@ -104,13 +163,16 @@ export function HtmlViewer({ html, isStreaming = false, onSave }: HtmlViewerProp
   // Use the HTML as-is if it's a complete document, otherwise wrap it
   // Memoize to avoid recalculating on every render
   const sandboxedHtml = useMemo(() => {
-    if (isCompleteDocument) return displayContent
+    if (isCompleteDocument) {
+      return injectPreviewShim(displayContent)
+    }
 
     return `<!DOCTYPE html>
 <html>
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
+  ${PREVIEW_STORAGE_SHIM}
   <style>
     * { box-sizing: border-box; }
     body {
@@ -282,7 +344,7 @@ export function HtmlViewer({ html, isStreaming = false, onSave }: HtmlViewerProp
             key={refreshKey}
             srcDoc={sandboxedHtml}
             className="w-full h-full border-0 bg-white"
-            sandbox="allow-scripts allow-forms allow-modals allow-popups"
+            sandbox="allow-scripts allow-forms allow-modals allow-popups allow-pointer-lock"
             title="HTML Preview"
           />
         ) : view === 'diff' ? (

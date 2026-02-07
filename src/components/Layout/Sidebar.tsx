@@ -3,7 +3,6 @@ import { Plus, Settings, Trash2, FileCode, FileText, Presentation, Image, Chevro
 import { useChatStore } from '../../stores/chat'
 import { useUIStore } from '../../stores/ui'
 import { useArtifactStore, type ArtifactType } from '../../stores/artifacts'
-import { useSandboxStore } from '../../stores/sandbox'
 import { useUpdateStore } from '../../stores/updates'
 import { TransferDialog } from '../Conversations/TransferDialog'
 import { BrailleLoader } from '../StatusIndicators'
@@ -18,46 +17,6 @@ const ARTIFACT_ICONS: Record<ArtifactType, React.ComponentType<{ className?: str
 
 // Fallback icon for unknown artifact types
 const DEFAULT_ARTIFACT_ICON = File
-
-// Get icon for file extension
-function getFileIcon(ext?: string): React.ComponentType<{ className?: string }> {
-  switch (ext) {
-    case 'ts':
-    case 'tsx':
-    case 'js':
-    case 'jsx':
-    case 'py':
-    case 'rb':
-    case 'go':
-    case 'rs':
-    case 'java':
-    case 'c':
-    case 'cpp':
-    case 'h':
-      return FileCode
-    case 'md':
-    case 'txt':
-    case 'json':
-    case 'yaml':
-    case 'yml':
-    case 'toml':
-      return FileText
-    case 'html':
-    case 'htm':
-    case 'css':
-    case 'scss':
-      return Presentation
-    case 'svg':
-    case 'png':
-    case 'jpg':
-    case 'jpeg':
-    case 'gif':
-    case 'webp':
-      return Image
-    default:
-      return File
-  }
-}
 
 // Format date for tooltip
 function formatCreatedDate(timestamp: number): string {
@@ -91,52 +50,11 @@ export function Sidebar() {
   const { conversations, activeConversationId, setActiveConversation, deleteConversation, conversationStreams } = useChatStore()
   const { sidebarCollapsed, openSettings } = useUIStore()
   const { artifacts, selectArtifact, openCanvas } = useArtifactStore()
-  const { loadFiles: loadSandboxFiles } = useSandboxStore()
   const updateAvailable = useUpdateStore((state) => state.info?.isUpdateAvailable)
   // Track which conversations have their artifact trees expanded
   const [expandedConversations, setExpandedConversations] = useState<Set<string>>(new Set())
-  // Track sandbox file counts per conversation (flat list for sidebar display)
-  const [sandboxFileCounts, setSandboxFileCounts] = useState<Record<string, string[]>>({})
   // Transfer dialog state
   const [transferDialogConv, setTransferDialogConv] = useState<{ id: string; title: string; workspaceId: string | null } | null>(null)
-
-  // Load sandbox files for all conversations on mount
-  useEffect(() => {
-    const loadAllSandboxFiles = async () => {
-      const fileCounts: Record<string, string[]> = {}
-      for (const conv of conversations) {
-        try {
-          const convFiles = await window.jelico.sandbox.listFiles(conv.id)
-          if (convFiles.length > 0) {
-            fileCounts[conv.id] = convFiles
-          }
-        } catch {
-          // Ignore errors
-        }
-      }
-      setSandboxFileCounts(fileCounts)
-    }
-    loadAllSandboxFiles()
-  }, [conversations])
-
-  // Reload sandbox files for active conversation when it changes
-  useEffect(() => {
-    if (!activeConversationId) return
-    const refreshSandbox = async () => {
-      try {
-        const files = await window.jelico.sandbox.listFiles(activeConversationId)
-        setSandboxFileCounts(prev => ({
-          ...prev,
-          [activeConversationId]: files,
-        }))
-        // Also load structured data for potential future use
-        loadSandboxFiles(activeConversationId)
-      } catch {
-        // Ignore errors
-      }
-    }
-    refreshSandbox()
-  }, [activeConversationId, loadSandboxFiles])
 
   // Auto-expand artifact tree for active conversation
   useEffect(() => {
@@ -179,7 +97,10 @@ export function Sidebar() {
     }
   }
 
-  const handleOpenTransferDialog = (e: React.MouseEvent, conv: { id: string; title: string; workspaceId?: string | null }) => {
+  const handleOpenTransferDialog = (
+    e: React.MouseEvent,
+    conv: { id: string; title: string; workspaceId?: string | null }
+  ) => {
     e.stopPropagation()
     setTransferDialogConv({
       id: conv.id,
@@ -230,10 +151,8 @@ export function Sidebar() {
             </div>
             {convs.map((conv) => {
               const convArtifacts = getArtifactsForConversation(conv.id)
-              const convSandboxFileList = sandboxFileCounts[conv.id] || []
               const hasArtifacts = convArtifacts.length > 0
-              const hasSandboxFiles = convSandboxFileList.length > 0
-              const hasExpandableContent = hasArtifacts || hasSandboxFiles
+              const hasExpandableContent = hasArtifacts
               const isExpanded = expandedConversations.has(conv.id)
               const isActive = activeConversationId === conv.id
               const isSandboxConversation = !conv.workspaceId
@@ -254,7 +173,7 @@ export function Sidebar() {
                         : 'text-text-secondary hover:text-text-primary hover:bg-bg-hover border-l-2 border-transparent'}
                     `}
                   >
-                    {/* Expand/collapse toggle for artifacts/sandbox */}
+                    {/* Expand/collapse toggle for artifacts */}
                     {hasExpandableContent ? (
                       <button
                         onClick={(e) => toggleConversationArtifacts(e, conv.id)}
@@ -289,7 +208,7 @@ export function Sidebar() {
                     </button>
                   </div>
 
-                  {/* Expandable sub-tree (artifacts with sandbox files indented beneath) */}
+                  {/* Expandable sub-tree (artifacts) */}
                   {hasExpandableContent && isExpanded && (
                     <div className="ml-6 pl-2 border-l border-border/50 mt-1 mb-2">
                       {/* Artifacts section */}
@@ -314,64 +233,32 @@ export function Sidebar() {
                               <Icon className="w-3 h-3 flex-shrink-0" />
                               <span className="truncate">{artifact.title}</span>
                             </button>
-                            {isSandboxConversation ? (
-                              <button
-                                onClick={(e) => handleOpenTransferDialog(e, conv)}
-                                title="Move to workspace..."
-                                className="opacity-0 group-hover:opacity-100 p-1 hover:bg-bg-hover rounded text-text-muted hover:text-accent flex-shrink-0"
-                              >
-                                <FolderUp className="w-3 h-3" />
-                              </button>
-                            ) : (
-                              <button
-                                onClick={async (e) => {
-                                  e.stopPropagation()
-                                  try {
-                                    await window.jelico.artifacts.reveal(artifact.id)
-                                  } catch (error) {
-                                    console.error('Failed to reveal artifact:', error)
-                                  }
-                                }}
-                                title="Reveal in folder"
-                                className="opacity-0 group-hover:opacity-100 p-1 hover:bg-bg-hover rounded text-text-muted hover:text-accent flex-shrink-0"
-                              >
-                                <FolderOpen className="w-3 h-3" />
-                              </button>
-                            )}
+                            <button
+                              onClick={async (e) => {
+                                e.stopPropagation()
+                                try {
+                                  await window.jelico.artifacts.reveal(artifact.id)
+                                } catch (error) {
+                                  console.error('Failed to reveal artifact:', error)
+                                }
+                              }}
+                              title="Reveal in folder"
+                              className="opacity-0 group-hover:opacity-100 p-1 hover:bg-bg-hover rounded text-text-muted hover:text-accent flex-shrink-0"
+                            >
+                              <FolderOpen className="w-3 h-3" />
+                            </button>
                           </div>
                         )
                       })}
 
-                      {/* Sandbox files - indented under artifacts */}
-                      {hasSandboxFiles && (
-                        <div className="ml-3 mt-1">
-                          {convSandboxFileList.slice(0, 10).map((filePath) => {
-                            const fileName = filePath.split('/').pop() || filePath
-                            const ext = fileName.split('.').pop()?.toLowerCase()
-                            const Icon = getFileIcon(ext)
-                            return (
-                              <button
-                                key={filePath}
-                                onClick={async () => {
-                                  setActiveConversation(conv.id)
-                                  // Open sandbox file in a viewer (could integrate with Canvas or external editor)
-                                  const sandboxPath = await window.jelico.sandbox.getConversationPath(conv.id)
-                                  console.log(`Opening sandbox file: ${sandboxPath}/${filePath}`)
-                                }}
-                                className="w-full flex items-center gap-2 px-2 py-1 text-xs text-text-faint hover:text-text-primary hover:bg-bg-hover rounded transition-colors"
-                                title={filePath}
-                              >
-                                <Icon className="w-3 h-3 flex-shrink-0" />
-                                <span className="truncate">{fileName}</span>
-                              </button>
-                            )
-                          })}
-                          {convSandboxFileList.length > 10 && (
-                            <div className="text-[10px] text-text-faint px-2 py-1">
-                              +{convSandboxFileList.length - 10} more files
-                            </div>
-                          )}
-                        </div>
+                      {isSandboxConversation && (
+                        <button
+                          onClick={(e) => handleOpenTransferDialog(e, conv)}
+                          className="mt-2 w-full flex items-center gap-2 py-1.5 text-xs text-accent hover:text-accent hover:bg-bg-hover rounded transition-colors"
+                        >
+                          <FolderUp className="w-3 h-3 flex-shrink-0" />
+                          <span>Transfer to Workspace</span>
+                        </button>
                       )}
                     </div>
                   )}
@@ -404,8 +291,7 @@ export function Sidebar() {
           currentWorkspaceId={transferDialogConv.workspaceId}
           onClose={() => setTransferDialogConv(null)}
           onTransferComplete={() => {
-            // Refresh conversations to get updated workspace assignment
-            // The chat store should handle this automatically via its list method
+            // Chat/workspace state is refreshed by the dialog after transfer
           }}
         />
       )}

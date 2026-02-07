@@ -2,6 +2,19 @@
 
 All notable changes to Jelico will be documented in this file.
 
+## [0.11.2] - 2026-02-07
+
+### Changed
+- Assistant turn history now keeps interleaved text and tool-call blocks after streaming instead of collapsing everything into a separate completed-actions section
+- Sandbox conversation trees now show artifact rows directly with reveal action support and a dedicated **Transfer to Workspace** action at the artifact level
+- Transfer flow now always uses explicit folder selection instead of defaulting to the previously active workspace
+
+### Fixed
+- Stopping generation now marks in-progress tool calls as canceled so tool status cannot remain stuck as running
+- Streamed output no longer leaks inline tool protocol markers such as raw `<|tool_call_*|>` tokens
+- Canvas HTML previews are now interactable in-pane (matching pop-out behavior)
+- Artifact testing is more resilient with title fallback for `open`, better canvas change detection, and clearer `evaluate` error/value reporting
+
 ## [0.8.24] - 2026-02-03
 
 ### Added

@@ -13,6 +13,7 @@ interface MessageProps {
     role: 'user' | 'assistant' | 'system' | 'tool'
     content: string
     createdAt: number
+    segments?: StreamingSegment[]
     toolCalls?: ToolCall[]
     toolResults?: ToolResult[]
     usage?: MessageUsage
@@ -87,8 +88,8 @@ export function Message({
   // Use streaming tool calls if currently streaming, otherwise use saved tool calls
   const toolCalls = isStreaming ? streamingToolCalls : message.toolCalls
   const toolResults = isStreaming ? streamingToolResults : message.toolResults
-  // Segments are only available during streaming
-  const segments = isStreaming ? streamingSegments : undefined
+  // Prefer live streaming segments while generating, otherwise use persisted segments from message history
+  const segments = isStreaming ? streamingSegments : message.segments
   const normalizedContent = message.content === '(Used tools)' && ((toolCalls?.length || 0) > 0 || (toolResults?.length || 0) > 0)
     ? 'Completed requested tool actions.'
     : message.content

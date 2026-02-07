@@ -21,6 +21,7 @@ function toMessageApi(row: any) {
     conversationId: row.conversation_id,
     role: row.role,
     content: row.content,
+    segments: row.segments,
     toolCalls: row.tool_calls,
     toolResults: row.tool_results,
     attachments: row.attachments,
@@ -58,6 +59,7 @@ export function registerConversationHandlers() {
     const message = messageDb.add(convId, {
       role: messageInput.role,
       content: messageInput.content,
+      segments: messageInput.segments,
       toolCalls: messageInput.toolCalls,
       toolResults: messageInput.toolResults,
       attachments: messageInput.attachments,
@@ -75,6 +77,7 @@ export function registerConversationHandlers() {
   ipcMain.handle('conversations:updateMessage', async (_, messageId: string, updates: any) => {
     const message = messageDb.update(messageId, {
       content: updates.content,
+      segments: updates.segments,
       toolCalls: updates.toolCalls,
       toolResults: updates.toolResults,
       attachments: updates.attachments,
