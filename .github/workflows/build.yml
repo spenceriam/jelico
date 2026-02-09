@@ -99,12 +99,6 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Generate macOS icon
-        run: |
-          cd build
-          iconutil -c icns icon.iconset -o icon.icns
-          ls -la icon.icns
-
       - name: Build app
         run: npm run build:mac -- --publish never
         env:

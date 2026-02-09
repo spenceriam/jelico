@@ -41,8 +41,8 @@ mac:
         - x64
         - arm64
   category: public.app-category.productivity
-  # icon.icns generated from icon.iconset during macOS CI build
-  icon: build/icon.icns
+  # Use a single canonical source icon for mac packaging to avoid icns drift.
+  icon: build/icon.png
   hardenedRuntime: true
   gatekeeperAssess: false
   entitlements: build/entitlements.mac.plist
