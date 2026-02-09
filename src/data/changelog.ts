@@ -21,6 +21,20 @@ export interface ChangelogEntry {
 
 export const changelog: ChangelogEntry[] = [
   {
+    version: '0.12.1',
+    date: '2026-02-09',
+    changes: {
+      changed: [
+        'Build resources now use a single canonical logo source for packaging to prevent cross-platform icon drift',
+        'macOS release packaging now uses build/icon.png directly instead of a separate CI icon conversion step',
+      ],
+      fixed: [
+        'Installer and packaged app icons now consistently use the new Jelico logo across macOS, Windows, and Linux artifacts',
+        'Removed legacy/duplicate icon assets that could cause old branding to reappear in future release builds',
+      ],
+    },
+  },
+  {
     version: '0.12.0',
     date: '2026-02-09',
     changes: {

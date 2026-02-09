@@ -13,4 +13,4 @@ PNG icons at various sizes for Linux desktop integration.
 - 512x512.png - App stores, previews
 - 1024x1024.png - Master source
 
-All generated from `../icon.svg` using ImageMagick.
+Generated from `../icon.png` (which is synced from `src/assets/branding/jelico-icon.png`).

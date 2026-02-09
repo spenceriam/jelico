@@ -2,6 +2,16 @@
 
 All notable changes to Jelico will be documented in this file.
 
+## [0.12.1] - 2026-02-09
+
+### Changed
+- Packaging icon pipeline now uses a single canonical source to prevent platform-specific icon drift
+- macOS release workflow now uses `build/icon.png` directly (no separate CI icon conversion step)
+
+### Fixed
+- Installers and packaged apps now consistently show the new Jelico logo on macOS, Windows, and Linux
+- Removed legacy icon resource files that could cause old logos to be reintroduced in future releases
+
 ## [0.11.2] - 2026-02-07
 
 ### Changed
