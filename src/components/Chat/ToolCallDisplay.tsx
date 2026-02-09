@@ -53,6 +53,92 @@ export const HIDDEN_TOOLS = new Set([
   'todo_check',          // Internal status check
 ])
 
+function sanitizeSubAgentText(text?: string): string | null {
+  if (!text) return null
+  const trimmed = text.trim()
+  if (!trimmed) return null
+
+  // Suppress API/protocol leakage from provider internals
+  if (/(input_schema|tool[_\s-]?call|function call|arguments schema|name`, `description`)/i.test(trimmed)) {
+    return null
+  }
+
+  return trimmed
+}
+
+function getSubAgentStateLabel(status: string): string {
+  switch (status) {
+    case 'running':
+      return 'Running'
+    case 'pending':
+      return 'Starting'
+    case 'completed':
+      return 'Completed'
+    case 'failed':
+      return 'Failed'
+    case 'cancelled':
+    case 'canceled':
+      return 'Cancelled'
+    default:
+      return status
+  }
+}
+
+function formatSubAgentToolStatus(
+  name: string,
+  args: Record<string, unknown>,
+  isComplete: boolean
+): string {
+  const getShortPath = (p: string) => {
+    const parts = p.split('/')
+    return parts.length > 2 ? `.../${parts.slice(-2).join('/')}` : p
+  }
+
+  if (isComplete) {
+    switch (name) {
+      case 'read_file':
+        return args.path ? `Read ${getShortPath(String(args.path))}` : 'File read'
+      case 'write_file':
+        return args.path ? `Wrote ${getShortPath(String(args.path))}` : 'File written'
+      case 'list_directory':
+        return args.path ? `Explored ${getShortPath(String(args.path))}` : 'Directory explored'
+      case 'search_files':
+        return 'Search complete'
+      case 'execute_command':
+        return 'Command complete'
+      case 'web_search':
+        return 'Search complete'
+      case 'web_fetch':
+        return 'Page fetched'
+      case 'report_progress':
+        return 'Status updated'
+      default:
+        return 'Tool complete'
+    }
+  }
+
+  switch (name) {
+    case 'read_file':
+      return args.path ? `Reading ${getShortPath(String(args.path))}` : 'Reading file...'
+    case 'write_file':
+      return args.path ? `Writing ${getShortPath(String(args.path))}` : 'Writing file...'
+    case 'list_directory':
+      return args.path ? `Exploring ${getShortPath(String(args.path))}` : 'Exploring directory...'
+    case 'search_files':
+      return args.pattern ? `Searching for "${args.pattern}"` : 'Searching files...'
+    case 'execute_command':
+      return 'Running command...'
+    case 'web_search':
+      return args.query ? `Searching: "${String(args.query).slice(0, 32)}"` : 'Searching the web...'
+    case 'web_fetch':
+      return 'Fetching page...'
+    case 'report_progress':
+      return String(args.message || 'Updating status...').slice(0, 80)
+    default:
+      return 'Working...'
+  }
+}
+
 function isCanceledResultPayload(result: unknown): boolean {
   if (!result || typeof result !== 'object') return false
   const payload = result as Record<string, unknown>
@@ -205,6 +291,17 @@ export function SingleToolCallDisplay({
     ? (toolResult.result as any)?.agent_id
     : null
   const subAgent = agentId ? agents.find(a => a.id === agentId) : null
+  const safeLatestUpdate = sanitizeSubAgentText(subAgent?.latestUpdate?.message)
+  const safeProgressPreview = sanitizeSubAgentText(subAgent?.progress)
+  const progressPreview = safeProgressPreview
+    ? safeProgressPreview.slice(0, 420)
+    : null
+  const lastAgentTool = subAgent?.toolCalls?.length
+    ? subAgent.toolCalls[subAgent.toolCalls.length - 1]
+    : null
+  const agentToolStatus = lastAgentTool
+    ? formatSubAgentToolStatus(lastAgentTool.name, lastAgentTool.args, !!lastAgentTool.result)
+    : null
 
 
   // Build label with resource name included (e.g., "Write File: bunfig.toml")
@@ -448,16 +545,34 @@ export function SingleToolCallDisplay({
       {/* Expanded content - collapsible sections */}
       {expanded && isExpandable && (
         <div className="border-t border-border bg-bg-surface">
-          {/* Sub-agent live status when expanded - pulsing dot instead of spinner (header already has spinner) */}
-          {toolCall.name === 'spawn_agent' && subAgent && (subAgent.status === 'running' || subAgent.status === 'pending') && subAgent.latestUpdate && (
-            <div className="px-3 py-2 flex items-center gap-2">
-              <span className="w-3 h-3 flex items-center justify-center flex-shrink-0 text-accent animate-pulse">⣿</span>
-              <span className="text-xs text-text-muted">
-                {subAgent.latestUpdate.phase && (
+          {/* Sub-agent details are shown per tool card (single source of truth) */}
+          {toolCall.name === 'spawn_agent' && subAgent && (
+            <div className="px-3 py-2 space-y-2">
+              <div className="flex items-center gap-2 text-xs text-text-muted">
+                <span className={`w-2 h-2 rounded-full ${
+                  subAgent.status === 'running' || subAgent.status === 'pending'
+                    ? 'bg-accent animate-pulse'
+                    : subAgent.status === 'completed'
+                      ? 'bg-green-500'
+                      : 'bg-error'
+                }`} />
+                <span>{getSubAgentStateLabel(subAgent.status)}</span>
+                {subAgent.latestUpdate?.phase && (
                   <span className="text-accent">[{subAgent.latestUpdate.phase}]</span>
-                )}{' '}
-                {subAgent.latestUpdate.message}
-              </span>
+                )}
+              </div>
+
+              {(safeLatestUpdate || agentToolStatus) && (
+                <div className="ml-4 text-xs text-text-secondary">
+                  {safeLatestUpdate || agentToolStatus}
+                </div>
+              )}
+
+              {progressPreview && (
+                <div className="ml-4 rounded bg-bg-deep px-2.5 py-2 text-xs text-text-secondary whitespace-pre-wrap">
+                  {progressPreview}
+                </div>
+              )}
             </div>
           )}
 

@@ -6,6 +6,7 @@ import { useArtifactStore, type ArtifactType } from '../../stores/artifacts'
 import { useUpdateStore } from '../../stores/updates'
 import { TransferDialog } from '../Conversations/TransferDialog'
 import { BrailleLoader } from '../StatusIndicators'
+import { JelicoLogo } from '../Brand/JelicoLogo'
 
 const ARTIFACT_ICONS: Record<ArtifactType, React.ComponentType<{ className?: string }>> = {
   code: FileCode,
@@ -124,7 +125,10 @@ export function Sidebar() {
     >
       {/* Header */}
       <div className="p-4">
-        <div className="font-display text-xl font-normal text-text-primary tracking-tight">Jelico</div>
+        <div className="flex items-center gap-2">
+          <JelicoLogo size={22} className="w-[22px] h-[22px] flex-shrink-0" />
+          <div className="font-display text-xl font-normal text-text-primary tracking-tight">Jelico</div>
+        </div>
       </div>
 
       {/* New chat button */}

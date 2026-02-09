@@ -8,6 +8,8 @@ import { useSkillStore } from './skills'
 import { useContextStore, estimateTokens } from './context'
 import { useSandboxStore } from './sandbox'
 import { useTodoStore } from './todos'
+import { useClarificationStore } from './clarification'
+import { notifyUserEvent } from '../lib/notifications'
 
 export interface MessageUsage {
   promptTokens: number
@@ -355,17 +357,16 @@ function getLatestUnansweredUserMessage(messages: Message[]): Message | null {
 function getRestoredTokenCount(messages: Message[]): number {
   if (messages.length === 0) return 0
 
-  // Prefer provider-reported totals from the most recent assistant message.
+  // Provider-reported usage may undercount on some models/providers.
+  // Take the larger of provider usage and local estimate to avoid silent drops.
   const latestUsage = [...messages]
     .reverse()
     .find((msg) => msg.role === 'assistant' && typeof msg.usage?.totalTokens === 'number' && msg.usage.totalTokens > 0)
 
-  if (latestUsage?.usage?.totalTokens) {
-    return latestUsage.usage.totalTokens
-  }
+  const usageTotal = latestUsage?.usage?.totalTokens || 0
+  const estimatedTotal = messages.reduce((sum, msg) => sum + estimateTokens(msg.content || ''), 0)
 
-  // Fallback for legacy conversations created before usage persistence.
-  return messages.reduce((sum, msg) => sum + estimateTokens(msg.content || ''), 0)
+  return Math.max(usageTotal, estimatedTotal)
 }
 
 function getLastAssistantAndUser(messages: Message[]): {
@@ -714,6 +715,9 @@ export const useChatStore = create<ChatStore>((set, get) => ({
     if (!conversationId) return
 
     const targetConversationId = conversationId
+    // Clean up stale running rows from previous turns before starting a new stream.
+    // This is especially important for legacy agents that were created before parentId linkage.
+    useAgentStore.getState().cancelRunningAgentsByConversation(targetConversationId)
     const updateConversationStreamState = (updater: (current: ConversationStreamState) => ConversationStreamState) => {
       set((state) => {
         const current = state.conversationStreams[targetConversationId] || createEmptyConversationStreamState()
@@ -1103,6 +1107,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
     window.jelico.ai.onSpawnAgent(channelId, (agent) => {
       useAgentStore.getState().addAgent({
         id: agent.id,
+        parentId: channelId,  // Link agent to stream for deterministic cleanup
         name: agent.name,
         displayName: agent.displayName,  // Friendly name like "Maya: Creating Wordle"
         task: agent.task,
@@ -1190,6 +1195,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
     // Handle stream end
     window.jelico.ai.onStreamEnd(channelId, async (stats) => {
       window.jelico.ai.removeListeners(channelId)
+      useAgentStore.getState().cancelRunningAgentsByParent(channelId)
       const trailingSanitizedText = inlineToolProtocolFilter.flush()
       if (trailingSanitizedText) {
         appendStreamTextChunk(trailingSanitizedText)
@@ -1199,6 +1205,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
         streamChannelByConversation.delete(targetConversationId)
       }
       clearPendingStreamCheckpoint(targetConversationId)
+      useClarificationStore.getState().clearForConversation(targetConversationId)
 
       const streamSnapshot = get().conversationStreams[targetConversationId] || createEmptyConversationStreamState()
       const streamingToolCalls = streamSnapshot.streamingToolCalls
@@ -1306,6 +1313,12 @@ export const useChatStore = create<ChatStore>((set, get) => ({
       const contextUsage = contextStore.getContextUsage(targetConversationId)
 
       if (contextUsage.shouldCompact && contextStore.autoCompact) {
+        const usagePercent = Math.round(contextUsage.percentage * 100)
+        get().addSystemNotification({
+          type: 'compaction_warning',
+          message: `Auto-compacting context at ${usagePercent}% usage...`,
+        })
+
         // Start compaction for this conversation only.
         contextStore.setConversationCompacting(targetConversationId, true)
 
@@ -1316,14 +1329,38 @@ export const useChatStore = create<ChatStore>((set, get) => ({
           model,
         }).then(async (result) => {
           if (result.success) {
-            // Update context with new token count
-            if (result.tokensAfter !== undefined) {
-              contextStore.updateTokenCount(targetConversationId, result.tokensAfter)
-            }
+            const maxTokens = contextUsage.maxTokens
+            const beforeTokens = Math.max(
+              0,
+              Math.round(result.tokensBefore ?? contextUsage.tokenCount)
+            )
+            const afterTokens = Math.max(
+              0,
+              Math.round(result.tokensAfter ?? beforeTokens)
+            )
+            const beforePercent = maxTokens > 0
+              ? Math.round((beforeTokens / maxTokens) * 100)
+              : 0
+            const afterPercent = maxTokens > 0
+              ? Math.round((afterTokens / maxTokens) * 100)
+              : 0
+            const reductionPercent = beforeTokens > 0
+              ? Math.max(0, Math.round(((beforeTokens - afterTokens) / beforeTokens) * 100))
+              : 0
+
+            const compactionSummary = `Auto-compacted context ${beforePercent}% → ${afterPercent}% (${beforeTokens.toLocaleString()} → ${afterTokens.toLocaleString()} tokens${reductionPercent > 0 ? `, -${reductionPercent}%` : ''}).`
+
+            contextStore.setCompactionSummary(
+              targetConversationId,
+              compactionSummary,
+              afterTokens,
+              beforeTokens
+            )
 
             // Show compaction complete notification
             get().addSystemNotification({
               type: 'compaction_complete',
+              message: compactionSummary,
             })
 
             // Reload messages only if this conversation is currently visible.
@@ -1346,16 +1383,26 @@ export const useChatStore = create<ChatStore>((set, get) => ({
 
       // Process any queued messages
       get().processQueue()
+
+      // Optional desktop/sound notification for completed AI turn
+      notifyUserEvent('turn_complete', {
+        title: 'Jelico response complete',
+        body: 'Jelico has finished responding.',
+      }).catch((err) => {
+        console.warn('[Chat] Turn completion notification failed:', err)
+      })
     })
 
     // Handle stream error
     window.jelico.ai.onStreamError(channelId, (error) => {
       window.jelico.ai.removeListeners(channelId)
+      useAgentStore.getState().cancelRunningAgentsByParent(channelId)
       const activeChannel = streamChannelByConversation.get(targetConversationId)
       if (activeChannel === channelId) {
         streamChannelByConversation.delete(targetConversationId)
       }
       clearPendingStreamCheckpoint(targetConversationId)
+      useClarificationStore.getState().clearForConversation(targetConversationId)
 
       // Clear streaming preview to prevent stale artifact content
       useArtifactStore.getState().clearStreamingPreview()
@@ -1425,11 +1472,17 @@ export const useChatStore = create<ChatStore>((set, get) => ({
 
     const streamChannelId = streamChannelByConversation.get(activeConversationId)
     if (streamChannelId) {
+      // Stop stale "running" rows immediately for this stream.
+      useAgentStore.getState().cancelRunningAgentsByParent(streamChannelId)
       window.jelico.ai.stopStream(streamChannelId)
       window.jelico.ai.removeListeners(streamChannelId)
       streamChannelByConversation.delete(activeConversationId)
+    } else {
+      // Fallback cleanup if channel mapping was already lost.
+      useAgentStore.getState().cancelRunningAgentsByConversation(activeConversationId)
     }
     clearPendingStreamCheckpoint(activeConversationId)
+    useClarificationStore.getState().clearForConversation(activeConversationId)
 
     // Clear streaming preview to prevent stale artifact content
     useArtifactStore.getState().clearStreamingPreview()

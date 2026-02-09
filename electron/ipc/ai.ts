@@ -2789,17 +2789,24 @@ Be concise but informative. The user needs to understand what happened.`,
       clearTimeout(maxTimeoutId)
       activeStreams.delete(channelId)
 
+      // Safety: ensure no background sub-agents keep running after parent stream ends.
+      // Keep callback active until after cancel so renderer receives terminal status updates.
+      const cancelledOnFinalize = cancelAgentsForStream(channelId)
+      if (cancelledOnFinalize > 0) {
+        console.log(`[AI] Cancelled ${cancelledOnFinalize} running sub-agent(s) during stream finalization`)
+      }
+
+      // Dismiss terminal sub-agents for this stream
+      const dismissed = dismissAgentsForStream(channelId)
+      if (dismissed > 0) {
+        console.log(`[AI] Dismissed ${dismissed} completed sub-agent(s) for ended stream`)
+      }
+
       // Clear global progress callback
       setGlobalProgressCallback(null)
 
       // Unregister parent stream - sub-agents get grace period before cleanup
       unregisterParentStream(channelId)
-
-      // Dismiss completed sub-agents for this stream
-      const dismissed = dismissAgentsForStream(channelId)
-      if (dismissed > 0) {
-        console.log(`[AI] Dismissed ${dismissed} completed sub-agent(s) for ended stream`)
-      }
     }
   })
 

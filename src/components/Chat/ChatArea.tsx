@@ -12,9 +12,9 @@ import { WorkspaceSelector } from '../Workspace/WorkspaceSelector'
 import { ModelSelector } from '../Model/ModelSelector'
 import { ShimmerText, BrailleLoader } from '../StatusIndicators'
 import { TodoPanel } from '../Todo/TodoPanel'
-import { ClarificationPanel } from '../Clarification/ClarificationPanel'
-import { SubAgentStatusLine } from '../Agents/SubAgentStatusLine'
+import { JelicoLogo } from '../Brand/JelicoLogo'
 import { formatElapsedTime } from '../../utils/format'
+import { notifyUserEvent } from '../../lib/notifications'
 
 // Minimum display time for status messages (ms)
 const MIN_STATUS_DISPLAY_MS = 600
@@ -65,6 +65,13 @@ export function ChatArea() {
 
     const unsubscribe = window.jelico.clarification.onRequest(
       (request: ClarificationRequest) => {
+        notifyUserEvent('needs_input', {
+          title: 'Jelico needs your input',
+          body: request.subject || 'A clarification response is required to continue.',
+        }).catch((err) => {
+          console.warn('[ChatArea] Clarification notification failed:', err)
+        })
+
         // Only show if it's for the active conversation
         if (request.conversationId === activeConversationId) {
           setActiveRequest(request)
@@ -472,16 +479,11 @@ export function ChatArea() {
             </div>
           )}
 
-          {/* Sub-agent status lines - indented beneath main status */}
-          {isStreaming && <SubAgentStatusLine />}
-
           <div ref={messagesEndRef} />
         </div>
 
         {/* Panels sticky to bottom of scroll area */}
         <div className="sticky bottom-0 max-w-3xl mx-auto px-4 space-y-2">
-          {/* Clarification panel - AI asking for user input */}
-          <ClarificationPanel />
           {/* Todo panel - task tracking */}
           <TodoPanel />
         </div>
@@ -1038,7 +1040,7 @@ function NewChatView({ disabled, isStreaming }: NewChatViewProps) {
   return (
     <div className="text-center animate-fade-in space-y-8">
       {/* Logo matching onboarding style */}
-      <div className="welcome-logo mx-auto">J</div>
+      <JelicoLogo className="welcome-logo mx-auto" />
 
       {/* Dynamic greeting */}
       <div>

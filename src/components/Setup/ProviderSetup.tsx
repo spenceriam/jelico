@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { ArrowLeft, X, Lock } from 'lucide-react'
 import { useProviderStore } from '../../stores/providers'
 import { ProviderConfigForm } from './ProviderConfigForm'
+import { JelicoLogo } from '../Brand/JelicoLogo'
 
 const PROVIDER_TYPES = [
   {
@@ -153,7 +154,7 @@ export function ProviderSetup({ isModal, onComplete, onCancel }: ProviderSetupPr
 
           <div className="text-center">
             {!isModal && (
-              <div className="welcome-logo">J</div>
+              <JelicoLogo className="welcome-logo" />
             )}
             <h1 className="font-display text-[32px] font-normal text-text-primary mb-2 tracking-tight">
               {isModal ? 'Add a provider' : 'Welcome to Jelico'}
