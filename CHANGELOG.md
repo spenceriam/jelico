@@ -2,6 +2,16 @@
 
 All notable changes to Jelico will be documented in this file.
 
+## [0.12.2] - 2026-02-09
+
+### Changed
+- Build and CI now regenerate packaging icons from `src/assets/branding/jelico-icon.png` before packaging
+- Added deterministic icon sync step so installer assets cannot drift from branding source files
+
+### Fixed
+- Corrected a missed build icon source file that caused macOS installer/app icons to show the old circular J logo
+- Packaging icon outputs are now aligned across macOS, Windows, and Linux from one canonical source
+
 ## [0.12.1] - 2026-02-09
 
 ### Changed

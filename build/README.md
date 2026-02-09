@@ -24,6 +24,10 @@ This directory contains app icons and build resources for all platforms.
 If branding changes, refresh packaging icons from `src/assets/branding/jelico-icon.png`:
 
 ```bash
+# Preferred (used by CI/build scripts)
+npm run sync-icons
+
+# Manual equivalent
 cd build
 
 # Sync canonical 1024x1024 packaging icon
