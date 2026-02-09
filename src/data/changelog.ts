@@ -21,6 +21,20 @@ export interface ChangelogEntry {
 
 export const changelog: ChangelogEntry[] = [
   {
+    version: '0.12.2',
+    date: '2026-02-09',
+    changes: {
+      changed: [
+        'Builds now always regenerate packaging icons from src/assets/branding/jelico-icon.png before electron-builder runs',
+        'CI build workflow now runs icon sync before packaging to prevent stale icon artifacts from being reused',
+      ],
+      fixed: [
+        'Corrected a missed build icon source file so macOS installer/app icons no longer fall back to the old circular J logo',
+        'Installer icon outputs are now deterministic across macOS, Windows, and Linux from a single canonical branding source',
+      ],
+    },
+  },
+  {
     version: '0.12.1',
     date: '2026-02-09',
     changes: {
