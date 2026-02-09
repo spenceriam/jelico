@@ -151,7 +151,8 @@ jobs:
 
       - name: Validate release note architecture labels
         run: |
-          if grep -q "M1/M2/M3" .github/workflows/build.yml; then
+          release_body=$(sed -n '/^[[:space:]]*body: |$/,$p' .github/workflows/build.yml)
+          if printf "%s\n" "$release_body" | grep -q "M1/M2/M3"; then
             echo "Deprecated architecture label found. Use 'Apple Silicon (M-series)'." >&2
             exit 1
           fi
