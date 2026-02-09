@@ -1494,12 +1494,17 @@ async function runSubAgent(agentId: string): Promise<void> {
       const onlyCalledReportProgress = calledReportProgress &&
         agent.toolCalls.every(tc => tc.name === 'report_progress')
 
-      // Detect if task requires creating creative output (artifacts/files)
+      // Detect task intent with mode-awareness.
+      // Read-only sub-agents cannot produce file deliverables, so they should never be
+      // forced into "missing deliverable" retries.
       const taskLower = agent.task.toLowerCase()
-      const taskRequiresCreativeOutput = /\b(create|build|make|implement|write|generate|develop|code)\b/.test(taskLower)
+      const readOnlyModes = ['explore', 'plan', 'security-review']
+      const modeCanWrite = !readOnlyModes.includes(agent.mode)
+      const taskImpliesBuildWork = /\b(create|build|make|implement|write|generate|develop|code)\b/.test(taskLower)
 
-      // Research tasks need research work + text summary, not artifacts
+      // Research tasks need research work + text summary, not files/artifacts
       const taskIsResearch = /\b(research|find|search|look|analyze|investigate|explore)\b/.test(taskLower)
+      const taskRequiresCreativeOutput = modeCanWrite && taskImpliesBuildWork && !taskIsResearch
 
       // Count tool successes vs failures
       const toolSuccesses = agent.toolCalls.filter(tc => tc.output && !tc.error).length
@@ -1514,6 +1519,8 @@ async function runSubAgent(agentId: string): Promise<void> {
         outputQuality: { valid: outputQuality.isValid, score: outputQuality.score, reason: outputQuality.reason },
         calledReportProgress,
         onlyCalledReportProgress,
+        taskImpliesBuildWork,
+        modeCanWrite,
         taskRequiresCreativeOutput,
         taskIsResearch,
         toolCallNames: agent.toolCalls.map(tc => tc.name),

@@ -25,13 +25,10 @@ const packageJson = require('../package.json')
 const APP_VERSION = packageJson.version
 
 // Ensure OS-level app naming is consistent in dev and production.
-// NOTE: Changing app name in dev can invalidate safeStorage key context and make
-// previously saved API keys unreadable. Keep the default Electron name in dev.
-if (app.isPackaged) {
-  app.setName(APP_DISPLAY_NAME)
-  if (process.platform === 'win32') {
-    app.setAppUserModelId('com.jelico.app')
-  }
+// keychainService handles legacy app-name decryption for compatibility.
+app.setName(APP_DISPLAY_NAME)
+if (process.platform === 'win32') {
+  app.setAppUserModelId('com.jelico.app')
 }
 
 function getGitHash(): string {
@@ -69,7 +66,7 @@ function createMenu() {
   const template: Electron.MenuItemConstructorOptions[] = [
     // App menu (macOS only)
     ...(isMac ? [{
-      label: app.name,
+      label: APP_DISPLAY_NAME,
       submenu: [
         { role: 'about' as const },
         { type: 'separator' as const },
@@ -187,6 +184,11 @@ function createMenu() {
 }
 
 function createWindow() {
+  const windowIconPath = process.platform === 'win32'
+    ? path.join(app.getAppPath(), 'build', 'icon.ico')
+    : path.join(app.getAppPath(), 'build', 'icon.png')
+  const windowIcon = existsSync(windowIconPath) ? windowIconPath : undefined
+
   mainWindow = new BrowserWindow({
     width: 1400,
     height: 900,
@@ -195,6 +197,7 @@ function createWindow() {
     title: APP_DISPLAY_NAME,
     frame: true,
     titleBarStyle: process.platform === 'darwin' ? 'hiddenInset' : 'default',
+    icon: process.platform === 'darwin' ? undefined : windowIcon,
     backgroundColor: '#08080a',
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),

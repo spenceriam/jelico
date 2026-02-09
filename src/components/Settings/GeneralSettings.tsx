@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { Check, Moon, Sun, Monitor, Palette, User, Brain, Sparkles, Package, Download, RefreshCw, ArrowUpRight } from 'lucide-react'
+import { Check, Moon, Sun, Monitor, Palette, User, Brain, Sparkles, Package, Download, RefreshCw, ArrowUpRight, Bell } from 'lucide-react'
 import { useThemeStore, COLOR_THEMES, type ThemeMode } from '../../stores/theme'
 import { useChatStore } from '../../stores/chat'
 import { useUpdateStore } from '../../stores/updates'
@@ -72,18 +72,39 @@ export function GeneralSettings() {
   // Sandbox settings
   const [crossSandboxSearch, setCrossSandboxSearch] = useState(false)
 
+  // Notification settings
+  const [desktopNotificationsEnabled, setDesktopNotificationsEnabled] = useState(false)
+  const [soundNotificationsEnabled, setSoundNotificationsEnabled] = useState(false)
+  const [notifyOnTurnComplete, setNotifyOnTurnComplete] = useState(true)
+  const [notifyOnNeedsInput, setNotifyOnNeedsInput] = useState(true)
+
   // Load user profile from soul
   useEffect(() => {
     async function loadProfile() {
       setIsLoadingProfile(true)
       try {
-        const [name, intentions, preferences, additional, learning, crossSandbox] = await Promise.all([
+        const [
+          name,
+          intentions,
+          preferences,
+          additional,
+          learning,
+          crossSandbox,
+          desktopNotifications,
+          soundNotifications,
+          turnCompleteNotifications,
+          needsInputNotifications,
+        ] = await Promise.all([
           window.jelico.soul.getPreference('userName'),
           window.jelico.soul.getPreference('userIntentions'),
           window.jelico.soul.getPreference('userPreferences'),
           window.jelico.soul.getPreference('additionalInfo'),
           window.jelico.soul.getPreference('learningEnabled'),
           window.jelico.soul.getPreference('crossSandboxSearch'),
+          window.jelico.soul.getPreference('desktopNotificationsEnabled'),
+          window.jelico.soul.getPreference('soundNotificationsEnabled'),
+          window.jelico.soul.getPreference('notifyOnTurnComplete'),
+          window.jelico.soul.getPreference('notifyOnNeedsInput'),
         ])
 
         if (name?.value) setUserName(name.value as string)
@@ -92,6 +113,10 @@ export function GeneralSettings() {
         if (additional?.value) setAdditionalInfo(additional.value as string)
         if (learning?.value !== undefined) setLearningEnabled(learning.value as boolean)
         if (crossSandbox?.value !== undefined) setCrossSandboxSearch(crossSandbox.value as boolean)
+        if (desktopNotifications?.value !== undefined) setDesktopNotificationsEnabled(desktopNotifications.value as boolean)
+        if (soundNotifications?.value !== undefined) setSoundNotificationsEnabled(soundNotifications.value as boolean)
+        if (turnCompleteNotifications?.value !== undefined) setNotifyOnTurnComplete(turnCompleteNotifications.value as boolean)
+        if (needsInputNotifications?.value !== undefined) setNotifyOnNeedsInput(needsInputNotifications.value as boolean)
       } catch (err) {
         console.error('Failed to load profile:', err)
       } finally {
@@ -135,6 +160,19 @@ export function GeneralSettings() {
     }
   }
 
+  const handleSaveNotificationSettings = async () => {
+    try {
+      await Promise.all([
+        window.jelico.soul.setPreference('desktopNotificationsEnabled', desktopNotificationsEnabled, 1.0),
+        window.jelico.soul.setPreference('soundNotificationsEnabled', soundNotificationsEnabled, 1.0),
+        window.jelico.soul.setPreference('notifyOnTurnComplete', notifyOnTurnComplete, 1.0),
+        window.jelico.soul.setPreference('notifyOnNeedsInput', notifyOnNeedsInput, 1.0),
+      ])
+    } catch (err) {
+      console.error('Failed to save notification settings:', err)
+    }
+  }
+
   // Save learning settings when they change
   useEffect(() => {
     if (!isLoadingProfile) {
@@ -149,10 +187,48 @@ export function GeneralSettings() {
     }
   }, [crossSandboxSearch])
 
+  // Save notification settings when they change
+  useEffect(() => {
+    if (!isLoadingProfile) {
+      handleSaveNotificationSettings()
+    }
+  }, [desktopNotificationsEnabled, soundNotificationsEnabled, notifyOnTurnComplete, notifyOnNeedsInput])
+
   const handleOpenReleaseNotes = async () => {
     if (info?.releaseUrl) {
       await window.jelico.updates.openRelease(info.releaseUrl)
     }
+  }
+
+  const handleToggleDesktopNotifications = async () => {
+    const nextValue = !desktopNotificationsEnabled
+    if (!nextValue) {
+      setDesktopNotificationsEnabled(false)
+      return
+    }
+
+    if (!('Notification' in window)) {
+      console.warn('Desktop notifications are not supported in this environment')
+      return
+    }
+
+    if (Notification.permission === 'default') {
+      try {
+        const permission = await Notification.requestPermission()
+        if (permission !== 'granted') {
+          console.warn('Desktop notification permission not granted')
+          return
+        }
+      } catch (err) {
+        console.warn('Failed to request desktop notification permission:', err)
+        return
+      }
+    } else if (Notification.permission !== 'granted') {
+      console.warn('Desktop notifications are blocked by the OS/browser permission settings')
+      return
+    }
+
+    setDesktopNotificationsEnabled(true)
   }
 
   return (
@@ -452,6 +528,104 @@ export function GeneralSettings() {
           <p className="text-sm text-text-muted">
             When enabled, Jelico learns your preferences, coding style, and common corrections over time.
             You can view and manage what Jelico has learned in the Memory section of the Backup settings.
+          </p>
+        </div>
+      </section>
+
+      {/* Notifications Section */}
+      <section>
+        <h3 className="text-lg font-medium text-text-primary mb-4 flex items-center gap-2">
+          <Bell className="w-5 h-5" />
+          Notifications
+        </h3>
+
+        <div className="space-y-4">
+          <div className="flex items-center justify-between p-4 bg-bg-elevated rounded-lg border border-border">
+            <div>
+              <div className="font-medium text-text-primary">Desktop notifications</div>
+              <div className="text-sm text-text-muted">
+                Show OS notifications when configured events happen
+              </div>
+            </div>
+            <button
+              onClick={handleToggleDesktopNotifications}
+              className={`w-12 h-6 rounded-full transition-colors relative ${
+                desktopNotificationsEnabled ? 'bg-accent' : 'bg-bg-deep'
+              }`}
+            >
+              <div
+                className={`absolute top-1 w-4 h-4 rounded-full bg-white transition-transform ${
+                  desktopNotificationsEnabled ? 'translate-x-7' : 'translate-x-1'
+                }`}
+              />
+            </button>
+          </div>
+
+          <div className="flex items-center justify-between p-4 bg-bg-elevated rounded-lg border border-border">
+            <div>
+              <div className="font-medium text-text-primary">Sound notifications</div>
+              <div className="text-sm text-text-muted">
+                Play a sound when configured events happen
+              </div>
+            </div>
+            <button
+              onClick={() => setSoundNotificationsEnabled(!soundNotificationsEnabled)}
+              className={`w-12 h-6 rounded-full transition-colors relative ${
+                soundNotificationsEnabled ? 'bg-accent' : 'bg-bg-deep'
+              }`}
+            >
+              <div
+                className={`absolute top-1 w-4 h-4 rounded-full bg-white transition-transform ${
+                  soundNotificationsEnabled ? 'translate-x-7' : 'translate-x-1'
+                }`}
+              />
+            </button>
+          </div>
+
+          <div className="flex items-center justify-between p-4 bg-bg-elevated rounded-lg border border-border">
+            <div>
+              <div className="font-medium text-text-primary">Notify when response completes</div>
+              <div className="text-sm text-text-muted">
+                Trigger notification when Jelico finishes a turn
+              </div>
+            </div>
+            <button
+              onClick={() => setNotifyOnTurnComplete(!notifyOnTurnComplete)}
+              className={`w-12 h-6 rounded-full transition-colors relative ${
+                notifyOnTurnComplete ? 'bg-accent' : 'bg-bg-deep'
+              }`}
+            >
+              <div
+                className={`absolute top-1 w-4 h-4 rounded-full bg-white transition-transform ${
+                  notifyOnTurnComplete ? 'translate-x-7' : 'translate-x-1'
+                }`}
+              />
+            </button>
+          </div>
+
+          <div className="flex items-center justify-between p-4 bg-bg-elevated rounded-lg border border-border">
+            <div>
+              <div className="font-medium text-text-primary">Notify when input is needed</div>
+              <div className="text-sm text-text-muted">
+                Trigger notification when Jelico asks a clarification question
+              </div>
+            </div>
+            <button
+              onClick={() => setNotifyOnNeedsInput(!notifyOnNeedsInput)}
+              className={`w-12 h-6 rounded-full transition-colors relative ${
+                notifyOnNeedsInput ? 'bg-accent' : 'bg-bg-deep'
+              }`}
+            >
+              <div
+                className={`absolute top-1 w-4 h-4 rounded-full bg-white transition-transform ${
+                  notifyOnNeedsInput ? 'translate-x-7' : 'translate-x-1'
+                }`}
+              />
+            </button>
+          </div>
+
+          <p className="text-sm text-text-muted">
+            Tip: Enable sound and/or desktop delivery, then choose which events should trigger alerts.
           </p>
         </div>
       </section>

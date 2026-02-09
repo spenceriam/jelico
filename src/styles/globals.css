@@ -391,20 +391,14 @@
     color: var(--success);
   }
 
-  /* Welcome logo - circular with black outline and gold gradient */
+  /* Welcome logo */
   .welcome-logo {
-    width: 72px;
-    height: 72px;
-    background: linear-gradient(180deg, var(--accent-bright) 0%, var(--accent) 50%, var(--accent-dim) 100%);
-    border-radius: 50%;
-    border: 3px solid var(--bg-void);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-family: var(--font-display);
-    font-size: 36px;
-    color: var(--bg-void);
-    box-shadow: 0 8px 32px var(--accent-glow);
+    width: 94px;
+    height: 94px;
+    object-fit: contain;
+    display: block;
+    background: transparent;
+    filter: drop-shadow(0 8px 22px var(--accent-glow));
     margin: 0 auto 24px;
   }
 

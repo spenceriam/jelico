@@ -69,6 +69,57 @@ function formatTimestamp(timestamp: number): string {
   return `${dateStr} ${timeStr}`
 }
 
+function MarkdownCodeBlock({
+  language,
+  codeContent,
+}: {
+  language: string
+  codeContent: string
+}) {
+  const [copied, setCopied] = useState(false)
+
+  const handleCopy = async () => {
+    try {
+      await navigator.clipboard.writeText(codeContent)
+      setCopied(true)
+      setTimeout(() => setCopied(false), 1800)
+    } catch (err) {
+      console.error('Failed to copy code block:', err)
+    }
+  }
+
+  return (
+    <div className="relative group my-4">
+      <div className="absolute top-2 right-2 flex items-center gap-2">
+        <span className="text-xs text-text-muted">{language}</span>
+        <button
+          type="button"
+          onClick={handleCopy}
+          className="flex items-center gap-1 rounded px-1.5 py-0.5 text-xs text-text-muted hover:text-text-secondary hover:bg-bg-hover transition-colors"
+          title="Copy code block"
+        >
+          {copied ? (
+            <>
+              <Check className="w-3 h-3 text-success" />
+              <span className="text-success">Copied</span>
+            </>
+          ) : (
+            <>
+              <Copy className="w-3 h-3" />
+              <span>Copy</span>
+            </>
+          )}
+        </button>
+      </div>
+      <pre className="bg-bg-elevated rounded-lg p-4 overflow-x-auto">
+        <code className="font-mono text-sm">
+          {codeContent}
+        </code>
+      </pre>
+    </div>
+  )
+}
+
 export function Message({
   message,
   isStreaming,
@@ -191,7 +242,7 @@ export function Message({
     <ReactMarkdown
       remarkPlugins={[remarkGfm]}
       components={{
-        code: ({ node, className, children, ...props }) => {
+        code: ({ className, children }) => {
           const match = /language-(\w+)/.exec(className || '')
           const isInline = !match
           const codeContent = String(children).replace(/\n$/, '')
@@ -200,7 +251,6 @@ export function Message({
             return (
               <code
                 className="px-1.5 py-0.5 bg-bg-elevated rounded text-accent-bright font-mono text-sm"
-                {...props}
               >
                 {children}
               </code>
@@ -214,18 +264,7 @@ export function Message({
             )
           }
 
-          return (
-            <div className="relative group my-4">
-              <div className="absolute top-2 right-2 text-xs text-text-muted">
-                {match[1]}
-              </div>
-              <pre className="bg-bg-elevated rounded-lg p-4 overflow-x-auto">
-                <code className="font-mono text-sm" {...props}>
-                  {children}
-                </code>
-              </pre>
-            </div>
-          )
+          return <MarkdownCodeBlock language={match[1]} codeContent={codeContent} />
         },
         p: ({ children }) => (
           <p className="mb-3 last:mb-0 text-text-primary leading-relaxed">

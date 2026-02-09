@@ -53,6 +53,8 @@ interface AgentStore {
   updateToolCallResult: (agentId: string, toolCallId: string, result: unknown) => void
   setActiveAgent: (id: string | null) => void
   cancelAgent: (id: string) => void
+  cancelRunningAgentsByParent: (parentId: string) => void
+  cancelRunningAgentsByConversation: (conversationId: string) => void
   removeAgent: (id: string) => void
   clearCompletedAgents: () => void
 }
@@ -145,6 +147,39 @@ export const useAgentStore = create<AgentStore>((set, get) => ({
           ? { ...a, status: 'cancelled' as AgentStatus, completedAt: Date.now() }
           : a
       ),
+    }))
+  },
+
+  // Force-cancel stale running/pending agents tied to a specific stream.
+  // Used when a stream ends/stops but UI still has orphan "running" rows.
+  cancelRunningAgentsByParent: (parentId) => {
+    const now = Date.now()
+    set((state) => ({
+      agents: state.agents.map((a) => {
+        if (a.parentId !== parentId) return a
+        if (a.status !== 'running' && a.status !== 'pending') return a
+        return {
+          ...a,
+          status: 'cancelled' as AgentStatus,
+          completedAt: a.completedAt || now,
+        }
+      }),
+    }))
+  },
+
+  // Backward-compatible cleanup for legacy agents without parentId linkage.
+  cancelRunningAgentsByConversation: (conversationId) => {
+    const now = Date.now()
+    set((state) => ({
+      agents: state.agents.map((a) => {
+        if (a.conversationId !== conversationId) return a
+        if (a.status !== 'running' && a.status !== 'pending') return a
+        return {
+          ...a,
+          status: 'cancelled' as AgentStatus,
+          completedAt: a.completedAt || now,
+        }
+      }),
     }))
   },
 

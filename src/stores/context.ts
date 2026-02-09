@@ -19,7 +19,13 @@ interface ContextState {
     modelId: string
     modelContextSize: number
     currentTokenCount: number
+    // Highest observed token count since last compaction/reset.
+    // Keeps context usage from silently dropping due provider usage inconsistencies.
+    peakTokenCountSinceCompaction: number
+    totalCompactions: number
     lastCompactionAt: number | null
+    lastCompactionBeforeTokens: number | null
+    lastCompactionAfterTokens: number | null
     compactionSummary: string | null
   }>
 
@@ -47,11 +53,23 @@ interface ContextState {
     percentage: number
     tokenCount: number
     maxTokens: number
+    peakTokenCount: number
+    peakPercentage: number
+    totalCompactions: number
+    lastCompactionAt: number | null
+    lastCompactionBeforeTokens: number | null
+    lastCompactionAfterTokens: number | null
+    compactionSummary: string | null
     status: CompactionStatus
     shouldCompact: boolean
     shouldWarn: boolean
   }
-  setCompactionSummary: (conversationId: string, summary: string, newTokenCount: number) => void
+  setCompactionSummary: (
+    conversationId: string,
+    summary: string,
+    newTokenCount: number,
+    previousTokenCount?: number
+  ) => void
   clearConversationContext: (conversationId: string) => void
   setAutoCompact: (enabled: boolean) => void
   setCompactionThreshold: (threshold: number) => void
@@ -91,7 +109,11 @@ export const useContextStore = create<ContextState>((set, get) => ({
           modelId,
           modelContextSize,
           currentTokenCount: 0,
+          peakTokenCountSinceCompaction: 0,
+          totalCompactions: 0,
           lastCompactionAt: null,
+          lastCompactionBeforeTokens: null,
+          lastCompactionAfterTokens: null,
           compactionSummary: null,
         },
       },
@@ -103,12 +125,17 @@ export const useContextStore = create<ContextState>((set, get) => ({
       const existing = state.conversationContexts[conversationId]
       if (!existing) return state
 
+      const safeTokenCount = Math.max(0, tokenCount)
+      const nextTokenCount = Math.max(existing.currentTokenCount, safeTokenCount)
+      const nextPeakTokenCount = Math.max(existing.peakTokenCountSinceCompaction, nextTokenCount)
+
       return {
         conversationContexts: {
           ...state.conversationContexts,
           [conversationId]: {
             ...existing,
-            currentTokenCount: tokenCount,
+            currentTokenCount: nextTokenCount,
+            peakTokenCountSinceCompaction: nextPeakTokenCount,
           },
         },
       }
@@ -122,6 +149,13 @@ export const useContextStore = create<ContextState>((set, get) => ({
         percentage: 0,
         tokenCount: 0,
         maxTokens: FALLBACK_CONTEXT_SIZE,
+        peakTokenCount: 0,
+        peakPercentage: 0,
+        totalCompactions: 0,
+        lastCompactionAt: null,
+        lastCompactionBeforeTokens: null,
+        lastCompactionAfterTokens: null,
+        compactionSummary: null,
         status: 'normal' as CompactionStatus,
         shouldCompact: false,
         shouldWarn: false,
@@ -142,20 +176,40 @@ export const useContextStore = create<ContextState>((set, get) => ({
       status = 'warning'
     }
 
+    const peakTokenCount = Math.max(context.peakTokenCountSinceCompaction, context.currentTokenCount)
+    const peakPercentage = context.modelContextSize > 0
+      ? peakTokenCount / context.modelContextSize
+      : 0
+
     return {
       percentage,
       tokenCount: context.currentTokenCount,
       maxTokens: context.modelContextSize,
+      peakTokenCount,
+      peakPercentage,
+      totalCompactions: context.totalCompactions,
+      lastCompactionAt: context.lastCompactionAt,
+      lastCompactionBeforeTokens: context.lastCompactionBeforeTokens,
+      lastCompactionAfterTokens: context.lastCompactionAfterTokens,
+      compactionSummary: context.compactionSummary,
       status,
       shouldCompact: percentage >= get().compactionThreshold,
       shouldWarn: percentage >= get().warningThreshold,
     }
   },
 
-  setCompactionSummary: (conversationId, summary, newTokenCount) => {
+  setCompactionSummary: (conversationId, summary, newTokenCount, previousTokenCount) => {
     set((state) => {
       const existing = state.conversationContexts[conversationId]
       if (!existing) return state
+
+      const safeNewTokenCount = Math.max(0, newTokenCount)
+      const safePreviousTokenCount = Math.max(
+        0,
+        typeof previousTokenCount === 'number'
+          ? previousTokenCount
+          : existing.currentTokenCount
+      )
 
       return {
         conversationContexts: {
@@ -163,8 +217,12 @@ export const useContextStore = create<ContextState>((set, get) => ({
           [conversationId]: {
             ...existing,
             lastCompactionAt: Date.now(),
+            lastCompactionBeforeTokens: safePreviousTokenCount,
+            lastCompactionAfterTokens: safeNewTokenCount,
+            totalCompactions: existing.totalCompactions + 1,
             compactionSummary: summary,
-            currentTokenCount: newTokenCount,
+            currentTokenCount: safeNewTokenCount,
+            peakTokenCountSinceCompaction: safeNewTokenCount,
           },
         },
       }

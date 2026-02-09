@@ -38,6 +38,30 @@ export function ContextIndicator() {
   const progress = Math.min(Math.max(contextUsage.percentage, 0), 1)
   const dashOffset = circumference * (1 - progress)
   const trackDashPattern = '0.22 1.7'
+  const compactCount = contextUsage.totalCompactions
+  const hasCompactionHistory = compactCount > 0
+  const lastCompactionBeforePercent =
+    contextUsage.lastCompactionBeforeTokens !== null && contextUsage.maxTokens > 0
+      ? Math.round((contextUsage.lastCompactionBeforeTokens / contextUsage.maxTokens) * 100)
+      : null
+  const lastCompactionAfterPercent =
+    contextUsage.lastCompactionAfterTokens !== null && contextUsage.maxTokens > 0
+      ? Math.round((contextUsage.lastCompactionAfterTokens / contextUsage.maxTokens) * 100)
+      : null
+
+  const baseTitle = `Context window of ${activeModel || 'model'} (${percentage}% | ${contextUsage.tokenCount.toLocaleString()}/${contextUsage.maxTokens.toLocaleString()} tokens)`
+  const compactionTitle = hasCompactionHistory
+    ? (lastCompactionBeforePercent !== null && lastCompactionAfterPercent !== null
+        ? `\nCompactions: ${compactCount}\nLast compact: ${lastCompactionBeforePercent}% → ${lastCompactionAfterPercent}%`
+        : `\nCompactions: ${compactCount}`)
+    : ''
+  const buttonTitle = `${baseTitle}${compactionTitle}, click to ${showContextText ? 'hide' : 'show'} percentage`
+
+  const compactText = hasCompactionHistory
+    ? (lastCompactionBeforePercent !== null && lastCompactionAfterPercent !== null
+        ? ` • last ${lastCompactionBeforePercent}%→${lastCompactionAfterPercent}%`
+        : ` • ${compactCount} compacts`)
+    : ''
 
   return (
     <div className="flex items-center gap-2">
@@ -51,9 +75,7 @@ export function ContextIndicator() {
             ? 'text-warning hover:bg-warning/10'
             : 'text-text-muted hover:text-text-secondary hover:bg-bg-surface'}
         `}
-        title={showContextText
-          ? `Context window of ${activeModel || 'model'} (${percentage}%), click to hide percentage`
-          : `Context window of ${activeModel || 'model'} (${percentage}%), click to show percentage`}
+        title={buttonTitle}
       >
         {/* Spinner during compaction */}
         {isCompacting && (
@@ -100,7 +122,7 @@ export function ContextIndicator() {
       {/* Percentage text - toggles on circle click */}
       {showContextText && (
         <span className="text-sm text-text-secondary">
-          Context: {percentage}%
+          Context: {percentage}%{compactText}
         </span>
       )}
     </div>

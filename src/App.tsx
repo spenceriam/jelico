@@ -17,6 +17,7 @@ import { CommandPalette, useCommandPalette } from './components/CommandPalette/C
 import { ProviderSetup } from './components/Setup/ProviderSetup'
 import { Settings } from './components/Settings/Settings'
 import { PermissionDialog } from './components/Permissions/PermissionDialog'
+import { ClarificationPanel } from './components/Clarification/ClarificationPanel'
 import { WelcomeScreen, type OnboardingProfile } from './components/Onboarding/WelcomeScreen'
 
 // Default and constraints for canvas panel width
@@ -389,6 +390,9 @@ export default function App() {
 
       {/* Command palette */}
       <CommandPalette isOpen={commandPalette.isOpen} onClose={commandPalette.close} />
+
+      {/* Clarification questions modal */}
+      <ClarificationPanel />
 
       {/* Permission dialog */}
       <PermissionDialog />

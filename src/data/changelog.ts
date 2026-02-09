@@ -21,6 +21,30 @@ export interface ChangelogEntry {
 
 export const changelog: ChangelogEntry[] = [
   {
+    version: '0.12.0',
+    date: '2026-02-09',
+    changes: {
+      added: [
+        'Settings now include desktop and sound notification controls with per-event toggles for response completion and clarification requests',
+        'Markdown code blocks now include an inline copy button for quick terminal command copying',
+        'Clarification requests now open in an app-level modal with independent scrolling and an explicit close action',
+        'New branded logo assets and reusable Jelico logo component across onboarding and setup surfaces',
+      ],
+      changed: [
+        'Sub-agent progress now appears inside each spawn-agent tool card instead of a duplicated global status list',
+        'Sidebar branding now shows the new Jelico mark next to the app name and welcome logo styling is updated for transparent assets',
+        'Context indicator now includes compaction history details and richer usage tooltips',
+        'macOS app/menu naming now consistently uses Jelico in development and packaged builds',
+      ],
+      fixed: [
+        'Resolved sub-agent retry loops where research tasks were incorrectly forced to produce file deliverables in read-only modes',
+        'Stopping, ending, or failing a stream now deterministically clears stale running sub-agent rows',
+        'Clarification dialogs now close cleanly when a stream is stopped and no longer get stuck on screen',
+        'Context usage restoration now avoids silent percentage drops by preserving the highest reliable token signal',
+      ],
+    },
+  },
+  {
     version: '0.11.2',
     date: '2026-02-07',
     changes: {

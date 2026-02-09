@@ -23,16 +23,18 @@ export function SubAgentStatusLine() {
   return (
     <div className="ml-8 space-y-1">
       {runningAgents.map((agent) => {
-        // Get a short status: use progress, latest update, or last tool call
-        let status = 'Working...'
+        // Keep status line structured and predictable.
+        // Do not show raw streamed model text (can leak API/protocol internals).
+        let status = 'Thinking...'
+        const latestMessage = sanitizeStatusMessage(agent.latestUpdate?.message)
 
-        if (agent.progress) {
-          status = agent.progress.slice(-60)
-        } else if (agent.latestUpdate?.message) {
-          status = agent.latestUpdate.message.slice(0, 60)
-        } else if (agent.toolCalls.length > 0) {
-          const lastTool = agent.toolCalls[agent.toolCalls.length - 1]
+        if (agent.toolCalls.length > 0) {
+          // Prefer real tool activity over stale "Starting..." progress updates.
+          const pendingTool = [...agent.toolCalls].reverse().find((tc) => tc.result === undefined)
+          const lastTool = pendingTool ?? agent.toolCalls[agent.toolCalls.length - 1]
           status = getToolStatus(lastTool.name, lastTool.args, !!lastTool.result)
+        } else if (latestMessage) {
+          status = latestMessage.slice(0, 60)
         }
 
         return (
@@ -55,6 +57,19 @@ export function SubAgentStatusLine() {
       })}
     </div>
   )
+}
+
+function sanitizeStatusMessage(message?: string): string | null {
+  if (!message) return null
+  const trimmed = message.trim()
+  if (!trimmed) return null
+
+  // Avoid low-signal or protocol-like text in the compact status line.
+  const isGenericStart = /^starting\b/i.test(trimmed)
+  const hasApiProtocolNoise = /(input_schema|tool[_\s-]?call|function call|arguments schema|name`, `description`)/i.test(trimmed)
+  if (isGenericStart || hasApiProtocolNoise) return null
+
+  return trimmed
 }
 
 // Get a short status string for a tool call
