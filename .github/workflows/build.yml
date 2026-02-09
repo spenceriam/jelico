@@ -123,6 +123,8 @@ jobs:
     needs: [build-linux, build-windows, build-macos]
     runs-on: ubuntu-latest
     if: startsWith(github.ref, 'refs/tags/v') || (github.event_name == 'workflow_dispatch' && github.event.inputs.release == 'true')
+    env:
+      MACOS_ARM_ARCH_LABEL: Apple Silicon (M-series)
     permissions:
       contents: write
 
@@ -147,6 +149,13 @@ jobs:
             echo "version=manual-$(date +%Y%m%d-%H%M%S)" >> $GITHUB_OUTPUT
           fi
 
+      - name: Validate release note architecture labels
+        run: |
+          if grep -q "M1/M2/M3" .github/workflows/build.yml; then
+            echo "Deprecated architecture label found. Use 'Apple Silicon (M-series)'." >&2
+            exit 1
+          fi
+
       - name: Create Release
         uses: softprops/action-gh-release@v1
         with:
@@ -169,7 +178,7 @@ jobs:
 
             | Platform | Architecture | Download |
             |----------|-------------|----------|
-            | macOS | Apple Silicon (M1/M2/M3) | `.dmg` (arm64) |
+            | macOS | ${{ env.MACOS_ARM_ARCH_LABEL }} | `.dmg` (arm64) |
             | macOS | Intel | `.dmg` (x64) |
             | Windows | 64-bit | `.exe` installer |
             | Linux | 64-bit | `.AppImage`, `.deb`, `.rpm` |
