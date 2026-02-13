@@ -30,31 +30,12 @@ Be efficient. Take action when appropriate. Ask for clarification only when trul
     canSpawnAgents: true,
   },
 
-  explore: {
-    id: 'explore',
-    name: 'Explore',
-    shortcut: 'E',
-    description: 'Read-only understanding',
-    systemPrompt: `You are Jelico in Explore mode. Focus on understanding:
-- Read files and documentation thoroughly
-- Search for relevant information
-- Analyze patterns and structures
-- Build comprehensive mental models
-- Explain your findings clearly
-
-IMPORTANT: Do NOT make any modifications. Ask before changing anything.
-You can only read and analyze - no writes, no executions.`,
-    canWrite: false,
-    canExecute: false,
-    canSpawnAgents: false,
-  },
-
   execute: {
     id: 'execute',
-    name: 'Execute',
+    name: 'Full Execute',
     shortcut: 'X',
     description: 'Full tool access',
-    systemPrompt: `You are Jelico in Execute mode. Get things done efficiently:
+    systemPrompt: `You are Jelico in Full Execute mode. Get things done efficiently:
 - Make changes confidently
 - Use all available tools
 - Handle errors gracefully
@@ -86,6 +67,25 @@ You can read files to understand context, but avoid making changes.`,
     canSpawnAgents: true,
   },
 
+  explore: {
+    id: 'explore',
+    name: 'Explore',
+    shortcut: 'E',
+    description: 'Read-only understanding',
+    systemPrompt: `You are Jelico in Explore mode. Focus on understanding:
+- Read files and documentation thoroughly
+- Search for relevant information
+- Analyze patterns and structures
+- Build comprehensive mental models
+- Explain your findings clearly
+
+IMPORTANT: Do NOT make any modifications. Ask before changing anything.
+You can only read and analyze - no writes, no executions.`,
+    canWrite: false,
+    canExecute: false,
+    canSpawnAgents: false,
+  },
+
   review: {
     id: 'review',
     name: 'Review',
@@ -111,7 +111,7 @@ export function getMode(id: AgentMode): ModeDefinition {
 }
 
 export function cycleMode(current: AgentMode, direction: 1 | -1 = 1): AgentMode {
-  const order: AgentMode[] = ['auto', 'explore', 'execute', 'plan', 'review']
+  const order: AgentMode[] = ['auto', 'execute', 'plan', 'explore', 'review']
   const idx = order.indexOf(current)
   const next = (idx + direction + order.length) % order.length
   return order[next]

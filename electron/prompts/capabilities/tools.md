@@ -26,7 +26,7 @@ search_files({ directory: "/src", pattern: "**/*.tsx" })
 ```
 
 ### write_file
-Write content to a file (execute/auto mode only).
+Write content to a file (full execute/auto mode only).
 ```
 write_file({ path: "/path/to/file.ts", content: "new content" })
 → { success: true, message: "File written" }
@@ -63,7 +63,7 @@ Direct web tools are runtime-gated:
 ## Execution
 
 ### execute_command
-Run shell commands (execute/auto mode only).
+Run shell commands (full execute/auto mode only).
 ```
 execute_command({ command: "npm test", cwd: "/project" })
 → { success: true, stdout: "...", stderr: "..." }

@@ -43,9 +43,9 @@ export function ModeSelector() {
       if (!e.ctrlKey && !e.metaKey && !e.altKey && !e.shiftKey) {
         const modeKeys: Record<string, AgentMode> = {
           '1': 'auto',
-          '2': 'explore',
-          '3': 'execute',
-          '4': 'plan',
+          '2': 'execute',
+          '3': 'plan',
+          '4': 'explore',
           '5': 'review',
         }
 
@@ -84,7 +84,7 @@ export function ModeSelector() {
               relative px-3 py-2 text-sm font-medium rounded-none
               transition-all duration-200
               ${m.id === mode
-                ? 'bg-bg-elevated text-text-primary shadow-sm'
+                ? 'bg-bg-hover text-text-primary shadow-sm'
                 : 'text-text-muted hover:text-text-secondary'
               }
               ${animatingMode === m.id ? 'animate-pulse ring-2 ring-accent' : ''}

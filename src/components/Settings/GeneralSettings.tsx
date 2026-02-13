@@ -6,9 +6,9 @@ import type { AgentMode } from '../../lib/modes'
 
 const AGENT_MODES: { id: AgentMode; name: string; description: string }[] = [
   { id: 'auto', name: 'Auto', description: 'AI decides the best approach' },
-  { id: 'explore', name: 'Explore', description: 'Read-only understanding and analysis' },
-  { id: 'execute', name: 'Execute', description: 'Full tool access, take action' },
+  { id: 'execute', name: 'Full Execute', description: 'Full tool access, take action' },
   { id: 'plan', name: 'Plan', description: 'Strategic planning and roadmaps' },
+  { id: 'explore', name: 'Explore', description: 'Read-only understanding and analysis' },
   { id: 'review', name: 'Review', description: 'Quality assurance and feedback' },
 ]
 
