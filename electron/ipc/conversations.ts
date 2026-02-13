@@ -59,6 +59,7 @@ export function registerConversationHandlers() {
     const message = messageDb.add(convId, {
       role: messageInput.role,
       content: messageInput.content,
+      createdAt: messageInput.createdAt,
       segments: messageInput.segments,
       toolCalls: messageInput.toolCalls,
       toolResults: messageInput.toolResults,

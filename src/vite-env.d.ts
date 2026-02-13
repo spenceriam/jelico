@@ -271,6 +271,7 @@ interface MessageAttachmentData {
 interface MessageInput {
   role: Message['role']
   content: string
+  createdAt?: number
   segments?: MessageSegmentData[]
   toolCalls?: ToolCallEvent[]
   toolResults?: ToolResultEvent[]

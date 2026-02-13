@@ -17,6 +17,7 @@ interface MessageData {
 interface MessageListProps {
   messages: MessageData[]
   streamingContent?: string
+  streamingStartedAt?: number | null
   streamingToolCalls?: ToolCall[]
   streamingToolResults?: ToolResult[]
   streamingSegments?: StreamingSegment[]
@@ -28,6 +29,7 @@ interface MessageListProps {
 export function MessageList({
   messages,
   streamingContent,
+  streamingStartedAt,
   streamingToolCalls,
   streamingToolResults,
   streamingSegments,
@@ -89,7 +91,7 @@ export function MessageList({
             id: 'streaming',
             role: 'assistant',
             content: streamingContent,
-            createdAt: Date.now(),
+            createdAt: streamingStartedAt ?? Date.now(),
           }}
           isStreaming
           streamingToolCalls={streamingToolCalls}

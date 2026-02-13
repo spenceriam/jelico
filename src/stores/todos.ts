@@ -39,6 +39,15 @@ interface TodoState {
   setConversationId: (id: string | null) => void
   setVisible: (visible: boolean) => void
   deleteConversationTodos: (conversationId: string) => void
+  hydrateConversationFromMessages: (
+    conversationId: string,
+    messages: Array<{
+      toolCalls?: Array<{
+        name?: string
+        args?: Record<string, unknown>
+      }>
+    }>
+  ) => void
 
   // Computed
   getProgress: () => { completed: number; failed: number; cancelled: number; total: number }
@@ -46,9 +55,57 @@ interface TodoState {
   getActiveTasks: () => TodoItem[]
 }
 
+const TODOS_STORAGE_KEY = 'jelico.todosByConversation.v1'
+
+function readPersistedTodosByConversation(): Record<string, TodoItem[]> {
+  try {
+    if (typeof window === 'undefined' || !window.localStorage) {
+      return {}
+    }
+
+    const raw = window.localStorage.getItem(TODOS_STORAGE_KEY)
+    if (!raw) return {}
+
+    const parsed = JSON.parse(raw)
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+      return {}
+    }
+
+    const entries = Object.entries(parsed).filter(([conversationId, value]) => {
+      if (!conversationId || typeof conversationId !== 'string') return false
+      if (!Array.isArray(value)) return false
+
+      return value.every((item) =>
+        item &&
+        typeof item === 'object' &&
+        typeof (item as any).id === 'string' &&
+        typeof (item as any).text === 'string' &&
+        typeof (item as any).status === 'string' &&
+        typeof (item as any).createdAt === 'number' &&
+        typeof (item as any).updatedAt === 'number'
+      )
+    }) as Array<[string, TodoItem[]]>
+
+    return Object.fromEntries(entries)
+  } catch {
+    return {}
+  }
+}
+
+function writePersistedTodosByConversation(todosByConversation: Record<string, TodoItem[]>) {
+  try {
+    if (typeof window === 'undefined' || !window.localStorage) {
+      return
+    }
+    window.localStorage.setItem(TODOS_STORAGE_KEY, JSON.stringify(todosByConversation))
+  } catch {
+    // Ignore localStorage write failures
+  }
+}
+
 export const useTodoStore = create<TodoState>((set, get) => ({
   todos: [],
-  todosByConversation: {},
+  todosByConversation: readPersistedTodosByConversation(),
   isVisible: false,
   conversationId: null,
 
@@ -96,6 +153,8 @@ export const useTodoStore = create<TodoState>((set, get) => ({
         isVisible: updatedTodos.length > 0,
       }
     })
+
+    writePersistedTodosByConversation(get().todosByConversation)
   },
 
   updateTodo: (id, updates, conversationId) => {
@@ -127,6 +186,8 @@ export const useTodoStore = create<TodoState>((set, get) => ({
         todos: updatedTodos,
       }
     })
+
+    writePersistedTodosByConversation(get().todosByConversation)
   },
 
   getTodo: (id) => {
@@ -156,6 +217,8 @@ export const useTodoStore = create<TodoState>((set, get) => ({
         isVisible: false,
       }
     })
+
+    writePersistedTodosByConversation(get().todosByConversation)
   },
 
   setConversationId: (id) => {
@@ -190,6 +253,61 @@ export const useTodoStore = create<TodoState>((set, get) => ({
         isVisible: false,
       }
     })
+
+    writePersistedTodosByConversation(get().todosByConversation)
+  },
+
+  hydrateConversationFromMessages: (conversationId, messages) => {
+    if (!conversationId) return
+
+    const existing = get().todosByConversation[conversationId]
+    if (existing && existing.length > 0) {
+      return
+    }
+
+    const validStatuses = new Set<TodoStatus>(['pending', 'in_progress', 'done', 'failed', 'cancelled'])
+    let recoveredTasks: Array<{ id: string; text: string; status: TodoStatus }> | null = null
+
+    for (const message of messages) {
+      const toolCalls = message.toolCalls || []
+      for (const toolCall of toolCalls) {
+        if (toolCall?.name !== 'todo_write') continue
+        const args = toolCall.args || {}
+        const rawTasks = args.tasks
+        if (!Array.isArray(rawTasks)) continue
+
+        const normalizedTasks = rawTasks
+          .map((task, index) => {
+            if (!task || typeof task !== 'object') return null
+            const taskRecord = task as Record<string, unknown>
+            const id = typeof taskRecord.id === 'string' && taskRecord.id.trim().length > 0
+              ? taskRecord.id
+              : String(index + 1)
+            const text = typeof taskRecord.text === 'string' ? taskRecord.text : ''
+            const rawStatus = typeof taskRecord.status === 'string' ? taskRecord.status : 'pending'
+            const status = validStatuses.has(rawStatus as TodoStatus)
+              ? (rawStatus as TodoStatus)
+              : 'pending'
+
+            return {
+              id,
+              text,
+              status,
+            }
+          })
+          .filter((task): task is { id: string; text: string; status: TodoStatus } => task !== null)
+
+        if (normalizedTasks.length > 0) {
+          recoveredTasks = normalizedTasks
+        }
+      }
+    }
+
+    if (!recoveredTasks || recoveredTasks.length === 0) {
+      return
+    }
+
+    get().setTodos(conversationId, recoveredTasks)
   },
 
   getProgress: () => {
