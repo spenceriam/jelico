@@ -2,7 +2,6 @@ import { useState } from 'react'
 import { Copy, Check, RefreshCw } from 'lucide-react'
 import type { MessageUsage, ToolCall, ToolResult } from '../../stores/chat'
 import { formatElapsedTime } from '../../utils/format'
-import { BrailleLoader } from '../StatusIndicators'
 
 interface MessageActionsProps {
   content: string
@@ -85,7 +84,7 @@ export function MessageActions({ content, toolCalls, toolResults, usage, onRegen
           title="Regenerate response"
         >
           {isRegenerating ? (
-            <BrailleLoader className="text-sm" />
+            <RefreshCw className="w-3.5 h-3.5 animate-spin" />
           ) : (
             <RefreshCw className="w-3.5 h-3.5" />
           )}

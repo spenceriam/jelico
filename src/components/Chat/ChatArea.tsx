@@ -1,5 +1,5 @@
-import { useRef, useEffect, useState, useMemo, useCallback } from 'react'
-import { Settings } from 'lucide-react'
+import { useRef, useEffect, useState, useMemo, useCallback, useLayoutEffect } from 'react'
+import { Settings, Loader2 } from 'lucide-react'
 import { useChatStore } from '../../stores/chat'
 import { useProviderStore } from '../../stores/providers'
 import { useUIStore } from '../../stores/ui'
@@ -48,9 +48,24 @@ export function ChatArea() {
   const { isProcessing, processingMessage, chatFontPt } = useUIStore()
   const { isConversationCompacting } = useContextStore()
   const { setActiveRequest } = useClarificationStore()
+  const scrollContainerRef = useRef<HTMLDivElement>(null)
   const messagesEndRef = useRef<HTMLDivElement>(null)
+  const statusRowRef = useRef<HTMLDivElement>(null)
+  const shouldStickToBottomRef = useRef(true)
   const [userName, setUserName] = useState<string | null>(null)
   const [todoPanelHeight, setTodoPanelHeight] = useState(0)
+  const [statusRowHeight, setStatusRowHeight] = useState(0)
+
+  const isNearBottom = useCallback((element: HTMLElement) => {
+    const distance = element.scrollHeight - element.scrollTop - element.clientHeight
+    return distance <= 96
+  }, [])
+
+  const scrollToBottom = useCallback((behavior: ScrollBehavior = 'auto') => {
+    const element = scrollContainerRef.current
+    if (!element) return
+    element.scrollTo({ top: element.scrollHeight, behavior })
+  }, [])
 
   // Load user name from soul preferences
   useEffect(() => {
@@ -83,10 +98,26 @@ export function ChatArea() {
     return unsubscribe
   }, [activeConversationId, setActiveRequest])
 
-  // Auto-scroll to bottom when new messages or tool calls arrive
+  // Track whether the user is currently anchored near the bottom.
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
-  }, [messages, streamingContent, streamingToolCalls, streamingToolResults])
+    const element = scrollContainerRef.current
+    if (!element) return
+
+    shouldStickToBottomRef.current = isNearBottom(element)
+
+    const handleScroll = () => {
+      shouldStickToBottomRef.current = isNearBottom(element)
+    }
+
+    element.addEventListener('scroll', handleScroll, { passive: true })
+    return () => element.removeEventListener('scroll', handleScroll)
+  }, [activeConversationId, isNearBottom])
+
+  // Auto-scroll to bottom on new content only when user is anchored near bottom.
+  useEffect(() => {
+    if (!shouldStickToBottomRef.current) return
+    scrollToBottom('smooth')
+  }, [messages, streamingContent, streamingToolCalls, streamingToolResults, scrollToBottom])
 
   // Force periodic re-renders during streaming for smooth status updates
   const [, forceUpdate] = useState(0)
@@ -181,20 +212,266 @@ export function ChatArea() {
     }
   }
 
-  const hasPendingArtifactToolCall = isStreaming && streamingToolCalls.some((toolCall) => {
-    const isArtifactAction = toolCall.name === 'create_artifact' || toolCall.name === 'update_artifact'
-    if (!isArtifactAction) return false
-    return !streamingToolResults.some((result) => result.toolCallId === toolCall.id)
-  })
+  const showBottomStatusRow = isStreaming || isCompacting || isProcessing || modeTransitioning
 
-  // Prevent duplicate "Creating artifact..." UI:
-  // the tool call card already shows an in-progress line for artifact creation/update.
-  const hideBottomStatusRow = Boolean(
-    hasPendingArtifactToolCall &&
-    !isCompacting &&
-    !isProcessing &&
-    !modeTransitioning
-  )
+  useEffect(() => {
+    if (!showBottomStatusRow) {
+      setStatusRowHeight(0)
+    }
+  }, [showBottomStatusRow])
+
+  useLayoutEffect(() => {
+    if (!showBottomStatusRow || !statusRowRef.current) return
+
+    const element = statusRowRef.current
+    const syncHeight = () => {
+      const nextHeight = element.offsetHeight
+      setStatusRowHeight((prev) => (prev === nextHeight ? prev : nextHeight))
+    }
+
+    syncHeight()
+
+    const observer = new ResizeObserver(() => {
+      syncHeight()
+    })
+    observer.observe(element)
+
+    const frame = requestAnimationFrame(syncHeight)
+
+    return () => {
+      cancelAnimationFrame(frame)
+      observer.disconnect()
+    }
+  }, [showBottomStatusRow])
+
+  const messagesBottomPadding = useMemo(() => {
+    const statusGap = showBottomStatusRow && todoPanelHeight > 0 ? 8 : 0
+    const reservedHeight = todoPanelHeight + (showBottomStatusRow ? statusRowHeight + statusGap : 0)
+    if (reservedHeight <= 0) return undefined
+    return `${reservedHeight + 12}px`
+  }, [showBottomStatusRow, statusRowHeight, todoPanelHeight])
+
+  // Keep bottom anchoring stable when Todo/status heights change.
+  useEffect(() => {
+    if (!shouldStickToBottomRef.current) return
+    const frame = requestAnimationFrame(() => {
+      scrollToBottom('auto')
+    })
+    return () => cancelAnimationFrame(frame)
+  }, [messagesBottomPadding, scrollToBottom])
+
+  const bottomStatusMessage = modeTransitioning && modeSwitchReason
+    ? modeSwitchReason
+    : isCompacting
+      ? 'Compacting conversation...'
+      : isStreaming
+        ? (() => {
+            const now = Date.now()
+
+            const getShortPath = (p: string) => {
+              const parts = p.split('/')
+              return parts.length > 2 ? `.../${parts.slice(-2).join('/')}` : p
+            }
+
+            const getToolStatus = (name: string, args: Record<string, unknown>, isComplete: boolean) => {
+              if (isComplete) {
+                switch (name) {
+                  case 'read_file':
+                    return args.path ? `Read ${getShortPath(String(args.path))}` : 'File read'
+                  case 'write_file':
+                    return args.path ? `Wrote ${getShortPath(String(args.path))}` : 'File written'
+                  case 'list_directory':
+                    return args.path ? `Explored ${getShortPath(String(args.path))}` : 'Directory explored'
+                  case 'search_files':
+                    return 'Search complete'
+                  case 'execute_command':
+                    return 'Command complete'
+                  case 'web_search':
+                    return 'Search complete'
+                  case 'web_fetch': {
+                    const url = String(args.url || '')
+                    try {
+                      const hostname = new URL(url).hostname
+                      return `Fetched ${hostname}`
+                    } catch {
+                      return 'Page fetched'
+                    }
+                  }
+                  case 'create_artifact':
+                    return `Created ${formatArtifactType(args)}`
+                  case 'update_artifact':
+                    return `Updated ${formatArtifactType(args)}`
+                  case 'artifact_test':
+                    return formatArtifactTestStatus(args, true)
+                  case 'spawn_agent':
+                    return args.name ? `Started: ${args.name}` : 'Sub-agent started'
+                  case 'wait_for_agent':
+                    return 'Sub-agent complete'
+                  case 'get_agent_status':
+                    return 'Status checked'
+                  case 'continue_agent':
+                    return 'Sub-agent resumed'
+                  case 'cancel_agent':
+                    return 'Sub-agent cancelled'
+                  case 'dismiss_agent':
+                    return 'Sub-agent dismissed'
+                  case 'get_agents_summary':
+                    return 'Agents reviewed'
+                  case 'switch_mode':
+                    return args.mode ? `Switched to ${args.mode}` : 'Mode switched'
+                  case 'todo_write':
+                    return 'Tasks updated'
+                  case 'todo_read':
+                    return 'Tasks loaded'
+                  case 'todo_check':
+                    return 'Task checked'
+                  case 'ask_user_question':
+                    return 'Question sent'
+                  default:
+                    return 'Done'
+                }
+              }
+
+              switch (name) {
+                case 'read_file':
+                  return args.path ? `Reading ${getShortPath(String(args.path))}` : 'Reading file...'
+                case 'write_file':
+                  return args.path ? `Writing ${getShortPath(String(args.path))}` : 'Writing file...'
+                case 'list_directory':
+                  return args.path ? `Exploring ${getShortPath(String(args.path))}` : 'Exploring directory...'
+                case 'search_files':
+                  return args.pattern ? `Searching for "${args.pattern}"` : 'Searching files...'
+                case 'execute_command': {
+                  const cmd = String(args.command || '')
+                  const shortCmd = cmd.length > 30 ? cmd.slice(0, 30) + '...' : cmd
+                  return shortCmd ? `Running: ${shortCmd}` : 'Running command...'
+                }
+                case 'web_search':
+                  return args.query ? `Searching: "${String(args.query).slice(0, 25)}"` : 'Searching the web...'
+                case 'web_fetch': {
+                  const url = String(args.url || '')
+                  try {
+                    const hostname = new URL(url).hostname
+                    return `Fetching ${hostname}`
+                  } catch {
+                    return 'Fetching page...'
+                  }
+                }
+                case 'create_artifact':
+                  return `Creating ${formatArtifactType(args)}...`
+                case 'update_artifact':
+                  return `Updating ${formatArtifactType(args)}...`
+                case 'artifact_test':
+                  return formatArtifactTestStatus(args, false)
+                case 'spawn_agent':
+                  return args.name ? `Starting sub-agent: ${args.name}` : 'Starting sub-agent...'
+                case 'wait_for_agent':
+                  return 'Waiting for sub-agent...'
+                case 'get_agent_status':
+                  return 'Checking sub-agent...'
+                case 'continue_agent':
+                  return 'Resuming sub-agent...'
+                case 'cancel_agent':
+                  return 'Cancelling sub-agent...'
+                case 'dismiss_agent':
+                  return 'Dismissing sub-agent...'
+                case 'get_agents_summary':
+                  return 'Reviewing sub-agents...'
+                case 'switch_mode':
+                  return args.mode ? `Switching to ${args.mode} mode...` : 'Switching mode...'
+                case 'todo_write':
+                  return 'Updating tasks...'
+                case 'todo_read':
+                  return 'Loading tasks...'
+                case 'todo_check':
+                  return 'Checking task...'
+                case 'ask_user_question':
+                  return 'Asking for input...'
+                default:
+                  return 'Working...'
+              }
+            }
+
+            const activeItems = statusDisplayQueue.filter((item) => {
+              if (!item.completedAt) return true
+              return (now - item.completedAt) < MIN_STATUS_DISPLAY_MS
+            })
+
+            if (activeItems.length > 0) {
+              const item = activeItems[activeItems.length - 1]
+              const isComplete = !!item.completedAt
+              return getToolStatus(item.toolName, item.args, isComplete)
+            }
+
+            if (lastCompletedTool) {
+              const timeSinceCompletion = now - lastCompletedTool.completedAt
+              if (timeSinceCompletion < 1500) {
+                return getToolStatus(lastCompletedTool.name, lastCompletedTool.args, true)
+              }
+            }
+
+            if (toolInputProgress) {
+              const { toolName } = toolInputProgress
+              switch (toolName) {
+                case 'create_artifact':
+                  return `Creating ${
+                    formatArtifactType(
+                      [...streamingToolCalls]
+                        .reverse()
+                        .find((tc) => tc.name === 'create_artifact')
+                        ?.args || {}
+                    )
+                  }...`
+                case 'update_artifact':
+                  return `Updating ${
+                    formatArtifactType(
+                      [...streamingToolCalls]
+                        .reverse()
+                        .find((tc) => tc.name === 'update_artifact')
+                        ?.args || {}
+                    )
+                  }...`
+                case 'write_file':
+                  return 'Writing file...'
+                case 'execute_command':
+                  return 'Running command...'
+                default:
+                  return 'Generating...'
+              }
+            }
+
+            if (streamingToolCalls.length > 0) {
+              const pendingTool = streamingToolCalls.find((tc) =>
+                !streamingToolResults.some((tr) => tr.toolCallId === tc.id)
+              )
+              if (pendingTool) {
+                const name = pendingTool.name || 'tool'
+                switch (name) {
+                  case 'spawn_agent': return 'Starting sub-agent...'
+                  case 'wait_for_agent': return 'Waiting for sub-agent...'
+                  case 'create_artifact':
+                    return `Creating ${formatArtifactType(pendingTool.args || {})}...`
+                  case 'update_artifact':
+                    return `Updating ${formatArtifactType(pendingTool.args || {})}...`
+                  case 'read_file': return 'Reading file...'
+                  case 'write_file': return 'Writing file...'
+                  case 'execute_command': return 'Running command...'
+                  case 'search_files': return 'Searching files...'
+                  case 'list_directory': return 'Exploring directory...'
+                  case 'web_search': return 'Searching the web...'
+                  case 'web_fetch': return 'Fetching page...'
+                  case 'artifact_test':
+                    return formatArtifactTestStatus(pendingTool.args || {}, false)
+                  case 'ask_user_question': return 'Preparing question...'
+                  default: return `Running ${name.replace(/_/g, ' ')}...`
+                }
+              }
+              return 'Processing response...'
+            }
+
+            return streamingContent ? 'Responding...' : 'Processing...'
+          })()
+        : processingMessage || 'Processing...'
 
   // Show new chat UI when no conversation selected OR empty conversation
   const showNewChatUI = !activeConversationId || (messages.length === 0 && !isStreaming)
@@ -236,14 +513,15 @@ export function ChatArea() {
     >
       {/* Messages area */}
       <div className="flex-1 min-h-0 relative">
-        <div className="h-full overflow-y-auto select-text">
+        <div ref={scrollContainerRef} className="h-full overflow-y-auto select-text">
           <div
             className="max-w-3xl mx-auto py-6 px-4"
-            style={{ paddingBottom: todoPanelHeight > 0 ? `${todoPanelHeight + 12}px` : undefined }}
+            style={{ paddingBottom: messagesBottomPadding }}
           >
             <MessageList
               messages={messages}
               streamingContent={isStreaming ? streamingContent : undefined}
+              streamingStartedAt={isStreaming ? streamingStartTime : undefined}
               streamingToolCalls={isStreaming ? streamingToolCalls : undefined}
               streamingToolResults={isStreaming ? streamingToolResults : undefined}
               streamingSegments={isStreaming ? streamingSegments : undefined}
@@ -286,226 +564,18 @@ export function ChatArea() {
               </div>
             )}
 
-            {/* Status indicator - final row in chat view with braille animation */}
-            {(isStreaming || isCompacting || isProcessing || modeTransitioning) && !hideBottomStatusRow && (
-              <div className="flex items-center gap-2 mt-4 pt-3 pb-1.5">
-                <BrailleLoader className="text-accent text-lg" />
+            {/* Status indicator - part of chat flow, sticky above Todo panel while near bottom */}
+            {showBottomStatusRow && (
+              <div
+                ref={statusRowRef}
+                className="sticky z-10 flex items-center gap-2 mt-4 py-1 bg-bg-void"
+                style={{ bottom: todoPanelHeight > 0 ? `${todoPanelHeight + 8}px` : '0px' }}
+              >
+                <BrailleLoader className="text-accent status-line-loader" />
                 <div className="flex items-center gap-1.5">
                   <ShimmerText className="text-sm text-text-secondary">
-                    {modeTransitioning && modeSwitchReason ? modeSwitchReason :
-                     isCompacting ? 'Compacting conversation...' :
-                     isStreaming ? (() => {
-                       const now = Date.now()
-
-                     const getShortPath = (p: string) => {
-                       const parts = p.split('/')
-                       return parts.length > 2 ? `.../${parts.slice(-2).join('/')}` : p
-                     }
-
-                     const getToolStatus = (name: string, args: Record<string, unknown>, isComplete: boolean) => {
-                       if (isComplete) {
-                         // Completed status - brief flash after tool finishes
-                         switch (name) {
-                           case 'read_file':
-                             return args.path ? `Read ${getShortPath(String(args.path))}` : 'File read'
-                           case 'write_file':
-                             return args.path ? `Wrote ${getShortPath(String(args.path))}` : 'File written'
-                           case 'list_directory':
-                             return args.path ? `Explored ${getShortPath(String(args.path))}` : 'Directory explored'
-                           case 'search_files':
-                             return 'Search complete'
-                           case 'execute_command':
-                             return 'Command complete'
-                           case 'web_search':
-                             return 'Search complete'
-                           case 'web_fetch': {
-                             const url = String(args.url || '')
-                             try {
-                               const hostname = new URL(url).hostname
-                               return `Fetched ${hostname}`
-                             } catch {
-                               return 'Page fetched'
-                             }
-                           }
-                           case 'create_artifact':
-                             return `Created ${formatArtifactType(args)}`
-                           case 'update_artifact':
-                             return `Updated ${formatArtifactType(args)}`
-                           case 'artifact_test':
-                             return formatArtifactTestStatus(args, true)
-                           case 'spawn_agent':
-                             return args.name ? `Started: ${args.name}` : 'Sub-agent started'
-                           case 'wait_for_agent':
-                             return 'Sub-agent complete'
-                           case 'get_agent_status':
-                             return 'Status checked'
-                           case 'continue_agent':
-                             return 'Sub-agent resumed'
-                           case 'cancel_agent':
-                             return 'Sub-agent cancelled'
-                           case 'dismiss_agent':
-                             return 'Sub-agent dismissed'
-                           case 'get_agents_summary':
-                             return 'Agents reviewed'
-                           case 'switch_mode':
-                             return args.mode ? `Switched to ${args.mode}` : 'Mode switched'
-                           case 'todo_write':
-                             return 'Tasks updated'
-                           case 'todo_read':
-                             return 'Tasks loaded'
-                           case 'todo_check':
-                             return 'Task checked'
-                           case 'ask_user_question':
-                             return 'Question sent'
-                           default:
-                             return 'Done'
-                         }
-                       } else {
-                         // In-progress status - while tool is running
-                         switch (name) {
-                           case 'read_file':
-                             return args.path ? `Reading ${getShortPath(String(args.path))}` : 'Reading file...'
-                           case 'write_file':
-                             return args.path ? `Writing ${getShortPath(String(args.path))}` : 'Writing file...'
-                           case 'list_directory':
-                             return args.path ? `Exploring ${getShortPath(String(args.path))}` : 'Exploring directory...'
-                           case 'search_files':
-                             return args.pattern ? `Searching for "${args.pattern}"` : 'Searching files...'
-                           case 'execute_command': {
-                             const cmd = String(args.command || '')
-                             const shortCmd = cmd.length > 30 ? cmd.slice(0, 30) + '...' : cmd
-                             return shortCmd ? `Running: ${shortCmd}` : 'Running command...'
-                           }
-                           case 'web_search':
-                             return args.query ? `Searching: "${String(args.query).slice(0, 25)}"` : 'Searching the web...'
-                           case 'web_fetch': {
-                             const url = String(args.url || '')
-                             try {
-                               const hostname = new URL(url).hostname
-                               return `Fetching ${hostname}`
-                             } catch {
-                               return 'Fetching page...'
-                             }
-                           }
-                           case 'create_artifact':
-                             return `Creating ${formatArtifactType(args)}...`
-                           case 'update_artifact':
-                             return `Updating ${formatArtifactType(args)}...`
-                           case 'artifact_test':
-                             return formatArtifactTestStatus(args, false)
-                           case 'spawn_agent':
-                             return args.name ? `Starting sub-agent: ${args.name}` : 'Starting sub-agent...'
-                           case 'wait_for_agent':
-                             return 'Waiting for sub-agent...'
-                           case 'get_agent_status':
-                             return 'Checking sub-agent...'
-                           case 'continue_agent':
-                             return 'Resuming sub-agent...'
-                           case 'cancel_agent':
-                             return 'Cancelling sub-agent...'
-                           case 'dismiss_agent':
-                             return 'Dismissing sub-agent...'
-                           case 'get_agents_summary':
-                             return 'Reviewing sub-agents...'
-                           case 'switch_mode':
-                             return args.mode ? `Switching to ${args.mode} mode...` : 'Switching mode...'
-                           case 'todo_write':
-                             return 'Updating tasks...'
-                           case 'todo_read':
-                             return 'Loading tasks...'
-                           case 'todo_check':
-                             return 'Checking task...'
-                           case 'ask_user_question':
-                             return 'Asking for input...'
-                           default:
-                             return 'Working...'
-                         }
-                       }
-                     }
-
-                     const activeItems = statusDisplayQueue.filter(item => {
-                       if (!item.completedAt) return true
-                       return (now - item.completedAt) < MIN_STATUS_DISPLAY_MS
-                     })
-
-                     if (activeItems.length > 0) {
-                       const item = activeItems[activeItems.length - 1]
-                       const isComplete = !!item.completedAt
-                       return getToolStatus(item.toolName, item.args, isComplete)
-                     }
-
-                     if (lastCompletedTool) {
-                       const timeSinceCompletion = now - lastCompletedTool.completedAt
-                       if (timeSinceCompletion < 1500) {
-                         return getToolStatus(lastCompletedTool.name, lastCompletedTool.args, true)
-                       }
-                     }
-
-                     // Show tool input progress (for large content being generated)
-                     if (toolInputProgress) {
-                       const { toolName } = toolInputProgress
-                       switch (toolName) {
-                         case 'create_artifact':
-                           return `Creating ${
-                             formatArtifactType(
-                               [...streamingToolCalls]
-                                 .reverse()
-                                 .find((tc) => tc.name === 'create_artifact')
-                                 ?.args || {}
-                             )
-                           }...`
-                         case 'update_artifact':
-                           return `Updating ${
-                             formatArtifactType(
-                               [...streamingToolCalls]
-                                 .reverse()
-                                 .find((tc) => tc.name === 'update_artifact')
-                                 ?.args || {}
-                             )
-                           }...`
-                         case 'write_file':
-                           return 'Writing file...'
-                         case 'execute_command':
-                           return 'Running command...'
-                         default:
-                           return 'Generating...'
-                       }
-                     }
-
-                     if (streamingToolCalls.length > 0) {
-                       // Check what tool is pending - show specific status instead of generic "Finishing up"
-                       const pendingTool = streamingToolCalls.find(tc =>
-                         !streamingToolResults.some(tr => tr.toolCallId === tc.id)
-                       )
-                       if (pendingTool) {
-                         const name = pendingTool.name || 'tool'
-                         switch (name) {
-                           case 'spawn_agent': return 'Starting sub-agent...'
-                           case 'wait_for_agent': return 'Waiting for sub-agent...'
-                           case 'create_artifact':
-                             return `Creating ${formatArtifactType(pendingTool.args || {})}...`
-                           case 'update_artifact':
-                             return `Updating ${formatArtifactType(pendingTool.args || {})}...`
-                           case 'read_file': return 'Reading file...'
-                           case 'write_file': return 'Writing file...'
-                           case 'execute_command': return 'Running command...'
-                           case 'search_files': return 'Searching files...'
-                           case 'list_directory': return 'Exploring directory...'
-                           case 'web_search': return 'Searching the web...'
-                           case 'web_fetch': return 'Fetching page...'
-                           case 'artifact_test':
-                             return formatArtifactTestStatus(pendingTool.args || {}, false)
-                           case 'ask_user_question': return 'Preparing question...'
-                           default: return `Running ${name.replace(/_/g, ' ')}...`
-                         }
-                       }
-                       return 'Processing response...'
-                     }
-                       return streamingContent ? 'Responding...' : 'Processing...'
-                     })() :
-                     processingMessage || 'Processing...'}
+                    {bottomStatusMessage}
                   </ShimmerText>
-                  {/* Elapsed time display - right next to status text */}
                   {isStreaming && streamingStartTime && (
                     <span className="text-sm text-text-muted">
                       ({formatElapsedTime(Date.now() - streamingStartTime)})
@@ -1173,7 +1243,7 @@ function NewChatView({ disabled, isStreaming }: NewChatViewProps) {
       {/* Processing indicator - show during first message send */}
       {isStreaming && (
         <div className="flex items-center justify-center gap-2 mb-4">
-          <BrailleLoader className="text-accent" />
+          <Loader2 className="w-4 h-4 text-accent animate-spin" />
           <ShimmerText className="text-sm">
             Starting conversation...
           </ShimmerText>

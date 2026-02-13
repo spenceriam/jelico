@@ -75,9 +75,9 @@ export function TodoPanel({ onHeightChange }: TodoPanelProps) {
     }
   }, [activeRequest])
 
-  // Don't render if no todos, not visible, or all tasks completed
+  // Don't render if no todos or not visible
   const allDone = todos.every(t => t.status === 'done' || t.status === 'cancelled' || t.status === 'failed')
-  const shouldRender = isVisible && todos.length > 0 && !allDone
+  const shouldRender = isVisible && todos.length > 0
 
   useEffect(() => {
     if (!shouldRender) {
@@ -137,6 +137,11 @@ export function TodoPanel({ onHeightChange }: TodoPanelProps) {
           <span className="text-xs text-text-muted font-medium uppercase tracking-wide">
             Todo
           </span>
+        ) : allDone ? (
+          <div className="flex-1 flex items-center gap-2 min-w-0">
+            <span className="text-success">✓</span>
+            <span className="text-sm text-text-secondary truncate">All tasks complete</span>
+          </div>
         ) : displayTask && displayTask.text ? (
           <div className="flex-1 flex items-center gap-2 min-w-0">
             <span className={inProgressTask ? 'text-accent animate-pulse' : 'text-text-muted'}>

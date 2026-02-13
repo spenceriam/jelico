@@ -8,9 +8,8 @@ import {
 } from 'lucide-react'
 import type { ToolCall, ToolResult } from '../../stores/chat'
 import { useChatStore } from '../../stores/chat'
-import { useAgentStore } from '../../stores/agents'
+import { useAgentStore, type SubAgent } from '../../stores/agents'
 import { useArtifactStore } from '../../stores/artifacts'
-import { BrailleLoader } from '../StatusIndicators'
 
 interface ToolCallDisplayProps {
   toolCalls: ToolCall[]
@@ -148,6 +147,77 @@ function isCanceledResultPayload(result: unknown): boolean {
   return error.toLowerCase().includes('canceled: stream stopped by user')
 }
 
+function getSpawnedAgentId(result: unknown): string | null {
+  if (!result || typeof result !== 'object') return null
+  const agentId = (result as Record<string, unknown>).agent_id
+  return typeof agentId === 'string' && agentId.length > 0 ? agentId : null
+}
+
+function resolveToolCallState(
+  toolCall: ToolCall,
+  toolResult: ToolResult | undefined,
+  isStreaming?: boolean
+): {
+  status: string
+  hasResult: boolean
+  isInProgress: boolean
+  isCanceled: boolean
+} {
+  const hasResult = toolResult !== undefined
+  const inferredStatus = toolCall.status || (hasResult ? 'complete' : (isStreaming ? 'executing' : 'complete'))
+  const status = (!isStreaming && !hasResult && (inferredStatus === 'starting' || inferredStatus === 'executing'))
+    ? 'canceled'
+    : inferredStatus
+  const isInProgress = status === 'starting' || status === 'executing'
+  const isCanceled = status === 'canceled' || status === 'cancelled' || isCanceledResultPayload(toolResult?.result)
+
+  return {
+    status,
+    hasResult,
+    isInProgress,
+    isCanceled,
+  }
+}
+
+export function buildProcessingToneByToolCallId({
+  toolCalls,
+  toolResults = [],
+  agents,
+  isStreaming,
+}: {
+  toolCalls: ToolCall[]
+  toolResults?: ToolResult[]
+  agents: SubAgent[]
+  isStreaming?: boolean
+}): Map<string, number> {
+  const tones = new Map<string, number>()
+  if (toolCalls.length === 0) return tones
+
+  const resultsMap = new Map(toolResults.map((result) => [result.toolCallId, result]))
+  const agentMap = new Map(agents.map((agent) => [agent.id, agent]))
+  let nextTone = 0
+
+  for (const toolCall of toolCalls) {
+    const toolResult = resultsMap.get(toolCall.id)
+    const { isInProgress } = resolveToolCallState(toolCall, toolResult, isStreaming)
+
+    let isProcessing = isInProgress
+    if (toolCall.name === 'spawn_agent') {
+      const subAgent = agentMap.get(getSpawnedAgentId(toolResult?.result) || '')
+      if (subAgent?.status === 'running' || subAgent?.status === 'pending') {
+        isProcessing = true
+      }
+    }
+
+    if (isProcessing) {
+      tones.set(toolCall.id, nextTone % 4)
+      nextTone += 1
+    }
+  }
+
+  return tones
+}
+
 function formatToolResult(result: unknown): { content: string; isError: boolean } {
   if (typeof result === 'object' && result !== null) {
     const obj = result as Record<string, unknown>
@@ -276,11 +346,13 @@ function formatToolResult(result: unknown): { content: string; isError: boolean 
 export function SingleToolCallDisplay({
   toolCall,
   toolResult,
-  isStreaming
+  isStreaming,
+  processingTone,
 }: {
   toolCall: ToolCall
   toolResult?: ToolResult
   isStreaming?: boolean
+  processingTone?: number
 }) {
   const [expanded, setExpanded] = useState(false)
 
@@ -289,8 +361,8 @@ export function SingleToolCallDisplay({
   const { selectArtifact, openCanvas, artifacts } = useArtifactStore()
 
   // Get sub-agent info first for reference in useEffect
-  const agentId = toolCall.name === 'spawn_agent' && toolResult?.result
-    ? (toolResult.result as any)?.agent_id
+  const agentId = toolCall.name === 'spawn_agent'
+    ? getSpawnedAgentId(toolResult?.result)
     : null
   const subAgent = agentId ? agents.find(a => a.id === agentId) : null
   const safeLatestUpdate = sanitizeSubAgentText(subAgent?.latestUpdate?.message)
@@ -382,9 +454,9 @@ export function SingleToolCallDisplay({
     return baseName
   })()
 
-  const hasResult = toolResult !== undefined
-  const formattedResult = hasResult ? formatToolResult(toolResult.result) : null
-  const isCanceled = toolCall.status === 'canceled' || toolCall.status === 'cancelled' || isCanceledResultPayload(toolResult?.result)
+  const { status, hasResult, isInProgress, isCanceled } = resolveToolCallState(toolCall, toolResult, isStreaming)
+  const formattedResult = hasResult && toolResult ? formatToolResult(toolResult.result) : null
+  const hasError = !isCanceled && ((hasResult && formattedResult?.isError) || status === 'error')
 
   const formatArtifactType = () => {
     const rawType = String(toolCall.args?.type || '').toLowerCase()
@@ -434,12 +506,15 @@ export function SingleToolCallDisplay({
     }
   }
 
-  // Use explicit status if available, otherwise infer from result presence
-  const inferredStatus = toolCall.status || (hasResult ? 'complete' : (isStreaming ? 'executing' : 'complete'))
-  const status = (!isStreaming && !hasResult && (inferredStatus === 'starting' || inferredStatus === 'executing'))
-    ? 'canceled'
-    : inferredStatus
-  const isInProgress = status === 'starting' || status === 'executing'
+  const isSubAgentInProgress = toolCall.name === 'spawn_agent' &&
+    !!subAgent &&
+    (subAgent.status === 'running' || subAgent.status === 'pending')
+  const isProcessing = toolCall.name === 'spawn_agent'
+    ? (isInProgress || isSubAgentInProgress)
+    : isInProgress
+  const processingToneClass = isProcessing
+    ? `tool-call-pill-processing tool-call-pill-processing-tone-${(processingTone ?? 0) % 4}`
+    : ''
 
   const isExpandable = (() => {
     if (toolCall.name === 'create_artifact' && !hasResult && !formattedResult?.isError) {
@@ -484,7 +559,7 @@ export function SingleToolCallDisplay({
         onClick={isExpandable ? () => setExpanded(!expanded) : undefined}
         className={`w-full flex items-center gap-2 px-3 py-2 text-left ${
           isExpandable ? 'hover:bg-bg-hover transition-colors' : ''
-        }`}
+        } ${processingToneClass}`}
       >
         {isExpandable ? (
           expanded ? (
@@ -501,26 +576,23 @@ export function SingleToolCallDisplay({
         {/* Status indicator - for spawn_agent, show sub-agent status instead of tool completion */}
         {toolCall.name === 'spawn_agent' && subAgent ? (
           // Show sub-agent status
-          subAgent.status === 'running' || subAgent.status === 'pending' ? (
-            <BrailleLoader className="text-accent text-base flex-shrink-0" />
-          ) : subAgent.status === 'completed' ? (
+          subAgent.status === 'completed' ? (
             <CheckCircle className="w-4 h-4 text-green-500 flex-shrink-0" />
           ) : subAgent.status === 'failed' ? (
             <XCircle className="w-4 h-4 text-error flex-shrink-0" />
+          ) : subAgent.status === 'cancelled' ? (
+            <XCircle className="w-4 h-4 text-text-muted flex-shrink-0" />
           ) : null
         ) : (
           // Normal tool status
           <>
-            {isInProgress && (
-              <BrailleLoader className="text-accent text-base flex-shrink-0" />
-            )}
             {isCanceled && (
               <XCircle className="w-4 h-4 text-text-muted flex-shrink-0" />
             )}
             {hasResult && !formattedResult?.isError && !isCanceled && (
               <CheckCircle className="w-4 h-4 text-green-500 flex-shrink-0" />
             )}
-            {!isCanceled && ((hasResult && formattedResult?.isError) || status === 'error') ? (
+            {hasError ? (
               <XCircle className="w-4 h-4 text-error flex-shrink-0" />
             ) : null}
           </>
@@ -529,8 +601,7 @@ export function SingleToolCallDisplay({
 
       {/* Artifact creation in progress - simple indicator, no streaming preview */}
       {toolCall.name === 'create_artifact' && !hasResult && (
-        <div className="px-3 py-2 border-t border-border bg-bg-surface flex items-center gap-2">
-          <BrailleLoader className="text-accent text-sm" />
+        <div className="px-3 py-2 border-t border-border bg-bg-surface">
           <span className="text-xs text-text-muted">
             Creating {formatArtifactType()}...
           </span>
@@ -605,16 +676,9 @@ export function SingleToolCallDisplay({
 
           {/* In progress indicator - for non-spawn_agent tools */}
           {isInProgress && toolCall.name !== 'spawn_agent' && (
-            <div className="py-2 border-t border-border/50">
-              <div className="flex items-start">
-                <div className="w-6 flex-shrink-0 flex justify-center">
-                  <BrailleLoader className="text-accent text-sm" />
-                </div>
-                <div className="flex-1 pl-2 pr-3">
-                  <div className="text-xs text-text-muted">
-                    {status === 'starting' ? 'Starting...' : 'Running...'}
-                  </div>
-                </div>
+            <div className="px-3 py-2 border-t border-border/50">
+              <div className="text-xs text-text-muted">
+                {status === 'starting' ? 'Starting...' : 'Running...'}
               </div>
             </div>
           )}
@@ -625,6 +689,7 @@ export function SingleToolCallDisplay({
 }
 
 export function ToolCallDisplay({ toolCalls, toolResults = [], isStreaming }: ToolCallDisplayProps) {
+  const { agents } = useAgentStore()
   // Filter out "plumbing" tools that users don't need to see
   const visibleToolCalls = toolCalls.filter(tc => !HIDDEN_TOOLS.has(tc.name))
 
@@ -632,6 +697,12 @@ export function ToolCallDisplay({ toolCalls, toolResults = [], isStreaming }: To
 
   // Map results by toolCallId for easy lookup
   const resultsMap = new Map(toolResults.map(r => [r.toolCallId, r]))
+  const processingToneByToolCallId = buildProcessingToneByToolCallId({
+    toolCalls: visibleToolCalls,
+    toolResults,
+    agents,
+    isStreaming,
+  })
 
   return (
     <div className="space-y-2 my-3">
@@ -641,6 +712,7 @@ export function ToolCallDisplay({ toolCalls, toolResults = [], isStreaming }: To
           toolCall={toolCall}
           toolResult={resultsMap.get(toolCall.id)}
           isStreaming={isStreaming}
+          processingTone={processingToneByToolCallId.get(toolCall.id)}
         />
       ))}
     </div>
