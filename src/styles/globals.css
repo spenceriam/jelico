@@ -4,6 +4,8 @@
 
 @layer base {
   :root {
+    --app-font-scale: 1;
+
     /* Background colors - dark mode defaults */
     --bg-void: #08080a;
     --bg-deep: #0d0d10;
@@ -118,6 +120,75 @@
     box-shadow: 0 0 0 3px var(--accent-glow);
   }
 
+  /* Global application typography scale (outside chat/canvas by container scope) */
+  .app-font-scale {
+    font-size: calc(14px * var(--app-font-scale, 1));
+  }
+
+  .app-font-scale .text-xs {
+    font-size: calc(0.75rem * var(--app-font-scale, 1));
+    line-height: calc(1rem * var(--app-font-scale, 1));
+  }
+
+  .app-font-scale .text-sm {
+    font-size: calc(0.875rem * var(--app-font-scale, 1));
+    line-height: calc(1.25rem * var(--app-font-scale, 1));
+  }
+
+  .app-font-scale .text-base {
+    font-size: calc(1rem * var(--app-font-scale, 1));
+    line-height: calc(1.5rem * var(--app-font-scale, 1));
+  }
+
+  .app-font-scale .text-lg {
+    font-size: calc(1.125rem * var(--app-font-scale, 1));
+    line-height: calc(1.75rem * var(--app-font-scale, 1));
+  }
+
+  .app-font-scale .text-xl {
+    font-size: calc(1.25rem * var(--app-font-scale, 1));
+    line-height: calc(1.75rem * var(--app-font-scale, 1));
+  }
+
+  .app-font-scale .prose {
+    font-size: calc(0.875rem * var(--app-font-scale, 1));
+  }
+
+  /* Chat view typography scale */
+  .chat-font-scale {
+    --chat-font-scale: 1;
+    font-size: calc(14px * var(--chat-font-scale));
+  }
+
+  .chat-font-scale .text-xs {
+    font-size: calc(0.75rem * var(--chat-font-scale));
+    line-height: calc(1rem * var(--chat-font-scale));
+  }
+
+  .chat-font-scale .text-sm {
+    font-size: calc(0.875rem * var(--chat-font-scale));
+    line-height: calc(1.25rem * var(--chat-font-scale));
+  }
+
+  .chat-font-scale .text-base {
+    font-size: calc(1rem * var(--chat-font-scale));
+    line-height: calc(1.5rem * var(--chat-font-scale));
+  }
+
+  .chat-font-scale .text-lg {
+    font-size: calc(1.125rem * var(--chat-font-scale));
+    line-height: calc(1.75rem * var(--chat-font-scale));
+  }
+
+  .chat-font-scale .text-xl {
+    font-size: calc(1.25rem * var(--chat-font-scale));
+    line-height: calc(1.75rem * var(--chat-font-scale));
+  }
+
+  .chat-font-scale .prose {
+    font-size: calc(0.875rem * var(--chat-font-scale));
+  }
+
   /* Shimmer animation for processing indicators */
   @keyframes shimmer {
     0% {
@@ -156,6 +227,15 @@
   .animate-pulse-dot-3 {
     animation: pulse-dot 1.4s ease-in-out infinite;
     animation-delay: 0.4s;
+  }
+
+  @keyframes sidebar-conversation-shimmer {
+    0% {
+      background-position: -140% -140%;
+    }
+    100% {
+      background-position: 140% 140%;
+    }
   }
 
   /* Braille loader animations */
@@ -237,6 +317,27 @@
   content: '\2801';
   animation-name: braille-scroll;
   animation-duration: 0.8s;
+}
+
+.sidebar-conversation-row {
+  background-repeat: no-repeat;
+}
+
+.sidebar-conversation-processing {
+  background-image: linear-gradient(
+    135deg,
+    rgba(212, 165, 116, 0.02) 0%,
+    rgba(212, 165, 116, 0.14) 42%,
+    rgba(212, 165, 116, 0.03) 74%,
+    rgba(212, 165, 116, 0.02) 100%
+  );
+  background-size: 240% 240%;
+  animation: sidebar-conversation-shimmer 4.6s ease-in-out infinite;
+}
+
+.app-font-exempt {
+  --app-font-scale: 1;
+  font-size: 14px;
 }
 
 @layer components {

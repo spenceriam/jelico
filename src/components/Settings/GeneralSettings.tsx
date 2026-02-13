@@ -1,15 +1,8 @@
 import { useState, useEffect } from 'react'
-import { Check, Moon, Sun, Monitor, Palette, User, Brain, Sparkles, Package, Download, RefreshCw, ArrowUpRight, Bell } from 'lucide-react'
-import { useThemeStore, COLOR_THEMES, type ThemeMode } from '../../stores/theme'
+import { Check, Brain, Sparkles, Package, Download, RefreshCw, ArrowUpRight, Bell } from 'lucide-react'
 import { useChatStore } from '../../stores/chat'
 import { useUpdateStore } from '../../stores/updates'
 import type { AgentMode } from '../../lib/modes'
-
-const THEME_MODES: { id: ThemeMode; name: string; icon: typeof Sun }[] = [
-  { id: 'dark', name: 'Dark', icon: Moon },
-  { id: 'light', name: 'Light', icon: Sun },
-  { id: 'system', name: 'System', icon: Monitor },
-]
 
 const AGENT_MODES: { id: AgentMode; name: string; description: string }[] = [
   { id: 'auto', name: 'Auto', description: 'AI decides the best approach' },
@@ -41,7 +34,6 @@ function compareSemver(a: string, b: string): number {
 }
 
 export function GeneralSettings() {
-  const { mode, colorThemeId, setMode, setColorTheme } = useThemeStore()
   const { mode: defaultMode, setMode: setDefaultMode } = useChatStore()
   const { info, currentVersion, isChecking, isDownloading, downloadProgress, lastDownloadedTo, error, checkForUpdates, downloadUpdate } = useUpdateStore()
   const versionStatus = (() => {
@@ -57,15 +49,6 @@ export function GeneralSettings() {
     return { text: 'Up to date', className: 'text-text-secondary' }
   })()
 
-  // User profile state (loaded from soul)
-  const [userName, setUserName] = useState('')
-  const [userIntentions, setUserIntentions] = useState('')
-  const [userPreferences, setUserPreferences] = useState('')
-  const [additionalInfo, setAdditionalInfo] = useState('')
-  const [isLoadingProfile, setIsLoadingProfile] = useState(true)
-  const [isSavingProfile, setIsSavingProfile] = useState(false)
-  const [profileSaved, setProfileSaved] = useState(false)
-
   // Memory settings
   const [learningEnabled, setLearningEnabled] = useState(true)
 
@@ -78,16 +61,14 @@ export function GeneralSettings() {
   const [notifyOnTurnComplete, setNotifyOnTurnComplete] = useState(true)
   const [notifyOnNeedsInput, setNotifyOnNeedsInput] = useState(true)
 
-  // Load user profile from soul
+  const [isLoadingSettings, setIsLoadingSettings] = useState(true)
+
+  // Load persisted general settings from soul
   useEffect(() => {
-    async function loadProfile() {
-      setIsLoadingProfile(true)
+    async function loadSettings() {
+      setIsLoadingSettings(true)
       try {
         const [
-          name,
-          intentions,
-          preferences,
-          additional,
           learning,
           crossSandbox,
           desktopNotifications,
@@ -95,10 +76,6 @@ export function GeneralSettings() {
           turnCompleteNotifications,
           needsInputNotifications,
         ] = await Promise.all([
-          window.jelico.soul.getPreference('userName'),
-          window.jelico.soul.getPreference('userIntentions'),
-          window.jelico.soul.getPreference('userPreferences'),
-          window.jelico.soul.getPreference('additionalInfo'),
           window.jelico.soul.getPreference('learningEnabled'),
           window.jelico.soul.getPreference('crossSandboxSearch'),
           window.jelico.soul.getPreference('desktopNotificationsEnabled'),
@@ -107,10 +84,6 @@ export function GeneralSettings() {
           window.jelico.soul.getPreference('notifyOnNeedsInput'),
         ])
 
-        if (name?.value) setUserName(name.value as string)
-        if (intentions?.value) setUserIntentions(intentions.value as string)
-        if (preferences?.value) setUserPreferences(preferences.value as string)
-        if (additional?.value) setAdditionalInfo(additional.value as string)
         if (learning?.value !== undefined) setLearningEnabled(learning.value as boolean)
         if (crossSandbox?.value !== undefined) setCrossSandboxSearch(crossSandbox.value as boolean)
         if (desktopNotifications?.value !== undefined) setDesktopNotificationsEnabled(desktopNotifications.value as boolean)
@@ -118,31 +91,13 @@ export function GeneralSettings() {
         if (turnCompleteNotifications?.value !== undefined) setNotifyOnTurnComplete(turnCompleteNotifications.value as boolean)
         if (needsInputNotifications?.value !== undefined) setNotifyOnNeedsInput(needsInputNotifications.value as boolean)
       } catch (err) {
-        console.error('Failed to load profile:', err)
+        console.error('Failed to load settings:', err)
       } finally {
-        setIsLoadingProfile(false)
+        setIsLoadingSettings(false)
       }
     }
-    loadProfile()
+    loadSettings()
   }, [])
-
-  const handleSaveProfile = async () => {
-    setIsSavingProfile(true)
-    try {
-      await Promise.all([
-        window.jelico.soul.setPreference('userName', userName.trim(), 1.0),
-        window.jelico.soul.setPreference('userIntentions', userIntentions.trim(), 1.0),
-        window.jelico.soul.setPreference('userPreferences', userPreferences.trim(), 1.0),
-        window.jelico.soul.setPreference('additionalInfo', additionalInfo.trim(), 1.0),
-      ])
-      setProfileSaved(true)
-      setTimeout(() => setProfileSaved(false), 2000)
-    } catch (err) {
-      console.error('Failed to save profile:', err)
-    } finally {
-      setIsSavingProfile(false)
-    }
-  }
 
   const handleSaveLearningSettings = async () => {
     try {
@@ -175,21 +130,21 @@ export function GeneralSettings() {
 
   // Save learning settings when they change
   useEffect(() => {
-    if (!isLoadingProfile) {
+    if (!isLoadingSettings) {
       handleSaveLearningSettings()
     }
   }, [learningEnabled])
 
   // Save sandbox settings when they change
   useEffect(() => {
-    if (!isLoadingProfile) {
+    if (!isLoadingSettings) {
       handleSaveSandboxSettings()
     }
   }, [crossSandboxSearch])
 
   // Save notification settings when they change
   useEffect(() => {
-    if (!isLoadingProfile) {
+    if (!isLoadingSettings) {
       handleSaveNotificationSettings()
     }
   }, [desktopNotificationsEnabled, soundNotificationsEnabled, notifyOnTurnComplete, notifyOnNeedsInput])
@@ -233,69 +188,6 @@ export function GeneralSettings() {
 
   return (
     <div className="space-y-8">
-      {/* Appearance Section */}
-      <section>
-        <h3 className="text-lg font-medium text-text-primary mb-4 flex items-center gap-2">
-          <Palette className="w-5 h-5" />
-          Appearance
-        </h3>
-
-        {/* Theme Mode */}
-        <div className="mb-4">
-          <label className="block text-sm font-medium text-text-secondary mb-2">
-            Theme Mode
-          </label>
-          <div className="flex gap-2">
-            {THEME_MODES.map((themeMode) => {
-              const Icon = themeMode.icon
-              return (
-                <button
-                  key={themeMode.id}
-                  onClick={() => setMode(themeMode.id)}
-                  className={`flex items-center gap-2 px-4 py-2 rounded-lg border transition-colors ${
-                    mode === themeMode.id
-                      ? 'border-accent bg-accent/10 text-accent'
-                      : 'border-border text-text-secondary hover:border-border-strong hover:text-text-primary'
-                  }`}
-                >
-                  <Icon className="w-4 h-4" />
-                  <span>{themeMode.name}</span>
-                </button>
-              )
-            })}
-          </div>
-        </div>
-
-        {/* Color Theme */}
-        <div>
-          <label className="block text-sm font-medium text-text-secondary mb-2">
-            Color Theme
-          </label>
-          <div className="grid grid-cols-5 gap-2">
-            {COLOR_THEMES.map((theme) => (
-              <button
-                key={theme.id}
-                onClick={() => setColorTheme(theme.id)}
-                className={`flex flex-col items-center gap-2 p-3 rounded-lg border transition-colors ${
-                  colorThemeId === theme.id
-                    ? 'border-accent bg-accent/10'
-                    : 'border-border hover:border-border-strong'
-                }`}
-              >
-                <div
-                  className="w-8 h-8 rounded-full border-2 border-white/20"
-                  style={{ backgroundColor: theme.dark.accent }}
-                />
-                <span className="text-xs text-text-secondary">{theme.name}</span>
-                {colorThemeId === theme.id && (
-                  <Check className="w-3 h-3 text-accent" />
-                )}
-              </button>
-            ))}
-          </div>
-        </div>
-      </section>
-
       {/* Updates Section */}
       <section>
         <h3 className="text-lg font-medium text-text-primary mb-4 flex items-center gap-2">
@@ -378,89 +270,6 @@ export function GeneralSettings() {
             )}
           </div>
         </div>
-      </section>
-
-      {/* User Profile Section */}
-      <section>
-        <h3 className="text-lg font-medium text-text-primary mb-4 flex items-center gap-2">
-          <User className="w-5 h-5" />
-          Your Profile
-        </h3>
-
-        {isLoadingProfile ? (
-          <div className="text-text-muted">Loading profile...</div>
-        ) : (
-          <div className="space-y-4">
-            <div>
-              <label className="block text-sm font-medium text-text-secondary mb-1">
-                Your Name
-              </label>
-              <input
-                type="text"
-                value={userName}
-                onChange={(e) => setUserName(e.target.value)}
-                className="w-full px-3 py-2 bg-bg-elevated border border-border rounded-lg text-text-primary focus:outline-none focus:border-accent"
-                placeholder="What should Jelico call you?"
-              />
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-text-secondary mb-1">
-                Your Intentions
-              </label>
-              <textarea
-                value={userIntentions}
-                onChange={(e) => setUserIntentions(e.target.value)}
-                rows={2}
-                className="w-full px-3 py-2 bg-bg-elevated border border-border rounded-lg text-text-primary focus:outline-none focus:border-accent resize-none"
-                placeholder="What are you working on? What brings you here?"
-              />
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-text-secondary mb-1">
-                Communication Preferences
-              </label>
-              <textarea
-                value={userPreferences}
-                onChange={(e) => setUserPreferences(e.target.value)}
-                rows={2}
-                className="w-full px-3 py-2 bg-bg-elevated border border-border rounded-lg text-text-primary focus:outline-none focus:border-accent resize-none"
-                placeholder="How do you prefer Jelico to communicate?"
-              />
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-text-secondary mb-1">
-                Additional Context
-              </label>
-              <textarea
-                value={additionalInfo}
-                onChange={(e) => setAdditionalInfo(e.target.value)}
-                rows={2}
-                className="w-full px-3 py-2 bg-bg-elevated border border-border rounded-lg text-text-primary focus:outline-none focus:border-accent resize-none"
-                placeholder="Anything else Jelico should know about you?"
-              />
-            </div>
-
-            <button
-              onClick={handleSaveProfile}
-              disabled={isSavingProfile}
-              className="flex items-center gap-2 px-4 py-2 bg-accent text-black rounded-lg hover:bg-accent-bright transition-colors disabled:opacity-50"
-            >
-              {profileSaved ? (
-                <>
-                  <Check className="w-4 h-4" />
-                  Saved
-                </>
-              ) : isSavingProfile ? (
-                'Saving...'
-              ) : (
-                'Save Profile'
-              )}
-            </button>
-          </div>
-        )}
       </section>
 
       {/* Default Mode Section */}

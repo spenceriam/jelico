@@ -52,10 +52,27 @@ interface WindowDragSession {
   onMouseUp: (event: MouseEvent) => void
 }
 
+interface FontShortcutState {
+  direction: 'in' | 'out' | null
+  count: number
+  lastAt: number
+}
+
 export default function App() {
   const { providers, loadProviders, isLoading } = useProviderStore()
   const { loadConversations, activeConversationId, messages, isStreaming } = useChatStore()
-  const { settingsOpen, closeSettings, providerSetupOpen, closeProviderSetup, sidebarCollapsed, toggleSidebar, onboardingComplete, completeOnboarding } = useUIStore()
+  const {
+    settingsOpen,
+    closeSettings,
+    providerSetupOpen,
+    closeProviderSetup,
+    sidebarCollapsed,
+    toggleSidebar,
+    onboardingComplete,
+    completeOnboarding,
+    appFontPt,
+    setAppFontPt,
+  } = useUIStore()
   const { canvasOpen } = useArtifactStore()
   const { loadWorkspaces } = useWorkspaceStore()
   const { clearOncePermissions, loadPermissions } = usePermissionStore()
@@ -68,6 +85,12 @@ export default function App() {
   const [isResizing, setIsResizing] = useState(false)
   const resizeRef = useRef<{ startX: number; startWidth: number; currentWidth: number } | null>(null)
   const windowDragRef = useRef<WindowDragSession | null>(null)
+  const fontShortcutRef = useRef<FontShortcutState>({
+    direction: null,
+    count: 0,
+    lastAt: 0,
+  })
+  const appFontScale = appFontPt / 10.5
   const isInteractiveTarget = useCallback((target: HTMLElement | null) => {
     if (!target) return false
     if (target.closest('[data-resize-handle]')) return true
@@ -97,6 +120,48 @@ export default function App() {
       }
     }
   }, [])
+
+  useEffect(() => {
+    document.documentElement.style.setProperty('--app-font-scale', appFontScale.toString())
+  }, [appFontScale])
+
+  useEffect(() => {
+    const DOUBLE_PRESS_WINDOW_MS = 900
+    const isMac = navigator.platform.toUpperCase().includes('MAC')
+
+    const onKeyDown = (event: KeyboardEvent) => {
+      const hasModifier = isMac ? event.metaKey : event.ctrlKey
+      if (!hasModifier || event.altKey) return
+
+      const isZoomInKey =
+        event.key === '+' || event.key === '=' || event.code === 'NumpadAdd'
+      const isZoomOutKey =
+        event.key === '-' || event.key === '_' || event.code === 'NumpadSubtract'
+
+      if (!isZoomInKey && !isZoomOutKey) return
+
+      const direction: 'in' | 'out' = isZoomInKey ? 'in' : 'out'
+      event.preventDefault()
+
+      const now = Date.now()
+      const state = fontShortcutRef.current
+      if (state.direction === direction && now - state.lastAt <= DOUBLE_PRESS_WINDOW_MS) {
+        state.count += 1
+      } else {
+        state.direction = direction
+        state.count = 1
+      }
+      state.lastAt = now
+
+      if (state.count >= 2) {
+        setAppFontPt(direction === 'in' ? appFontPt + 0.5 : appFontPt - 0.5)
+        fontShortcutRef.current = { direction: null, count: 0, lastAt: 0 }
+      }
+    }
+
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [appFontPt, setAppFontPt])
 
   useEffect(() => {
     const stopListening = startListening()
@@ -299,7 +364,7 @@ export default function App() {
 
     return (
     <div
-      className="h-screen flex bg-bg-void text-text-primary overflow-hidden relative select-none"
+      className="h-screen flex bg-bg-void text-text-primary overflow-hidden relative select-none app-font-scale"
       onDoubleClick={handleAppDoubleClick}
       onMouseDown={handleAppMouseDown}
     >
@@ -325,9 +390,16 @@ export default function App() {
       <Sidebar />
 
       <main
-        className="flex-1 flex flex-col min-w-0"
+        className="relative flex-1 flex flex-col min-w-0"
         style={{ paddingTop: 'var(--titlebar-padding)' }}
       >
+        {/* macOS titlebar safe-area fill for the main pane */}
+        <div
+          className="absolute top-0 left-0 right-0 bg-bg-elevated pointer-events-none"
+          style={{ height: 'var(--titlebar-padding)' }}
+          aria-hidden="true"
+        />
+
         {!showNewChatUI && <Header />}
         <div className="flex-1 flex min-h-0">
           <div className="flex-1 flex flex-col min-w-0">

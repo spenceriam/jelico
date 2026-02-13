@@ -70,9 +70,9 @@ export function ModeSelector() {
   }, [mode, setMode])
 
   return (
-    <div className="flex items-center">
+    <div className="flex items-center justify-center w-full">
       <div className={`
-        flex bg-bg-surface rounded-lg p-1 gap-0.5 transition-all duration-300
+        flex bg-bg-surface rounded-t-none rounded-b-lg overflow-hidden p-0 gap-0 transition-all duration-300
         ${modeTransitioning ? 'ring-2 ring-accent/50 ring-offset-2 ring-offset-bg-surface' : ''}
       `}>
         {Object.values(modes).map((m) => (
@@ -81,7 +81,7 @@ export function ModeSelector() {
             onClick={() => setMode(m.id)}
             disabled={modeTransitioning}
             className={`
-              relative px-3 py-1.5 text-sm font-medium rounded-md
+              relative px-3 py-2 text-sm font-medium rounded-none
               transition-all duration-200
               ${m.id === mode
                 ? 'bg-bg-elevated text-text-primary shadow-sm'
@@ -94,7 +94,7 @@ export function ModeSelector() {
             title={`${m.description} (${m.shortcut})`}
           >
             <span className="relative z-10">{m.name}</span>
-            <span className="ml-1 text-[10px] text-text-faint">
+            <span className="ml-1 text-[0.68em] text-text-faint">
               {m.shortcut}
             </span>
           </button>

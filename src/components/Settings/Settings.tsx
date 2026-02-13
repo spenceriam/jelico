@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { X, Plus, Trash2, Check, AlertCircle, Settings as SettingsIcon, Zap, Database, Edit2, Loader2, Search, HardDrive, Key, Eye, EyeOff, Shield } from 'lucide-react'
+import { X, Plus, Trash2, Check, AlertCircle, Settings as SettingsIcon, Zap, Database, Edit2, Loader2, Search, HardDrive, Key, Eye, EyeOff, Shield, User, Palette } from 'lucide-react'
 import { useProviderStore } from '../../stores/providers'
 import { useUIStore } from '../../stores/ui'
 import { SkillManager } from '../Skills/SkillManager'
@@ -7,10 +7,12 @@ import { useSkillStore } from '../../stores/skills'
 import { BackupSettings } from './BackupSettings'
 import { GeneralSettings } from './GeneralSettings'
 import { PermissionsSettings } from './PermissionsSettings'
+import { ProfileSettings } from './ProfileSettings'
+import { AppearanceSettings } from './AppearanceSettings'
 // MicrophoneSettings disabled - WASM crashes on Windows ARM64, will revisit later
 // import { MicrophoneSettings } from './MicrophoneSettings'
 
-type SettingsTab = 'general' | 'providers' | 'permissions' | 'skills' | 'backup'
+type SettingsTab = 'profile' | 'appearance' | 'general' | 'providers' | 'permissions' | 'skills' | 'backup'
 
 interface SettingsProps {
   onClose: () => void
@@ -25,7 +27,7 @@ export function Settings({ onClose }: SettingsProps) {
   const { providers, deleteProvider, testConnection, updateProvider, setActiveModel, activeProviderId } = useProviderStore()
   const { openProviderSetup, settingsTab } = useUIStore()
   const { loadSkills } = useSkillStore()
-  const [activeTab, setActiveTab] = useState<SettingsTab>(settingsTab || 'general')
+  const [activeTab, setActiveTab] = useState<SettingsTab>(settingsTab || 'profile')
   const [testingId, setTestingId] = useState<string | null>(null)
   const [testResults, setTestResults] = useState<Record<string, boolean>>({})
 
@@ -147,7 +149,7 @@ export function Settings({ onClose }: SettingsProps) {
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-      <div className="bg-bg-surface rounded-lg shadow-xl w-full max-w-2xl mx-4 max-h-[90vh] overflow-hidden flex flex-col">
+      <div className="bg-bg-surface rounded-lg shadow-xl w-full max-w-4xl mx-4 h-[82vh] max-h-[90vh] overflow-hidden flex flex-col">
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-border">
           <h2 className="text-lg font-semibold text-text-primary">Settings</h2>
@@ -161,6 +163,28 @@ export function Settings({ onClose }: SettingsProps) {
 
         {/* Tabs */}
         <div className="flex border-b border-border px-6">
+          <button
+            onClick={() => setActiveTab('profile')}
+            className={`px-4 py-3 text-sm flex items-center gap-2 border-b-2 -mb-px transition-colors ${
+              activeTab === 'profile'
+                ? 'border-accent text-accent'
+                : 'border-transparent text-text-muted hover:text-text-primary'
+            }`}
+          >
+            <User className="w-4 h-4" />
+            Profile
+          </button>
+          <button
+            onClick={() => setActiveTab('appearance')}
+            className={`px-4 py-3 text-sm flex items-center gap-2 border-b-2 -mb-px transition-colors ${
+              activeTab === 'appearance'
+                ? 'border-accent text-accent'
+                : 'border-transparent text-text-muted hover:text-text-primary'
+            }`}
+          >
+            <Palette className="w-4 h-4" />
+            Appearance
+          </button>
           <button
             onClick={() => setActiveTab('general')}
             className={`px-4 py-3 text-sm flex items-center gap-2 border-b-2 -mb-px transition-colors ${
@@ -221,6 +245,10 @@ export function Settings({ onClose }: SettingsProps) {
 
         {/* Content */}
         <div className="flex-1 overflow-y-auto p-6">
+          {activeTab === 'profile' && <ProfileSettings />}
+
+          {activeTab === 'appearance' && <AppearanceSettings />}
+
           {activeTab === 'providers' && (
             <div className="space-y-6">
               <div className="flex items-center justify-between">
