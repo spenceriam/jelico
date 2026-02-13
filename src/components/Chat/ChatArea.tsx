@@ -52,6 +52,7 @@ export function ChatArea() {
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const statusRowRef = useRef<HTMLDivElement>(null)
   const shouldStickToBottomRef = useRef(true)
+  const lastMessageMetaRef = useRef<{ id: string | null; count: number }>({ id: null, count: 0 })
   const [userName, setUserName] = useState<string | null>(null)
   const [todoPanelHeight, setTodoPanelHeight] = useState(0)
   const [statusRowHeight, setStatusRowHeight] = useState(0)
@@ -119,6 +120,28 @@ export function ChatArea() {
     scrollToBottom('smooth')
   }, [messages, streamingContent, streamingToolCalls, streamingToolResults, scrollToBottom])
 
+  // Force-scroll when a NEW user message is appended, even if the user had scrolled up.
+  // This ensures submitting a prompt always brings the latest prompt + stream into view.
+  useEffect(() => {
+    const previous = lastMessageMetaRef.current
+    const count = messages.length
+    const lastMessage = count > 0 ? messages[count - 1] : null
+    const lastId = lastMessage?.id ?? null
+
+    const appendedNewMessage = count > previous.count && lastId !== previous.id
+    const appendedUserMessage = appendedNewMessage && lastMessage?.role === 'user'
+
+    lastMessageMetaRef.current = { id: lastId, count }
+
+    if (!appendedUserMessage) return
+
+    shouldStickToBottomRef.current = true
+    const frame = requestAnimationFrame(() => {
+      scrollToBottom('smooth')
+    })
+    return () => cancelAnimationFrame(frame)
+  }, [messages, scrollToBottom])
+
   // Force periodic re-renders during streaming for smooth status updates
   const [, forceUpdate] = useState(0)
   useEffect(() => {
@@ -158,6 +181,10 @@ export function ChatArea() {
 
     await regenerateLastResponse(activeProviderId, activeModel)
   }, [activeProviderId, activeModel, getRegenerateArtifactImpact, regenerateLastResponse])
+
+  const handleRetryUnansweredMessage = useCallback(async () => {
+    await resumeInterruptedConversation(activeConversationId || undefined)
+  }, [activeConversationId, resumeInterruptedConversation])
 
   const interruptedStream = activeConversationId
     ? interruptedConversations[activeConversationId]
@@ -527,6 +554,7 @@ export function ChatArea() {
               streamingSegments={isStreaming ? streamingSegments : undefined}
               systemNotifications={visibleSystemNotifications}
               onRegenerate={handleRegenerate}
+              onRetryUnansweredMessage={handleRetryUnansweredMessage}
               userName={userName || undefined}
             />
 

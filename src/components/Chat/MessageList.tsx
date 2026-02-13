@@ -23,6 +23,7 @@ interface MessageListProps {
   streamingSegments?: StreamingSegment[]
   systemNotifications?: SystemNotification[]
   onRegenerate?: () => Promise<void>
+  onRetryUnansweredMessage?: () => Promise<void>
   userName?: string  // User's name for avatar
 }
 
@@ -35,9 +36,11 @@ export function MessageList({
   streamingSegments,
   systemNotifications = [],
   onRegenerate,
+  onRetryUnansweredMessage,
   userName,
 }: MessageListProps) {
   const [isRegenerating, setIsRegenerating] = useState(false)
+  const [retryingMessageId, setRetryingMessageId] = useState<string | null>(null)
 
   // Find the index of the last assistant message
   let lastAssistantIndex = -1
@@ -48,8 +51,22 @@ export function MessageList({
     }
   }
 
+  const isStreamingAssistantMessageVisible =
+    streamingContent !== undefined &&
+    (streamingContent !== '' || (streamingToolCalls?.length || 0) > 0)
+
+  let retryableUserMessageId: string | null = null
+  if (onRetryUnansweredMessage && !isStreamingAssistantMessageVisible) {
+    for (let i = messages.length - 1; i > lastAssistantIndex; i--) {
+      if (messages[i].role === 'user') {
+        retryableUserMessageId = messages[i].id
+        break
+      }
+    }
+  }
+
   const handleRegenerate = async () => {
-    if (!onRegenerate || isRegenerating) return
+    if (!onRegenerate || isRegenerating || retryingMessageId) return
     setIsRegenerating(true)
     try {
       await onRegenerate()
@@ -58,8 +75,18 @@ export function MessageList({
     }
   }
 
+  const handleRetryUnansweredMessage = async (messageId: string) => {
+    if (!onRetryUnansweredMessage || isRegenerating || retryingMessageId) return
+    setRetryingMessageId(messageId)
+    try {
+      await onRetryUnansweredMessage()
+    } finally {
+      setRetryingMessageId(null)
+    }
+  }
+
   return (
-    <div className="space-y-6">
+    <div className="space-y-7">
       {messages.map((message, index) => (
         <Message
           key={message.id}
@@ -67,6 +94,11 @@ export function MessageList({
           isLastAssistantMessage={index === lastAssistantIndex}
           onRegenerate={index === lastAssistantIndex ? handleRegenerate : undefined}
           isRegenerating={isRegenerating}
+          showRetry={message.role === 'user' && message.id === retryableUserMessageId}
+          onRetry={message.role === 'user' && message.id === retryableUserMessageId
+            ? () => { void handleRetryUnansweredMessage(message.id) }
+            : undefined}
+          isRetrying={retryingMessageId === message.id}
           userName={userName}
         />
       ))}

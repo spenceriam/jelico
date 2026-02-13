@@ -1,8 +1,8 @@
 import { useState } from 'react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
-import { Copy, Check, FileText, Image, File } from 'lucide-react'
-import { ToolCallDisplay, SingleToolCallDisplay, HIDDEN_TOOLS, buildProcessingToneByToolCallId } from './ToolCallDisplay'
+import { Copy, Check, FileText, Image, File, RotateCcw, Loader2 } from 'lucide-react'
+import { ToolCallDisplay, SingleToolCallDisplay, buildProcessingToneByToolCallId, isHiddenToolCall } from './ToolCallDisplay'
 import { MessageActions } from './MessageActions'
 import { MermaidInline } from '../Canvas/MermaidViewer'
 import { useAgentStore } from '../../stores/agents'
@@ -27,6 +27,9 @@ interface MessageProps {
   isLastAssistantMessage?: boolean
   onRegenerate?: () => void
   isRegenerating?: boolean
+  showRetry?: boolean
+  onRetry?: () => void
+  isRetrying?: boolean
   userName?: string  // User's name for avatar initial
 }
 
@@ -130,6 +133,9 @@ export function Message({
   isLastAssistantMessage,
   onRegenerate,
   isRegenerating,
+  showRetry,
+  onRetry,
+  isRetrying,
   userName,
 }: MessageProps) {
   const [copied, setCopied] = useState(false)
@@ -220,7 +226,27 @@ export function Message({
             )}
           </div>
           {/* Actions OUTSIDE and BELOW the bubble */}
-          <div className="mt-1 opacity-0 group-hover:opacity-100 transition-opacity">
+          <div className={`mt-1 flex items-center gap-3 transition-opacity ${showRetry ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`}>
+            {showRetry && onRetry && (
+              <button
+                onClick={onRetry}
+                disabled={Boolean(isRetrying)}
+                className="flex items-center gap-1.5 text-xs text-accent hover:text-accent-bright disabled:text-text-muted disabled:cursor-not-allowed transition-colors"
+                title="Retry this message"
+              >
+                {isRetrying ? (
+                  <>
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                    <span>Retrying...</span>
+                  </>
+                ) : (
+                  <>
+                    <RotateCcw className="w-3.5 h-3.5" />
+                    <span>Retry</span>
+                  </>
+                )}
+              </button>
+            )}
             <button
               onClick={handleCopy}
               className="flex items-center gap-1.5 text-xs text-text-muted hover:text-text-secondary transition-colors"
@@ -343,10 +369,10 @@ export function Message({
           {segments && segments.length > 0 ? (
             <>
               {segments.map((segment, idx) => {
+                const segmentSpacingClass = idx > 0 ? 'mt-4' : undefined
                 if (segment.type === 'text') {
-                  const needsSpacing = segments[idx - 1]?.type === 'tool'
                   return (
-                    <div key={`text-${idx}`} className={needsSpacing ? 'mt-3' : undefined}>
+                    <div key={`text-${idx}`} className={segmentSpacingClass}>
                       {renderMarkdown(segment.content || (isStreaming ? '▊' : ''))}
                     </div>
                   )
@@ -355,17 +381,18 @@ export function Message({
                   const toolCall = toolCalls?.find(tc => tc.id === segment.toolCallId)
                   const toolResult = toolResults?.find(tr => tr.toolCallId === segment.toolCallId)
 
-                  // Skip hidden tools (wait_for_agent, get_agent_status, etc.)
-                  if (!toolCall || HIDDEN_TOOLS.has(toolCall.name)) return null
+                  // Skip hidden tools (plumbing + internal deferred web gate events)
+                  if (!toolCall || isHiddenToolCall(toolCall, toolResult)) return null
 
                   return (
-                    <SingleToolCallDisplay
-                      key={`tool-${segment.toolCallId}`}
-                      toolCall={toolCall}
-                      toolResult={toolResult}
-                      isStreaming={isStreaming}
-                      processingTone={processingToneByToolCallId.get(segment.toolCallId)}
-                    />
+                    <div key={`tool-${segment.toolCallId}`} className={segmentSpacingClass}>
+                      <SingleToolCallDisplay
+                        toolCall={toolCall}
+                        toolResult={toolResult}
+                        isStreaming={isStreaming}
+                        processingTone={processingToneByToolCallId.get(segment.toolCallId)}
+                      />
+                    </div>
                   )
                 }
               })}

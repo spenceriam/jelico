@@ -53,6 +53,17 @@ export interface ToolResult {
   error?: string
 }
 
+const INTERNAL_WEB_GATE_RESULT_TYPES = new Set(['deferred_to_subagents', 'direct_limit_reached'])
+
+function isInternalWebGateResultPayload(payload: unknown): boolean {
+  if (!payload || typeof payload !== 'object') return false
+  const obj = payload as Record<string, unknown>
+  if (obj.success !== true) return false
+  const results = obj.results as Record<string, unknown> | undefined
+  const resultType = typeof results?.type === 'string' ? results.type : ''
+  return INTERNAL_WEB_GATE_RESULT_TYPES.has(resultType)
+}
+
 // Streaming segment - tracks content in the order it arrives
 // This enables proper interleaving of text and tool calls in the UI
 export type StreamingSegment =
@@ -1202,28 +1213,51 @@ export const useChatStore = create<ChatStore>((set, get) => ({
       const now = Date.now()
 
       updateConversationStreamState((current) => {
+        const hiddenToolCallIds = new Set<string>()
+        for (const result of toolResults) {
+          const matchingToolCall = current.streamingToolCalls.find(tc => tc.id === result.toolCallId)
+          if (!matchingToolCall) continue
+          const isInternalWebGateCall =
+            (matchingToolCall.name === 'web_search' || matchingToolCall.name === 'web_fetch') &&
+            isInternalWebGateResultPayload(result.result)
+          if (isInternalWebGateCall) {
+            hiddenToolCallIds.add(result.toolCallId)
+          }
+        }
+
+        const visibleToolResults = toolResults.filter(result => !hiddenToolCallIds.has(result.toolCallId))
+
         // Update tool call statuses to 'complete' when their results arrive
-        const completedIds = new Set(toolResults.map(r => r.toolCallId))
-        const updatedToolCalls = current.streamingToolCalls.map((tc) =>
-          completedIds.has(tc.id) ? { ...tc, status: 'complete' as const } : tc
-        )
+        const completedIds = new Set(visibleToolResults.map(r => r.toolCallId))
+        const updatedToolCalls = current.streamingToolCalls
+          .filter(tc => !hiddenToolCallIds.has(tc.id))
+          .map((tc) =>
+            completedIds.has(tc.id) ? { ...tc, status: 'complete' as const } : tc
+          )
 
         // Track the last completed tool for status line display
-        const lastResult = toolResults[toolResults.length - 1]
-        const completedToolCall = current.streamingToolCalls.find(tc => tc.id === lastResult?.toolCallId)
+        const lastResult = visibleToolResults[visibleToolResults.length - 1]
+        const completedToolCall = updatedToolCalls.find(tc => tc.id === lastResult?.toolCallId)
 
         // Update status display queue - mark items as completed but keep for minimum display time
-        const updatedQueue = current.statusDisplayQueue.map(item => {
+        const updatedQueue = current.statusDisplayQueue
+          .filter(item => !hiddenToolCallIds.has(item.id))
+          .map(item => {
           if (completedIds.has(item.id) && !item.completedAt) {
             return { ...item, completedAt: now }
           }
           return item
-        })
+          })
+
+        const updatedSegments = current.streamingSegments.filter((segment) =>
+          segment.type !== 'tool' || !hiddenToolCallIds.has(segment.toolCallId)
+        )
 
         return {
           ...current,
           streamingToolCalls: updatedToolCalls,
-          streamingToolResults: [...current.streamingToolResults, ...toolResults],
+          streamingToolResults: [...current.streamingToolResults, ...visibleToolResults],
+          streamingSegments: updatedSegments,
           statusDisplayQueue: updatedQueue,
           lastCompletedTool: completedToolCall ? {
             name: completedToolCall.name,
@@ -1663,30 +1697,26 @@ export const useChatStore = create<ChatStore>((set, get) => ({
   },
 
   sendQueuedNow: async (queueIndex) => {
-    const { messageQueue, activeConversationId, conversationStreams } = get()
+    const { messageQueue, activeConversationId } = get()
     const queuedMessage = messageQueue[queueIndex]
     if (!queuedMessage) return false
 
-    const targetConversationId = queuedMessage.conversationId ?? activeConversationId ?? null
-    const targetStreamState = targetConversationId ? conversationStreams[targetConversationId] : undefined
+    // Remove selected message from queue first to avoid duplicate processing races.
+    set((state) => {
+      const nextQueue = [...state.messageQueue]
+      nextQueue.splice(queueIndex, 1)
+      return { messageQueue: nextQueue }
+    })
 
-    // If target conversation is currently streaming, prioritize this message to be the NEXT
-    // queued item without interrupting the current generation.
-    if (targetConversationId && targetConversationId === activeConversationId && targetStreamState?.isStreaming) {
-      set((state) => {
-        const nextQueue = [...state.messageQueue]
-        const [selected] = nextQueue.splice(queueIndex, 1)
-        if (!selected) return {}
-        nextQueue.unshift(selected)
-        return { messageQueue: nextQueue }
-      })
-      return true
+    const refreshedState = get()
+    const targetConversationId = queuedMessage.conversationId ?? refreshedState.activeConversationId ?? activeConversationId ?? null
+    const targetStreamState = targetConversationId ? refreshedState.conversationStreams[targetConversationId] : undefined
+
+    // "Send now" means send this queued item immediately.
+    // If the target conversation is currently streaming, stop first so this message can run now.
+    if (targetConversationId && targetConversationId === refreshedState.activeConversationId && targetStreamState?.isStreaming) {
+      await refreshedState.stopStreaming()
     }
-
-    // If target isn't currently streaming, send immediately.
-    set((state) => ({
-      messageQueue: state.messageQueue.filter((_, idx) => idx !== queueIndex),
-    }))
 
     await (get().sendMessage as any)(
       queuedMessage.content,

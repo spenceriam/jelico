@@ -276,8 +276,8 @@ export function ChatInput({ disabled, isStreaming, centered }: ChatInputProps) {
     return 'document'
   }
 
-  const handleSubmit = useCallback(async () => {
-    if ((!input.trim() && attachments.length === 0) || !activeProviderId || !activeModel) return
+  const handleSubmit = useCallback(async (): Promise<boolean> => {
+    if ((!input.trim() && attachments.length === 0) || !activeProviderId || !activeModel) return false
     const trimmedInput = input.trim()
 
     // Convert attachments to MessageAttachment format
@@ -323,8 +323,10 @@ export function ChatInput({ disabled, isStreaming, centered }: ChatInputProps) {
       chatDraftsByConversation.delete(getDraftKey(activeConversationId))
       setAttachments([])
       resizeTextarea('')
+      return true
     } catch (error) {
       console.error('[ChatInput] Failed to send message:', error)
+      return false
     }
   }, [input, attachments, activeProviderId, activeModel, sendMessage, activeConversationId, resizeTextarea])
 
@@ -379,8 +381,19 @@ export function ChatInput({ disabled, isStreaming, centered }: ChatInputProps) {
     }
   }, [sendQueuedNow])
 
+  const hasDraftToSend = input.trim().length > 0 || attachments.length > 0
+  const showQueueSubmit = Boolean(isStreaming && hasDraftToSend)
+  const isQueueDocked = !centered && queuedCount > 0
+
+  const handleQueueSubmit = useCallback(async () => {
+    const sent = await handleSubmit()
+    if (sent) {
+      setQueueExpanded(true)
+    }
+  }, [handleSubmit])
+
   return (
-    <div className="space-y-2">
+    <div className="space-y-0">
       {/* Hidden file input */}
       <input
         ref={fileInputRef}
@@ -394,20 +407,21 @@ export function ChatInput({ disabled, isStreaming, centered }: ChatInputProps) {
       {/* Queued messages panel - slides up from bottom */}
       {queuedCount > 0 && (
         <div
-          className={`overflow-hidden transition-all duration-300 ease-out ${
+          className={`overflow-hidden transition-all duration-300 ease-out border border-border border-b-0 bg-bg-surface hover:border-border-strong ${
+            centered ? 'rounded-t-lg rounded-b-none' : 'rounded-t-xl rounded-b-none'
+          } ${
             queueExpanded ? 'max-h-48' : 'max-h-10'
           }`}
         >
           {/* Header - always visible */}
-          <div className="w-full flex items-center gap-2 px-2 py-1.5 bg-bg-surface border border-border rounded-lg hover:border-border-strong transition-colors">
+          <div className="w-full flex items-center gap-2 px-2 py-1.5">
             <button
               onClick={() => setQueueExpanded(!queueExpanded)}
               className="flex-1 flex items-center justify-between gap-2 px-1 py-0.5"
             >
               <div className="flex items-center gap-2 text-sm text-text-secondary">
                 <Clock className="w-4 h-4 text-accent" />
-                <span className="font-medium">{queuedCount} message{queuedCount > 1 ? 's' : ''} queued</span>
-                <span className="text-text-muted">· will send when ready</span>
+                <span className="font-medium">{queuedCount} queued message{queuedCount > 1 ? 's' : ''}</span>
               </div>
               {queueExpanded ? (
                 <ChevronDown className="w-4 h-4 text-text-muted" />
@@ -415,30 +429,14 @@ export function ChatInput({ disabled, isStreaming, centered }: ChatInputProps) {
                 <ChevronUp className="w-4 h-4 text-text-muted" />
               )}
             </button>
-
-            <div className="flex items-center gap-1">
-              <button
-                onClick={() => {
-                  const firstQueued = queueEntriesForActiveConversation[0]
-                  if (firstQueued) {
-                    handleSendQueuedNow(firstQueued.index)
-                  }
-                }}
-                disabled={sendingNowIndex !== null}
-                className="px-2 py-1 text-xs rounded bg-accent/15 text-accent hover:bg-accent/25 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                title="Send message while not disturbing the AI's progress."
-              >
-                Send now
-              </button>
-            </div>
           </div>
 
           {/* Expanded queue list */}
           {queueExpanded && (
-            <div className="mt-2 space-y-1.5 px-1 max-h-32 overflow-y-auto">
-              {queueEntriesForActiveConversation.map(({ message: msg }, idx) => (
+            <div className="border-t border-border-subtle px-2 pt-1.5 pb-2 space-y-1.5 max-h-36 overflow-y-auto">
+              {queueEntriesForActiveConversation.map(({ message: msg, index: queueIndex }, idx) => (
                 <div
-                  key={idx}
+                  key={queueIndex}
                   className="flex items-start gap-2 p-2 bg-bg-elevated border border-border-subtle rounded-lg text-sm"
                 >
                   <span className="flex-shrink-0 w-5 h-5 flex items-center justify-center bg-accent/20 text-accent text-xs font-medium rounded">
@@ -454,6 +452,14 @@ export function ChatInput({ disabled, isStreaming, centered }: ChatInputProps) {
                       </p>
                     )}
                   </div>
+                  <button
+                    onClick={() => handleSendQueuedNow(queueIndex)}
+                    disabled={sendingNowIndex !== null}
+                    className="flex-shrink-0 px-2 py-1 text-xs rounded bg-accent/15 text-accent hover:bg-accent/25 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                    title="Send this queued message now"
+                  >
+                    {sendingNowIndex === queueIndex ? 'Sending...' : 'Send now'}
+                  </button>
                 </div>
               ))}
             </div>
@@ -508,7 +514,7 @@ export function ChatInput({ disabled, isStreaming, centered }: ChatInputProps) {
       {/* Main input container */}
       <div
         className={`flex flex-col bg-bg-elevated border transition-colors ${
-          centered ? 'rounded-xl' : 'rounded-t-xl rounded-b-none'
+          centered ? 'rounded-xl' : isQueueDocked ? 'rounded-t-none rounded-b-none' : 'rounded-t-xl rounded-b-none'
         } ${
           isDragging
             ? 'border-accent border-dashed bg-accent/5'
@@ -557,29 +563,32 @@ export function ChatInput({ disabled, isStreaming, centered }: ChatInputProps) {
             <Paperclip className="w-[1.15em] h-[1.15em]" />
           </button>
 
-          {/* Right side - Send button */}
-          <div className="flex items-center gap-1">
-            {/* Speech-to-text disabled - WASM crashes on Windows ARM64, will revisit later */}
+	          {/* Right side - Send button */}
+	          <div className="flex items-center gap-1.5">
+	            {/* Speech-to-text disabled - WASM crashes on Windows ARM64, will revisit later */}
 
-            {/* Send/Stop button */}
-            {isStreaming ? (
-              <button
-                onClick={handleStop}
-                className="p-[0.45em] bg-error text-white rounded-lg hover:bg-error/90 transition-colors"
-                title="Stop generating"
-              >
-                <Square className="w-[1.15em] h-[1.15em]" />
-              </button>
-            ) : (
-              <button
-                onClick={handleSubmit}
-                disabled={disabled || (!input.trim() && attachments.length === 0)}
-                className="p-[0.45em] bg-accent text-black rounded-lg hover:bg-accent-bright disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                title="Send message"
-              >
-                <Send className="w-[1.15em] h-[1.15em]" />
-              </button>
-            )}
+	            {/* Stop button */}
+	            {isStreaming && (
+	              <button
+	                onClick={handleStop}
+	                className="inline-flex h-[2.2em] w-[2.2em] items-center justify-center rounded-full bg-error text-white hover:bg-error/90 transition-colors flex-shrink-0"
+	                title="Stop generating"
+	              >
+	                <Square className="w-[1.15em] h-[1.15em]" />
+	              </button>
+	            )}
+
+            {/* Send / Queue button */}
+	            {(!isStreaming || showQueueSubmit) && (
+	              <button
+	                onClick={isStreaming ? handleQueueSubmit : handleSubmit}
+	                disabled={disabled || !hasDraftToSend}
+	                className="relative inline-flex h-[2.2em] w-[2.2em] items-center justify-center rounded-full bg-accent text-black hover:bg-accent-bright disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex-shrink-0"
+	                title={isStreaming ? 'Queue message' : 'Send message'}
+	              >
+	                <Send className="w-[1.15em] h-[1.15em]" />
+	              </button>
+	            )}
           </div>
         </div>
 

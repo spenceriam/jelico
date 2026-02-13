@@ -373,7 +373,7 @@ export function Sidebar() {
                     const daysOld = getDaysOld(conv.createdAt)
 
                     return (
-                      <div key={conv.id}>
+                      <div key={conv.id} className="mb-1 last:mb-0">
                         <div
                           onClick={() => setActiveConversation(conv.id)}
                           title={formatCreatedDate(conv.createdAt)}

@@ -231,10 +231,10 @@
 
   @keyframes sidebar-conversation-shimmer {
     0% {
-      background-position: -140% -140%;
+      background-position: -180% -180%;
     }
     100% {
-      background-position: 140% 140%;
+      background-position: 180% 180%;
     }
   }
 
@@ -341,58 +341,74 @@
 .sidebar-conversation-processing {
   background-image: linear-gradient(
     135deg,
-    rgba(212, 165, 116, 0.02) 0%,
-    rgba(212, 165, 116, 0.14) 42%,
-    rgba(212, 165, 116, 0.03) 74%,
-    rgba(212, 165, 116, 0.02) 100%
+    rgba(212, 165, 116, 0) 0%,
+    rgba(212, 165, 116, 0.01) 22%,
+    rgba(212, 165, 116, 0.08) 42%,
+    rgba(212, 165, 116, 0.16) 50%,
+    rgba(212, 165, 116, 0.08) 58%,
+    rgba(212, 165, 116, 0.01) 78%,
+    rgba(212, 165, 116, 0) 100%
   );
-  background-size: 240% 240%;
-  animation: sidebar-conversation-shimmer 4.6s ease-in-out infinite;
+  background-size: 260% 260%;
+  animation: sidebar-conversation-shimmer 4.8s ease-in-out infinite;
 }
 
 .tool-call-pill-processing {
   background-repeat: no-repeat;
-  background-size: 240% 240%;
-  animation: sidebar-conversation-shimmer 4.6s ease-in-out infinite;
+  background-size: 260% 260%;
+  animation: sidebar-conversation-shimmer 4.8s ease-in-out infinite;
+  will-change: background-position;
 }
 
 .tool-call-pill-processing-tone-0 {
   background-image: linear-gradient(
     135deg,
-    rgba(212, 165, 116, 0.03) 0%,
-    rgba(212, 165, 116, 0.18) 42%,
-    rgba(212, 165, 116, 0.05) 74%,
-    rgba(212, 165, 116, 0.03) 100%
+    rgba(212, 165, 116, 0) 0%,
+    rgba(212, 165, 116, 0.015) 22%,
+    rgba(212, 165, 116, 0.11) 42%,
+    rgba(212, 165, 116, 0.2) 50%,
+    rgba(212, 165, 116, 0.11) 58%,
+    rgba(212, 165, 116, 0.015) 78%,
+    rgba(212, 165, 116, 0) 100%
   );
 }
 
 .tool-call-pill-processing-tone-1 {
   background-image: linear-gradient(
     135deg,
-    rgba(232, 196, 154, 0.03) 0%,
-    rgba(232, 196, 154, 0.2) 42%,
-    rgba(232, 196, 154, 0.06) 74%,
-    rgba(232, 196, 154, 0.03) 100%
+    rgba(232, 196, 154, 0) 0%,
+    rgba(232, 196, 154, 0.015) 22%,
+    rgba(232, 196, 154, 0.11) 42%,
+    rgba(232, 196, 154, 0.22) 50%,
+    rgba(232, 196, 154, 0.11) 58%,
+    rgba(232, 196, 154, 0.015) 78%,
+    rgba(232, 196, 154, 0) 100%
   );
 }
 
 .tool-call-pill-processing-tone-2 {
   background-image: linear-gradient(
     135deg,
-    rgba(184, 134, 61, 0.03) 0%,
-    rgba(184, 134, 61, 0.2) 42%,
-    rgba(184, 134, 61, 0.06) 74%,
-    rgba(184, 134, 61, 0.03) 100%
+    rgba(184, 134, 61, 0) 0%,
+    rgba(184, 134, 61, 0.015) 22%,
+    rgba(184, 134, 61, 0.11) 42%,
+    rgba(184, 134, 61, 0.21) 50%,
+    rgba(184, 134, 61, 0.11) 58%,
+    rgba(184, 134, 61, 0.015) 78%,
+    rgba(184, 134, 61, 0) 100%
   );
 }
 
 .tool-call-pill-processing-tone-3 {
   background-image: linear-gradient(
     135deg,
-    rgba(221, 179, 132, 0.03) 0%,
-    rgba(221, 179, 132, 0.19) 42%,
-    rgba(221, 179, 132, 0.06) 74%,
-    rgba(221, 179, 132, 0.03) 100%
+    rgba(221, 179, 132, 0) 0%,
+    rgba(221, 179, 132, 0.015) 22%,
+    rgba(221, 179, 132, 0.11) 42%,
+    rgba(221, 179, 132, 0.2) 50%,
+    rgba(221, 179, 132, 0.11) 58%,
+    rgba(221, 179, 132, 0.015) 78%,
+    rgba(221, 179, 132, 0) 100%
   );
 }
 

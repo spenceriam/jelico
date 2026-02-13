@@ -53,6 +53,25 @@ export const HIDDEN_TOOLS = new Set([
   'todo_check',          // Internal status check
 ])
 
+const INTERNAL_WEB_GATE_RESULT_TYPES = new Set(['deferred_to_subagents', 'direct_limit_reached'])
+
+function isInternalWebGateResultPayload(result: unknown): boolean {
+  if (!result || typeof result !== 'object') return false
+  const payload = result as Record<string, unknown>
+  if (payload.success !== true) return false
+  const results = payload.results as Record<string, unknown> | undefined
+  const resultType = typeof results?.type === 'string' ? results.type : ''
+  return INTERNAL_WEB_GATE_RESULT_TYPES.has(resultType)
+}
+
+export function isHiddenToolCall(toolCall: ToolCall, toolResult?: ToolResult): boolean {
+  if (HIDDEN_TOOLS.has(toolCall.name)) return true
+  if ((toolCall.name === 'web_search' || toolCall.name === 'web_fetch') && toolResult) {
+    return isInternalWebGateResultPayload(toolResult.result)
+  }
+  return false
+}
+
 function sanitizeSubAgentText(text?: string): string | null {
   if (!text) return null
   const trimmed = text.trim()
@@ -690,13 +709,12 @@ export function SingleToolCallDisplay({
 
 export function ToolCallDisplay({ toolCalls, toolResults = [], isStreaming }: ToolCallDisplayProps) {
   const { agents } = useAgentStore()
-  // Filter out "plumbing" tools that users don't need to see
-  const visibleToolCalls = toolCalls.filter(tc => !HIDDEN_TOOLS.has(tc.name))
+  const resultsMap = new Map(toolResults.map(r => [r.toolCallId, r]))
+  // Filter out plumbing + internal deferred/direct-limit web gate events
+  const visibleToolCalls = toolCalls.filter(tc => !isHiddenToolCall(tc, resultsMap.get(tc.id)))
 
   if (visibleToolCalls.length === 0) return null
 
-  // Map results by toolCallId for easy lookup
-  const resultsMap = new Map(toolResults.map(r => [r.toolCallId, r]))
   const processingToneByToolCallId = buildProcessingToneByToolCallId({
     toolCalls: visibleToolCalls,
     toolResults,
@@ -705,7 +723,7 @@ export function ToolCallDisplay({ toolCalls, toolResults = [], isStreaming }: To
   })
 
   return (
-    <div className="space-y-2 my-3">
+    <div className="space-y-3 my-4">
       {visibleToolCalls.map((toolCall, index) => (
         <SingleToolCallDisplay
           key={toolCall.id || `tool-${index}`}
