@@ -65,7 +65,13 @@ export function ChatInput({ disabled, isStreaming, centered }: ChatInputProps) {
   // const mediaRecorderRef = useRef<MediaRecorder | null>(null)
   // const audioChunksRef = useRef<Blob[]>([])
   // const recordingTimerRef = useRef<NodeJS.Timeout | null>(null)
-  const { sendMessage, stopStreaming, messageQueue, activeConversationId } = useChatStore()
+  const {
+    sendMessage,
+    stopStreaming,
+    sendQueuedNow,
+    messageQueue,
+    activeConversationId,
+  } = useChatStore()
   const { activeProviderId, activeModel } = useProviderStore()
 
   const resizeTextarea = useCallback((content: string) => {
@@ -345,8 +351,33 @@ export function ChatInput({ disabled, isStreaming, centered }: ChatInputProps) {
     stopStreaming()
   }
 
-  const queuedCount = messageQueue.length
+  const queueEntriesForActiveConversation = useMemo(() => {
+    const activeConversationKey = activeConversationId ?? null
+    return messageQueue
+      .map((message, index) => ({ message, index }))
+      .filter(({ message }) => (message.conversationId ?? null) === activeConversationKey)
+  }, [messageQueue, activeConversationId])
+
+  const queuedCount = queueEntriesForActiveConversation.length
   const [queueExpanded, setQueueExpanded] = useState(false)
+  const [sendingNowIndex, setSendingNowIndex] = useState<number | null>(null)
+
+  useEffect(() => {
+    if (queuedCount === 0) {
+      setQueueExpanded(false)
+    }
+  }, [queuedCount])
+
+  const handleSendQueuedNow = useCallback(async (queueIndex: number) => {
+    setSendingNowIndex(queueIndex)
+    try {
+      await sendQueuedNow(queueIndex)
+    } catch (error) {
+      console.error('[ChatInput] Failed to send queued message now:', error)
+    } finally {
+      setSendingNowIndex(null)
+    }
+  }, [sendQueuedNow])
 
   return (
     <div className="space-y-2">
@@ -368,26 +399,44 @@ export function ChatInput({ disabled, isStreaming, centered }: ChatInputProps) {
           }`}
         >
           {/* Header - always visible */}
-          <button
-            onClick={() => setQueueExpanded(!queueExpanded)}
-            className="w-full flex items-center justify-between gap-2 px-3 py-2 bg-bg-surface border border-border rounded-lg hover:border-border-strong transition-colors"
-          >
-            <div className="flex items-center gap-2 text-sm text-text-secondary">
-              <Clock className="w-4 h-4 text-accent" />
-              <span className="font-medium">{queuedCount} message{queuedCount > 1 ? 's' : ''} queued</span>
-              <span className="text-text-muted">· will send when ready</span>
+          <div className="w-full flex items-center gap-2 px-2 py-1.5 bg-bg-surface border border-border rounded-lg hover:border-border-strong transition-colors">
+            <button
+              onClick={() => setQueueExpanded(!queueExpanded)}
+              className="flex-1 flex items-center justify-between gap-2 px-1 py-0.5"
+            >
+              <div className="flex items-center gap-2 text-sm text-text-secondary">
+                <Clock className="w-4 h-4 text-accent" />
+                <span className="font-medium">{queuedCount} message{queuedCount > 1 ? 's' : ''} queued</span>
+                <span className="text-text-muted">· will send when ready</span>
+              </div>
+              {queueExpanded ? (
+                <ChevronDown className="w-4 h-4 text-text-muted" />
+              ) : (
+                <ChevronUp className="w-4 h-4 text-text-muted" />
+              )}
+            </button>
+
+            <div className="flex items-center gap-1">
+              <button
+                onClick={() => {
+                  const firstQueued = queueEntriesForActiveConversation[0]
+                  if (firstQueued) {
+                    handleSendQueuedNow(firstQueued.index)
+                  }
+                }}
+                disabled={sendingNowIndex !== null}
+                className="px-2 py-1 text-xs rounded bg-accent/15 text-accent hover:bg-accent/25 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                title="Send message while not disturbing the AI's progress."
+              >
+                Send now
+              </button>
             </div>
-            {queueExpanded ? (
-              <ChevronDown className="w-4 h-4 text-text-muted" />
-            ) : (
-              <ChevronUp className="w-4 h-4 text-text-muted" />
-            )}
-          </button>
+          </div>
 
           {/* Expanded queue list */}
           {queueExpanded && (
             <div className="mt-2 space-y-1.5 px-1 max-h-32 overflow-y-auto">
-              {messageQueue.map((msg, idx) => (
+              {queueEntriesForActiveConversation.map(({ message: msg }, idx) => (
                 <div
                   key={idx}
                   className="flex items-start gap-2 p-2 bg-bg-elevated border border-border-subtle rounded-lg text-sm"
@@ -458,7 +507,9 @@ export function ChatInput({ disabled, isStreaming, centered }: ChatInputProps) {
 
       {/* Main input container */}
       <div
-        className={`flex flex-col bg-bg-elevated rounded-xl border transition-colors ${
+        className={`flex flex-col bg-bg-elevated border transition-colors ${
+          centered ? 'rounded-xl' : 'rounded-t-xl rounded-b-none'
+        } ${
           isDragging
             ? 'border-accent border-dashed bg-accent/5'
             : 'border-border hover:border-border-strong focus-within:border-accent'
@@ -486,7 +537,7 @@ export function ChatInput({ disabled, isStreaming, centered }: ChatInputProps) {
           }
           disabled={disabled}
           rows={centered ? 4 : 1}
-          className={`flex-1 bg-transparent text-text-primary placeholder:text-text-muted outline-none resize-none disabled:cursor-not-allowed focus:outline-none focus:ring-0 border-none leading-6 p-3 pb-0 select-text ${
+          className={`flex-1 bg-transparent text-sm text-text-primary placeholder:text-text-muted outline-none resize-none disabled:cursor-not-allowed focus:outline-none focus:ring-0 border-none leading-6 p-3 pb-0 select-text ${
             centered ? 'min-h-[96px] max-h-[200px]' : 'min-h-[24px] max-h-[150px]'
           }`}
         />
@@ -495,15 +546,15 @@ export function ChatInput({ disabled, isStreaming, centered }: ChatInputProps) {
         <div className="mx-3 border-t border-border-subtle" />
 
         {/* Icon row */}
-        <div className="flex items-center justify-between px-3 py-2">
+        <div className="flex items-center justify-between px-[0.75em] py-[0.6em]">
           {/* Left side - Attachments */}
           <button
             onClick={openFilePicker}
             disabled={disabled}
-            className="p-1.5 text-text-muted hover:text-text-secondary disabled:opacity-50 disabled:cursor-not-allowed transition-colors rounded-lg hover:bg-bg-hover"
+            className="p-[0.45em] text-text-muted hover:text-text-secondary disabled:opacity-50 disabled:cursor-not-allowed transition-colors rounded-lg hover:bg-bg-hover"
             title="Attach files"
           >
-            <Paperclip className="w-5 h-5" />
+            <Paperclip className="w-[1.15em] h-[1.15em]" />
           </button>
 
           {/* Right side - Send button */}
@@ -514,32 +565,38 @@ export function ChatInput({ disabled, isStreaming, centered }: ChatInputProps) {
             {isStreaming ? (
               <button
                 onClick={handleStop}
-                className="p-2 bg-error text-white rounded-lg hover:bg-error/90 transition-colors"
+                className="p-[0.45em] bg-error text-white rounded-lg hover:bg-error/90 transition-colors"
                 title="Stop generating"
               >
-                <Square className="w-5 h-5" />
+                <Square className="w-[1.15em] h-[1.15em]" />
               </button>
             ) : (
               <button
                 onClick={handleSubmit}
                 disabled={disabled || (!input.trim() && attachments.length === 0)}
-                className="p-2 bg-accent text-black rounded-lg hover:bg-accent-bright disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                className="p-[0.45em] bg-accent text-black rounded-lg hover:bg-accent-bright disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                 title="Send message"
               >
-                <Send className="w-5 h-5" />
+                <Send className="w-[1.15em] h-[1.15em]" />
               </button>
             )}
           </div>
         </div>
-      </div>
 
-      {/* Hints - hidden when centered (new chat view) */}
-      {!centered && (
-        <div className="flex items-center justify-between text-xs text-text-muted px-1">
-          <span>Enter to send · Shift+Enter for new line · Tab to cycle modes</span>
-          <span>{modKey}+K for commands</span>
-        </div>
-      )}
+        {/* Hints footer (inside prompt box) */}
+        {!centered && (
+          <div
+            className="px-3 pb-2 text-text-primary flex items-center justify-between gap-3"
+            style={{
+              fontSize: 'calc(11px * var(--chat-font-scale, 1))',
+              lineHeight: 'calc(16px * var(--chat-font-scale, 1))',
+            }}
+          >
+            <span>Enter to send · Shift+Enter for new line · Tab to cycle modes</span>
+            <span>{modKey}+K for commands</span>
+          </div>
+        )}
+      </div>
     </div>
   )
 }

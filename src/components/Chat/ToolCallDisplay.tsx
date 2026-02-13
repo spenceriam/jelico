@@ -4,12 +4,13 @@ import {
   ChevronRight,
   CheckCircle,
   XCircle,
-  Loader2,
   ExternalLink
 } from 'lucide-react'
 import type { ToolCall, ToolResult } from '../../stores/chat'
+import { useChatStore } from '../../stores/chat'
 import { useAgentStore } from '../../stores/agents'
 import { useArtifactStore } from '../../stores/artifacts'
+import { BrailleLoader } from '../StatusIndicators'
 
 interface ToolCallDisplayProps {
   toolCalls: ToolCall[]
@@ -284,6 +285,7 @@ export function SingleToolCallDisplay({
   const [expanded, setExpanded] = useState(false)
 
   const { agents } = useAgentStore()
+  const activeConversationId = useChatStore((state) => state.activeConversationId)
   const { selectArtifact, openCanvas, artifacts } = useArtifactStore()
 
   // Get sub-agent info first for reference in useEffect
@@ -450,8 +452,22 @@ export function SingleToolCallDisplay({
   const artifactTitle = toolCall.name === 'create_artifact' && toolCall.args?.title
     ? String(toolCall.args.title)
     : null
+  const artifactType = toolCall.name === 'create_artifact' && toolCall.args?.type
+    ? String(toolCall.args.type).toLowerCase()
+    : null
   const createdArtifact = artifactTitle
-    ? artifacts.find(a => a.title === artifactTitle)
+    ? artifacts
+      .filter((artifact) => {
+        const titleMatches = artifact.title === artifactTitle
+        const conversationMatches = activeConversationId
+          ? artifact.conversationId === activeConversationId
+          : true
+        const typeMatches = artifactType
+          ? artifact.type.toLowerCase() === artifactType
+          : true
+        return titleMatches && conversationMatches && typeMatches
+      })
+      .sort((a, b) => b.updatedAt - a.updatedAt)[0] || null
     : null
 
   const handleArtifactClick = () => {
@@ -486,7 +502,7 @@ export function SingleToolCallDisplay({
         {toolCall.name === 'spawn_agent' && subAgent ? (
           // Show sub-agent status
           subAgent.status === 'running' || subAgent.status === 'pending' ? (
-            <Loader2 className="w-4 h-4 text-accent animate-spin flex-shrink-0" />
+            <BrailleLoader className="text-accent text-base flex-shrink-0" />
           ) : subAgent.status === 'completed' ? (
             <CheckCircle className="w-4 h-4 text-green-500 flex-shrink-0" />
           ) : subAgent.status === 'failed' ? (
@@ -496,7 +512,7 @@ export function SingleToolCallDisplay({
           // Normal tool status
           <>
             {isInProgress && (
-              <Loader2 className="w-4 h-4 text-accent animate-spin flex-shrink-0" />
+              <BrailleLoader className="text-accent text-base flex-shrink-0" />
             )}
             {isCanceled && (
               <XCircle className="w-4 h-4 text-text-muted flex-shrink-0" />
@@ -514,7 +530,7 @@ export function SingleToolCallDisplay({
       {/* Artifact creation in progress - simple indicator, no streaming preview */}
       {toolCall.name === 'create_artifact' && !hasResult && (
         <div className="px-3 py-2 border-t border-border bg-bg-surface flex items-center gap-2">
-          <Loader2 className="w-3 h-3 animate-spin text-accent" />
+          <BrailleLoader className="text-accent text-sm" />
           <span className="text-xs text-text-muted">
             Creating {formatArtifactType()}...
           </span>
@@ -592,7 +608,7 @@ export function SingleToolCallDisplay({
             <div className="py-2 border-t border-border/50">
               <div className="flex items-start">
                 <div className="w-6 flex-shrink-0 flex justify-center">
-                  <Loader2 className="w-3 h-3 animate-spin text-accent" />
+                  <BrailleLoader className="text-accent text-sm" />
                 </div>
                 <div className="flex-1 pl-2 pr-3">
                   <div className="text-xs text-text-muted">

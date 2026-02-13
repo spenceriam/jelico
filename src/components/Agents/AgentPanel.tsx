@@ -1,10 +1,11 @@
-import { Bot, X, Pause, CheckCircle, XCircle, Loader2, ChevronDown, ChevronRight, Sparkles } from 'lucide-react'
+import { Bot, X, Pause, CheckCircle, XCircle, ChevronDown, ChevronRight, Sparkles } from 'lucide-react'
 import { useState } from 'react'
 import { useAgentStore, type SubAgent, type AgentStatus } from '../../stores/agents'
+import { BrailleLoader } from '../StatusIndicators'
 
 const STATUS_ICONS: Record<AgentStatus, React.ComponentType<{ className?: string }>> = {
   pending: Pause,
-  running: Loader2,
+  running: Pause,
   completed: CheckCircle,
   failed: XCircle,
   cancelled: X,
@@ -123,11 +124,11 @@ function AgentItem({
         </button>
 
         {/* Status icon */}
-        <StatusIcon
-          className={`w-4 h-4 flex-shrink-0 ${statusColor} ${
-            agent.status === 'running' ? 'animate-spin' : ''
-          }`}
-        />
+        {agent.status === 'running' ? (
+          <BrailleLoader className={`text-sm flex-shrink-0 ${statusColor}`} />
+        ) : (
+          <StatusIcon className={`w-4 h-4 flex-shrink-0 ${statusColor}`} />
+        )}
 
         {/* Agent info */}
         <div className="flex-1 min-w-0">

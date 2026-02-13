@@ -1,12 +1,30 @@
-import { useState, useEffect } from 'react'
-import { Plus, Settings, Trash2, FileCode, FileText, Presentation, Image, ChevronDown, ChevronRight, File, FolderOpen, FolderUp } from 'lucide-react'
+import { useState, useEffect, useMemo } from 'react'
+import {
+  Plus,
+  Settings,
+  Trash2,
+  FileCode,
+  FileText,
+  Presentation,
+  Image,
+  ChevronDown,
+  ChevronRight,
+  File,
+  Folder,
+  FolderOpen,
+  FolderUp,
+  GitFork,
+  Box,
+} from 'lucide-react'
 import { useChatStore } from '../../stores/chat'
 import { useUIStore } from '../../stores/ui'
+import { useWorkspaceStore } from '../../stores/workspaces'
 import { useArtifactStore, type ArtifactType } from '../../stores/artifacts'
 import { useUpdateStore } from '../../stores/updates'
 import { TransferDialog } from '../Conversations/TransferDialog'
-import { BrailleLoader } from '../StatusIndicators'
 import { JelicoLogo } from '../Brand/JelicoLogo'
+
+type ChatConversation = ReturnType<typeof useChatStore.getState>['conversations'][number]
 
 const ARTIFACT_ICONS: Record<ArtifactType, React.ComponentType<{ className?: string }>> = {
   code: FileCode,
@@ -18,6 +36,18 @@ const ARTIFACT_ICONS: Record<ArtifactType, React.ComponentType<{ className?: str
 
 // Fallback icon for unknown artifact types
 const DEFAULT_ARTIFACT_ICON = File
+
+interface ProjectGroup {
+  id: string
+  label: string
+  path?: string
+  workspaceIds: string[]
+  preferredWorkspaceId: string | null
+  isSandbox: boolean
+  isGit: boolean
+  isWorktree: boolean
+  conversations: ChatConversation[]
+}
 
 // Format date for tooltip
 function formatCreatedDate(timestamp: number): string {
@@ -47,15 +77,121 @@ function getDaysOld(timestamp: number): number {
   return Math.floor(diffMs / (24 * 60 * 60 * 1000))
 }
 
+function getProjectLatestUpdate(group: ProjectGroup): number {
+  let latest = 0
+  for (const conversation of group.conversations) {
+    if (conversation.updatedAt > latest) {
+      latest = conversation.updatedAt
+    }
+  }
+  return latest
+}
+
+function getPathBasename(value: string): string {
+  const parts = value.split(/[\\/]/).filter(Boolean)
+  return parts[parts.length - 1] || value
+}
+
 export function Sidebar() {
   const { conversations, activeConversationId, setActiveConversation, deleteConversation, conversationStreams } = useChatStore()
   const { sidebarCollapsed, openSettings } = useUIStore()
+  const { workspaces, activeWorkspaceId, setActiveWorkspace } = useWorkspaceStore()
   const { artifacts, selectArtifact, openCanvas } = useArtifactStore()
   const updateAvailable = useUpdateStore((state) => state.info?.isUpdateAvailable)
+  // Track which project groups are expanded
+  const [expandedProjects, setExpandedProjects] = useState<Set<string>>(new Set())
   // Track which conversations have their artifact trees expanded
   const [expandedConversations, setExpandedConversations] = useState<Set<string>>(new Set())
   // Transfer dialog state
   const [transferDialogConv, setTransferDialogConv] = useState<{ id: string; title: string; workspaceId: string | null } | null>(null)
+
+  const workspaceById = useMemo(
+    () => new Map(workspaces.map((workspace) => [workspace.id, workspace])),
+    [workspaces]
+  )
+
+  const projectGroups = useMemo<ProjectGroup[]>(() => {
+    const workspaceGroupsByProject = new Map<string, ProjectGroup>()
+
+    for (const conversation of conversations) {
+      if (!conversation.workspaceId) continue
+      const workspace = workspaceById.get(conversation.workspaceId)
+      if (!workspace) continue
+
+      const projectPath = workspace.projectPath || workspace.path
+      const projectKey = projectPath || `workspace-${workspace.id}`
+      const existingGroup = workspaceGroupsByProject.get(projectKey)
+
+      if (!existingGroup) {
+        workspaceGroupsByProject.set(projectKey, {
+          id: `project-${projectKey}`,
+          label: projectPath ? getPathBasename(projectPath) : workspace.name,
+          path: projectPath || workspace.path,
+          workspaceIds: [workspace.id],
+          preferredWorkspaceId: workspace.isWorktree ? null : workspace.id,
+          isSandbox: false,
+          isGit: workspace.isGit,
+          isWorktree: workspace.isWorktree === true,
+          conversations: [conversation],
+        })
+        continue
+      }
+
+      if (!existingGroup.workspaceIds.includes(workspace.id)) {
+        existingGroup.workspaceIds.push(workspace.id)
+      }
+      if (!existingGroup.preferredWorkspaceId && !workspace.isWorktree) {
+        existingGroup.preferredWorkspaceId = workspace.id
+      }
+
+      existingGroup.isGit = existingGroup.isGit || workspace.isGit
+      existingGroup.isWorktree = existingGroup.isWorktree || workspace.isWorktree === true
+      existingGroup.conversations.push(conversation)
+    }
+
+    const workspaceGroups = Array.from(workspaceGroupsByProject.values()).map((group) => ({
+      ...group,
+      conversations: [...group.conversations].sort((a, b) => b.updatedAt - a.updatedAt),
+    }))
+
+    workspaceGroups.sort((a, b) => getProjectLatestUpdate(b) - getProjectLatestUpdate(a))
+
+    const sandboxConversations = conversations.filter((conversation) => !conversation.workspaceId)
+    if (sandboxConversations.length === 0) {
+      return workspaceGroups
+    }
+
+    return [
+      ...workspaceGroups,
+      {
+        id: 'sandbox',
+        label: 'Sandbox',
+        workspaceIds: [],
+        preferredWorkspaceId: null,
+        isSandbox: true,
+        isGit: false,
+        isWorktree: false,
+        conversations: sandboxConversations,
+      },
+    ]
+  }, [conversations, workspaceById])
+
+  // Auto-expand project groups the first time they appear
+  useEffect(() => {
+    setExpandedProjects((prev) => {
+      const next = new Set(prev)
+      let changed = false
+
+      for (const group of projectGroups) {
+        if (!next.has(group.id)) {
+          next.add(group.id)
+          changed = true
+        }
+      }
+
+      return changed ? next : prev
+    })
+  }, [projectGroups])
 
   // Auto-expand artifact tree for active conversation
   useEffect(() => {
@@ -73,6 +209,19 @@ export function Sidebar() {
   const getArtifactsForConversation = (convId: string) =>
     artifacts.filter((a) => a.conversationId === convId)
 
+  // Toggle project group expansion
+  const toggleProject = (projectId: string) => {
+    setExpandedProjects((prev) => {
+      const next = new Set(prev)
+      if (next.has(projectId)) {
+        next.delete(projectId)
+      } else {
+        next.add(projectId)
+      }
+      return next
+    })
+  }
+
   // Toggle artifact tree for a conversation
   const toggleConversationArtifacts = (e: React.MouseEvent, convId: string) => {
     e.stopPropagation()
@@ -88,6 +237,22 @@ export function Sidebar() {
   }
 
   const handleNewChat = () => {
+    setActiveConversation(null)
+  }
+
+  const handleNewChatInProject = (group: ProjectGroup) => {
+    if (group.isSandbox || group.workspaceIds.length === 0) {
+      setActiveWorkspace(null, true)
+      setActiveConversation(null)
+      return
+    }
+
+    const selectedWorkspaceId = (
+      (activeWorkspaceId && group.workspaceIds.includes(activeWorkspaceId)) ? activeWorkspaceId :
+        group.preferredWorkspaceId || group.workspaceIds[0]
+    ) ?? null
+
+    setActiveWorkspace(selectedWorkspaceId, true)
     setActiveConversation(null)
   }
 
@@ -110,9 +275,6 @@ export function Sidebar() {
     })
   }
 
-  // Group conversations by date
-  const groupedConversations = groupByDate(conversations)
-
   // When collapsed, render nothing - the floating toggle in App.tsx handles expand
   if (sidebarCollapsed) {
     return null
@@ -120,7 +282,7 @@ export function Sidebar() {
 
   return (
     <div
-      className="w-64 bg-bg-deep border-r border-border flex flex-col"
+      className="w-64 bg-bg-surface border-r border-border flex flex-col"
       style={{ paddingTop: 'var(--titlebar-padding)' }}
     >
       {/* Header */}
@@ -142,135 +304,194 @@ export function Sidebar() {
         </button>
       </div>
 
-      {/* Conversation list */}
+      {/* Conversation list by project/workspace */}
       <div className="flex-1 overflow-y-auto px-3">
-        {Object.entries(groupedConversations).map(([group, convs], index) => (
-          <div key={group} className="mb-4">
-            {/* Divider between date groups (not before the first one) */}
-            {index > 0 && (
-              <div className="mx-4 mb-3 border-t border-border/50" />
-            )}
-            <div className="text-xs text-text-muted uppercase tracking-wider px-2 mb-2">
-              {group}
-            </div>
-            {convs.map((conv) => {
-              const convArtifacts = getArtifactsForConversation(conv.id)
-              const hasArtifacts = convArtifacts.length > 0
-              const hasExpandableContent = hasArtifacts
-              const isExpanded = expandedConversations.has(conv.id)
-              const isActive = activeConversationId === conv.id
-              const isSandboxConversation = !conv.workspaceId
-              const isProcessing = conversationStreams[conv.id]?.isStreaming === true
+        <div className="text-xs text-text-muted uppercase tracking-wider px-2 mb-2">
+          Projects
+        </div>
 
-              const daysOld = getDaysOld(conv.createdAt)
+        {projectGroups.length === 0 && (
+          <div className="px-2 py-4 text-xs text-text-muted">No chats yet.</div>
+        )}
 
-              return (
-                <div key={conv.id}>
-                  {/* Conversation entry */}
-                  <div
-                    onClick={() => setActiveConversation(conv.id)}
-                    title={formatCreatedDate(conv.createdAt)}
-                    className={`
-                      w-full flex items-center gap-2 px-3 py-2 text-sm rounded-lg transition-colors group cursor-pointer
-                      ${isActive
-                        ? 'bg-bg-elevated text-text-primary border-l-2 border-accent'
-                        : 'text-text-secondary hover:text-text-primary hover:bg-bg-hover border-l-2 border-transparent'}
-                    `}
-                  >
-                    {/* Expand/collapse toggle for artifacts */}
-                    {hasExpandableContent ? (
-                      <button
-                        onClick={(e) => toggleConversationArtifacts(e, conv.id)}
-                        className="p-0.5 -ml-1 hover:bg-bg-hover rounded transition-colors flex-shrink-0"
-                      >
-                        {isExpanded ? (
-                          <ChevronDown className="w-3 h-3 text-text-muted" />
-                        ) : (
-                          <ChevronRight className="w-3 h-3 text-text-muted" />
-                        )}
-                      </button>
-                    ) : (
-                      <div className="w-4 flex-shrink-0" /> /* Spacer for alignment */
-                    )}
-                    <div className="flex-1 min-w-0 flex items-center gap-1.5">
-                      {isProcessing && (
-                        <BrailleLoader className="text-xs text-accent flex-shrink-0" />
-                      )}
-                      <span className="break-words">{conv.title}</span>
-                    </div>
-                    {/* Days old badge (only for chats 2+ days old) */}
-                    {daysOld >= 2 && (
-                      <span className="text-[10px] text-text-faint tabular-nums mr-1">
-                        {daysOld}d
-                      </span>
-                    )}
-                    <button
-                      onClick={(e) => handleDeleteConversation(e, conv.id)}
-                      className="opacity-0 group-hover:opacity-100 p-1 hover:bg-bg-hover rounded text-text-muted hover:text-error flex-shrink-0"
-                    >
-                      <Trash2 className="w-3 h-3" />
-                    </button>
-                  </div>
+        {projectGroups.map((group) => {
+          const isExpanded = expandedProjects.has(group.id)
+          const isActiveProject = Boolean(
+            activeWorkspaceId && group.workspaceIds.includes(activeWorkspaceId)
+          )
+          const GroupIcon = group.isSandbox
+            ? Box
+            : Folder
 
-                  {/* Expandable sub-tree (artifacts) */}
-                  {hasExpandableContent && isExpanded && (
-                    <div className="ml-6 pl-2 border-l border-border/50 mt-1 mb-2">
-                      {/* Artifacts section */}
-                      {hasArtifacts && (
-                        <div className="text-[10px] text-text-faint uppercase tracking-wider mb-1">Artifacts</div>
-                      )}
-                      {convArtifacts.map((artifact) => {
-                        const Icon = ARTIFACT_ICONS[artifact.type] || DEFAULT_ARTIFACT_ICON
-                        return (
-                          <div
-                            key={artifact.id}
-                            className="group flex items-center gap-2 px-2 py-1 text-xs text-text-muted hover:text-text-primary hover:bg-bg-hover rounded transition-colors"
-                          >
-                            <button
-                              onClick={() => {
-                                setActiveConversation(conv.id)
-                                selectArtifact(artifact.id)
-                                openCanvas()
-                              }}
-                              className="flex items-center gap-2 flex-1 min-w-0 text-left"
-                            >
-                              <Icon className="w-3 h-3 flex-shrink-0" />
-                              <span className="truncate">{artifact.title}</span>
-                            </button>
-                            <button
-                              onClick={async (e) => {
-                                e.stopPropagation()
-                                try {
-                                  await window.jelico.artifacts.reveal(artifact.id)
-                                } catch (error) {
-                                  console.error('Failed to reveal artifact:', error)
-                                }
-                              }}
-                              title="Reveal in folder"
-                              className="opacity-0 group-hover:opacity-100 p-1 hover:bg-bg-hover rounded text-text-muted hover:text-accent flex-shrink-0"
-                            >
-                              <FolderOpen className="w-3 h-3" />
-                            </button>
-                          </div>
-                        )
-                      })}
-
-                      {isSandboxConversation && (
-                        <button
-                          onClick={(e) => handleOpenTransferDialog(e, conv)}
-                          className="mt-2 w-full flex items-center gap-2 py-1.5 text-xs text-accent hover:text-accent hover:bg-bg-hover rounded transition-colors"
-                        >
-                          <FolderUp className="w-3 h-3 flex-shrink-0" />
-                          <span>Transfer to Workspace</span>
-                        </button>
-                      )}
-                    </div>
+          return (
+            <div key={group.id} className="mb-3">
+              <div className="flex items-center gap-1">
+                <button
+                  onClick={() => toggleProject(group.id)}
+                  style={{ marginLeft: '-0.75rem' }}
+                  className={`
+                    flex-1 min-w-0 flex items-center gap-2 pl-5 pr-2 py-1.5 rounded-l-none rounded-r-md text-left transition-colors
+                    ${isActiveProject
+                      ? 'bg-bg-elevated text-text-primary'
+                      : 'text-text-secondary hover:text-text-primary hover:bg-bg-hover'}
+                  `}
+                >
+                  {isExpanded ? (
+                    <ChevronDown className="w-3 h-3 flex-shrink-0 text-text-muted" />
+                  ) : (
+                    <ChevronRight className="w-3 h-3 flex-shrink-0 text-text-muted" />
                   )}
+                  <GroupIcon className="w-4 h-4 flex-shrink-0 text-text-muted" />
+                  <div className="min-w-0 flex-1">
+                    <div className="text-sm truncate">
+                      {group.isSandbox ? group.label : `/${group.label}`}
+                    </div>
+                  </div>
+                </button>
+
+                <button
+                  onClick={() => handleNewChatInProject(group)}
+                  className="p-1.5 text-text-muted hover:text-text-primary hover:bg-bg-hover rounded transition-colors"
+                  title={`New chat in ${group.label}`}
+                >
+                  <Plus className="w-3 h-3" />
+                </button>
+              </div>
+
+              {isExpanded && (
+                <div className="ml-5 mt-1 border-l border-border/50 pl-2">
+                  {group.conversations.map((conv) => {
+                    const convArtifacts = getArtifactsForConversation(conv.id)
+                    const hasArtifacts = convArtifacts.length > 0
+                    const hasExpandableContent = hasArtifacts
+                    const isConversationExpanded = expandedConversations.has(conv.id)
+                    const isActiveConversation = activeConversationId === conv.id
+                    const isSandboxConversation = !conv.workspaceId
+                    const isProcessing = conversationStreams[conv.id]?.isStreaming === true
+                    const conversationWorkspace = conv.workspaceId ? workspaceById.get(conv.workspaceId) : undefined
+                    const isWorktreeConversation = conversationWorkspace?.isWorktree === true
+                    const daysOld = getDaysOld(conv.createdAt)
+
+                    return (
+                      <div key={conv.id}>
+                        <div
+                          onClick={() => setActiveConversation(conv.id)}
+                          title={formatCreatedDate(conv.createdAt)}
+                          style={{
+                            width: 'calc(100% + 0.75rem)',
+                            marginRight: '-0.75rem',
+                          }}
+                          className={`
+                            flex items-center gap-2 pl-2 pr-5 py-1.5 text-sm rounded-l-md rounded-r-none transition-colors group cursor-pointer sidebar-conversation-row
+                            ${isActiveConversation
+                              ? 'bg-bg-elevated text-text-primary border-l-2 border-accent'
+                              : 'text-text-secondary hover:text-text-primary hover:bg-bg-hover border-l-2 border-transparent'}
+                            ${isProcessing && !isActiveConversation ? 'bg-bg-elevated/70 text-text-primary' : ''}
+                            ${isProcessing ? 'sidebar-conversation-processing' : ''}
+                          `}
+                        >
+                          {hasExpandableContent ? (
+                            <button
+                              onClick={(e) => toggleConversationArtifacts(e, conv.id)}
+                              className="p-0.5 -ml-1 hover:bg-bg-hover rounded transition-colors flex-shrink-0"
+                            >
+                              {isConversationExpanded ? (
+                                <ChevronDown className="w-3 h-3 text-text-muted" />
+                              ) : (
+                                <ChevronRight className="w-3 h-3 text-text-muted" />
+                              )}
+                            </button>
+                          ) : (
+                            <div className="w-4 flex-shrink-0" />
+                          )}
+
+                          <div className="flex-1 min-w-0 flex items-center gap-1.5">
+                            <span className="break-words">{conv.title}</span>
+                          </div>
+
+                          {isWorktreeConversation && (
+                            <GitFork className="w-3 h-3 text-accent flex-shrink-0" />
+                          )}
+
+                          {daysOld >= 2 && (
+                            <span className="text-[10px] text-text-faint tabular-nums mr-1">
+                              {daysOld}d
+                            </span>
+                          )}
+
+                          <button
+                            onClick={(e) => handleDeleteConversation(e, conv.id)}
+                            className="opacity-0 group-hover:opacity-100 p-1 hover:bg-bg-hover rounded text-text-muted hover:text-error flex-shrink-0"
+                          >
+                            <Trash2 className="w-3 h-3" />
+                          </button>
+                        </div>
+
+                        {hasExpandableContent && isConversationExpanded && (
+                          <div className="ml-6 pl-2 border-l border-border/40 mt-1 mb-2">
+                            {hasArtifacts && (
+                              <div className="text-[10px] text-text-faint uppercase tracking-wider mb-1">Artifacts</div>
+                            )}
+                            {convArtifacts.map((artifact) => {
+                              const Icon = ARTIFACT_ICONS[artifact.type] || DEFAULT_ARTIFACT_ICON
+                              return (
+                                <div
+                                  key={artifact.id}
+                                  className="group flex items-center gap-2 px-2 py-1 text-xs text-text-muted hover:text-text-primary hover:bg-bg-hover rounded transition-colors"
+                                >
+                                  <button
+                                    onClick={async (e) => {
+                                      e.stopPropagation()
+                                      try {
+                                        await setActiveConversation(conv.id)
+                                        selectArtifact(artifact.id)
+                                        openCanvas()
+                                      } catch (error) {
+                                        console.error('Failed to open artifact from sidebar:', error)
+                                      }
+                                    }}
+                                    className="flex items-center gap-2 flex-1 min-w-0 text-left"
+                                  >
+                                    <Icon className="w-3 h-3 flex-shrink-0" />
+                                    <span className="truncate">{artifact.title}</span>
+                                  </button>
+                                  <button
+                                    onClick={async (e) => {
+                                      e.stopPropagation()
+                                      try {
+                                        await window.jelico.artifacts.reveal(artifact.id)
+                                      } catch (error) {
+                                        console.error('Failed to reveal artifact:', error)
+                                      }
+                                    }}
+                                    title="Reveal in folder"
+                                    className="opacity-0 group-hover:opacity-100 p-1 hover:bg-bg-hover rounded text-text-muted hover:text-accent flex-shrink-0"
+                                  >
+                                    <FolderOpen className="w-3 h-3" />
+                                  </button>
+                                </div>
+                              )
+                            })}
+
+                            {isSandboxConversation && (
+                              <button
+                                onClick={(e) => handleOpenTransferDialog(e, conv)}
+                                className="mt-2 w-full flex items-center gap-2 py-1.5 text-xs text-accent hover:text-accent hover:bg-bg-hover rounded transition-colors"
+                              >
+                                <FolderUp className="w-3 h-3 flex-shrink-0" />
+                                <span>Transfer to Workspace</span>
+                              </button>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    )
+                  })}
                 </div>
-              )
-            })}
-          </div>
-        ))}
+              )}
+            </div>
+          )
+        })}
       </div>
 
       {/* Settings */}
@@ -300,35 +521,5 @@ export function Sidebar() {
         />
       )}
     </div>
-  )
-}
-
-// Helper to group conversations by date
-function groupByDate(conversations: any[]) {
-  const now = new Date()
-  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime()
-  const yesterday = today - 24 * 60 * 60 * 1000
-
-  const groups: Record<string, any[]> = {
-    Today: [],
-    Yesterday: [],
-    Earlier: [], // Combined group - individual chats show Xd badge
-  }
-
-  for (const conv of conversations) {
-    const convDate = conv.updatedAt
-    if (convDate >= today) {
-      groups.Today.push(conv)
-    } else if (convDate >= yesterday) {
-      groups.Yesterday.push(conv)
-    } else {
-      // All older chats go into "Earlier" - badge shows specific age
-      groups.Earlier.push(conv)
-    }
-  }
-
-  // Remove empty groups
-  return Object.fromEntries(
-    Object.entries(groups).filter(([_, convs]) => convs.length > 0)
   )
 }

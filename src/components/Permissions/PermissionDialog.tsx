@@ -31,24 +31,41 @@ export function PermissionDialog() {
     }
   }
 
-  // Build a readable action label with resource included
-  const actionLabel = (() => {
-    const getShortPath = (p: string) => {
-      const parts = p.split('/')
-      return parts.length > 2 ? parts.slice(-2).join('/') : parts.slice(-1)[0] || p
+  const permissionDetails = (() => {
+    const action = activeRequest.action || ''
+
+    if (activeRequest.toolName === 'write_file') {
+      const target = action.startsWith('Write to:')
+        ? action.replace('Write to:', '').trim()
+        : action
+      return {
+        title: 'write files',
+        targetLabel: 'File',
+        target: target || 'Unknown file',
+      }
     }
 
-    // Parse action string to extract resource
-    if (activeRequest.action.startsWith('Write to:')) {
-      const path = activeRequest.action.replace('Write to:', '').trim()
-      return `Write File: ${getShortPath(path)}`
-    }
-    if (activeRequest.action.startsWith('Run command')) {
-      return 'Execute Command'
+    if (activeRequest.toolName === 'execute_command') {
+      const target = action.startsWith('Run:')
+        ? action.replace('Run:', '').trim()
+        : action
+      return {
+        title: 'run bash commands',
+        targetLabel: 'Command',
+        target: target || 'Shell command',
+      }
     }
 
-    return activeRequest.action
+    return {
+      title: activeRequest.toolName.replace(/_/g, ' '),
+      targetLabel: 'Action',
+      target: action || 'Unknown action',
+    }
   })()
+
+  const warningText = activeRequest.description?.includes('⚠️')
+    ? activeRequest.description.replace('⚠️', '').trim()
+    : null
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-bg-void/80 backdrop-blur-sm">
@@ -59,27 +76,26 @@ export function PermissionDialog() {
             <Shield className="w-5 h-5 text-accent" />
           </div>
           <div>
-            <h3 className="text-lg font-semibold text-text-primary">Permission Required</h3>
-            <p className="text-sm text-text-muted">{actionLabel}</p>
+            <h3 className="text-lg font-semibold text-text-primary">
+              Permission to {permissionDetails.title}
+            </h3>
+            <p className="text-sm text-text-muted">
+              {permissionDetails.targetLabel}: {permissionDetails.target}
+            </p>
           </div>
         </div>
 
         {/* Content */}
         <div className="px-6 py-4">
-          {/* Justification/Explanation - use description from main process */}
-          <div className="mb-4">
-            <p className="text-sm text-text-primary">
-              {activeRequest.description || `The AI wants to perform: ${activeRequest.action}`}
-            </p>
+          <div className="bg-bg-deep border border-border rounded-lg px-3 py-2">
+            <div className="text-xs text-text-muted mb-1">{permissionDetails.targetLabel}</div>
+            <div className="text-sm text-text-primary font-mono break-all">
+              {permissionDetails.target}
+            </div>
           </div>
 
-          {/* Preview content if available */}
-          {activeRequest.preview && (
-            <div className="bg-bg-deep rounded-lg p-3 mb-4 max-h-32 overflow-y-auto">
-              <pre className="text-xs font-mono text-text-secondary whitespace-pre-wrap break-all">
-                {activeRequest.preview}
-              </pre>
-            </div>
+          {warningText && (
+            <div className="mt-3 text-sm text-warning">{warningText}</div>
           )}
         </div>
 

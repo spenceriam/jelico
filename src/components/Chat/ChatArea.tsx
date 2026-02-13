@@ -4,6 +4,7 @@ import { useChatStore } from '../../stores/chat'
 import { useProviderStore } from '../../stores/providers'
 import { useUIStore } from '../../stores/ui'
 import { useContextStore } from '../../stores/context'
+import { useWorkspaceStore } from '../../stores/workspaces'
 import { useClarificationStore, type ClarificationRequest } from '../../stores/clarification'
 import { MessageList } from './MessageList'
 import { ChatInput } from './ChatInput'
@@ -44,11 +45,12 @@ export function ChatArea() {
     clearError,
   } = useChatStore()
   const { activeProviderId, activeModel } = useProviderStore()
-  const { isProcessing, processingMessage } = useUIStore()
+  const { isProcessing, processingMessage, chatFontPt } = useUIStore()
   const { isConversationCompacting } = useContextStore()
   const { setActiveRequest } = useClarificationStore()
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const [userName, setUserName] = useState<string | null>(null)
+  const [todoPanelHeight, setTodoPanelHeight] = useState(0)
 
   // Load user name from soul preferences
   useEffect(() => {
@@ -72,10 +74,9 @@ export function ChatArea() {
           console.warn('[ChatArea] Clarification notification failed:', err)
         })
 
-        // Only show if it's for the active conversation
-        if (request.conversationId === activeConversationId) {
-          setActiveRequest(request)
-        }
+        // Store request by conversation; the clarification store decides whether it
+        // should be visible in the current chat or held for later when user switches.
+        setActiveRequest(request)
       }
     )
 
@@ -180,13 +181,40 @@ export function ChatArea() {
     }
   }
 
+  const hasPendingArtifactToolCall = isStreaming && streamingToolCalls.some((toolCall) => {
+    const isArtifactAction = toolCall.name === 'create_artifact' || toolCall.name === 'update_artifact'
+    if (!isArtifactAction) return false
+    return !streamingToolResults.some((result) => result.toolCallId === toolCall.id)
+  })
+
+  // Prevent duplicate "Creating artifact..." UI:
+  // the tool call card already shows an in-progress line for artifact creation/update.
+  const hideBottomStatusRow = Boolean(
+    hasPendingArtifactToolCall &&
+    !isCompacting &&
+    !isProcessing &&
+    !modeTransitioning
+  )
+
   // Show new chat UI when no conversation selected OR empty conversation
   const showNewChatUI = !activeConversationId || (messages.length === 0 && !isStreaming)
+  const chatFontScale = chatFontPt / 10.5
+
+  const visibleSystemNotifications = useMemo(() => {
+    if (!activeConversationId) return []
+    return systemNotifications.filter((notification) =>
+      !notification.conversationId || notification.conversationId === activeConversationId
+    )
+  }, [systemNotifications, activeConversationId])
 
   // New chat / Welcome UI - centered stack
   if (showNewChatUI) {
     return (
-      <div className="flex-1 flex flex-col min-h-0" data-window-toggle="ignore">
+      <div
+        className="flex-1 flex flex-col min-h-0 chat-font-scale"
+        style={{ '--chat-font-scale': chatFontScale, '--app-font-scale': 1 } as Record<string, string | number>}
+        data-window-toggle="ignore"
+      >
         <div className="flex-1 flex items-center justify-center p-6">
           <div className="w-full max-w-xl">
             <NewChatView
@@ -201,65 +229,73 @@ export function ChatArea() {
 
   // Active conversation UI - normal chat layout
   return (
-    <div className="flex-1 flex flex-col min-h-0" data-window-toggle="ignore">
+    <div
+      className="flex-1 flex flex-col min-h-0 chat-font-scale"
+      style={{ '--chat-font-scale': chatFontScale, '--app-font-scale': 1 } as Record<string, string | number>}
+      data-window-toggle="ignore"
+    >
       {/* Messages area */}
-      <div className="flex-1 overflow-y-auto select-text">
-        <div className="max-w-3xl mx-auto py-6 px-4">
-          <MessageList
-            messages={messages}
-            streamingContent={isStreaming ? streamingContent : undefined}
-            streamingToolCalls={isStreaming ? streamingToolCalls : undefined}
-            streamingToolResults={isStreaming ? streamingToolResults : undefined}
-            streamingSegments={isStreaming ? streamingSegments : undefined}
-            systemNotifications={systemNotifications}
-            onRegenerate={handleRegenerate}
-            userName={userName || undefined}
-          />
+      <div className="flex-1 min-h-0 relative">
+        <div className="h-full overflow-y-auto select-text">
+          <div
+            className="max-w-3xl mx-auto py-6 px-4"
+            style={{ paddingBottom: todoPanelHeight > 0 ? `${todoPanelHeight + 12}px` : undefined }}
+          >
+            <MessageList
+              messages={messages}
+              streamingContent={isStreaming ? streamingContent : undefined}
+              streamingToolCalls={isStreaming ? streamingToolCalls : undefined}
+              streamingToolResults={isStreaming ? streamingToolResults : undefined}
+              streamingSegments={isStreaming ? streamingSegments : undefined}
+              systemNotifications={visibleSystemNotifications}
+              onRegenerate={handleRegenerate}
+              userName={userName || undefined}
+            />
 
-          {interruptedStream && !isStreaming && (
-            <div className="mt-4 rounded-lg border border-border bg-bg-surface px-3 py-2 flex items-center justify-between gap-3">
-              <p className="text-xs text-text-secondary">
-                Looks like this response stopped. Restart where it left off?
-              </p>
-              <div className="flex items-center gap-2">
+            {interruptedStream && !isStreaming && (
+              <div className="mt-4 rounded-lg border border-border bg-bg-surface px-3 py-2 flex items-center justify-between gap-3">
+                <p className="text-xs text-text-secondary">
+                  Looks like this response stopped. Restart where it left off?
+                </p>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => resumeInterruptedConversation(activeConversationId || undefined)}
+                    className="px-2 py-1 text-xs font-medium rounded-md bg-accent text-bg-surface hover:opacity-90 transition-opacity"
+                  >
+                    Restart
+                  </button>
+                  <button
+                    onClick={() => dismissInterruptedConversation(activeConversationId || undefined)}
+                    className="px-2 py-1 text-xs font-medium rounded-md border border-border text-text-muted hover:text-text-primary hover:border-border-strong transition-colors"
+                  >
+                    Dismiss
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {error && (
+              <div className="mt-4 rounded-lg border border-error/40 bg-error/10 px-3 py-2 flex items-center justify-between gap-3">
+                <p className="text-xs text-error">{error}</p>
                 <button
-                  onClick={() => resumeInterruptedConversation(activeConversationId || undefined)}
-                  className="px-2 py-1 text-xs font-medium rounded-md bg-accent text-bg-surface hover:opacity-90 transition-opacity"
-                >
-                  Restart
-                </button>
-                <button
-                  onClick={() => dismissInterruptedConversation(activeConversationId || undefined)}
-                  className="px-2 py-1 text-xs font-medium rounded-md border border-border text-text-muted hover:text-text-primary hover:border-border-strong transition-colors"
+                  onClick={clearError}
+                  className="px-2 py-1 text-xs font-medium rounded-md border border-error/40 text-error hover:bg-error/10 transition-colors"
                 >
                   Dismiss
                 </button>
               </div>
-            </div>
-          )}
+            )}
 
-          {error && (
-            <div className="mt-4 rounded-lg border border-error/40 bg-error/10 px-3 py-2 flex items-center justify-between gap-3">
-              <p className="text-xs text-error">{error}</p>
-              <button
-                onClick={clearError}
-                className="px-2 py-1 text-xs font-medium rounded-md border border-error/40 text-error hover:bg-error/10 transition-colors"
-              >
-                Dismiss
-              </button>
-            </div>
-          )}
-
-          {/* Status indicator - final row in chat view with braille animation */}
-          {(isStreaming || isCompacting || isProcessing || modeTransitioning) && (
-            <div className="flex items-center gap-2 mt-4 py-3">
-              <BrailleLoader className="text-accent text-lg" />
-              <div className="flex items-center gap-1.5">
-                <ShimmerText className="text-sm text-text-secondary">
-                  {modeTransitioning && modeSwitchReason ? modeSwitchReason :
-                   isCompacting ? 'Compacting conversation...' :
-                   isStreaming ? (() => {
-                     const now = Date.now()
+            {/* Status indicator - final row in chat view with braille animation */}
+            {(isStreaming || isCompacting || isProcessing || modeTransitioning) && !hideBottomStatusRow && (
+              <div className="flex items-center gap-2 mt-4 pt-3 pb-1.5">
+                <BrailleLoader className="text-accent text-lg" />
+                <div className="flex items-center gap-1.5">
+                  <ShimmerText className="text-sm text-text-secondary">
+                    {modeTransitioning && modeSwitchReason ? modeSwitchReason :
+                     isCompacting ? 'Compacting conversation...' :
+                     isStreaming ? (() => {
+                       const now = Date.now()
 
                      const getShortPath = (p: string) => {
                        const parts = p.split('/')
@@ -465,42 +501,50 @@ export function ChatArea() {
                        }
                        return 'Processing response...'
                      }
-                     return streamingContent ? 'Responding...' : 'Processing...'
-                   })() :
-                   processingMessage || 'Processing...'}
-                </ShimmerText>
-                {/* Elapsed time display - right next to status text */}
-                {isStreaming && streamingStartTime && (
-                  <span className="text-sm text-text-muted">
-                    ({formatElapsedTime(Date.now() - streamingStartTime)})
-                  </span>
-                )}
+                       return streamingContent ? 'Responding...' : 'Processing...'
+                     })() :
+                     processingMessage || 'Processing...'}
+                  </ShimmerText>
+                  {/* Elapsed time display - right next to status text */}
+                  {isStreaming && streamingStartTime && (
+                    <span className="text-sm text-text-muted">
+                      ({formatElapsedTime(Date.now() - streamingStartTime)})
+                    </span>
+                  )}
+                </div>
               </div>
-            </div>
-          )}
+            )}
 
-          <div ref={messagesEndRef} />
+            <div ref={messagesEndRef} />
+          </div>
         </div>
 
-        {/* Panels sticky to bottom of scroll area */}
-        <div className="sticky bottom-0 max-w-3xl mx-auto px-4 space-y-2">
-          {/* Todo panel - task tracking */}
-          <TodoPanel />
+        {/* Todo panel pinned to bottom of chat viewport */}
+        <div className="absolute inset-x-0 bottom-0 pointer-events-none">
+          <div className="max-w-3xl mx-auto px-4 pointer-events-auto">
+            <TodoPanel
+              onHeightChange={(height) => {
+                setTodoPanelHeight((prev) => (prev === height ? prev : height))
+              }}
+            />
+          </div>
         </div>
       </div>
 
       {/* Input area */}
-      <div className="border-t border-border bg-bg-surface">
-        <div className="max-w-3xl mx-auto p-4">
-          {/* Mode selector above input */}
-          <div className="flex justify-center mb-3">
+      <div className="border-t border-border bg-bg-elevated">
+        <div className="max-w-3xl mx-auto px-4 pt-0 pb-0">
+          {/* Mode selector rail flush to top separator */}
+          <div className="-mx-4 px-4 py-0">
             <ModeSelector />
           </div>
 
-          <ChatInput
-            disabled={!activeProviderId || !activeModel}
-            isStreaming={isStreaming}
-          />
+          <div className="pt-2">
+            <ChatInput
+              disabled={!activeProviderId || !activeModel}
+              isStreaming={isStreaming}
+            />
+          </div>
         </div>
       </div>
     </div>
@@ -994,12 +1038,9 @@ function buildGreeting(baseGreeting: string, userName: string | null, isQuestion
       return baseGreeting.replace(/\.$/, `, ${userName}.`)
     }
     if (isQuestion) {
-      // 50% chance: "Spencer, what's on your mind?" vs "What's on your mind, Spencer?"
-      if (Math.random() < 0.5) {
-        return `${userName}, ${baseGreeting.charAt(0).toLowerCase()}${baseGreeting.slice(1)}`
-      } else {
-        return baseGreeting.replace(/\?$/, `, ${userName}?`)
-      }
+      // Keep question personalization stable across re-renders.
+      // Example: "What matters to you right now?" -> "What matters to you right now, Spencer?"
+      return baseGreeting.replace(/\?$/, `, ${userName}?`)
     }
     // Default: prepend "Hey [name]."
     return `Hey ${userName}. ${baseGreeting}`
@@ -1015,6 +1056,13 @@ interface NewChatViewProps {
 
 function NewChatView({ disabled, isStreaming }: NewChatViewProps) {
   const { openSettings } = useUIStore()
+  const conversations = useChatStore((state) => state.conversations)
+  const {
+    activeWorkspaceId,
+    workspaces,
+    createWorktreeOnNewChat,
+    setCreateWorktreeOnNewChat,
+  } = useWorkspaceStore()
   const [userName, setUserName] = useState<string | null>(null)
 
   // Get random greeting (stable per component mount)
@@ -1022,6 +1070,29 @@ function NewChatView({ disabled, isStreaming }: NewChatViewProps) {
     const period = getTimePeriod()
     return selectGreeting(period)
   }, [])
+
+  const activeWorkspace = useMemo(
+    () => workspaces.find(workspace => workspace.id === activeWorkspaceId),
+    [workspaces, activeWorkspaceId]
+  )
+
+  const workspaceConversationCount = useMemo(() => {
+    if (!activeWorkspaceId) return 0
+    return conversations.filter((conversation) => conversation.workspaceId === activeWorkspaceId).length
+  }, [conversations, activeWorkspaceId])
+
+  const canShowWorktreeCheckbox = Boolean(
+    activeWorkspaceId &&
+    activeWorkspace?.isGit &&
+    !activeWorkspace?.isWorktree &&
+    workspaceConversationCount > 0
+  )
+
+  useEffect(() => {
+    if (!canShowWorktreeCheckbox && createWorktreeOnNewChat) {
+      setCreateWorktreeOnNewChat(false)
+    }
+  }, [canShowWorktreeCheckbox, createWorktreeOnNewChat, setCreateWorktreeOnNewChat])
 
   // Load user name from soul preferences
   useEffect(() => {
@@ -1062,6 +1133,33 @@ function NewChatView({ disabled, isStreaming }: NewChatViewProps) {
       {/* Workspace, Model selector, and Settings */}
       <div className="flex justify-center items-center gap-3">
         <WorkspaceSelector />
+        {canShowWorktreeCheckbox && (
+          <label
+            className="flex items-center gap-2 px-3 py-1.5 text-sm rounded-lg border border-border text-text-secondary hover:text-text-primary hover:bg-bg-surface transition-colors cursor-pointer select-none"
+            title="Auto-create a Git worktree for this new chat (workspace only)"
+          >
+            <input
+              type="checkbox"
+              checked={createWorktreeOnNewChat}
+              onChange={(event) => {
+                setCreateWorktreeOnNewChat(event.target.checked)
+              }}
+              className="sr-only peer"
+            />
+            <span
+              className={`
+                w-3.5 h-3.5 rounded border transition-colors flex items-center justify-center text-[10px] leading-none
+                ${createWorktreeOnNewChat
+                  ? 'border-accent bg-accent text-bg-deep'
+                  : 'border-border bg-bg-deep text-transparent'}
+                peer-focus-visible:ring-2 peer-focus-visible:ring-accent/40
+              `}
+            >
+              ✓
+            </span>
+            <span>Work Tree</span>
+          </label>
+        )}
         <ModelSelector compact />
         <button
           onClick={() => openSettings()}

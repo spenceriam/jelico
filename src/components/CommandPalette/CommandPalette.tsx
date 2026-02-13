@@ -9,13 +9,14 @@ import {
   GitBranch,
   PanelRight,
   Plus,
+  ShieldCheck,
 } from 'lucide-react'
 import { useChatStore } from '../../stores/chat'
-import { useProviderStore } from '../../stores/providers'
 import { useWorkspaceStore } from '../../stores/workspaces'
 import { useArtifactStore } from '../../stores/artifacts'
 import { useSkillStore } from '../../stores/skills'
 import { useUIStore } from '../../stores/ui'
+import { usePermissionStore } from '../../stores/permissions'
 import { modes } from '../../lib/modes'
 
 interface Command {
@@ -25,7 +26,7 @@ interface Command {
   icon: React.ComponentType<{ className?: string }>
   action: () => void
   keywords?: string[]
-  category: 'chat' | 'workspace' | 'mode' | 'skill' | 'navigation' | 'action'
+  category: 'permissions' | 'chat' | 'workspace' | 'mode' | 'skill' | 'navigation' | 'action'
 }
 
 interface CommandPaletteProps {
@@ -38,16 +39,35 @@ export function CommandPalette({ isOpen, onClose }: CommandPaletteProps) {
   const [selectedIndex, setSelectedIndex] = useState(0)
 
   // Stores
-  const { createConversation, setActiveConversation, conversations, setMode } = useChatStore()
-  const { activeProviderId, activeModel } = useProviderStore()
+  const { setActiveConversation, conversations, setMode } = useChatStore()
   const { workspaces, selectFolder, setActiveWorkspace } = useWorkspaceStore()
   const { toggleCanvas, canvasOpen } = useArtifactStore()
   const { skills } = useSkillStore()
   const { openSettings, openProviderSetup } = useUIStore()
+  const { allowAllSession, setAllowAllSession, loadAllowAllSession } = usePermissionStore()
+
+  useEffect(() => {
+    loadAllowAllSession()
+  }, [loadAllowAllSession])
 
   // Build commands list
   const commands = useMemo<Command[]>(() => {
     const cmds: Command[] = []
+
+    // Permission commands - keep first so this section appears at the top.
+    cmds.push({
+      id: 'permissions-allow-all-session',
+      name: allowAllSession ? 'Disable Allow All Permissions' : 'Enable Allow All Permissions',
+      description: allowAllSession
+        ? 'All tools currently require normal permission checks'
+        : 'Allow all tools for this session (same as Settings > Permissions)',
+      icon: ShieldCheck,
+      category: 'permissions',
+      keywords: ['permission', 'allow all', 'session', 'security'],
+      action: () => {
+        void setAllowAllSession(!allowAllSession)
+      },
+    })
 
     // Chat commands
     cmds.push({
@@ -58,9 +78,7 @@ export function CommandPalette({ isOpen, onClose }: CommandPaletteProps) {
       category: 'chat',
       keywords: ['conversation', 'message', 'create'],
       action: () => {
-        if (activeProviderId && activeModel) {
-          createConversation(activeProviderId, activeModel)
-        }
+        setActiveConversation(null)
       },
     })
 
@@ -181,19 +199,18 @@ export function CommandPalette({ isOpen, onClose }: CommandPaletteProps) {
 
     return cmds
   }, [
+    allowAllSession,
     conversations,
     skills,
     workspaces,
     canvasOpen,
-    activeProviderId,
-    activeModel,
-    createConversation,
     setActiveConversation,
     setMode,
     selectFolder,
     setActiveWorkspace,
     openSettings,
     openProviderSetup,
+    setAllowAllSession,
     toggleCanvas,
   ])
 
@@ -223,6 +240,7 @@ export function CommandPalette({ isOpen, onClose }: CommandPaletteProps) {
   }, [filteredCommands])
 
   const categoryLabels: Record<string, string> = {
+    permissions: 'Permissions',
     chat: 'Chat',
     mode: 'Modes',
     skill: 'Skills',
