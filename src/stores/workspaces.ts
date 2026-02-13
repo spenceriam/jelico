@@ -6,6 +6,8 @@ export interface Workspace {
   name: string
   path: string
   isGit: boolean
+  isWorktree?: boolean
+  projectPath?: string
   gitBranch?: string
   createdAt: number
   updatedAt: number
@@ -14,6 +16,7 @@ export interface Workspace {
 interface WorkspaceStore {
   workspaces: Workspace[]
   activeWorkspaceId: string | null
+  createWorktreeOnNewChat: boolean
   isLoading: boolean
   error: string | null
 
@@ -21,6 +24,7 @@ interface WorkspaceStore {
   loadWorkspaces: () => Promise<void>
   selectFolder: () => Promise<Workspace | null>
   setActiveWorkspace: (id: string | null, skipDbUpdate?: boolean) => void
+  setCreateWorktreeOnNewChat: (enabled: boolean) => void
   updateWorkspace: (id: string, updates: { name?: string }) => Promise<void>
   deleteWorkspace: (id: string) => Promise<void>
   refreshGit: (id: string) => Promise<void>
@@ -30,6 +34,7 @@ interface WorkspaceStore {
 export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
   workspaces: [],
   activeWorkspaceId: null,
+  createWorktreeOnNewChat: false,
   isLoading: false,
   error: null,
 
@@ -87,6 +92,10 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
           })
       }
     }
+  },
+
+  setCreateWorktreeOnNewChat: (enabled) => {
+    set({ createWorktreeOnNewChat: enabled })
   },
 
   updateWorkspace: async (id, updates) => {

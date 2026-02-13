@@ -1244,6 +1244,7 @@ async function runSubAgent(agentId: string): Promise<void> {
           ...artifact,
           agentId,
           agentName: agent.name,
+          conversationId: agent.conversationId,
         })
       }
     }

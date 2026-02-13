@@ -90,7 +90,7 @@ interface Window {
       // Artifact preview streaming - shows content as it's being generated
       onArtifactPreview: (channelId: string, callback: (preview: ArtifactPreviewEvent) => void) => void
       // Sub-agent artifact creation (artifact completed, add to store)
-      onSubAgentArtifact: (callback: (artifact: { type: string; title: string; content: string; language?: string; agentId: string; agentName: string }) => void) => () => void
+      onSubAgentArtifact: (callback: (artifact: { type: string; title: string; content: string; language?: string; agentId: string; agentName: string; conversationId?: string }) => void) => () => void
       // Sub-agent artifact preview streaming
       onSubAgentArtifactPreview: (callback: (preview: ArtifactPreviewEvent) => void) => () => void
       // Multiple artifacts status (for status line)
@@ -449,6 +449,8 @@ interface Workspace {
   name: string
   path: string
   isGit: boolean
+  isWorktree?: boolean
+  projectPath?: string
   gitBranch?: string
   createdAt: number
   updatedAt: number
@@ -457,6 +459,8 @@ interface Workspace {
 interface WorkspaceInput {
   name?: string
   path: string
+  isWorktree?: boolean
+  projectPath?: string
 }
 
 interface DirectoryEntry {

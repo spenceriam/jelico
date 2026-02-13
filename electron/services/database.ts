@@ -194,9 +194,23 @@ function relocateArtifactsToWorkspaces(): void {
         // Fallback to database content if file doesn't exist
         content = artifact.content
       } else {
-        console.warn(`[Migration] Skipping ${artifact.id}: no file or content found`)
-        skippedCount++
-        continue
+        // Final fallback: recover from another readable revision in the same chain.
+        const baseId = artifact.base_artifact_id || artifact.id
+        const sibling = db.artifacts
+          .filter(a => (a.base_artifact_id || a.id) === baseId && a.id !== artifact.id)
+          .sort((a, b) => (b.revision ?? 1) - (a.revision ?? 1))
+          .find(a => a.file_path && fs.existsSync(a.file_path))
+
+        if (sibling?.file_path) {
+          content = fs.readFileSync(sibling.file_path, 'utf-8')
+          console.warn(
+            `[Migration] Recovered missing content for ${artifact.id} from sibling revision ${sibling.id}`
+          )
+        } else {
+          console.warn(`[Migration] Skipping ${artifact.id}: no file or content found`)
+          skippedCount++
+          continue
+        }
       }
 
       // Write to correct location
@@ -447,6 +461,8 @@ export const workspaceDb = {
       name: workspace.name,
       path: workspace.path,
       is_git: workspace.isGit ? 1 : 0,
+      is_worktree: workspace.isWorktree ? 1 : 0,
+      project_path: workspace.projectPath || null,
       git_branch: workspace.gitBranch || null,
       created_at: now,
       updated_at: now,
@@ -465,6 +481,8 @@ export const workspaceDb = {
     if (updates.name !== undefined) workspace.name = updates.name
     if (updates.path !== undefined) workspace.path = updates.path
     if (updates.isGit !== undefined) workspace.is_git = updates.isGit ? 1 : 0
+    if (updates.isWorktree !== undefined) workspace.is_worktree = updates.isWorktree ? 1 : 0
+    if (updates.projectPath !== undefined) workspace.project_path = updates.projectPath || null
     if (updates.gitBranch !== undefined) workspace.git_branch = updates.gitBranch || null
     workspace.updated_at = Date.now()
 
@@ -655,6 +673,8 @@ interface WorkspaceRow {
   name: string
   path: string
   is_git: number
+  is_worktree?: number
+  project_path?: string | null
   git_branch: string | null
   created_at: number
   updated_at: number
@@ -664,6 +684,8 @@ interface WorkspaceInput {
   name: string
   path: string
   isGit?: boolean
+  isWorktree?: boolean
+  projectPath?: string
   gitBranch?: string
 }
 
@@ -696,78 +718,87 @@ interface ArtifactInput {
 // NOTE: Artifact content is stored as files on disk, not in the database.
 // The database only stores metadata and file_path references.
 // Files are stored at: ~/.config/jelico/artifacts/{conversation-id}/{artifact-id}.{ext}
+function hasPersistedArtifactContent(artifact: ArtifactRow): boolean {
+  return typeof artifact.content === 'string' && artifact.content.length > 0
+}
+
+function hydrateArtifactContent(artifact: ArtifactRow): ArtifactRow | null {
+  if (artifact.file_path && artifactFileExists(artifact.file_path)) {
+    const content = readArtifactFile(artifact.file_path)
+    if (content !== null && content.length > 0) {
+      return { ...artifact, content }
+    }
+  }
+
+  if (hasPersistedArtifactContent(artifact)) {
+    return artifact
+  }
+
+  return null
+}
+
+function getLatestReadableArtifacts(artifacts: ArtifactRow[]): ArtifactRow[] {
+  const groupedByBase = new Map<string, ArtifactRow[]>()
+
+  for (const artifact of artifacts) {
+    const baseId = artifact.base_artifact_id || artifact.id
+    const existing = groupedByBase.get(baseId)
+    if (existing) {
+      existing.push(artifact)
+    } else {
+      groupedByBase.set(baseId, [artifact])
+    }
+  }
+
+  const resolved: ArtifactRow[] = []
+  for (const revisions of groupedByBase.values()) {
+    const sorted = revisions.sort((a, b) => (b.revision ?? 1) - (a.revision ?? 1))
+    const latestReadable = sorted
+      .map((artifact) => hydrateArtifactContent(artifact))
+      .find((artifact): artifact is ArtifactRow => artifact !== null)
+
+    resolved.push(latestReadable || sorted[0])
+  }
+
+  return resolved
+}
+
 export const artifactDb = {
   list(): ArtifactRow[] {
-    // Return only the latest revision for each base artifact across all conversations.
-    const latestByBase = new Map<string, ArtifactRow>()
-    for (const artifact of db.artifacts) {
-      const baseId = artifact.base_artifact_id || artifact.id
-      const existing = latestByBase.get(baseId)
-      if (!existing || artifact.revision > existing.revision) {
-        latestByBase.set(baseId, artifact)
-      }
-    }
-
-    const result: ArtifactRow[] = []
-    for (const artifact of latestByBase.values()) {
-      if (artifact.file_path && artifactFileExists(artifact.file_path)) {
-        const content = readArtifactFile(artifact.file_path)
-        if (content !== null) {
-          result.push({ ...artifact, content })
-          continue
-        }
-      }
-      result.push(artifact)
-    }
-
-    return result.sort((a, b) => b.updated_at - a.updated_at)
+    // Return latest readable revision for each base artifact across all conversations.
+    return getLatestReadableArtifacts(db.artifacts).sort((a, b) => b.updated_at - a.updated_at)
   },
 
   get(id: string): ArtifactRow | null {
     const artifact = db.artifacts.find(a => a.id === id)
     if (!artifact) return null
 
-    // Load content from file if file_path exists
-    if (artifact.file_path && artifactFileExists(artifact.file_path)) {
-      const content = readArtifactFile(artifact.file_path)
-      if (content !== null) {
-        return { ...artifact, content }
+    const hydrated = hydrateArtifactContent(artifact)
+    if (hydrated) {
+      return hydrated
+    }
+
+    // Fallback: if this revision lost its file path, reuse newest readable content
+    // from the same artifact chain so Canvas can still render.
+    const baseId = artifact.base_artifact_id || artifact.id
+    const revisions = db.artifacts
+      .filter((a) => (a.base_artifact_id || a.id) === baseId)
+      .sort((a, b) => (b.revision ?? 1) - (a.revision ?? 1))
+
+    for (const revision of revisions) {
+      const resolved = hydrateArtifactContent(revision)
+      if (resolved) {
+        return { ...artifact, content: resolved.content }
       }
     }
 
-    // Fallback to database content (for legacy artifacts not yet migrated)
     return artifact
   },
 
   getByConversation(conversationId: string): ArtifactRow[] {
-    // Return only the latest revision of each base artifact
+    // Return latest readable revision of each base artifact for this conversation.
     const artifacts = db.artifacts.filter(a => a.conversation_id === conversationId)
-
-    // Group by base_artifact_id (or own id if base)
-    const latestByBase = new Map<string, ArtifactRow>()
-    for (const a of artifacts) {
-      const baseId = a.base_artifact_id || a.id
-      const existing = latestByBase.get(baseId)
-      if (!existing || a.revision > existing.revision) {
-        latestByBase.set(baseId, a)
-      }
-    }
-
-    // Load content from files for each artifact
-    const result: ArtifactRow[] = []
-    for (const artifact of latestByBase.values()) {
-      if (artifact.file_path && artifactFileExists(artifact.file_path)) {
-        const content = readArtifactFile(artifact.file_path)
-        if (content !== null) {
-          result.push({ ...artifact, content })
-          continue
-        }
-      }
-      // Fallback to database content
-      result.push(artifact)
-    }
-
-    return result.sort((a, b) => b.updated_at - a.updated_at)
+    return getLatestReadableArtifacts(artifacts).sort((a, b) => b.updated_at - a.updated_at)
   },
 
   // Get all revisions of an artifact (by base id) - with content loaded from files
@@ -782,21 +813,21 @@ export const artifactDb = {
       .sort((a, b) => a.revision - b.revision)  // Sort by revision ascending
 
     // Load content from files for each revision
-    return artifacts.map(artifact => {
-      if (artifact.file_path && artifactFileExists(artifact.file_path)) {
-        const content = readArtifactFile(artifact.file_path)
-        if (content !== null) {
-          return { ...artifact, content }
-        }
-      }
-      return artifact
-    })
+    return artifacts.map((artifact) => hydrateArtifactContent(artifact) || artifact)
   },
 
   // Get the latest revision of an artifact - with content loaded from file
   getLatestRevision(baseArtifactId: string): ArtifactRow | null {
     const revisions = this.getRevisions(baseArtifactId)
-    return revisions.length > 0 ? revisions[revisions.length - 1] : null
+    if (revisions.length === 0) return null
+
+    for (let i = revisions.length - 1; i >= 0; i -= 1) {
+      if (hasPersistedArtifactContent(revisions[i])) {
+        return revisions[i]
+      }
+    }
+
+    return revisions[revisions.length - 1]
   },
 
   create(artifact: ArtifactInput): ArtifactRow {
@@ -876,6 +907,16 @@ export const artifactDb = {
     const latest = this.getLatestRevision(trueBaseId)
     if (!latest) return null
 
+    if (
+      updates.conversationId !== undefined &&
+      updates.conversationId !== (latest.conversation_id || undefined)
+    ) {
+      console.error(
+        `[Artifacts] Refusing to move artifact ${baseArtifactId} across conversations during revision create`
+      )
+      return null
+    }
+
     return this.create({
       conversationId: latest.conversation_id || undefined,
       type: updates.type || latest.type,
@@ -894,13 +935,23 @@ export const artifactDb = {
 
     const artifact = db.artifacts[index]
 
+    // Artifacts are conversation-scoped. Prevent accidental cross-conversation moves.
+    if (updates.conversationId !== undefined) {
+      const requestedConversationId = updates.conversationId || null
+      if (requestedConversationId !== artifact.conversation_id) {
+        console.error(
+          `[Artifacts] Refusing to move artifact ${id} from conversation ${artifact.conversation_id} to ${requestedConversationId}`
+        )
+        return null
+      }
+    }
+
     // If content is changing, create a revision instead
     if (updates.content !== undefined && updates.content !== artifact.content) {
       return this.createRevision(id, updates)
     }
 
     // Otherwise update in place (title, metadata changes)
-    if (updates.conversationId !== undefined) artifact.conversation_id = updates.conversationId || null
     if (updates.type !== undefined) artifact.type = updates.type
     if (updates.title !== undefined) artifact.title = updates.title
     if (updates.language !== undefined) artifact.language = updates.language || null
@@ -931,7 +982,15 @@ export const artifactDb = {
   },
 
   deleteByConversation(conversationId: string): void {
-    // Delete all artifact files for this conversation
+    // Delete all known artifact files for this conversation, regardless of storage location.
+    const toDelete = db.artifacts.filter(a => a.conversation_id === conversationId)
+    for (const artifact of toDelete) {
+      if (artifact.file_path) {
+        deleteArtifactFile(artifact.file_path)
+      }
+    }
+
+    // Legacy cleanup path (older builds stored by conversation folder under legacy root).
     deleteConversationArtifacts(conversationId)
 
     db.artifacts = db.artifacts.filter(a => a.conversation_id !== conversationId)
@@ -1264,6 +1323,18 @@ export const permissionDb = {
       // Check if pattern matches
       if (this.matchesPattern(p.action_pattern, action)) {
         return p.permission
+      }
+    }
+
+    // Backward compatibility: earlier builds stored project-level write/command
+    // approvals as exact action strings. Treat any persisted allow_always for these
+    // tools as tool-scoped project approval.
+    if (toolName === 'write_file' || toolName === 'execute_command') {
+      const legacyBroadAllow = permissions.find(
+        p => p.tool_name === toolName && p.permission === 'allow_always'
+      )
+      if (legacyBroadAllow) {
+        return 'allow_always'
       }
     }
 

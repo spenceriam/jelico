@@ -120,40 +120,6 @@ export const useArtifactStore = create<ArtifactStore>((set, get) => ({
 
   addArtifact: async (artifact) => {
     try {
-      const normalizedTitle = artifact.title.trim().toLowerCase()
-      const existing = get()
-        .artifacts
-        .filter((a) =>
-          a.conversationId === artifact.conversationId &&
-          a.type === artifact.type &&
-          a.title.trim().toLowerCase() === normalizedTitle
-        )
-        .sort((a, b) => b.updatedAt - a.updatedAt)[0]
-
-      if (existing) {
-        const updatedRow: ArtifactRow | null = await window.jelico.artifacts.update(existing.id, {
-          conversationId: artifact.conversationId,
-          type: artifact.type,
-          title: artifact.title,
-          content: artifact.content,
-          language: artifact.language,
-          filePath: artifact.filePath,
-        })
-
-        if (updatedRow) {
-          const updatedArtifact = rowToArtifact(updatedRow)
-          set((state) => ({
-            artifacts: state.artifacts.map((a) =>
-              a.id === existing.id ? updatedArtifact : a
-            ),
-            selectedArtifactId: updatedArtifact.id,
-            selectedRevisionId: null,
-            canvasOpen: true,
-          }))
-          return updatedArtifact
-        }
-      }
-
       const row: ArtifactRow = await window.jelico.artifacts.create({
         conversationId: artifact.conversationId,
         type: artifact.type,
@@ -168,6 +134,7 @@ export const useArtifactStore = create<ArtifactStore>((set, get) => ({
       set((state) => ({
         artifacts: [...state.artifacts, newArtifact],
         selectedArtifactId: newArtifact.id,
+        selectedRevisionId: null,
         canvasOpen: true,
       }))
 
@@ -180,8 +147,11 @@ export const useArtifactStore = create<ArtifactStore>((set, get) => ({
 
   updateArtifact: async (id, updates) => {
     try {
+      const existingArtifact = get().artifacts.find((artifact) => artifact.id === id)
+      const scopedConversationId = updates.conversationId ?? existingArtifact?.conversationId
+
       const row: ArtifactRow | null = await window.jelico.artifacts.update(id, {
-        conversationId: updates.conversationId,
+        conversationId: scopedConversationId,
         type: updates.type,
         title: updates.title,
         content: updates.content,
@@ -314,9 +284,10 @@ export function initArtifactListeners() {
   window.jelico.ai.onSubAgentArtifact(async (artifact) => {
     console.log(`[Artifacts] Received artifact from sub-agent ${artifact.agentName}: "${artifact.title}"`)
 
-    // Get the active conversation ID
+    // Prefer explicit conversation routing from the sub-agent event.
+    // Fallback to active conversation for backwards compatibility.
     const { useChatStore } = await import('./chat')
-    const conversationId = useChatStore.getState().activeConversationId
+    const conversationId = artifact.conversationId || useChatStore.getState().activeConversationId
 
     if (!conversationId) {
       console.warn('[Artifacts] No active conversation for sub-agent artifact')

@@ -86,10 +86,12 @@ export type SystemNotificationType =
   | 'compaction_complete'
   | 'model_changed'
   | 'artifacts_created'
+  | 'info'
 
 export interface SystemNotification {
   id: string
   type: SystemNotificationType
+  conversationId?: string
   message?: string
   artifacts?: Array<{ id: string; title: string; type: string }>
   modelName?: string
@@ -161,11 +163,12 @@ interface ChatStore {
 
   // Actions
   loadConversations: () => Promise<void>
-  createConversation: (providerId: string, model: string) => Promise<string>
+  createConversation: (providerId: string, model: string, initialMessageHint?: string) => Promise<string>
   setActiveConversation: (id: string | null) => Promise<void>
   sendMessage: (content: string, providerId: string, model: string, attachments?: MessageAttachment[]) => Promise<void>
   queueMessage: (content: string, providerId: string, model: string, attachments?: MessageAttachment[], conversationId?: string | null) => void
   processQueue: () => Promise<void>
+  sendQueuedNow: (queueIndex: number) => Promise<boolean>
   stopStreaming: () => Promise<void>
   deleteConversation: (id: string) => Promise<void>
   setMode: (mode: AgentMode) => void
@@ -187,6 +190,76 @@ const PENDING_STREAMS_STORAGE_KEY = 'jelico.pending_streams.v1'
 const INLINE_TOOL_CALL_BEGIN_TOKEN = '<|tool_call_begin|>'
 const INLINE_TOOL_CALL_ARGUMENT_BEGIN_TOKEN = '<|tool_call_argument_begin|>'
 const INLINE_TOOL_CALL_END_TOKEN = '<|tool_call_end|>'
+const WORKTREE_MENTION_REGEX = /\b(work[\s-]?tree|git[\s-]?work[\s-]?tree|git tree)\b/i
+const WORKTREE_MENTION_COOLDOWN_MS = 5 * 60 * 1000
+const worktreeGuidanceByConversation = new Map<string, { planningShown: boolean; lastMentionAt: number }>()
+
+function inferWorktreeBranchType(text: string): 'feat' | 'fix' | 'refactor' | 'docs' | 'test' | 'chore' {
+  const value = text.toLowerCase()
+  if (/\b(fix|bug|broken|error|regression|issue|repair|resolve)\b/.test(value)) return 'fix'
+  if (/\b(refactor|cleanup|restructure|rewrite|optimi[sz]e|performance)\b/.test(value)) return 'refactor'
+  if (/\b(doc|docs|readme|documentation|guide|changelog)\b/.test(value)) return 'docs'
+  if (/\b(test|tests|testing|spec|specs|unit|integration|e2e)\b/.test(value)) return 'test'
+  if (/\b(chore|deps|dependency|config|tooling|ci|build|lint)\b/.test(value)) return 'chore'
+  return 'feat'
+}
+
+function toBranchSlug(input: string): string {
+  return input
+    .toLowerCase()
+    .replace(/[`'"*()[\]{}<>~!@#$%^&+=:;,.?/\\|]/g, ' ')
+    .replace(/\s+/g, '-')
+    .replace(/-+/g, '-')
+    .replace(/^-|-$/g, '')
+    .slice(0, 48)
+}
+
+function getSuggestedWorktreeBranchName(initialMessageHint?: string, workspaceName?: string): string {
+  const firstLine = (initialMessageHint || '').split('\n')[0]?.trim() || ''
+  const branchType = inferWorktreeBranchType(firstLine)
+  const slug = toBranchSlug(firstLine) || toBranchSlug(workspaceName || '') || 'new-chat'
+  const timestamp = new Date()
+    .toISOString()
+    .replace(/[-:TZ.]/g, '')
+    .slice(0, 14)
+
+  return `worktree/${branchType}/${slug}-${timestamp}`
+}
+
+function buildWorktreeGuidanceMessage(input: {
+  workspaceName?: string
+  isGitWorkspace: boolean
+  isWorktreeWorkspace: boolean
+  branch?: string
+  relatedConversationCount: number
+  fromPlanningMode: boolean
+  fromMention: boolean
+}): string {
+  if (!input.workspaceName) {
+    return 'Worktree note: this chat is in Sandbox, which is already filesystem-isolated per conversation. Git worktrees apply only to Git workspaces.'
+  }
+
+  if (!input.isGitWorkspace) {
+    return `Worktree note: "${input.workspaceName}" is not a Git workspace, so worktrees are unavailable here.`
+  }
+
+  if (input.isWorktreeWorkspace) {
+    const branchPart = input.branch ? ` on branch "${input.branch}"` : ''
+    return `Worktree note: this chat is already in an isolated Git worktree${branchPart}. Filesystem and branch state are isolated from the main workspace.`
+  }
+
+  const relatedText =
+    input.relatedConversationCount > 0
+      ? `${input.relatedConversationCount} other conversation(s) share this workspace path. `
+      : ''
+  const contextText = input.fromPlanningMode
+    ? 'Planning tip: '
+    : input.fromMention
+      ? 'Worktree tip: '
+      : ''
+
+  return `${contextText}you are in the main workspace "${input.workspaceName}" (not a worktree). ${relatedText}Use "Work Tree" for new chats when you want full filesystem + branch isolation.`
+}
 
 function getTrailingTokenOverlap(value: string, token: string): number {
   const max = Math.min(value.length, token.length - 1)
@@ -524,15 +597,72 @@ export const useChatStore = create<ChatStore>((set, get) => ({
     }
   },
 
-  createConversation: async (providerId, model) => {
+  createConversation: async (providerId, model, initialMessageHint) => {
     try {
-      // Save the currently selected workspace to the new conversation
-      const activeWorkspaceId = useWorkspaceStore.getState().activeWorkspaceId
+      // Save the currently selected workspace to the new conversation.
+      // If requested, auto-isolate via git worktree before creating the conversation.
+      const workspaceState = useWorkspaceStore.getState()
+      const activeWorkspace = workspaceState.workspaces.find(
+        (workspace) => workspace.id === workspaceState.activeWorkspaceId
+      )
+      let targetWorkspaceId = workspaceState.activeWorkspaceId
+
+      const shouldOfferIsolation = Boolean(
+        targetWorkspaceId &&
+        activeWorkspace &&
+        activeWorkspace.isGit &&
+        !activeWorkspace.isWorktree
+      )
+
+      if (shouldOfferIsolation) {
+        const existingWorkspaceConversations = get().conversations.filter(
+          (conversation) => conversation.workspaceId === targetWorkspaceId
+        )
+        const existingChatCount = existingWorkspaceConversations.length
+
+        if (existingChatCount > 0) {
+          let shouldCreateWorktree = workspaceState.createWorktreeOnNewChat
+
+          if (!shouldCreateWorktree) {
+            const sortedExisting = [...existingWorkspaceConversations]
+              .sort((a, b) => b.updatedAt - a.updatedAt)
+            const previewConversations = sortedExisting
+              .slice(0, 6)
+              .map((conversation, index) => `${index + 1}. ${conversation.title || 'Untitled chat'}`)
+            const remainingCount = sortedExisting.length - previewConversations.length
+
+            shouldCreateWorktree = window.confirm(
+              'This workspace already has existing conversations.\n\n' +
+              'Existing conversations in this workspace:\n' +
+              `${previewConversations.join('\n')}` +
+              (remainingCount > 0 ? `\n...and ${remainingCount} more` : '') +
+              '\n\n' +
+              'Select OK to create a Work Tree for this new chat.\n' +
+              'Select Cancel to continue working in this workspace.'
+            )
+          }
+
+          if (shouldCreateWorktree && targetWorkspaceId) {
+              const branch = getSuggestedWorktreeBranchName(initialMessageHint, activeWorkspace?.name)
+              try {
+                const newWorkspace = await window.jelico.workspaces.createWorktree(targetWorkspaceId, branch)
+                await workspaceState.loadWorkspaces()
+              workspaceState.setActiveWorkspace(newWorkspace.id, true)
+              targetWorkspaceId = newWorkspace.id
+            } catch (error: any) {
+              const message = error?.message || 'Failed to create worktree'
+              set({ error: message })
+              throw error
+            }
+          }
+        }
+      }
+
       const conversation = await window.jelico.conversations.create({
         title: 'New chat',
         model,
         providerId,
-        workspaceId: activeWorkspaceId || undefined,
+        workspaceId: targetWorkspaceId || undefined,
       })
       const conversations = await window.jelico.conversations.list()
       set({
@@ -540,6 +670,8 @@ export const useChatStore = create<ChatStore>((set, get) => ({
         activeConversationId: conversation.id,
         messages: [],
       })
+      useTodoStore.getState().setConversationId(conversation.id)
+      useClarificationStore.getState().setConversationId(conversation.id)
       // New conversation has no artifacts - close canvas and clear streaming preview
       useArtifactStore.getState().clearStreamingPreview()
       useArtifactStore.getState().closeCanvas()
@@ -569,6 +701,8 @@ export const useChatStore = create<ChatStore>((set, get) => ({
         error: null,
         ...projectStreamStateToActiveFields(createEmptyConversationStreamState()),
       })
+      useTodoStore.getState().setConversationId(null)
+      useClarificationStore.getState().setConversationId(null)
       // New Chat: keep current workspace selection (user can switch to Sandbox explicitly)
       // No conversation = no artifacts to show
       useArtifactStore.getState().closeCanvas()
@@ -591,6 +725,8 @@ export const useChatStore = create<ChatStore>((set, get) => ({
           ...projectStreamStateToActiveFields(streamState),
         }
       })
+      useTodoStore.getState().setConversationId(id)
+      useClarificationStore.getState().setConversationId(id)
 
       const activeStreamState = get().conversationStreams[id]
       const pendingCheckpoint = getPendingStreamCheckpoint(id)
@@ -701,7 +837,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
 
     // Create conversation if needed (never happens during regenerate)
     if (!conversationId) {
-      conversationId = await get().createConversation(providerId, model)
+      conversationId = await get().createConversation(providerId, model, content)
       // Initialize context tracking for new conversation
       await useContextStore.getState().initConversationContext(conversationId, providerId, model)
     } else {
@@ -750,6 +886,11 @@ export const useChatStore = create<ChatStore>((set, get) => ({
         }
       })
     }
+
+    const workspaceState = useWorkspaceStore.getState()
+    const activeWorkspace = workspaceState.workspaces.find(
+      (workspace) => workspace.id === workspaceState.activeWorkspaceId
+    )
 
     let contextMessages = messages
     if (targetConversationId !== activeConversationId) {
@@ -840,6 +981,56 @@ export const useChatStore = create<ChatStore>((set, get) => ({
       ))
     }
 
+    if (!_isRegenerate) {
+      const mentionsWorktree = WORKTREE_MENTION_REGEX.test(content)
+      const inPlanningMode = finalMode === 'plan'
+
+      if (mentionsWorktree || inPlanningMode) {
+        const marker = worktreeGuidanceByConversation.get(targetConversationId) || {
+          planningShown: false,
+          lastMentionAt: 0,
+        }
+        const now = Date.now()
+        let shouldNotify = false
+
+        if (inPlanningMode && !marker.planningShown) {
+          marker.planningShown = true
+          shouldNotify = true
+        }
+
+        if (mentionsWorktree && (now - marker.lastMentionAt > WORKTREE_MENTION_COOLDOWN_MS)) {
+          marker.lastMentionAt = now
+          shouldNotify = true
+        }
+
+        worktreeGuidanceByConversation.set(targetConversationId, marker)
+
+        if (shouldNotify) {
+          const relatedConversationCount = activeWorkspace?.id
+            ? get().conversations.filter(
+              (conversation) =>
+                conversation.workspaceId === activeWorkspace.id &&
+                conversation.id !== targetConversationId
+            ).length
+            : 0
+
+          get().addSystemNotification({
+            type: 'info',
+            conversationId: targetConversationId,
+            message: buildWorktreeGuidanceMessage({
+              workspaceName: activeWorkspace?.name,
+              isGitWorkspace: Boolean(activeWorkspace?.isGit),
+              isWorktreeWorkspace: Boolean(activeWorkspace?.isWorktree),
+              branch: activeWorkspace?.gitBranch,
+              relatedConversationCount,
+              fromPlanningMode: inPlanningMode,
+              fromMention: mentionsWorktree,
+            }),
+          })
+        }
+      }
+    }
+
     const streamStartedAt = Date.now()
 
     // Set streaming state for this conversation
@@ -859,12 +1050,6 @@ export const useChatStore = create<ChatStore>((set, get) => ({
       model,
       startedAt: streamStartedAt,
     })
-
-    // Get workspace path for context
-    const workspaceState = useWorkspaceStore.getState()
-    const activeWorkspace = workspaceState.workspaces.find(
-      w => w.id === workspaceState.activeWorkspaceId
-    )
 
     // Build messages for AI - use expanded content for last user message if skill was used
     const aiMessages = updatedMessages.map((m, i) => {
@@ -1093,6 +1278,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
     window.jelico.ai.onUpdateArtifact(channelId, async (update) => {
       try {
         await useArtifactStore.getState().updateArtifact(update.id, {
+          conversationId: targetConversationId,
           title: update.updates.title,
           content: update.updates.content,
           language: update.updates.language,
@@ -1151,7 +1337,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
 
     // Handle todo updates from AI
     window.jelico.ai.onTodos(channelId, (todos) => {
-      useTodoStore.getState().setTodos(todos)
+      useTodoStore.getState().setTodos(targetConversationId, todos)
     })
 
     // Handle tool input progress (for large artifacts)
@@ -1211,6 +1397,30 @@ export const useChatStore = create<ChatStore>((set, get) => ({
       const streamingToolCalls = streamSnapshot.streamingToolCalls
       const streamingToolResults = streamSnapshot.streamingToolResults
       const totalDurationMs = Date.now() - streamStartTime
+      const completedResultIds = new Set(streamingToolResults.map((result) => result.toolCallId))
+      const normalizedToolCalls = streamingToolCalls.map((toolCall) => {
+        if (completedResultIds.has(toolCall.id)) {
+          return toolCall.status === 'complete' ? toolCall : { ...toolCall, status: 'complete' as const }
+        }
+        if (toolCall.status === 'error' || toolCall.status === 'canceled' || toolCall.status === 'cancelled') {
+          return toolCall
+        }
+        return { ...toolCall, status: 'canceled' as const }
+      })
+
+      const inferredToolResults: ToolResult[] = normalizedToolCalls
+        .filter((toolCall) => !completedResultIds.has(toolCall.id))
+        .map((toolCall) => ({
+          toolCallId: toolCall.id,
+          result: {
+            success: false,
+            canceled: true,
+            error: 'Tool ended before returning a final result.',
+          },
+          error: 'Tool ended before returning a final result.',
+        }))
+
+      const normalizedToolResults = [...streamingToolResults, ...inferredToolResults]
       // Calculate actual generation time (first chunk to last chunk)
       // This excludes tool execution time and gives accurate tok/s
       const generationMs = (firstChunkTime && lastChunkTime)
@@ -1234,7 +1444,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
           }
         }
 
-        const hasToolActivity = streamingToolCalls.length > 0 || streamingToolResults.length > 0
+        const hasToolActivity = normalizedToolCalls.length > 0 || normalizedToolResults.length > 0
         const assistantContent = fullContent && fullContent.trim().length > 0
           ? fullContent
           : (hasToolActivity ? 'Completed requested tool actions.' : 'No response text was returned.')
@@ -1244,8 +1454,8 @@ export const useChatStore = create<ChatStore>((set, get) => ({
           role: 'assistant',
           content: assistantContent,
           segments: streamSnapshot.streamingSegments.length > 0 ? streamSnapshot.streamingSegments : undefined,
-          toolCalls: streamingToolCalls.length > 0 ? streamingToolCalls : undefined,
-          toolResults: streamingToolResults.length > 0 ? streamingToolResults : undefined,
+          toolCalls: normalizedToolCalls.length > 0 ? normalizedToolCalls : undefined,
+          toolResults: normalizedToolResults.length > 0 ? normalizedToolResults : undefined,
           usage,
         })
 
@@ -1258,8 +1468,8 @@ export const useChatStore = create<ChatStore>((set, get) => ({
 
         console.log('[Chat Store] Final message:', {
           content: fullContent?.slice(0, 100),
-          toolCallCount: streamingToolCalls.length,
-          toolResultCount: streamingToolResults.length,
+          toolCallCount: normalizedToolCalls.length,
+          toolResultCount: normalizedToolResults.length,
           hasUsage: !!usage,
         })
 
@@ -1304,6 +1514,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
       if (createdArtifacts.length > 0) {
         get().addSystemNotification({
           type: 'artifacts_created',
+          conversationId: targetConversationId,
           artifacts: createdArtifacts,
         })
       }
@@ -1316,6 +1527,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
         const usagePercent = Math.round(contextUsage.percentage * 100)
         get().addSystemNotification({
           type: 'compaction_warning',
+          conversationId: targetConversationId,
           message: `Auto-compacting context at ${usagePercent}% usage...`,
         })
 
@@ -1360,6 +1572,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
             // Show compaction complete notification
             get().addSystemNotification({
               type: 'compaction_complete',
+              conversationId: targetConversationId,
               message: compactionSummary,
             })
 
@@ -1444,6 +1657,44 @@ export const useChatStore = create<ChatStore>((set, get) => ({
       false,
       nextMessage.conversationId ?? null
     )
+  },
+
+  sendQueuedNow: async (queueIndex) => {
+    const { messageQueue, activeConversationId, conversationStreams } = get()
+    const queuedMessage = messageQueue[queueIndex]
+    if (!queuedMessage) return false
+
+    const targetConversationId = queuedMessage.conversationId ?? activeConversationId ?? null
+    const targetStreamState = targetConversationId ? conversationStreams[targetConversationId] : undefined
+
+    // If target conversation is currently streaming, prioritize this message to be the NEXT
+    // queued item without interrupting the current generation.
+    if (targetConversationId && targetConversationId === activeConversationId && targetStreamState?.isStreaming) {
+      set((state) => {
+        const nextQueue = [...state.messageQueue]
+        const [selected] = nextQueue.splice(queueIndex, 1)
+        if (!selected) return {}
+        nextQueue.unshift(selected)
+        return { messageQueue: nextQueue }
+      })
+      return true
+    }
+
+    // If target isn't currently streaming, send immediately.
+    set((state) => ({
+      messageQueue: state.messageQueue.filter((_, idx) => idx !== queueIndex),
+    }))
+
+    await (get().sendMessage as any)(
+      queuedMessage.content,
+      queuedMessage.providerId,
+      queuedMessage.model,
+      queuedMessage.attachments,
+      false,
+      targetConversationId
+    )
+
+    return true
   },
 
   stopStreaming: async () => {
@@ -1567,6 +1818,9 @@ export const useChatStore = create<ChatStore>((set, get) => ({
         streamChannelByConversation.delete(id)
       }
       clearPendingStreamCheckpoint(id)
+      worktreeGuidanceByConversation.delete(id)
+      useTodoStore.getState().deleteConversationTodos(id)
+      useClarificationStore.getState().clearForConversation(id)
 
       // Delete artifacts for this conversation
       await useArtifactStore.getState().clearConversationArtifacts(id)
@@ -1595,6 +1849,8 @@ export const useChatStore = create<ChatStore>((set, get) => ({
           ...projectStreamStateToActiveFields(createEmptyConversationStreamState()),
           error: null,
         })
+        useTodoStore.getState().setConversationId(null)
+        useClarificationStore.getState().setConversationId(null)
       } else {
         set((state) => {
           const { [id]: _removedStream, ...restStreams } = state.conversationStreams
@@ -1646,6 +1902,10 @@ export const useChatStore = create<ChatStore>((set, get) => ({
 
     const { lastAssistantIndex, lastUser } = getLastAssistantAndUser(messages)
     if (lastAssistantIndex === -1 || !lastUser) return
+
+    // Regenerate starts a fresh assistant turn for this conversation.
+    // Clear prior-turn todos so the panel reflects only the new attempt.
+    useTodoStore.getState().clearTodos(activeConversationId)
 
     // Remove artifacts created during this turn (create_artifact calls only)
     const artifactStore = useArtifactStore.getState()
