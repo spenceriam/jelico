@@ -21,6 +21,109 @@ export interface ChangelogEntry {
 
 export const changelog: ChangelogEntry[] = [
   {
+    version: '0.16.1',
+    date: '2026-02-13',
+    changes: {
+      fixed: [
+        'Unified top chrome and titlebar-safe-area backgrounds so macOS header bands use consistent contrast',
+        'Stabilized mode/input rail geometry and spacing to avoid layout jumps while switching chat and canvas contexts',
+        'Expanded Profile tab free-text fields to fill available modal height and removed dead vertical space',
+      ],
+      changed: [
+        'Applied final UI polish pass across pane contrast and spacing for consistent visual rhythm',
+      ],
+    },
+  },
+  {
+    version: '0.16.0',
+    date: '2026-02-13',
+    changes: {
+      added: [
+        'Introduced point-based app/chat/artifact typography controls with live preview cards in Appearance settings',
+        'Added global app font sizing shortcuts using double-tap Cmd/Ctrl plus/minus behavior',
+      ],
+      changed: [
+        'Refined font-scaling behavior for header controls, context indicator, prompt actions, and chat text so scaling remains centered and proportional',
+        'Updated mode rail and prompt controls to use relative sizing for improved readability at small and large point sizes',
+      ],
+    },
+  },
+  {
+    version: '0.15.0',
+    date: '2026-02-13',
+    changes: {
+      added: [
+        'Added Profile and Appearance tabs with dedicated information architecture in Settings',
+        'Added compact, two-column Appearance layout for theme mode, color themes, and typography controls',
+      ],
+      changed: [
+        'Settings modal now keeps a consistent footprint across tabs to avoid jarring resizes while switching settings sections',
+      ],
+    },
+  },
+  {
+    version: '0.14.1',
+    date: '2026-02-13',
+    changes: {
+      fixed: [
+        'Permission approval handling now correctly honors project/session scopes and reduces repeated prompts',
+        'Permission dialog copy now better communicates the exact requested capability while simplifying noisy previews',
+      ],
+      changed: [
+        'Permission controls and command palette entry points were reorganized to improve discoverability during active runs',
+      ],
+    },
+  },
+  {
+    version: '0.14.0',
+    date: '2026-02-13',
+    changes: {
+      added: [
+        'Added queued message "Send now" injection so users can steer active AI turns without waiting for turn completion',
+        'Added workspace-aware worktree controls in new-chat flows for safer concurrent sessions on shared folders',
+      ],
+      changed: [
+        'Workspace branch visibility moved to top-bar context to reduce selector crowding and improve chat-start clarity',
+      ],
+    },
+  },
+  {
+    version: '0.13.2',
+    date: '2026-02-13',
+    changes: {
+      fixed: [
+        'Todo and clarification state are now conversation-isolated, preventing cross-chat bleed-through when running multiple sessions',
+        'Regenerate behavior now clears stale todo/task UI tied to replaced assistant turns',
+      ],
+      changed: [
+        'Todo panel positioning was stabilized to stay pinned in the chat stream area while preserving readable content flow',
+      ],
+    },
+  },
+  {
+    version: '0.13.1',
+    date: '2026-02-13',
+    changes: {
+      fixed: [
+        'Sandbox artifact writes are now strictly conversation-scoped, preventing unintended updates across unrelated sandbox chats',
+        'Artifact resolution now respects unique artifact identities across workspace and sandbox boundaries to prevent overwrite collisions',
+      ],
+    },
+  },
+  {
+    version: '0.13.0',
+    date: '2026-02-13',
+    changes: {
+      added: [
+        'Worktree-first project grouping in the sidebar so chats under a shared workspace are organized by project path',
+        'Self-selection and auto-detection flow for opening new chats in a worktree when a shared workspace is already in active use',
+      ],
+      changed: [
+        'Workspace and sandbox hierarchy labels were simplified to focus on project names and chat threads without noisy metadata',
+      ],
+    },
+  },
+  {
     version: '0.12.2',
     date: '2026-02-09',
     changes: {

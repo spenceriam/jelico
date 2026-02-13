@@ -2,6 +2,77 @@
 
 All notable changes to Jelico will be documented in this file.
 
+## [0.16.1] - 2026-02-13
+
+### Changed
+- Applied a final UI polish pass for pane contrast and spacing consistency.
+
+### Fixed
+- Unified top chrome and titlebar-safe-area backgrounds so macOS header bands use consistent contrast.
+- Stabilized mode/input rail spacing to avoid layout jumps while switching chat and canvas contexts.
+- Expanded Profile tab free-text fields to fill available modal height and removed dead vertical space.
+
+## [0.16.0] - 2026-02-13
+
+### Added
+- Point-based app/chat/artifact typography controls with live preview cards in Appearance settings.
+- Global app font sizing shortcuts via double-tap Cmd/Ctrl plus/minus.
+
+### Changed
+- Refined font-scaling behavior for header controls, context indicator, prompt actions, and chat text so scaling remains centered and proportional.
+- Updated mode rail and prompt controls to use relative sizing for improved readability at small and large point sizes.
+
+## [0.15.0] - 2026-02-13
+
+### Added
+- New Profile and Appearance tabs with dedicated information architecture in Settings.
+- Compact two-column Appearance layout for theme mode, color themes, and typography controls.
+
+### Changed
+- Settings modal now keeps a consistent footprint across tabs to avoid jarring resizes while switching sections.
+
+## [0.14.1] - 2026-02-13
+
+### Changed
+- Reorganized permission controls and command palette entry points to improve discoverability during active runs.
+
+### Fixed
+- Permission approval handling now correctly honors project/session scopes and reduces repeated prompts.
+- Permission dialog copy now better communicates the requested capability while simplifying noisy previews.
+
+## [0.14.0] - 2026-02-13
+
+### Added
+- Queued message **Send now** injection so users can steer active AI turns without waiting for completion.
+- Workspace-aware worktree controls in new-chat flows for safer concurrent sessions on shared folders.
+
+### Changed
+- Workspace branch visibility moved to top-bar context to reduce selector crowding and improve chat-start clarity.
+
+## [0.13.2] - 2026-02-13
+
+### Changed
+- Todo panel positioning was stabilized to stay pinned in the chat stream area while preserving readable content flow.
+
+### Fixed
+- Todo and clarification state are now conversation-isolated, preventing cross-chat bleed-through when multiple sessions run in parallel.
+- Regenerate behavior now clears stale todo/task UI tied to replaced assistant turns.
+
+## [0.13.1] - 2026-02-13
+
+### Fixed
+- Sandbox artifact writes are now strictly conversation-scoped, preventing unintended updates across unrelated sandbox chats.
+- Artifact resolution now respects unique artifact identities across workspace and sandbox boundaries to prevent overwrite collisions.
+
+## [0.13.0] - 2026-02-13
+
+### Added
+- Worktree-first project grouping in the sidebar so chats under a shared workspace are organized by project path.
+- Self-selection and auto-detection flow for opening new chats in a worktree when a shared workspace is already in active use.
+
+### Changed
+- Workspace and sandbox hierarchy labels were simplified to focus on project names and chat threads without noisy metadata.
+
 ## [0.12.2] - 2026-02-09
 
 ### Changed
