@@ -21,6 +21,26 @@ export interface ChangelogEntry {
 
 export const changelog: ChangelogEntry[] = [
   {
+    version: '0.16.3',
+    date: '2026-02-13',
+    changes: {
+      added: [
+        'Introduced a provider-native web adapter service so web search/fetch routes through Anthropic, OpenAI, Google, or OpenRouter capabilities instead of DuckDuckGo scraping',
+      ],
+      changed: [
+        'Main AI web tool policy now enforces sub-agent-first research with bounded direct fallback and stronger wait-for-agent recovery logic',
+        'Sub-agent web research now uses adaptive broad-to-focused query planning and richer runtime status metadata for orchestration',
+      ],
+      fixed: [
+        'Improved sub-agent resilience for research tasks with automatic retries, shallow-search detection, and lower-confidence recovery prompts',
+        'Hidden internal deferred/direct-limit web gate tool rows from chat output so users only see meaningful actions',
+        'Fixed queued message \"Send now\" to run immediately and added per-item queue controls instead of global queue send semantics',
+        'Added retry support for unanswered user prompts after interrupted turns without duplicating the user message',
+        'Smoothed processing gradients and sidebar thread spacing to reduce abrupt shimmer cutoffs and crowded conversation rows',
+      ],
+    },
+  },
+  {
     version: '0.16.2',
     date: '2026-02-13',
     changes: {
