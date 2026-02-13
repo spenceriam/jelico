@@ -222,9 +222,9 @@ function SkillEditor({
                 >
                   <option value="">Auto-detect</option>
                   <option value="auto">Auto</option>
-                  <option value="explore">Explore</option>
-                  <option value="execute">Execute</option>
+                  <option value="execute">Full Execute</option>
                   <option value="plan">Plan</option>
+                  <option value="explore">Explore</option>
                   <option value="review">Review</option>
                 </select>
               </div>

@@ -193,6 +193,25 @@ const INLINE_TOOL_CALL_END_TOKEN = '<|tool_call_end|>'
 const WORKTREE_MENTION_REGEX = /\b(work[\s-]?tree|git[\s-]?work[\s-]?tree|git tree)\b/i
 const WORKTREE_MENTION_COOLDOWN_MS = 5 * 60 * 1000
 const worktreeGuidanceByConversation = new Map<string, { planningShown: boolean; lastMentionAt: number }>()
+const FULL_EXECUTE_CONFIRM_MESSAGE = [
+  'Enable Full Execute?',
+  '',
+  'Full Execute runs actions without per-action permission prompts while this mode is active.',
+  'Use this only in environments you trust (for example, a sandbox, VM, or disposable workspace).',
+  'You are responsible for actions taken in this mode.',
+].join('\n')
+
+function isModeTransitionAllowed(currentMode: AgentMode, nextMode: AgentMode): boolean {
+  if (nextMode !== 'execute' || currentMode === 'execute') {
+    return true
+  }
+
+  if (typeof window === 'undefined' || typeof window.confirm !== 'function') {
+    return true
+  }
+
+  return window.confirm(FULL_EXECUTE_CONFIRM_MESSAGE)
+}
 
 function inferWorktreeBranchType(text: string): 'feat' | 'fix' | 'refactor' | 'docs' | 'test' | 'chore' {
   const value = text.toLowerCase()
@@ -828,9 +847,9 @@ export const useChatStore = create<ChatStore>((set, get) => ({
     if (skillMatch) {
       finalContent = skillMatch.skill.prompt.replace('{{context}}', skillMatch.context)
       if (skillMatch.skill.mode) {
-        finalMode = skillMatch.skill.mode
-        // Temporarily set mode for this message
-        set({ mode: finalMode })
+        // Route skill mode changes through the same mode guard.
+        get().setMode(skillMatch.skill.mode)
+        finalMode = get().mode
       }
     }
 
@@ -1873,12 +1892,18 @@ export const useChatStore = create<ChatStore>((set, get) => ({
     }
   },
 
-  setMode: (mode) => set({ mode }),
+  setMode: (mode) => {
+    const currentMode = get().mode
+    if (mode === currentMode) return
+    if (!isModeTransitionAllowed(currentMode, mode)) return
+    set({ mode })
+  },
 
   setModeTransitioning: (transitioning) => set({ modeTransitioning: transitioning }),
 
   handleModeSwitch: (_fromMode, toMode, reason) => {
     const { modes } = require('../lib/modes') as { modes: Record<AgentMode, { name: string }> }
+    const modeBefore = get().mode
 
     // Cancel any pending mode transition timeout to prevent orphaned callbacks
     if (modeTransitionTimeoutId) {
@@ -1886,8 +1911,13 @@ export const useChatStore = create<ChatStore>((set, get) => ({
       modeTransitionTimeoutId = null
     }
 
+    get().setMode(toMode)
+    const modeAfter = get().mode
+    if (modeAfter !== toMode || modeAfter === modeBefore) {
+      return
+    }
+
     set({
-      mode: toMode,
       modeTransitioning: true,
       modeSwitchReason: `Switching to ${modes[toMode].name}: ${reason}`,
     })
