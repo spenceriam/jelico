@@ -5,17 +5,18 @@
  * Only visible when there's an active conversation with messages.
  */
 
-import { Loader2, AlertTriangle } from 'lucide-react'
+import { AlertTriangle } from 'lucide-react'
 import { useChatStore } from '../../stores/chat'
 import { useContextStore } from '../../stores/context'
 import { useProviderStore } from '../../stores/providers'
 import { useUIStore } from '../../stores/ui'
+import { BrailleLoader } from '../StatusIndicators'
 
 export function ContextIndicator() {
   const { activeConversationId, messages, isStreaming } = useChatStore()
   const { getContextUsage, isConversationCompacting } = useContextStore()
   const { activeModel } = useProviderStore()
-  const { showContextText, toggleContextText } = useUIStore()
+  const { showContextText, toggleContextText, appFontPt } = useUIStore()
 
   // Get context usage for current conversation
   const contextUsage = activeConversationId ? getContextUsage(activeConversationId) : null
@@ -30,9 +31,10 @@ export function ContextIndicator() {
   }
 
   const percentage = Math.round(contextUsage.percentage * 100)
-  const circleSize = 18
-  const progressStrokeWidth = 2
-  const trackStrokeWidth = 1.05
+  const appFontScale = appFontPt / 10.5
+  const circleSize = Math.max(14, Math.round(18 * appFontScale))
+  const progressStrokeWidth = Math.max(1.4, 2 * appFontScale)
+  const trackStrokeWidth = Math.max(0.85, 1.05 * appFontScale)
   const radius = (circleSize - progressStrokeWidth) / 2
   const circumference = 2 * Math.PI * radius
   const progress = Math.min(Math.max(contextUsage.percentage, 0), 1)
@@ -69,7 +71,7 @@ export function ContextIndicator() {
       <button
         onClick={toggleContextText}
         className={`
-          flex items-center gap-1.5 px-2 py-1 rounded text-xs
+          flex items-center gap-[0.45em] px-[0.65em] py-[0.4em] rounded text-xs
           transition-colors
           ${contextUsage.shouldWarn
             ? 'text-warning hover:bg-warning/10'
@@ -79,11 +81,11 @@ export function ContextIndicator() {
       >
         {/* Spinner during compaction */}
         {isCompacting && (
-          <Loader2 className="w-3 h-3 animate-spin text-accent" />
+          <BrailleLoader className="text-accent text-sm" />
         )}
         {/* Warning icon when approaching limit */}
         {!isCompacting && contextUsage.shouldWarn && (
-          <AlertTriangle className="w-3 h-3" />
+          <AlertTriangle className="w-[0.9em] h-[0.9em]" />
         )}
         <svg
           width={circleSize}

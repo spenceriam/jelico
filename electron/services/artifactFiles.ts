@@ -220,8 +220,11 @@ export function getArtifactFilePath(
   const conversationPath = getConversationArtifactsPath(conversationId, workspacePath)
   const ext = getArtifactExtension(type, language)
 
-  // Use sanitized title for filename if provided, otherwise fall back to artifact ID
-  const filename = title ? sanitizeFilename(title) : artifactId
+  // Always include artifact ID in filename to guarantee uniqueness across
+  // artifacts with the same title in the same directory.
+  const safeId = artifactId.toLowerCase().replace(/[^a-z0-9-]/g, '')
+  const baseName = title ? sanitizeFilename(title) : 'artifact'
+  const filename = `${baseName}-${safeId}`
 
   return path.join(conversationPath, `${filename}.${ext}`)
 }

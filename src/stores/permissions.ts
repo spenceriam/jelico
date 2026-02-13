@@ -25,6 +25,23 @@ function rowToPermission(row: PermissionRecord): Permission {
   }
 }
 
+function getRememberedActionPattern(toolName: string, action: string): string {
+  if (toolName === 'write_file') {
+    return 'Write to:*'
+  }
+
+  if (toolName === 'execute_command') {
+    return 'Run:*'
+  }
+
+  const separatorIndex = action.indexOf(':')
+  if (separatorIndex !== -1) {
+    return `${action.slice(0, separatorIndex + 1)}*`
+  }
+
+  return action
+}
+
 // Permission request from main process (tool execution)
 export interface MainProcessRequest {
   requestId: string
@@ -130,7 +147,7 @@ export const usePermissionStore = create<PermissionStore>((set, get) => ({
     if (remember && permission !== 'allow_once') {
       await get().createPermission({
         toolName: pendingRequest.toolName,
-        actionPattern: pendingRequest.action,
+        actionPattern: getRememberedActionPattern(pendingRequest.toolName, pendingRequest.action),
         permission,
         workspaceId: pendingRequest.workspaceId,
       })
@@ -202,7 +219,7 @@ export const usePermissionStore = create<PermissionStore>((set, get) => ({
       if (remember && permission !== 'allow_once') {
         await get().createPermission({
           toolName: mainProcessRequest.toolName,
-          actionPattern: mainProcessRequest.action,
+          actionPattern: getRememberedActionPattern(mainProcessRequest.toolName, mainProcessRequest.action),
           permission,
           workspaceId: mainProcessRequest.workspaceId,
         })

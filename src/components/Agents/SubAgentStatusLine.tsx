@@ -5,9 +5,10 @@
  * similar to the main AI status line.
  */
 
-import { Bot, Loader2 } from 'lucide-react'
+import { Bot } from 'lucide-react'
 import { useAgentStore } from '../../stores/agents'
 import { useChatStore } from '../../stores/chat'
+import { BrailleLoader } from '../StatusIndicators'
 
 export function SubAgentStatusLine() {
   const { agents } = useAgentStore()
@@ -44,7 +45,7 @@ export function SubAgentStatusLine() {
           >
             <div className="flex items-center gap-1.5 text-accent/70">
               <Bot className="w-3 h-3" />
-              <Loader2 className="w-3 h-3 animate-spin" />
+              <BrailleLoader className="text-sm" />
             </div>
             <span className="text-xs font-medium text-text-muted">
               {agent.displayName || agent.name}:

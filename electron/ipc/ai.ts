@@ -4,7 +4,7 @@ import { createAnthropic } from '@ai-sdk/anthropic'
 import { createOpenAI } from '@ai-sdk/openai'
 import { createGoogleGenerativeAI } from '@ai-sdk/google'
 import { z } from 'zod'
-import { providerDb } from '../services/database'
+import { providerDb, conversationDb, messageDb, workspaceDb } from '../services/database'
 import { keychainService } from '../services/keychain'
 import { getModeSystemPrompt, buildSystemPrompt, type AgentMode, getCachedPrompt } from '../lib/modes'
 import { formatSoulForContext } from '../services/soul'
@@ -181,6 +181,98 @@ function getContextualKnowledge(messages: Array<{ role: string; content: string 
 
   // Return as a reference section (the AI won't announce reading this)
   return `\n\n## Reference Documentation\n${matchedKnowledge.join('\n\n---\n\n')}`
+}
+
+function normalizeMessageSnippet(value: string): string {
+  return value.replace(/\s+/g, ' ').trim()
+}
+
+function truncateSnippet(value: string, max: number = 160): string {
+  if (value.length <= max) return value
+  return `${value.slice(0, Math.max(0, max - 3)).trimEnd()}...`
+}
+
+function getConversationProjectKey(
+  workspaceId: string | null,
+  workspaceById: Map<string, any>
+): string {
+  if (!workspaceId) return 'sandbox'
+  const workspace = workspaceById.get(workspaceId)
+  if (!workspace) return `workspace:${workspaceId}`
+  return workspace.project_path || workspace.path || `workspace:${workspaceId}`
+}
+
+function buildProjectConversationContext(conversationId?: string): string {
+  if (!conversationId) return ''
+
+  const currentConversation = conversationDb.get(conversationId)
+  if (!currentConversation) return ''
+
+  const workspaces = workspaceDb.list()
+  const workspaceById = new Map(workspaces.map((workspace) => [workspace.id, workspace]))
+  const currentWorkspace = currentConversation.workspace_id
+    ? workspaceById.get(currentConversation.workspace_id)
+    : null
+  const currentProjectKey = getConversationProjectKey(currentConversation.workspace_id, workspaceById)
+
+  const siblingConversations = conversationDb.list()
+    .filter((conversation) => {
+      if (conversation.id === conversationId) return false
+      return getConversationProjectKey(conversation.workspace_id, workspaceById) === currentProjectKey
+    })
+    .sort((a, b) => b.updated_at - a.updated_at)
+
+  if (siblingConversations.length === 0) return ''
+
+  const scopeLabel = currentProjectKey === 'sandbox'
+    ? 'Sandbox project'
+    : currentWorkspace
+      ? `${currentWorkspace.name} (${currentProjectKey})`
+      : currentProjectKey
+
+  const MAX_SIBLINGS = 8
+  const listedSiblings = siblingConversations.slice(0, MAX_SIBLINGS)
+  const siblingLines: string[] = []
+
+  for (const sibling of listedSiblings) {
+    const siblingMessages = messageDb.getByConversation(sibling.id)
+    const latestUser = [...siblingMessages].reverse().find((message) => message.role === 'user')
+    const latestAssistant = [...siblingMessages].reverse().find((message) => message.role === 'assistant')
+    const latestSubstantive = [...siblingMessages].reverse().find((message) =>
+      message.role === 'user' || message.role === 'assistant'
+    )
+
+    const isInProgress = latestSubstantive?.role === 'user'
+    const status = isInProgress ? 'in_progress (pending follow-up)' : 'idle/paused'
+
+    const details: string[] = []
+    if (latestUser?.content) {
+      const userSnippet = truncateSnippet(normalizeMessageSnippet(latestUser.content))
+      details.push(`last user intent: "${userSnippet}"`)
+    }
+    if (latestAssistant?.content) {
+      const assistantSnippet = truncateSnippet(normalizeMessageSnippet(latestAssistant.content))
+      details.push(`latest assistant note: "${assistantSnippet}"`)
+    }
+
+    const suffix = details.length > 0 ? ` | ${details.join(' | ')}` : ''
+    siblingLines.push(`- ${sibling.title} | status: ${status}${suffix}`)
+  }
+
+  if (siblingConversations.length > listedSiblings.length) {
+    siblingLines.push(`- ...and ${siblingConversations.length - listedSiblings.length} more sibling conversation(s).`)
+  }
+
+  return `## Project Conversation Context
+Project scope: ${scopeLabel}
+
+Sibling conversations currently active in this same project:
+${siblingLines.join('\n')}
+
+Coordination rules:
+- Treat sibling conversations as separate workstreams.
+- Do NOT continue, finalize, or rewrite sibling work unless the user explicitly asks.
+- If the current request could conflict with an in_progress sibling stream, call out the conflict and ask the user how to sequence it.`
 }
 
 // Debug logger that doesn't override global fetch
@@ -1726,9 +1818,10 @@ Note: If recommended option, list it first with "(Recommended)" suffix.`,
           if (!permCheck.allowed && permCheck.reason === 'needs_approval') {
             // Request permission from user for non-safe commands
             const cmdClassification = classifyCommand(command)
+            const shortCmd = command.length > 50 ? command.slice(0, 50) + '...' : command
             const result = await requestPermission({
               toolName: 'execute_command',
-              action: `Run command`,
+              action: `Run: ${shortCmd}`,
               description: cmdClassification === 'destructive'
                 ? '⚠️ This command may make destructive changes to your system.'
                 : 'The AI wants to run this command.',
@@ -1932,6 +2025,7 @@ export function registerAIHandlers() {
 
       // Get soul learnings (the core differentiator!)
       const soulLearnings = formatSoulForContext()
+      const projectConversationContext = buildProjectConversationContext(params.conversationId)
 
       // Build the complete system prompt with persona, soul, memory, capabilities
       let systemPrompt = buildSystemPrompt(mode, {
@@ -1943,6 +2037,10 @@ export function registerAIHandlers() {
 
       // Add OS context after the main prompt
       systemPrompt += `\n\n${osContext}`
+
+      if (projectConversationContext) {
+        systemPrompt += `\n\n${projectConversationContext}`
+      }
 
       // Add artifact context if there are existing artifacts
       if (params.artifacts && params.artifacts.length > 0) {

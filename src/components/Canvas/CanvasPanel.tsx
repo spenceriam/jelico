@@ -192,17 +192,21 @@ export function CanvasPanel() {
     }
   }
 
-  // Determine current viewing revision
+  // Determine current viewing revision.
+  // When no explicit revision is selected, reflect the currently displayed artifact.
   const currentRevision = selectedRevisionId
     ? revisions.find(r => r.id === selectedRevisionId)
-    : revisions[revisions.length - 1]  // Latest
+    : displayArtifact
 
   const hasMultipleRevisions = revisions.length > 1
 
   return (
-    <div className="w-full h-full bg-bg-surface flex flex-col overflow-hidden" data-window-toggle="ignore">
+    <div
+      className="w-full h-full bg-bg-surface flex flex-col overflow-hidden app-font-exempt"
+      data-window-toggle="ignore"
+    >
       {/* Header */}
-      <div className="h-14 flex items-center justify-between px-4 border-b border-border flex-shrink-0">
+      <div className="h-14 flex items-center justify-between px-4 border-b border-border bg-bg-elevated flex-shrink-0">
         <div className="flex items-center gap-2 min-w-0 flex-1">
           {/* Artifact selector */}
           <div className="flex items-center gap-2 relative min-w-0" ref={dropdownRef}>
@@ -286,12 +290,12 @@ export function CanvasPanel() {
                     <button
                       key={rev.id}
                       onClick={() => {
-                        // Select null for latest, otherwise select the specific revision
-                        selectRevision(rev.id === revisions[revisions.length - 1].id ? null : rev.id)
+                        // Select null for the currently displayed base selection.
+                        selectRevision(rev.id === selectedArtifactId ? null : rev.id)
                         setRevisionDropdownOpen(false)
                       }}
                       className={`w-full flex items-center justify-between px-3 py-2 text-left hover:bg-bg-hover transition-colors ${
-                        (selectedRevisionId === rev.id || (!selectedRevisionId && rev.id === revisions[revisions.length - 1].id))
+                        (selectedRevisionId === rev.id || (!selectedRevisionId && rev.id === selectedArtifactId))
                           ? 'bg-bg-hover'
                           : ''
                       }`}
@@ -388,7 +392,25 @@ function ArtifactContent({ artifact }: { artifact: Artifact }) {
   const { updateArtifact } = useArtifactStore()
 
   const handleSave = async (content: string) => {
-    await updateArtifact(artifact.id, { content })
+    await updateArtifact(artifact.id, {
+      conversationId: artifact.conversationId,
+      content,
+    })
+  }
+
+  if (!artifact.content || artifact.content.length === 0) {
+    return (
+      <div className="h-full flex items-center justify-center p-8 text-center">
+        <div>
+          <h3 className="text-sm font-medium text-text-secondary mb-1">
+            Artifact content unavailable
+          </h3>
+          <p className="text-xs text-text-muted max-w-72">
+            This revision could not be loaded from disk. Select another revision or regenerate the artifact.
+          </p>
+        </div>
+      </div>
+    )
   }
 
   switch (artifact.type) {

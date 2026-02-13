@@ -284,7 +284,7 @@ contextBridge.exposeInMainWorld('jelico', {
       ipcRenderer.on(`ai:artifactPreview:${channelId}`, handler)
     },
     // Sub-agent artifact creation (artifact completed, add to store)
-    onSubAgentArtifact: (callback: (artifact: { type: string; title: string; content: string; language?: string; agentId: string; agentName: string }) => void) => {
+    onSubAgentArtifact: (callback: (artifact: { type: string; title: string; content: string; language?: string; agentId: string; agentName: string; conversationId?: string }) => void) => {
       const handler = (_: any, artifact: any) => callback(artifact)
       ipcRenderer.on('ai:artifact:fromSubAgent', handler)
       return () => ipcRenderer.removeListener('ai:artifact:fromSubAgent', handler)

@@ -121,27 +121,24 @@ export function WorkspaceSelector() {
     <div className="relative" ref={dropdownRef}>
       <button
         onClick={() => setDropdownOpen(!dropdownOpen)}
-        className="flex items-center gap-2 px-3 py-1.5 text-sm text-text-secondary hover:text-text-primary bg-bg-surface rounded-lg transition-colors"
+        className="flex items-center gap-[0.55em] px-[0.9em] py-[0.45em] text-sm leading-tight text-text-secondary hover:text-text-primary bg-bg-elevated rounded-lg transition-colors"
       >
         {activeWorkspace ? (
           <>
-            {activeWorkspace.isGit ? (
-              <GitBranch className="w-4 h-4 text-accent flex-shrink-0" />
+            {activeWorkspace.isWorktree ? (
+              <GitFork className="w-[1em] h-[1em] text-accent flex-shrink-0" />
+            ) : activeWorkspace.isGit ? (
+              <GitBranch className="w-[1em] h-[1em] text-accent flex-shrink-0" />
             ) : (
-              <Folder className="w-4 h-4 text-accent flex-shrink-0" />
+              <Folder className="w-[1em] h-[1em] text-accent flex-shrink-0" />
             )}
             <div className="flex flex-col items-start leading-tight">
               <span className="text-text-primary">{activeWorkspace.name}</span>
-              {activeWorkspace.gitBranch && (
-                <span className="text-xs text-text-muted">
-                  {activeWorkspace.gitBranch}
-                </span>
-              )}
             </div>
           </>
         ) : activeWorkspaceId ? (
           <>
-            <Folder className="w-4 h-4 text-accent flex-shrink-0" />
+            <Folder className="w-[1em] h-[1em] text-accent flex-shrink-0" />
             <div className="flex flex-col items-start leading-tight">
               <span className="text-text-primary">Workspace</span>
               <span className="text-xs text-text-muted">Loading...</span>
@@ -149,7 +146,7 @@ export function WorkspaceSelector() {
           </>
         ) : (
           <>
-            <Box className="w-4 h-4 text-accent flex-shrink-0" />
+            <Box className="w-[1em] h-[1em] text-accent flex-shrink-0" />
             <div className="flex flex-col items-start leading-tight">
               <span className="text-text-primary">Sandbox</span>
               {hasSandboxFiles && (
@@ -160,7 +157,7 @@ export function WorkspaceSelector() {
             </div>
           </>
         )}
-        <ChevronDown className="w-3 h-3 text-text-muted flex-shrink-0" />
+        <ChevronDown className="w-[0.8em] h-[0.8em] text-text-muted flex-shrink-0" />
       </button>
 
       {dropdownOpen && (
@@ -272,7 +269,9 @@ function WorkspaceItem({
         ${isActive ? 'text-accent' : 'text-text-primary'}
       `}
     >
-      {workspace.isGit ? (
+      {workspace.isWorktree ? (
+        <GitFork className="w-4 h-4 text-accent flex-shrink-0" />
+      ) : workspace.isGit ? (
         <GitBranch className="w-4 h-4 text-accent flex-shrink-0" />
       ) : (
         <Folder className="w-4 h-4 text-text-muted flex-shrink-0" />
@@ -282,10 +281,6 @@ function WorkspaceItem({
         <div className="truncate">{workspace.name}</div>
         <div className="text-xs text-text-faint truncate">{workspace.path}</div>
       </div>
-
-      {workspace.gitBranch && (
-        <span className="text-xs text-text-muted">{workspace.gitBranch}</span>
-      )}
 
       {isActive && <span className="ml-1">✓</span>}
 

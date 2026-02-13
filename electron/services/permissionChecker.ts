@@ -211,6 +211,35 @@ function getSessionKey(toolName: string, action: string, workspaceId?: string): 
   return `${toolName}:${action}:${workspaceId || 'global'}`
 }
 
+function getRememberedActionPattern(toolName: string, action: string): string {
+  if (toolName === 'write_file') {
+    return 'Write to:*'
+  }
+
+  if (toolName === 'execute_command') {
+    return 'Run:*'
+  }
+
+  const separatorIndex = action.indexOf(':')
+  if (separatorIndex !== -1) {
+    return `${action.slice(0, separatorIndex + 1)}*`
+  }
+
+  return action
+}
+
+function getSessionLookupKeys(toolName: string, action: string, workspaceId?: string): string[] {
+  const exactKey = getSessionKey(toolName, action, workspaceId)
+  const rememberedPattern = getRememberedActionPattern(toolName, action)
+
+  if (rememberedPattern === action) {
+    return [exactKey]
+  }
+
+  const wildcardKey = getSessionKey(toolName, rememberedPattern, workspaceId)
+  return [wildcardKey, exactKey]
+}
+
 /**
  * Check if an action is allowed without prompting
  */
@@ -247,17 +276,20 @@ export async function checkPermission(
   }
 
   // Check session permissions
-  const sessionKey = getSessionKey(toolName, description, workspaceId)
-  const sessionPermission = sessionPermissions.get(sessionKey)
-  if (sessionPermission === 'allow_always' || sessionPermission === 'allow_once') {
-    // Remove "allow_once" after use
-    if (sessionPermission === 'allow_once') {
-      sessionPermissions.delete(sessionKey)
+  const sessionKeys = getSessionLookupKeys(toolName, description, workspaceId)
+  const exactSessionKey = sessionKeys[sessionKeys.length - 1]
+  for (const sessionKey of sessionKeys) {
+    const sessionPermission = sessionPermissions.get(sessionKey)
+    if (sessionPermission === 'allow_always' || sessionPermission === 'allow_once') {
+      // Remove exact one-time grants after use, keep remembered wildcard grants.
+      if (sessionPermission === 'allow_once' && sessionKey === exactSessionKey) {
+        sessionPermissions.delete(sessionKey)
+      }
+      return { allowed: true, reason: 'session_permission' }
     }
-    return { allowed: true, reason: 'session_permission' }
-  }
-  if (sessionPermission === 'deny') {
-    return { allowed: false, reason: 'session_denied' }
+    if (sessionPermission === 'deny') {
+      return { allowed: false, reason: 'session_denied' }
+    }
   }
 
   // Check database for persistent permissions
@@ -327,10 +359,15 @@ export function handlePermissionResponse(
 
   pendingRequests.delete(requestId)
 
-  // Store in session if "allow_once" or save to session for this session
-  if (permission === 'allow_once') {
-    const sessionKey = getSessionKey(toolName, action, workspaceId)
-    sessionPermissions.set(sessionKey, 'allow_once')
+  const scopedAction = remember ? getRememberedActionPattern(toolName, action) : action
+
+  // Session grant scopes:
+  // - allow once: exact action unless user chose "remember in this session"
+  // - allow always (persisted): also store in session immediately to avoid race conditions
+  if (permission === 'allow_once' || (permission === 'allow_always' && remember)) {
+    const sessionKey = getSessionKey(toolName, scopedAction, workspaceId)
+    const sessionPermission: PermissionAction = permission === 'allow_always' ? 'allow_always' : 'allow_once'
+    sessionPermissions.set(sessionKey, sessionPermission)
   }
 
   pending.resolve({ permission, remembered: remember })

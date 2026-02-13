@@ -5,7 +5,7 @@
  * Shows: ✓ completed, ✗ failed, strikethrough cancelled, ◉ in_progress, ○ pending
  */
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useLayoutEffect, useRef } from 'react'
 import { ChevronDown, ChevronRight } from 'lucide-react'
 import { useTodoStore, TodoItem, TodoStatus } from '../../stores/todos'
 import { useClarificationStore } from '../../stores/clarification'
@@ -58,10 +58,15 @@ function TodoRow({ item, compact = false }: { item: TodoItem; compact?: boolean 
   )
 }
 
-export function TodoPanel() {
+interface TodoPanelProps {
+  onHeightChange?: (height: number) => void
+}
+
+export function TodoPanel({ onHeightChange }: TodoPanelProps) {
   const { todos, isVisible } = useTodoStore()
   const [isExpanded, setIsExpanded] = useState(false)
   const activeRequest = useClarificationStore((state) => state.activeRequest)
+  const panelRef = useRef<HTMLDivElement>(null)
 
   // Auto-collapse when clarification questions appear (focus user on answering)
   useEffect(() => {
@@ -72,7 +77,35 @@ export function TodoPanel() {
 
   // Don't render if no todos, not visible, or all tasks completed
   const allDone = todos.every(t => t.status === 'done' || t.status === 'cancelled' || t.status === 'failed')
-  if (!isVisible || todos.length === 0 || allDone) {
+  const shouldRender = isVisible && todos.length > 0 && !allDone
+
+  useEffect(() => {
+    if (!shouldRender) {
+      onHeightChange?.(0)
+    }
+  }, [shouldRender, onHeightChange])
+
+  useLayoutEffect(() => {
+    if (!shouldRender || !onHeightChange || !panelRef.current) return
+
+    const element = panelRef.current
+    const syncHeight = () => onHeightChange(element.offsetHeight)
+    syncHeight()
+
+    const observer = new ResizeObserver(() => {
+      syncHeight()
+    })
+    observer.observe(element)
+
+    const frame = requestAnimationFrame(syncHeight)
+
+    return () => {
+      cancelAnimationFrame(frame)
+      observer.disconnect()
+    }
+  }, [shouldRender, onHeightChange, isExpanded, todos.length])
+
+  if (!shouldRender) {
     return null
   }
 
@@ -89,7 +122,7 @@ export function TodoPanel() {
     : `${completedCount}/${todos.length}`
 
   return (
-    <div className="border border-border rounded-lg bg-bg-surface mb-4 overflow-hidden">
+    <div ref={panelRef} className="border border-border rounded-t-lg rounded-b-none bg-bg-surface overflow-hidden">
       {/* Header - always visible, clickable to expand */}
       <button
         onClick={() => setIsExpanded(!isExpanded)}

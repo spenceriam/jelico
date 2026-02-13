@@ -204,7 +204,7 @@ export function Message({
             )}
             {/* Show text content */}
             {hasContent && (
-              <p className="whitespace-pre-wrap">{message.content}</p>
+              <p className="whitespace-pre-wrap text-sm">{message.content}</p>
             )}
             {/* Show placeholder if completely empty (shouldn't happen) */}
             {!hasContent && !hasAttachments && (
@@ -267,22 +267,22 @@ export function Message({
           return <MarkdownCodeBlock language={match[1]} codeContent={codeContent} />
         },
         p: ({ children }) => (
-          <p className="mb-3 last:mb-0 text-text-primary leading-relaxed">
+          <p className="mb-3 last:mb-0 text-sm text-text-primary leading-relaxed">
             {children}
           </p>
         ),
         ul: ({ children }) => (
-          <ul className="list-disc list-inside mb-3 space-y-1 text-text-primary">
+          <ul className="list-disc list-inside mb-3 space-y-1 text-sm text-text-primary">
             {children}
           </ul>
         ),
         ol: ({ children }) => (
-          <ol className="list-decimal list-inside mb-3 space-y-1 text-text-primary">
+          <ol className="list-decimal list-inside mb-3 space-y-1 text-sm text-text-primary">
             {children}
           </ol>
         ),
         li: ({ children }) => (
-          <li className="text-text-primary">{children}</li>
+          <li className="text-sm text-text-primary">{children}</li>
         ),
         a: ({ children, href }) => (
           <a
@@ -310,7 +310,7 @@ export function Message({
           </h3>
         ),
         blockquote: ({ children }) => (
-          <blockquote className="border-l-2 border-accent pl-4 italic text-text-secondary my-3">
+          <blockquote className="border-l-2 border-accent pl-4 italic text-sm text-text-secondary my-3">
             {children}
           </blockquote>
         ),

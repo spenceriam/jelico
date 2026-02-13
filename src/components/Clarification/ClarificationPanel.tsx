@@ -9,6 +9,7 @@ import { useEffect, useState } from 'react'
 import { ChevronRight, Check, X } from 'lucide-react'
 import { useClarificationStore, type ClarificationQuestion } from '../../stores/clarification'
 import { useChatStore } from '../../stores/chat'
+import { useUIStore } from '../../stores/ui'
 
 // Single option row
 function OptionRow({
@@ -243,6 +244,7 @@ export function ClarificationPanel() {
     clearForConversation,
   } = useClarificationStore()
   const { isStreaming, activeConversationId, stopStreaming } = useChatStore()
+  const { sidebarCollapsed } = useUIStore()
   const [activeTab, setActiveTab] = useState(0)
   const [isSubmitting, setIsSubmitting] = useState(false)
 
@@ -291,7 +293,10 @@ export function ClarificationPanel() {
   }
 
   return (
-    <div className="fixed inset-0 z-[45] flex items-center justify-center bg-bg-void/80 backdrop-blur-sm p-4">
+    <div
+      className="fixed inset-y-0 right-0 z-[45] flex items-center justify-center bg-bg-void/80 backdrop-blur-sm p-4"
+      style={{ left: sidebarCollapsed ? 0 : '16rem' }}
+    >
       <div className="bg-bg-surface border border-border rounded-xl shadow-xl max-w-3xl w-full max-h-[88vh] overflow-hidden flex flex-col">
         {/* Header with topic */}
         <div className="px-4 py-3 border-b border-border bg-bg-elevated/50">

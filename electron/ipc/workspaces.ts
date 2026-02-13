@@ -12,6 +12,8 @@ interface WorkspaceConfig {
   name: string
   path: string
   isGit: boolean
+  isWorktree?: boolean
+  projectPath?: string
   gitBranch?: string
   createdAt: number
   updatedAt: number
@@ -23,25 +25,44 @@ function toConfig(row: any): WorkspaceConfig {
     name: row.name,
     path: row.path,
     isGit: row.is_git === 1,
+    isWorktree: row.is_worktree === 1,
+    projectPath: row.project_path || undefined,
     gitBranch: row.git_branch || undefined,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   }
 }
 
-async function isGitRepository(dirPath: string): Promise<{ isGit: boolean; branch?: string }> {
+function resolveGitPath(baseDir: string, value: string): string {
+  return path.isAbsolute(value) ? value : path.resolve(baseDir, value)
+}
+
+async function isGitRepository(
+  dirPath: string
+): Promise<{ isGit: boolean; isWorktree?: boolean; projectPath?: string; branch?: string }> {
   const gitDir = path.join(dirPath, '.git')
   const isGit = fs.existsSync(gitDir)
 
   if (!isGit) {
-    return { isGit: false }
+    return { isGit: false, projectPath: dirPath }
   }
 
   try {
-    const { stdout } = await execAsync('git rev-parse --abbrev-ref HEAD', { cwd: dirPath })
-    return { isGit: true, branch: stdout.trim() }
+    const [{ stdout: branchOut }, { stdout: gitDirOut }, { stdout: gitCommonDirOut }, { stdout: topLevelOut }] = await Promise.all([
+      execAsync('git rev-parse --abbrev-ref HEAD', { cwd: dirPath }),
+      execAsync('git rev-parse --git-dir', { cwd: dirPath }),
+      execAsync('git rev-parse --git-common-dir', { cwd: dirPath }),
+      execAsync('git rev-parse --show-toplevel', { cwd: dirPath }),
+    ])
+
+    const resolvedGitDir = resolveGitPath(dirPath, gitDirOut.trim())
+    const resolvedCommonDir = resolveGitPath(dirPath, gitCommonDirOut.trim())
+    const projectPath = resolveGitPath(dirPath, topLevelOut.trim())
+    const isWorktree = resolvedGitDir !== resolvedCommonDir
+
+    return { isGit: true, isWorktree, projectPath, branch: branchOut.trim() }
   } catch {
-    return { isGit: true }
+    return { isGit: true, projectPath: dirPath }
   }
 }
 
@@ -84,27 +105,59 @@ async function listBranches(repoPath: string): Promise<{ name: string; isRemote:
     const { stdout } = await execAsync('git branch -a --format="%(HEAD) %(refname:short)"', { cwd: repoPath })
     return stdout.split('\n').filter(Boolean).map(line => {
       const isCurrent = line.startsWith('*')
-      const name = line.substring(2).trim()
-      const isRemote = name.startsWith('remotes/') || name.includes('/')
-      return { name: name.replace('remotes/', ''), isRemote, isCurrent }
+      const rawName = line.substring(2).trim()
+      const isRemote = rawName.startsWith('remotes/')
+      const name = isRemote ? rawName.replace(/^remotes\//, '') : rawName
+      return { name, isRemote, isCurrent }
     })
   } catch {
     return []
   }
 }
 
+async function getPreferredWorktreeBaseRef(repoPath: string): Promise<string | null> {
+  const branches = await listBranches(repoPath)
+
+  const localBranches = new Set(
+    branches
+      .filter((branchInfo) => !branchInfo.isRemote)
+      .map((branchInfo) => branchInfo.name)
+  )
+  const remoteBranches = new Set(
+    branches
+      .filter((branchInfo) => branchInfo.isRemote)
+      .map((branchInfo) => branchInfo.name)
+  )
+
+  if (localBranches.has('main')) return 'main'
+  if (localBranches.has('master')) return 'master'
+  if (remoteBranches.has('origin/main')) return 'origin/main'
+  if (remoteBranches.has('origin/master')) return 'origin/master'
+
+  return null
+}
+
 async function createWorktree(repoPath: string, branch: string, targetPath: string): Promise<boolean> {
   try {
-    // Check if branch exists
+    // Check if local or remote branch exists
     const branches = await listBranches(repoPath)
-    const branchExists = branches.some(b => b.name === branch || b.name === `origin/${branch}`)
+    const localBranchExists = branches.some((branchInfo) => !branchInfo.isRemote && branchInfo.name === branch)
+    const remoteBranchExists = branches.some((branchInfo) => branchInfo.isRemote && branchInfo.name === `origin/${branch}`)
 
-    if (branchExists) {
-      // Use existing branch
+    if (localBranchExists) {
+      // Use existing local branch
       await execAsync(`git worktree add "${targetPath}" "${branch}"`, { cwd: repoPath })
+    } else if (remoteBranchExists) {
+      // Create local branch that tracks the remote branch.
+      await execAsync(`git worktree add -b "${branch}" "${targetPath}" "origin/${branch}"`, { cwd: repoPath })
     } else {
-      // Create new branch
-      await execAsync(`git worktree add -b "${branch}" "${targetPath}"`, { cwd: repoPath })
+      // Create a new branch from main/master when available; otherwise fallback to current HEAD.
+      const preferredBaseRef = await getPreferredWorktreeBaseRef(repoPath)
+      if (preferredBaseRef) {
+        await execAsync(`git worktree add -b "${branch}" "${targetPath}" "${preferredBaseRef}"`, { cwd: repoPath })
+      } else {
+        await execAsync(`git worktree add -b "${branch}" "${targetPath}"`, { cwd: repoPath })
+      }
     }
     return true
   } catch (err) {
@@ -124,9 +177,35 @@ async function removeWorktree(repoPath: string, worktreePath: string): Promise<b
 
 export function registerWorkspaceHandlers() {
   // List all workspaces
-  ipcMain.handle('workspaces:list', () => {
+  ipcMain.handle('workspaces:list', async () => {
     const workspaces = workspaceDb.list()
-    return workspaces.map(toConfig)
+
+    // Keep git metadata synchronized in case records were imported/stale.
+    const hydrated = await Promise.all(workspaces.map(async (workspace) => {
+      const gitInfo = await isGitRepository(workspace.path)
+      const nextIsGit = gitInfo.isGit ? 1 : 0
+      const nextIsWorktree = gitInfo.isWorktree ? 1 : 0
+      const nextProjectPath = gitInfo.projectPath || null
+      const nextBranch = gitInfo.branch || null
+
+      if (
+        workspace.is_git === nextIsGit &&
+        (workspace.is_worktree || 0) === nextIsWorktree &&
+        (workspace.project_path || null) === nextProjectPath &&
+        (workspace.git_branch || null) === nextBranch
+      ) {
+        return workspace
+      }
+
+      return workspaceDb.update(workspace.id, {
+        isGit: gitInfo.isGit,
+        isWorktree: gitInfo.isWorktree,
+        projectPath: gitInfo.projectPath,
+        gitBranch: gitInfo.branch,
+      }) || workspace
+    }))
+
+    return hydrated.map(toConfig)
   })
 
   // Get a specific workspace
@@ -161,6 +240,8 @@ export function registerWorkspaceHandlers() {
       // Update git info if changed
       workspaceDb.update(existing.id, {
         isGit: gitInfo.isGit,
+        isWorktree: gitInfo.isWorktree,
+        projectPath: gitInfo.projectPath,
         gitBranch: gitInfo.branch,
       })
       return toConfig(workspaceDb.get(existing.id)!)
@@ -171,6 +252,8 @@ export function registerWorkspaceHandlers() {
       name: folderName,
       path: folderPath,
       isGit: gitInfo.isGit,
+      isWorktree: gitInfo.isWorktree,
+      projectPath: gitInfo.projectPath,
       gitBranch: gitInfo.branch,
     })
 
@@ -196,6 +279,8 @@ export function registerWorkspaceHandlers() {
       name: folderName,
       path: input.path,
       isGit: gitInfo.isGit,
+      isWorktree: gitInfo.isWorktree,
+      projectPath: gitInfo.projectPath,
       gitBranch: gitInfo.branch,
     })
 
@@ -221,6 +306,8 @@ export function registerWorkspaceHandlers() {
     const gitInfo = await isGitRepository(workspace.path)
     const updated = workspaceDb.update(id, {
       isGit: gitInfo.isGit,
+      isWorktree: gitInfo.isWorktree,
+      projectPath: gitInfo.projectPath,
       gitBranch: gitInfo.branch,
     })
 
@@ -283,6 +370,8 @@ export function registerWorkspaceHandlers() {
       name: `${workspace.name} (${branch})`,
       path: worktreePath,
       isGit: gitInfo.isGit,
+      isWorktree: gitInfo.isWorktree,
+      projectPath: gitInfo.projectPath,
       gitBranch: gitInfo.branch,
     })
 
