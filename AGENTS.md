@@ -66,13 +66,14 @@ The Soul/Memory system should make Jelico increasingly personalized - it learns 
 ## Setup commands
 - Install dependencies: `npm install`
 - Start development server: `npm run dev` (Vite + Electron, check ports 5173/5174)
+- Start stable local app (no hot-reload): `npm run dev:stable`
 - Build for production: `npm run build`
 - Preview production build: `npm run preview`
 
 ## Project overview
 Jelico is an AI Productivity Desktop built with Electron, React, TypeScript, and Vite. It provides a frictionless AI assistant experience with multi-provider support (Anthropic, OpenAI, Google), workspace management, conversation persistence, and a soul/memory system that learns user patterns and preferences over time.
 
-**Current Version:** 0.16.2
+**Current Version:** 0.16.3
 
 **License:** GNU General Public License v3.0 (GPL-3.0-or-later)
 - See LICENSE file in project root

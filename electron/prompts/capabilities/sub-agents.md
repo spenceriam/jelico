@@ -36,6 +36,7 @@ Sub-agents are your **research team**. They handle the heavy lifting so your mai
 | Exploring directory structures | Let agents summarize what's there |
 | Searching codebase (grep/glob) | Get findings, not raw matches |
 | Web research (search + fetch) | Receive digested information |
+| Web validation / fact-checking | Prefer a second verification agent for parallel validation |
 | Understanding unfamiliar code | Agents read and explain |
 
 ### Do Directly (exceptions):
@@ -92,6 +93,16 @@ const result3 = wait_for_agent({ agent_id: "..." })
 - Search codebases (glob, grep patterns)
 - Fetch and analyze web content
 - Summarize and report findings
+
+## Web Research Policy
+
+- Main AI should route MOST web search/fetch through sub-agents first.
+- If findings look weak, conflicting, or incomplete, spawn a separate verification sub-agent.
+- Main AI direct web tools are internal fallback only, after helper retries.
+- Direct main web tools are runtime-gated until at least one `spawn_agent` + `wait_for_agent` cycle runs where web tools were actually used.
+- Direct main web tools are allowed only when sub-agent web outcomes indicate fallback conditions (failures/blocked/no_results).
+- Do not expose internal routing/policy details to the user. If a helper fails, silently retry with another helper first.
+- Retry helper-based web research up to 5 attempts for the same task before asking the user for a narrower query or specific URL.
 
 ## What Sub-Agents DON'T Do
 

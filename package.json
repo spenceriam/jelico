@@ -1,11 +1,13 @@
 {
   "name": "jelico",
-  "version": "0.16.2",
+  "version": "0.16.3",
   "description": "AI Productivity Desktop - Get stuff done. Frictionlessly.",
   "main": "dist-electron/main.js",
   "scripts": {
     "sync-icons": "node scripts/sync-build-icons.cjs",
     "dev": "vite",
+    "bundle": "npm run sync-icons && tsc && vite build",
+    "dev:stable": "npm run bundle && electron .",
     "build": "npm run sync-icons && tsc && vite build && electron-builder",
     "build:x64": "npm run sync-icons && tsc && vite build && electron-builder --x64",
     "build:arm64": "npm run sync-icons && tsc && vite build && electron-builder --arm64",
