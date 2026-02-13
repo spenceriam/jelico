@@ -725,6 +725,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
           ...projectStreamStateToActiveFields(streamState),
         }
       })
+      useTodoStore.getState().hydrateConversationFromMessages(id, loadedMessages)
       useTodoStore.getState().setConversationId(id)
       useClarificationStore.getState().setConversationId(id)
 
@@ -1448,11 +1449,13 @@ export const useChatStore = create<ChatStore>((set, get) => ({
         const assistantContent = fullContent && fullContent.trim().length > 0
           ? fullContent
           : (hasToolActivity ? 'Completed requested tool actions.' : 'No response text was returned.')
+        const assistantCreatedAt = streamSnapshot.streamingStartTime ?? streamStartedAt
 
         // Save assistant message with tool calls/results
         const assistantMessage = await window.jelico.conversations.addMessage(targetConversationId, {
           role: 'assistant',
           content: assistantContent,
+          createdAt: assistantCreatedAt,
           segments: streamSnapshot.streamingSegments.length > 0 ? streamSnapshot.streamingSegments : undefined,
           toolCalls: normalizedToolCalls.length > 0 ? normalizedToolCalls : undefined,
           toolResults: normalizedToolResults.length > 0 ? normalizedToolResults : undefined,
@@ -1707,6 +1710,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
       streamingToolCalls,
       streamingToolResults,
       streamingSegments,
+      streamingStartTime,
     } = streamState
 
     // Debug: Log what we have when stop is called
@@ -1772,10 +1776,12 @@ export const useChatStore = create<ChatStore>((set, get) => ({
 
     if (activeConversationId && (hasContent || hasToolCalls)) {
       try {
+        const partialCreatedAt = streamingStartTime ?? Date.now()
         // Save the partial response to the database
         const partialMessage = await window.jelico.conversations.addMessage(activeConversationId, {
           role: 'assistant',
           content: hasContent ? streamingContent : '(Stopped)',
+          createdAt: partialCreatedAt,
           segments: streamingSegments.length > 0 ? streamingSegments : undefined,
           toolCalls: hasToolCalls ? normalizedToolCalls : undefined,
           toolResults: normalizedToolResults.length > 0 ? normalizedToolResults : undefined,

@@ -319,6 +319,21 @@
   animation-duration: 0.8s;
 }
 
+/* Align the bottom chat status spinner with status text baseline */
+.status-line-loader {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1rem;
+  height: 1rem;
+}
+
+.status-line-loader::after {
+  display: block;
+  line-height: 1;
+  transform: translateY(0.5px);
+}
+
 .sidebar-conversation-row {
   background-repeat: no-repeat;
 }
@@ -333,6 +348,59 @@
   );
   background-size: 240% 240%;
   animation: sidebar-conversation-shimmer 4.6s ease-in-out infinite;
+}
+
+.tool-call-pill-processing {
+  background-repeat: no-repeat;
+  background-size: 240% 240%;
+  animation: sidebar-conversation-shimmer 4.6s ease-in-out infinite;
+}
+
+.tool-call-pill-processing-tone-0 {
+  background-image: linear-gradient(
+    135deg,
+    rgba(212, 165, 116, 0.03) 0%,
+    rgba(212, 165, 116, 0.18) 42%,
+    rgba(212, 165, 116, 0.05) 74%,
+    rgba(212, 165, 116, 0.03) 100%
+  );
+}
+
+.tool-call-pill-processing-tone-1 {
+  background-image: linear-gradient(
+    135deg,
+    rgba(232, 196, 154, 0.03) 0%,
+    rgba(232, 196, 154, 0.2) 42%,
+    rgba(232, 196, 154, 0.06) 74%,
+    rgba(232, 196, 154, 0.03) 100%
+  );
+}
+
+.tool-call-pill-processing-tone-2 {
+  background-image: linear-gradient(
+    135deg,
+    rgba(184, 134, 61, 0.03) 0%,
+    rgba(184, 134, 61, 0.2) 42%,
+    rgba(184, 134, 61, 0.06) 74%,
+    rgba(184, 134, 61, 0.03) 100%
+  );
+}
+
+.tool-call-pill-processing-tone-3 {
+  background-image: linear-gradient(
+    135deg,
+    rgba(221, 179, 132, 0.03) 0%,
+    rgba(221, 179, 132, 0.19) 42%,
+    rgba(221, 179, 132, 0.06) 74%,
+    rgba(221, 179, 132, 0.03) 100%
+  );
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tool-call-pill-processing {
+    animation: none;
+    background-size: 100% 100%;
+  }
 }
 
 .app-font-exempt {

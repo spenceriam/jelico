@@ -516,6 +516,7 @@ export const messageDb = {
   add(conversationId: string, message: MessageInput): MessageRow {
     const now = Date.now()
     const id = uuid()
+    const createdAt = message.createdAt ?? now
 
     const record: MessageRow = {
       id,
@@ -527,7 +528,7 @@ export const messageDb = {
       tool_results: message.toolResults,
       attachments: message.attachments,
       usage: message.usage,
-      created_at: now,
+      created_at: createdAt,
     }
 
     db.messages.push(record)
@@ -661,6 +662,7 @@ interface MessageRow {
 interface MessageInput {
   role: string
   content: string
+  createdAt?: number
   segments?: MessageSegmentRow[]
   toolCalls?: ToolCallRow[]
   toolResults?: ToolResultRow[]

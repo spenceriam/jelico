@@ -2,9 +2,10 @@ import { useState } from 'react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { Copy, Check, FileText, Image, File } from 'lucide-react'
-import { ToolCallDisplay, SingleToolCallDisplay, HIDDEN_TOOLS } from './ToolCallDisplay'
+import { ToolCallDisplay, SingleToolCallDisplay, HIDDEN_TOOLS, buildProcessingToneByToolCallId } from './ToolCallDisplay'
 import { MessageActions } from './MessageActions'
 import { MermaidInline } from '../Canvas/MermaidViewer'
+import { useAgentStore } from '../../stores/agents'
 import type { ToolCall, ToolResult, MessageUsage, MessageAttachment, StreamingSegment } from '../../stores/chat'
 
 interface MessageProps {
@@ -139,11 +140,18 @@ export function Message({
   // Use streaming tool calls if currently streaming, otherwise use saved tool calls
   const toolCalls = isStreaming ? streamingToolCalls : message.toolCalls
   const toolResults = isStreaming ? streamingToolResults : message.toolResults
+  const agents = useAgentStore((state) => state.agents)
   // Prefer live streaming segments while generating, otherwise use persisted segments from message history
   const segments = isStreaming ? streamingSegments : message.segments
   const normalizedContent = message.content === '(Used tools)' && ((toolCalls?.length || 0) > 0 || (toolResults?.length || 0) > 0)
     ? 'Completed requested tool actions.'
     : message.content
+  const processingToneByToolCallId = buildProcessingToneByToolCallId({
+    toolCalls: toolCalls || [],
+    toolResults: toolResults || [],
+    agents,
+    isStreaming,
+  })
 
   const handleCopy = async () => {
     try {
@@ -356,6 +364,7 @@ export function Message({
                       toolCall={toolCall}
                       toolResult={toolResult}
                       isStreaming={isStreaming}
+                      processingTone={processingToneByToolCallId.get(segment.toolCallId)}
                     />
                   )
                 }
