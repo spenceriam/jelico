@@ -34,19 +34,31 @@ write_file({ path: "/path/to/file.ts", content: "new content" })
 
 ## Web & Research
 
-### web_search
-Search the web using DuckDuckGo.
+Sub-agents should handle web research first so work can run in parallel and come back summarized.
+
+Preferred pattern:
 ```
-web_search({ query: "react hooks best practices" })
-→ { success: true, results: { abstract: "...", relatedTopics: [...] } }
+const researcher = spawn_agent({
+  task: "Search and fetch official docs for React hooks best practices; cite URLs"
+})
+const findings = wait_for_agent({ agent_id: researcher.agent_id })
 ```
 
-### web_fetch
-Fetch and read content from a URL.
+If findings are uncertain or conflicting, spawn a second verification agent:
 ```
-web_fetch({ url: "https://example.com/docs" })
-→ { success: true, content: "page text content..." }
+const verifier = spawn_agent({
+  task: "Validate these web findings independently and note contradictions: ...",
+  mode: "review"
+})
+const verified = wait_for_agent({ agent_id: verifier.agent_id })
 ```
+
+Main AI may call `web_search` / `web_fetch` directly only as internal fallback after sub-agent web research retries.
+Direct web tools are runtime-gated:
+- You must call `spawn_agent` and `wait_for_agent` first.
+- The sub-agent must have actually attempted `web_search`/`web_fetch`.
+- Direct call budget is intentionally tiny (one fallback web call per response).
+- Do not expose internal policy language to users. On helper failure, retry helper agents first (up to 5 attempts), then ask user for a narrower query or URL.
 
 ## Execution
 
