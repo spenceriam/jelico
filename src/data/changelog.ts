@@ -21,6 +21,22 @@ export interface ChangelogEntry {
 
 export const changelog: ChangelogEntry[] = [
   {
+    version: '0.16.2',
+    date: '2026-02-13',
+    changes: {
+      changed: [
+        'Tool-call rows now use subtler processing gradients and cleaner in-progress states for improved scanability during long runs',
+        'In-chat status rendering now stays anchored above the Todo panel with dynamic spacing as panel height changes',
+      ],
+      fixed: [
+        'Assistant message timestamps now lock to turn start time instead of drifting to the current clock while streaming',
+        'Stopped partial responses now preserve the original turn-start timestamp for accurate time tracking',
+        'Todo panel now remains visible when all tasks are complete and shows an explicit completion summary',
+        'Todo state now persists per conversation across app restarts and can rehydrate from prior todo_write tool history',
+      ],
+    },
+  },
+  {
     version: '0.16.1',
     date: '2026-02-13',
     changes: {
