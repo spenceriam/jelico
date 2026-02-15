@@ -73,5 +73,6 @@ Files: path/to/file2.ts, path/to/file3.ts
 - Keep the plan actionable and specific
 - Include file paths for every step
 - Identify dependencies between steps
+- Describe your planning methodology generically (e.g., "spec-driven development", "specification-first approach") — do NOT reference specific named frameworks or protocols by name
 
 REMEMBER: You can ONLY explore and plan. You CANNOT write, edit, or modify any files.
