@@ -258,6 +258,10 @@ contextBridge.exposeInMainWorld('jelico', {
       const handler = (_: any, agent: any) => callback(agent)
       ipcRenderer.on(`ai:spawnAgent:${channelId}`, handler)
     },
+    onOrphanedAgents: (channelId: string, callback: (data: { count: number; agentIds: string[] }) => void) => {
+      const handler = (_: any, data: any) => callback(data)
+      ipcRenderer.on(`ai:orphanedAgents:${channelId}`, handler)
+    },
     onModeSwitch: (channelId: string, callback: (data: { fromMode: string; toMode: string; reason: string }) => void) => {
       const handler = (_: any, data: any) => callback(data)
       ipcRenderer.on(`ai:modeSwitch:${channelId}`, handler)
@@ -326,6 +330,7 @@ contextBridge.exposeInMainWorld('jelico', {
       ipcRenderer.removeAllListeners(`ai:toolResults:${channelId}`)
       ipcRenderer.removeAllListeners(`ai:artifact:${channelId}`)
       ipcRenderer.removeAllListeners(`ai:spawnAgent:${channelId}`)
+      ipcRenderer.removeAllListeners(`ai:orphanedAgents:${channelId}`)
       ipcRenderer.removeAllListeners(`ai:agentProgress:${channelId}`)
       ipcRenderer.removeAllListeners(`ai:updateArtifact:${channelId}`)
       ipcRenderer.removeAllListeners(`ai:todos:${channelId}`)
