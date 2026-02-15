@@ -124,11 +124,22 @@ export const useProviderStore = create<ProviderStore>((set, get) => ({
         activeProviderId: id,
         activeModel: provider.defaultModel,
       })
+      // Persist: same method as Settings — update the provider's defaultModel in the database
+      window.jelico.providers.update(id, { defaultModel: provider.defaultModel }).catch((err) => {
+        console.warn('[Providers] Failed to persist active provider:', err)
+      })
     }
   },
 
   setActiveModel: (model) => {
     set({ activeModel: model })
+    // Persist: save the model to the active provider's defaultModel in the database
+    const { activeProviderId } = get()
+    if (activeProviderId && model) {
+      window.jelico.providers.update(activeProviderId, { defaultModel: model }).catch((err) => {
+        console.warn('[Providers] Failed to persist active model:', err)
+      })
+    }
   },
 
   testConnection: async (id) => {
