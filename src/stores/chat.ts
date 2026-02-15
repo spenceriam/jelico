@@ -1337,6 +1337,18 @@ export const useChatStore = create<ChatStore>((set, get) => ({
       })
     })
 
+    // Handle orphaned agents notification (agents spawned but never awaited by the model)
+    window.jelico.ai.onOrphanedAgents(channelId, (data) => {
+      console.warn(`[Chat Store] ${data.count} orphaned agent(s) detected - results auto-collected:`, data.agentIds)
+      // Mark orphaned agents in the agent store so UI can indicate auto-collection
+      const agentStore = useAgentStore.getState()
+      for (const agentId of data.agentIds) {
+        agentStore.updateAgent(agentId, {
+          status: 'completed',
+        })
+      }
+    })
+
     // Handle mode switch events (Auto mode transitions)
     window.jelico.ai.onModeSwitch(channelId, (data) => {
       get().handleModeSwitch(data.fromMode as AgentMode, data.toMode as AgentMode, data.reason)
@@ -1804,13 +1816,29 @@ export const useChatStore = create<ChatStore>((set, get) => ({
 
     const normalizedToolResults = [...streamingToolResults, ...interruptedToolResults]
 
+    // Build context about active agents so the next turn knows what was happening
+    const conversationAgents = useAgentStore.getState().getAgentsByConversation(activeConversationId)
+    const activeAgentSummaries = conversationAgents
+      .filter(a => a.status === 'running' || a.status === 'pending' || a.status === 'completed')
+      .map(a => {
+        const statusLabel = a.status === 'completed' ? 'finished' : 'was in progress'
+        const errorNote = a.error ? ` (error: ${a.error})` : ''
+        return `- ${a.displayName || a.name}: ${a.task.slice(0, 120)}${a.task.length > 120 ? '...' : ''} [${statusLabel}${errorNote}]`
+      })
+
+    // Build the content to save, appending agent context if any agents were active
+    let savedContent = hasContent ? streamingContent : '(Stopped)'
+    if (activeAgentSummaries.length > 0) {
+      savedContent += `\n\n[Context from interrupted turn — ${activeAgentSummaries.length} sub-agent(s) were active when the user stopped this response:\n${activeAgentSummaries.join('\n')}\nThe user interrupted to send a new message. Continue from where things left off.]`
+    }
+
     if (activeConversationId && (hasContent || hasToolCalls)) {
       try {
         const partialCreatedAt = streamingStartTime ?? Date.now()
         // Save the partial response to the database
         const partialMessage = await window.jelico.conversations.addMessage(activeConversationId, {
           role: 'assistant',
-          content: hasContent ? streamingContent : '(Stopped)',
+          content: savedContent,
           createdAt: partialCreatedAt,
           segments: streamingSegments.length > 0 ? streamingSegments : undefined,
           toolCalls: hasToolCalls ? normalizedToolCalls : undefined,
