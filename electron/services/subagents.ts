@@ -1018,11 +1018,11 @@ function getSubAgentTools(
 
   // Web search tool - always available
   tools.web_search = tool({
-    description: `Search the web for information using the active provider's web capabilities.`,
+    description: `Search the web for information. This is your PRIMARY tool for web research tasks.`,
     parameters: z.object({
-      query: z.string().optional().describe('The search query'),
-      queries: z.array(z.string()).optional().describe('Alternative: array of search queries'),
-    }).passthrough(),
+      query: z.string().describe('The search query'),
+      queries: z.array(z.string()).optional().describe('Optional additional search queries to try'),
+    }),
     execute: async (args) => {
       const candidateQueries = Array.from(
         new Set(
@@ -1222,37 +1222,33 @@ function getSubAgentTools(
   // NOTE: Sub-agents do NOT have create_artifact - main AI creates artifacts directly
   // This eliminates the complexity of sub-agent artifact creation and coordination
 
-  // Report progress tool - always available
-  // Allows sub-agent to self-report status updates to the main AI and user
+  // Report progress tool - optional status updates, NOT a primary work tool
   if (agentContext) {
     tools.report_progress = tool({
-      description: `Report your current progress to the main AI and user. THIS IS ONLY A STATUS UPDATE - you must continue working on your task after calling this.
-
-## IMPORTANT
-- This tool ONLY reports status - it does NOT complete your task
-- After calling this, you MUST continue with your actual work
-- Your task is NOT done until you've created/delivered your output
-
-## When to Use
-Call this tool at natural checkpoints:
-- When starting a new phase of work
-- After completing a significant step
-- Before a potentially long-running operation
-- Every 2-3 tool calls for complex tasks
-
-## Example Flow
-1. report_progress("Starting research", "setup")
-2. ... call web_search, read_file, etc. to do actual work ...
-3. report_progress("Analyzing results", "analysis")
-4. ... continue until task is actually complete with a summary ...`,
+      description: `Optional: send a brief status update to the user. Only call AFTER you have already used a work tool (web_search, read_file, etc.). Never call this as your first action.`,
       parameters: z.object({
-        message: z.string().describe('Brief description of what you are currently doing (e.g., "Building the navigation component")'),
-        phase: z.string().optional().describe('Optional work phase (e.g., "setup", "building", "testing", "finishing")'),
+        message: z.string().describe('Brief status message'),
+        phase: z.string().optional().describe('Work phase (e.g., "research", "analysis", "finishing")'),
       }),
       execute: async ({ message, phase }) => {
         const agent = activeAgents.get(agentContext.agentId)
         if (!agent) {
           return { success: false, error: 'Agent not found' }
+        }
+
+        // Check if agent has done any real work before allowing progress reports
+        const hasRealWork = agent.toolCalls.some(tc =>
+          tc.name !== 'report_progress'
+        )
+
+        if (!hasRealWork) {
+          // Agent is calling report_progress before doing any real work
+          // Return a strong directive to use actual tools
+          agent.lastActivityAt = Date.now()
+          console.log(`[SubAgents] ${agent.displayName} called report_progress with NO prior work - redirecting`)
+          return {
+            error: 'BLOCKED: You must use a work tool (web_search, read_file, search_files, web_fetch, list_directory) BEFORE reporting progress. Call one of those tools now.',
+          }
         }
 
         // Create progress update
@@ -1275,7 +1271,7 @@ Call this tool at natural checkpoints:
 
         return {
           reported: true,
-          note: 'Status update received. NOW CONTINUE WORKING - your task is not complete until you deliver the actual output (create artifact, write file, etc.)',
+          note: 'Continue working on your task.',
         }
       },
     })
@@ -1681,6 +1677,11 @@ async function runSubAgent(agentId: string): Promise<void> {
       // A polished apology without tool execution should be retried.
       const isPrematureResearchWithoutWork = taskIsResearch && taskNeedsWebResearch && !hasActualWork
       const MIN_WEB_QUERY_ATTEMPTS = 3
+      // Agent may research via filesystem (read_file, list_directory, search_files) instead of web.
+      // If it did filesystem research AND produced quality output, that's a valid strategy — not shallow.
+      const hasFilesystemResearch = agent.toolCalls.some(tc =>
+        ['read_file', 'list_directory', 'search_files'].includes(tc.name)
+      )
       const isPrematureShallowWebResearch =
         taskIsResearch &&
         taskNeedsWebResearch &&
@@ -1688,7 +1689,8 @@ async function runSubAgent(agentId: string): Promise<void> {
         !hasSearchBlocked &&
         !hasSearchResults &&
         webFetchCalls.length === 0 &&
-        totalWebQueryAttempts < MIN_WEB_QUERY_ATTEMPTS
+        totalWebQueryAttempts < MIN_WEB_QUERY_ATTEMPTS &&
+        !(hasFilesystemResearch && hasTextResponse)
 
       // New: Detect if agent is struggling with tools (many failures, few successes)
       const isStrugglingWithTools = toolErrors > 2 && toolSuccesses === 0 && !hasTextResponse
@@ -1714,6 +1716,9 @@ async function runSubAgent(agentId: string): Promise<void> {
       }
 
       const MAX_AUTO_CONTINUE_ATTEMPTS = 5
+      // Fail faster when agent is completely stuck (only calling report_progress)
+      // These agents will never recover — no point burning through 5 attempts
+      const MAX_NO_WORK_ATTEMPTS = 2
       const needsRetry =
         isPrematureNoOutput ||
         isPrematureMissingDeliverable ||
@@ -1725,15 +1730,31 @@ async function runSubAgent(agentId: string): Promise<void> {
       if (needsRetry) {
         agent.autoContinueAttempts++
 
-        if (agent.autoContinueAttempts > MAX_AUTO_CONTINUE_ATTEMPTS) {
-          // Too many attempts - fail the agent silently (don't mention attempt count to user)
+        // Fast-fail for agents that have never done any real work
+        const effectiveLimit = (isPrematureNoOutput && !hasActualWork)
+          ? MAX_NO_WORK_ATTEMPTS
+          : MAX_AUTO_CONTINUE_ATTEMPTS
+
+        if (agent.autoContinueAttempts > effectiveLimit) {
+          // Too many attempts - fail with a user-friendly error that includes the reason
           agent.status = 'failed'
-          agent.error = `Agent could not complete the task. Main AI should handle this directly.`
+          const userReason = isPrematureNoOutput
+            ? 'Agent never executed research tools'
+            : isPrematureResearchWithoutWork
+            ? 'Agent did not perform meaningful research'
+            : isPrematureShallowWebResearch
+            ? `Web research was too shallow (${totalWebQueryAttempts} queries attempted)`
+            : isStrugglingWithTools
+            ? `Tool errors: ${agent.toolFailures.slice(-2).map(f => f.toolName).join(', ')}`
+            : isPrematureNoSummary
+            ? 'Agent completed work but failed to produce a summary'
+            : 'Agent did not produce required output'
+          agent.error = userReason
           agent.completedAt = Date.now()
           agent.lastActivityAt = Date.now()
           notifyProgress(agentId, agent)
-          // Log detailed reason for debugging (not shown to user)
-          const reason = isPrematureNoOutput
+          // Log detailed reason for debugging
+          const debugReason = isPrematureNoOutput
             ? `called report_progress ${agent.toolCalls.length} time(s) but never did actual work`
             : isPrematureResearchWithoutWork
             ? `research task produced text but did not execute any meaningful research tools`
@@ -1744,7 +1765,7 @@ async function runSubAgent(agentId: string): Promise<void> {
             : isPrematureNoSummary
             ? `did work but never provided quality summary (score: ${outputQuality.score})`
             : `task required file output but agent never produced output`
-          console.error(`[SubAgents] ${agent.name} failed after ${MAX_AUTO_CONTINUE_ATTEMPTS} attempts: ${reason}`)
+          console.error(`[SubAgents] ${agent.name} failed after ${effectiveLimit} attempts: ${debugReason}`)
           return
         }
 
@@ -1810,16 +1831,15 @@ You must keep digging before concluding:
 
 Do not stop after a single weak/no-result pass. Continue now.`
         } else if (isPrematureNoOutput) {
-          reminderContent = `You called report_progress but then stopped. report_progress is NOT completion - it's just a status update.
+          reminderContent = `You did not use any work tools. Your task: ${agent.task}
 
-Your task: ${agent.task}
+Call one of these tools NOW:
+- web_search (for web research)
+- read_file (for code/file analysis)
+- web_fetch (for URL content)
+- search_files (to find files)
 
-REQUIRED ACTION:
-1. Actually DO the work (use web_search, read_file, etc.)
-2. Complete the task
-3. Provide a comprehensive summary of your findings
-
-Continue working NOW.`
+Then write a text summary of your findings.`
         } else {
           reminderContent = `You ended without producing the required output.
 
@@ -1838,7 +1858,7 @@ This task requires you to create a file or artifact. Complete the work now.`
         runSubAgent(agentId).catch((error) => {
           console.error(`[SubAgents] Error auto-continuing agent ${agentId}:`, error)
           agent.status = 'failed'
-          agent.error = `Agent encountered an error. Main AI should handle this directly.`
+          agent.error = `Agent encountered an unexpected error during retry`
           agent.completedAt = Date.now()
           notifyProgress(agentId, agent)
         })
@@ -1980,110 +2000,34 @@ function buildSubAgentSystemPrompt(
   workspacePath?: string,
   siblingContext?: string
 ): string {
-  let prompt = `You are ${name}, a focused research sub-agent.
+  let prompt = `You are ${name}, a research sub-agent.
 
-Your task: ${task}
+## YOUR TASK
+${task}
 
-## CRITICAL: You MUST Output Text (NON-NEGOTIABLE)
+## IMMEDIATE FIRST ACTION
+Start by calling a work tool RIGHT NOW. Do NOT call report_progress first.
+- For web research: call \`web_search\` with your query
+- For code analysis: call \`read_file\` or \`search_files\`
+- For URL content: call \`web_fetch\`
 
-**After using ANY tools, you MUST write a detailed text response (at least 100 words).**
+## WORKFLOW
+1. Call work tools (web_search, read_file, web_fetch, search_files, list_directory)
+2. Do at least 2 search passes for web research (broad then focused)
+3. Write a detailed text summary of your findings (100+ words)
 
-❌ WRONG: Call web_search → [end turn with no text]
-❌ WRONG: Call report_progress + web_search → [end turn with no text]
-❌ WRONG: Output just "Done" or "I searched for X"
+## RULES
+- The main AI ONLY sees your text output, not your tool results
+- You MUST write a text summary after using tools or you have FAILED
+- Do NOT create artifacts — the main AI handles that
+- If stuck, try a different approach before giving up
+- Work efficiently — you have ~5 minutes
 
-✅ RIGHT: Call tools → Write detailed summary of findings
-
-**The main AI CANNOT see your tool results.** They only see your text output.
-If you use tools but don't write text summarizing what you found, you have FAILED.
-
-## Your Role
-
-You are a RESEARCH agent. Your job is to gather information and report findings.
-- Read files, search codebases, fetch web content
-- Analyze and summarize what you find IN TEXT
-- Return clear, actionable findings to the main AI
-
-**You do NOT create artifacts.** The main AI handles all artifact creation.
-
-## Guidelines
-- Stay focused on your assigned task
-- **ALWAYS output substantial text summarizing your work** (REQUIRED!)
-- Report progress so the user knows you're working
-- Complete your research fully before finishing
-- For web research tasks: do at least two search passes before concluding
-  - Pass 1: broad phrasing to cast a wide net
-  - Pass 2: focused phrasing (site filters, exact terms, repo/path hints)
-  - If pass 1 is weak/no-result, reformulate and keep digging
-
-## Progress Reporting
-
-Use \`report_progress\` at checkpoints to show status (but this is NOT your final output):
-- \`report_progress({ message: "Reading config files", phase: "research" })\`
-- \`report_progress({ message: "Analyzing component structure", phase: "analysis" })\`
-
-**report_progress is NOT completion!** After reporting progress, you must CONTINUE working and eventually output your findings as text.
-
-## Your Final Response (REQUIRED)
-
-After doing research, you MUST write a substantial text response with:
-1. **Summary** - Key findings in 2-3 sentences
-2. **Details** - Relevant specifics the main AI needs
-3. **Recommendations** - If applicable, what should be done next
-
-**If you don't write this summary, you have FAILED your task.**
-
-## Communication with Main AI
-
-### Asking Questions
-If you need clarification or have a question:
-1. Provide any partial work or context you have so far
-2. Write [QUESTION] followed by your question
-3. The main AI will respond and you can continue
-
-Example:
-"I've analyzed the code structure and found 3 potential approaches.
-[QUESTION] Should I prioritize performance or readability for this refactor?"
-
-### Requesting Capabilities
-If you need a tool or capability you don't have:
-1. Explain what you've tried or why you need it
-2. Write [REQUEST] followed by what you need
-3. The main AI may grant it, do it for you, or provide alternatives
-
-Example:
-"I found the files that need updating but I don't have write access.
-[REQUEST] Write access to update src/config.ts
-- What: Need to modify the API endpoint configuration
-- Why: Current endpoint is deprecated
-- Alternative: I can provide the exact changes for you to apply"
-
-Only ask when truly necessary - try to complete the task autonomously when possible.
-
-## Time Management & Graceful Completion
-
-The main AI has a timeout waiting for you (typically 5 minutes). Work efficiently:
-
-**Before timeout runs out:**
-- If you sense time pressure, prioritize delivering a working result over perfection
-- For artifacts: A complete but simple version is better than an incomplete complex one
-- For research: Key findings first, details second
-
-**If your task is complex:**
-- Focus on the core requirement first
-- Add enhancements only after the basics work
-- Document what you completed vs. what remains
-
-**If you encounter errors:**
-- Try an alternative approach before giving up
-- If stuck, return what you have with a clear explanation
-- Don't loop infinitely on the same error
-
-**Your final response should include:**
-1. What you accomplished (be specific)
-2. Any artifacts created (title and brief description)
-3. Limitations or known issues (if any)
-4. Suggestions for next steps (if the task isn't fully complete)
+## OUTPUT FORMAT
+After research, write:
+1. **Summary** — Key findings in 2-3 sentences
+2. **Details** — Specifics the main AI needs
+3. **Recommendations** — What should be done next (if applicable)
 `
 
   // Add sibling context if provided
