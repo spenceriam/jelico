@@ -57,6 +57,7 @@ import {
   normalizeWebProviderType,
   type WebProviderRuntime,
 } from '../services/webAdapter'
+import { scanWorkspaceSpecs, formatSpecContext } from '../services/specScanner'
 
 // Start orphan cleanup on module load
 startOrphanCleanup()
@@ -139,6 +140,8 @@ const KNOWLEDGE_MATCHERS: KnowledgeMatch[] = [
   { keywords: /\b(pr|pull request|code review|review pr)\b/i, category: 'agents', name: 'pr-review' },
   // Planning
   { keywords: /\b(plan|architect|design|roadmap|strategy)\b/i, category: 'agents', name: 'plan' },
+  // Spec-driven development (intentionally specific to avoid false positives on casual "spec" usage)
+  { keywords: /\b(specification\s?doc|project\sspec|prd|requirements?\sdoc|create\s(a\s)?spec|write\s(a\s)?spec|spec[\s-]driven|new\sproject\splan|project\sstructure)\b/i, category: 'capabilities', name: 'spec-driven' },
   // Tools
   { keywords: /\b(read_file|write_file|execute_command|web_search|tool)\b/i, category: 'capabilities', name: 'tools' },
 ]
@@ -421,6 +424,8 @@ function getBuiltInTools(
     workspacePath?: string
     conversationId?: string
     resetActivityTimeout?: () => void  // Allows blocking tools to keep stream alive
+    spawnedAgentIds: Set<string>  // Track spawned agent IDs for orphan detection
+    awaitedAgentIds: Set<string>  // Track awaited agent IDs for orphan detection
   },
   toolTracker: Map<string, ToolExecution>,
   sendArtifact?: (artifact: any) => void,
@@ -517,14 +522,56 @@ function getBuiltInTools(
       return { retry: false, reason: 'not_web_research_task' }
     }
 
-    if (result.timedOut || status.status === 'failed') {
-      return { retry: true, reason: 'agent_failed_or_timed_out' }
+    // Circuit breaker: if agent only called report_progress and never did real work,
+    // a retry agent will likely do the same thing. Don't amplify the failure.
+    const toolCalls = status.toolCalls || []
+    const onlyCalledReportProgress = toolCalls.length > 0 &&
+      toolCalls.every((tc) => tc.name === 'report_progress')
+    if (onlyCalledReportProgress) {
+      return { retry: false, reason: 'agent_only_called_report_progress_no_retry' }
     }
 
-    const webCalls = (status.toolCalls || []).filter((toolCall) =>
+    if (result.timedOut) {
+      return { retry: true, reason: 'agent_timed_out' }
+    }
+
+    if (status.status === 'failed') {
+      // Only retry failed agents if they actually attempted some work
+      const hasAnyResearchCalls = toolCalls.some((tc) =>
+        tc.name === 'web_search' || tc.name === 'web_fetch' ||
+        tc.name === 'read_file' || tc.name === 'search_files' ||
+        tc.name === 'list_directory'
+      )
+      if (!hasAnyResearchCalls) {
+        return { retry: false, reason: 'agent_failed_without_research_work' }
+      }
+      // If agent did filesystem research (read_file, list_directory, search_files) but
+      // no web calls, a retry agent will likely do the same thing. Don't amplify.
+      const hasWebCalls = toolCalls.some((tc) =>
+        tc.name === 'web_search' || tc.name === 'web_fetch'
+      )
+      const hasFilesystemCalls = toolCalls.some((tc) =>
+        tc.name === 'read_file' || tc.name === 'search_files' || tc.name === 'list_directory'
+      )
+      if (hasFilesystemCalls && !hasWebCalls) {
+        return { retry: false, reason: 'agent_used_filesystem_not_web_no_retry' }
+      }
+      return { retry: true, reason: 'agent_failed_with_some_work' }
+    }
+
+    const webCalls = toolCalls.filter((toolCall) =>
       toolCall.name === 'web_search' || toolCall.name === 'web_fetch'
     )
+    // If the agent did filesystem research instead of web calls and produced output,
+    // that's a valid research strategy — don't retry just because there were no web calls.
     if (webCalls.length === 0) {
+      const hasFilesystemWork = toolCalls.some((tc) =>
+        tc.name === 'read_file' || tc.name === 'search_files' || tc.name === 'list_directory'
+      )
+      const hasOutput = result.result && result.result.trim().length > 50
+      if (hasFilesystemWork && hasOutput) {
+        return { retry: false, reason: 'filesystem_research_with_output_sufficient' }
+      }
       return { retry: true, reason: 'no_web_tool_calls_made' }
     }
 
@@ -833,10 +880,13 @@ CRITICAL: You MUST call wait_for_agent before finishing your response.`,
             })
           }
 
+          // Track this agent as spawned for orphan detection
+          streamContext.spawnedAgentIds.add(agentId)
+
           return {
             success: true,
             agent_id: agentId,
-            message: `Agent "${agentName}" spawned. You MUST call wait_for_agent("${agentId}") to get results before finishing.`,
+            message: `Agent "${agentName}" spawned. You MUST call wait_for_agent("${agentId}") to get results before finishing. WARNING: If you do not call wait_for_agent, the agent's results will be auto-collected but you will lose the ability to synthesize them into your response.`,
           }
         } catch (error: any) {
           // Handle agent limit exceeded error
@@ -955,6 +1005,9 @@ If the agent created an artifact:
           }
         }
 
+        // Track this agent as awaited for orphan detection
+        streamContext.awaitedAgentIds.add(agent_id)
+
         const resolvedAgentId = resolveWaitAgentId(agent_id)
         if (!resolvedAgentId) {
           const activeIds = getSubAgentsForStream(streamContext.channelId)
@@ -968,6 +1021,8 @@ If the agent created an artifact:
         }
 
         if (resolvedAgentId !== agent_id) {
+          // Also track the resolved ID
+          streamContext.awaitedAgentIds.add(resolvedAgentId)
           console.warn(`[AI] wait_for_agent corrected agent_id "${agent_id}" -> "${resolvedAgentId}"`)
         }
 
@@ -2373,6 +2428,19 @@ ${artifactList}
 When the user asks to modify, update, fix, or improve an existing artifact, use the \`update_artifact\` tool with the artifact's ID instead of creating a new one.`
       }
 
+      // Scan workspace for spec/planning documents and inject context
+      if (params.workspacePath) {
+        try {
+          const specResult = await scanWorkspaceSpecs(params.workspacePath)
+          const specContext = formatSpecContext(specResult, mode)
+          if (specContext) {
+            systemPrompt += `\n\n${specContext}`
+          }
+        } catch (err) {
+          console.warn('[AI] Spec scanner error (non-fatal):', err)
+        }
+      }
+
       // Load contextual knowledge based on user's message (silent reference injection)
       const contextualKnowledge = getContextualKnowledge(params.messages)
       if (contextualKnowledge) {
@@ -2427,6 +2495,8 @@ If you find yourself frequently hitting limits, suggest breaking the task into m
         workspacePath: params.workspacePath,
         conversationId: params.conversationId,  // Track which conversation this stream belongs to
         resetActivityTimeout, // Allow blocking tools like wait_for_agent to keep stream alive
+        spawnedAgentIds: new Set<string>(),  // Track spawned agent IDs for orphan detection
+        awaitedAgentIds: new Set<string>(),  // Track awaited agent IDs for orphan detection
       }
       const tools = getBuiltInTools(mode, streamContext, toolTracker, sendArtifact, sendSpawnAgent, sendUpdateArtifact, sendModeSwitch, sendTodos, getTodos)
 
@@ -3016,15 +3086,84 @@ If you find yourself frequently hitting limits, suggest breaking the task into m
             console.warn('[AI] Could not extract token counts from usage:', usageObj)
           }
 
-          // Check for running sub-agents that weren't waited for
-          const activeAgents = getSubAgentsForStream(channelId)
-          const runningAgents = activeAgents.filter(a => a.status === 'running' || a.status === 'pending')
+          // === Orphan Detection: Identify spawned agents that were never awaited ===
+          const allStreamAgents = getSubAgentsForStream(channelId)
+          const orphanedAgentIds = new Set<string>()
 
-          // If there are running agents, wait for them with appropriate timeout
-          if (runningAgents.length > 0 && !abortController.signal.aborted) {
-            for (const agent of runningAgents) {
+          // Compare spawned vs awaited sets to find orphaned agents
+          for (const id of streamContext.spawnedAgentIds) {
+            if (!streamContext.awaitedAgentIds.has(id)) {
+              orphanedAgentIds.add(id)
+            }
+          }
+
+          // Also catch any running/pending agents not in our tracking (edge case safety)
+          for (const agent of allStreamAgents) {
+            if ((agent.status === 'running' || agent.status === 'pending') &&
+                !streamContext.awaitedAgentIds.has(agent.id)) {
+              orphanedAgentIds.add(agent.id)
+            }
+          }
+
+          // Collect results from orphaned agents
+          const collectedOrphanResults: Array<{
+            id: string
+            name: string
+            task: string
+            result: string | null
+            error: string | null
+            artifacts: Array<{ title: string; type: string }>
+          }> = []
+
+          if (orphanedAgentIds.size > 0 && !abortController.signal.aborted) {
+            console.warn(`[AI] Detected ${orphanedAgentIds.size} orphaned agent(s) (spawned but never awaited). Auto-collecting results...`)
+
+            // Notify UI about orphaned agents
+            event.sender.send(`ai:orphanedAgents:${channelId}`, {
+              count: orphanedAgentIds.size,
+              agentIds: Array.from(orphanedAgentIds),
+            })
+
+            for (const agentId of orphanedAgentIds) {
+              const agent = allStreamAgents.find(a => a.id === agentId)
               try {
-                // Use 2-minute timeout per agent - complex tasks like artifact generation need time
+                // If agent is still running/pending, wait for it
+                if (agent && (agent.status === 'running' || agent.status === 'pending')) {
+                  await waitForSubAgent(agentId, 120000)
+                }
+                // Get final status and collect results
+                const status = getSubAgentStatus(agentId)
+                collectedOrphanResults.push({
+                  id: agentId,
+                  name: agent?.displayName || agent?.name || agentId,
+                  task: agent?.task || 'unknown',
+                  result: status.result || null,
+                  error: status.error || null,
+                  artifacts: (status.createdArtifacts || []).map(a => ({ title: a.title, type: a.type })),
+                })
+              } catch (e: any) {
+                console.warn(`[AI] Failed to collect results from orphaned agent ${agentId}:`, e.message)
+                collectedOrphanResults.push({
+                  id: agentId,
+                  name: agent?.displayName || agent?.name || agentId,
+                  task: agent?.task || 'unknown',
+                  result: null,
+                  error: e.message || 'Failed to collect results',
+                  artifacts: [],
+                })
+              }
+            }
+          }
+
+          // Also wait for any remaining running agents that WERE awaited but may still be running
+          // (e.g. agents still finishing after wait_for_agent timed out earlier)
+          const stillRunningAgents = allStreamAgents.filter(a =>
+            (a.status === 'running' || a.status === 'pending') &&
+            !orphanedAgentIds.has(a.id)
+          )
+          if (stillRunningAgents.length > 0 && !abortController.signal.aborted) {
+            for (const agent of stillRunningAgents) {
+              try {
                 await waitForSubAgent(agent.id, 120000)
               } catch (e) {
                 console.warn(`[AI] Failed to wait for agent ${agent.name}:`, e)
@@ -3036,16 +3175,39 @@ If you find yourself frequently hitting limits, suggest breaking the task into m
           // Summary is needed if: tool calls happened AND not much text after last tool
           // Also generate summary if sub-agents were used to ensure artifacts are announced
           const hasTextAfterTools = textAfterLastToolResult.trim().length > 50
-          const usedSubAgents = activeAgents.length > 0
+          const usedSubAgents = allStreamAgents.length > 0
+          const hasOrphanedResults = collectedOrphanResults.length > 0
 
-          // Generate summary if tools were used OR sub-agents were spawned (to announce artifacts)
-          if ((hadAnyToolCalls || usedSubAgents) && !hasTextAfterTools && !abortController.signal.aborted) {
+          // Build collected orphan results context for summary inclusion
+          let orphanResultsContext = ''
+          if (hasOrphanedResults) {
+            orphanResultsContext = '\n\n## Auto-Collected Agent Results\n' +
+              'The following agents were spawned but not explicitly awaited. Their results were automatically collected:\n\n' +
+              collectedOrphanResults.map(r => {
+                const header = `### ${r.name}\n**Task:** ${r.task}`
+                if (r.error) return `${header}\n**Error:** ${r.error}`
+                const artifactInfo = r.artifacts.length > 0
+                  ? `\n**Artifacts:** ${r.artifacts.map(a => `${a.title} (${a.type})`).join(', ')}`
+                  : ''
+                // Truncate very long results to keep summary manageable
+                const truncatedResult = r.result && r.result.length > 2000
+                  ? r.result.slice(0, 2000) + '\n...(truncated)'
+                  : (r.result || 'No result returned')
+                return `${header}${artifactInfo}\n**Result:**\n${truncatedResult}`
+              }).join('\n\n')
+          }
+
+          // Generate summary if:
+          // 1. Tools were used and AI didn't write much text after (normal case)
+          // 2. OR orphaned agent results need to be surfaced (ALWAYS, even if AI wrote text)
+          if (((hadAnyToolCalls || usedSubAgents) && !hasTextAfterTools && !abortController.signal.aborted) ||
+              (hasOrphanedResults && !abortController.signal.aborted)) {
 
             // Build proper context with actual tool results and sub-agent artifacts
             const toolContext = buildToolContext(toolTracker)
 
             // Collect artifacts created by sub-agents
-            const subAgentArtifacts = activeAgents
+            const subAgentArtifacts = allStreamAgents
               .filter(a => a.createdArtifacts && a.createdArtifacts.length > 0)
               .flatMap(a => a.createdArtifacts.map(art => ({ ...art, agentName: a.displayName })))
 
@@ -3062,19 +3224,33 @@ If you find yourself frequently hitting limits, suggest breaking the task into m
                 summaryAbort.abort()
               }, 30000)
 
-              const summaryResult = await streamText({
-                model: provider.chat(modelId),
-                system: `You just executed tools and/or used sub-agents to help the user. Now provide a clear, helpful summary:
+              // Adjust summary prompt based on whether we have orphaned results
+              const summarySystemPrompt = hasOrphanedResults
+                ? `You just executed tools and/or used sub-agents to help the user. Some agents were spawned but their results were not collected during the main response. Their results have been auto-collected and are included below.
+
+Provide a clear, helpful summary:
+1. What was accomplished (briefly)
+2. Key results or findings from ALL agents (including auto-collected ones)
+3. Artifacts created (if any) - mention they're visible in the Canvas
+4. Note that some agent results were auto-collected (the user should know)
+5. Next steps if applicable
+
+Be concise but informative. The user needs to understand what happened and see the research findings.`
+                : `You just executed tools and/or used sub-agents to help the user. Now provide a clear, helpful summary:
 1. What was accomplished (briefly)
 2. Key results or findings
 3. Artifacts created (if any) - mention they're visible in the Canvas
 4. Any issues encountered
 5. Next steps if applicable
 
-Be concise but informative. The user needs to understand what happened.`,
+Be concise but informative. The user needs to understand what happened.`
+
+              const summaryResult = await streamText({
+                model: provider.chat(modelId),
+                system: summarySystemPrompt,
                 messages: [
                   ...messages,
-                  { role: 'assistant', content: `I executed the following:\n\n${toolContext}${artifactSummary}` },
+                  { role: 'assistant', content: `I executed the following:\n\n${toolContext}${artifactSummary}${orphanResultsContext}` },
                   { role: 'user', content: 'Please summarize what you did and the results.' },
                 ],
                 abortSignal: summaryAbort.signal,
@@ -3112,10 +3288,18 @@ Be concise but informative. The user needs to understand what happened.`,
               }
             } catch (summaryError: any) {
               console.warn('[AI] Failed to generate summary:', summaryError.message)
-              // Send a fallback message with tool results and artifacts
+              // Send a fallback message with tool results, artifacts, and orphan results
               let fallbackSummary = `---\n**Task Complete**\n${buildToolContext(toolTracker)}`
               if (subAgentArtifacts.length > 0) {
                 fallbackSummary += `\n\n**Artifacts Created:**\n${subAgentArtifacts.map(a => `- ${a.title} (${a.type})`).join('\n')}\n\nCheck the Canvas panel to view.`
+              }
+              if (hasOrphanedResults) {
+                fallbackSummary += `\n\n**Auto-Collected Agent Results:**\n` +
+                  collectedOrphanResults.map(r => {
+                    if (r.error) return `- **${r.name}**: Error - ${r.error}`
+                    const resultPreview = r.result ? r.result.slice(0, 500) + (r.result.length > 500 ? '...' : '') : 'No result'
+                    return `- **${r.name}** (${r.task}): ${resultPreview}`
+                  }).join('\n')
               }
               if (totalStreamedTextLength > 0) {
                 const hasDoubleNewline = streamedTextTail.endsWith('\n\n')
@@ -3132,7 +3316,7 @@ Be concise but informative. The user needs to understand what happened.`,
           // Some providers occasionally end after tools without returning assistant text.
           // Emit a small fallback so the renderer doesn't persist an opaque placeholder.
           if (!abortController.signal.aborted && totalStreamedTextLength === 0) {
-            const usedToolsOrAgents = toolTracker.size > 0 || activeAgents.length > 0
+            const usedToolsOrAgents = toolTracker.size > 0 || allStreamAgents.length > 0
             const fallbackText = usedToolsOrAgents
               ? 'Completed requested tool actions.'
               : 'No response text was returned. Please retry.'
