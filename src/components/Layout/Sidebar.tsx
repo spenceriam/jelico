@@ -98,8 +98,22 @@ export function Sidebar() {
   const { workspaces, activeWorkspaceId, setActiveWorkspace } = useWorkspaceStore()
   const { artifacts, selectArtifact, openCanvas } = useArtifactStore()
   const updateAvailable = useUpdateStore((state) => state.info?.isUpdateAvailable)
-  // Track which project groups are expanded
-  const [expandedProjects, setExpandedProjects] = useState<Set<string>>(new Set())
+  // Track which project groups are expanded (persisted to localStorage)
+  const SIDEBAR_COLLAPSED_KEY = 'jelico:sidebar:collapsed-groups'
+  const [expandedProjects, setExpandedProjects] = useState<Set<string>>(() => {
+    // On mount, we don't know which groups exist yet — start empty.
+    // The auto-expand effect will populate from persisted state.
+    return new Set<string>()
+  })
+  // IDs of groups the user has explicitly collapsed (persisted)
+  const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(() => {
+    try {
+      const stored = localStorage.getItem(SIDEBAR_COLLAPSED_KEY)
+      return stored ? new Set(JSON.parse(stored)) : new Set()
+    } catch {
+      return new Set()
+    }
+  })
   // Track which conversations have their artifact trees expanded
   const [expandedConversations, setExpandedConversations] = useState<Set<string>>(new Set())
   // Transfer dialog state
@@ -176,14 +190,14 @@ export function Sidebar() {
     ]
   }, [conversations, workspaceById])
 
-  // Auto-expand project groups the first time they appear
+  // Auto-expand project groups the first time they appear, respecting persisted collapsed state
   useEffect(() => {
     setExpandedProjects((prev) => {
       const next = new Set(prev)
       let changed = false
 
       for (const group of projectGroups) {
-        if (!next.has(group.id)) {
+        if (!next.has(group.id) && !collapsedGroups.has(group.id)) {
           next.add(group.id)
           changed = true
         }
@@ -191,7 +205,7 @@ export function Sidebar() {
 
       return changed ? next : prev
     })
-  }, [projectGroups])
+  }, [projectGroups, collapsedGroups])
 
   // Auto-expand artifact tree for active conversation
   useEffect(() => {
@@ -209,7 +223,7 @@ export function Sidebar() {
   const getArtifactsForConversation = (convId: string) =>
     artifacts.filter((a) => a.conversationId === convId)
 
-  // Toggle project group expansion
+  // Toggle project group expansion (persists collapsed state to localStorage)
   const toggleProject = (projectId: string) => {
     setExpandedProjects((prev) => {
       const next = new Set(prev)
@@ -218,6 +232,19 @@ export function Sidebar() {
       } else {
         next.add(projectId)
       }
+      return next
+    })
+    // Persist collapsed state
+    setCollapsedGroups((prev) => {
+      const next = new Set(prev)
+      if (next.has(projectId)) {
+        next.delete(projectId) // expanding → remove from collapsed
+      } else {
+        next.add(projectId) // collapsing → add to collapsed
+      }
+      try {
+        localStorage.setItem(SIDEBAR_COLLAPSED_KEY, JSON.stringify([...next]))
+      } catch { /* localStorage full or unavailable */ }
       return next
     })
   }

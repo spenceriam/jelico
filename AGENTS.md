@@ -73,7 +73,7 @@ The Soul/Memory system should make Jelico increasingly personalized - it learns 
 ## Project overview
 Jelico is an AI Productivity Desktop built with Electron, React, TypeScript, and Vite. It provides a frictionless AI assistant experience with multi-provider support (Anthropic, OpenAI, Google), workspace management, conversation persistence, and a soul/memory system that learns user patterns and preferences over time.
 
-**Current Version:** 0.16.3
+**Current Version:** 0.17.0
 
 **License:** GNU General Public License v3.0 (GPL-3.0-or-later)
 - See LICENSE file in project root
@@ -238,11 +238,14 @@ System prompts are loaded from markdown files in `electron/prompts/`:
 electron/prompts/
 ├── core/
 │   └── persona.md       # Jelico's personality and behavior guidelines
-└── capabilities/
-    ├── sub-agents.md    # Sub-agent delegation and orchestration
-    ├── artifacts.md     # Artifact creation documentation
-    ├── sandbox.md       # Per-conversation sandbox behavior
-    └── tools.md         # Tool reference guide
+├── capabilities/
+│   ├── sub-agents.md    # Sub-agent delegation and orchestration
+│   ├── artifacts.md     # Artifact creation documentation
+│   ├── sandbox.md       # Per-conversation sandbox behavior
+│   ├── spec-driven.md   # Spec-driven development guidance
+│   └── tools.md         # Tool reference guide
+└── agents/
+    └── plan.md          # Plan mode agent reference
 ```
 
 **Functions in `electron/lib/modes.ts`:**
@@ -600,6 +603,25 @@ Per-conversation sandbox for file creation when no workspace is selected.
 - "Allow cross-conversation sandbox search" toggle in Settings > General > Sandbox
 - Disabled by default
 - Warning that AI only searches when explicitly requested
+
+## Spec-Driven Development
+
+Jelico automatically scans workspaces for project specification documents and injects them as AI context.
+
+**How it works:**
+1. On each message, `scanWorkspaceSpecs()` scans the workspace root and common doc directories (`docs/`, `specs/`, `.specs/`, `planning/`, etc.)
+2. Detected spec files are prioritized: high (`*spec*`, `*prd*`, `*requirements*`, `*architecture*`), medium (`*plan*`, `*roadmap*`, `*overview*`), low (`README.md`, `TODO.md`)
+3. Spec content is injected into the system prompt within a 4000-char budget
+4. In **Plan mode** with an empty workspace, the AI offers to create specs; in **Auto mode** it does not push documentation
+
+**Contextual keyword matcher:**
+- Fires on specific phrases: "specification doc", "project spec", "create a spec", "spec-driven", etc.
+- Loads `capabilities/spec-driven.md` guidance which instructs the AI to **ask before creating** specs
+
+**Files:**
+- `electron/services/specScanner.ts` - Workspace scanning and content formatting
+- `electron/prompts/capabilities/spec-driven.md` - AI guidance for spec workflows
+- `electron/ipc/ai.ts` - Integration point in system prompt pipeline
 
 ## Todo System (AI Task Tracking)
 

@@ -87,6 +87,8 @@ const result3 = wait_for_agent({ agent_id: "..." })
 
 **NEVER finish your response without collecting all agent results.**
 
+> **WARNING:** If you call `spawn_agent` but forget to call `wait_for_agent`, the system will auto-collect results after your response ends. However, you will have **lost the opportunity** to synthesize those findings into your response. The user will see a generic auto-collected summary instead of your thoughtful analysis. Always call `wait_for_agent` for every `spawn_agent` call.
+
 ## What Sub-Agents Do
 
 - Read files and directories

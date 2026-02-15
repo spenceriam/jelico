@@ -21,6 +21,31 @@ export interface ChangelogEntry {
 
 export const changelog: ChangelogEntry[] = [
   {
+    version: '0.17.0',
+    date: '2026-02-14',
+    changes: {
+      added: [
+        'Spec-driven development framework: workspace scanner detects project specs and injects them as AI context, with new-project guidance in Plan mode',
+        'Sidebar collapsed groups now persist across app restarts via localStorage',
+        'Provider and model selection now persists across restarts when changed from the chat header',
+        'Orphan sub-agent detection and cleanup to prevent leaked background agents',
+      ],
+      changed: [
+        'Artifact filenames shortened to ~33 characters max with 20-char slug cap and word-boundary-aware truncation',
+        'Sub-agent system prompt restructured to be concise and directive, preventing report_progress-only loops',
+        'Sub-agent retry logic now recognizes filesystem-only research as valid work instead of forcing web retries',
+        'Spec-driven keyword matcher uses precise phrases to avoid false positives on casual usage',
+      ],
+      fixed: [
+        'Sub-agents no longer get stuck calling only report_progress — rate-limiting blocks it until real work tools are used',
+        'Double-retry amplification eliminated with circuit breaker for failed agents without research work',
+        'Stopped streams now preserve sub-agent context so follow-up messages have continuity',
+        'Artifact canvas now auto-recovers when files are renamed on disk by searching for the 8-char ID suffix',
+        'Generic methodology guidance added to plan/persona prompts to avoid referencing user-specific framework names',
+      ],
+    },
+  },
+  {
     version: '0.16.3',
     date: '2026-02-13',
     changes: {

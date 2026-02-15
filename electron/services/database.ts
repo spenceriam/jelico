@@ -724,11 +724,57 @@ function hasPersistedArtifactContent(artifact: ArtifactRow): boolean {
   return typeof artifact.content === 'string' && artifact.content.length > 0
 }
 
+/**
+ * Try to recover a renamed artifact file by searching the same directory
+ * for a file whose name ends with the artifact's 8-char ID suffix.
+ * Returns the new path if found, null otherwise.
+ */
+function recoverRenamedArtifact(artifact: ArtifactRow): string | null {
+  if (!artifact.file_path) return null
+
+  const dir = path.dirname(artifact.file_path)
+  const ext = path.extname(artifact.file_path)
+  const shortId = artifact.id.toLowerCase().replace(/[^a-z0-9]/g, '').slice(0, 8)
+
+  try {
+    if (!fs.existsSync(dir)) return null
+    const files = fs.readdirSync(dir)
+    const match = files.find(f => {
+      const base = path.basename(f, path.extname(f))
+      return base.endsWith(shortId) && path.extname(f) === ext
+    })
+    if (match) {
+      const recovered = path.join(dir, match)
+      console.log(`[ArtifactFiles] Recovered renamed artifact: ${artifact.file_path} -> ${recovered}`)
+      return recovered
+    }
+  } catch {
+    // Directory unreadable — skip recovery
+  }
+
+  return null
+}
+
 function hydrateArtifactContent(artifact: ArtifactRow): ArtifactRow | null {
   if (artifact.file_path && artifactFileExists(artifact.file_path)) {
     const content = readArtifactFile(artifact.file_path)
     if (content !== null && content.length > 0) {
       return { ...artifact, content }
+    }
+  }
+
+  // File missing at stored path — try to recover by ID suffix match
+  if (artifact.file_path && !artifactFileExists(artifact.file_path)) {
+    const recovered = recoverRenamedArtifact(artifact)
+    if (recovered) {
+      // Update the stored path in the database so future loads are instant
+      artifact.file_path = recovered
+      saveDb()
+
+      const content = readArtifactFile(recovered)
+      if (content !== null && content.length > 0) {
+        return { ...artifact, content }
+      }
     }
   }
 

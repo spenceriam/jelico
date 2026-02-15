@@ -82,6 +82,7 @@ interface Window {
       onToolCallUpdate: (channelId: string, callback: (update: ToolCallUpdateEvent) => void) => void
       onArtifact: (channelId: string, callback: (artifact: ArtifactEvent) => void) => void
       onSpawnAgent: (channelId: string, callback: (agent: SpawnAgentEvent) => void) => void
+      onOrphanedAgents: (channelId: string, callback: (data: OrphanedAgentsEvent) => void) => void
       onModeSwitch: (channelId: string, callback: (data: ModeSwitchEvent) => void) => void
       onAgentProgress: (channelId: string, callback: (update: AgentProgressEvent) => void) => void
       onUpdateArtifact: (channelId: string, callback: (update: ArtifactUpdateEvent) => void) => void
@@ -344,6 +345,11 @@ interface SpawnAgentEvent {
   displayName?: string  // Friendly name like "Maya: Creating Wordle"
   task: string
   mode: 'auto' | 'explore' | 'execute' | 'plan' | 'review'
+}
+
+interface OrphanedAgentsEvent {
+  count: number
+  agentIds: string[]
 }
 
 interface ModeSwitchEvent {

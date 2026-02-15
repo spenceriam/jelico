@@ -193,15 +193,26 @@ export function getArtifactExtension(type: string, language: string | null): str
  * - Limit length
  */
 export function sanitizeFilename(title: string): string {
-  return title
+  const MAX_SLUG_LENGTH = 20 // + 9-char separator+ID + extension ≈ 33 chars max
+
+  let slug = title
     .toLowerCase()
     .trim()
     .replace(/\s+/g, '-')           // Replace spaces with hyphens
     .replace(/[^a-z0-9\-_.]/g, '')  // Remove special characters
     .replace(/-+/g, '-')            // Collapse multiple hyphens
     .replace(/^-|-$/g, '')          // Remove leading/trailing hyphens
-    .slice(0, 100)                  // Limit length
-    || 'untitled'                   // Fallback if empty
+
+  if (slug.length > MAX_SLUG_LENGTH) {
+    slug = slug.slice(0, MAX_SLUG_LENGTH)
+    // Trim at last word boundary to avoid cut-off words like "feasibili"
+    const lastHyphen = slug.lastIndexOf('-')
+    if (lastHyphen > MAX_SLUG_LENGTH / 2) {
+      slug = slug.slice(0, lastHyphen)
+    }
+  }
+
+  return slug || 'untitled'
 }
 
 /**
@@ -220,9 +231,9 @@ export function getArtifactFilePath(
   const conversationPath = getConversationArtifactsPath(conversationId, workspacePath)
   const ext = getArtifactExtension(type, language)
 
-  // Always include artifact ID in filename to guarantee uniqueness across
-  // artifacts with the same title in the same directory.
-  const safeId = artifactId.toLowerCase().replace(/[^a-z0-9-]/g, '')
+  // Include a short ID suffix for uniqueness across artifacts with the same title.
+  // 8 hex chars (4 billion values) is plenty unique within a single directory.
+  const safeId = artifactId.toLowerCase().replace(/[^a-z0-9]/g, '').slice(0, 8)
   const baseName = title ? sanitizeFilename(title) : 'artifact'
   const filename = `${baseName}-${safeId}`
 
