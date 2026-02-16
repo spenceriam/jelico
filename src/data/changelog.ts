@@ -21,6 +21,26 @@ export interface ChangelogEntry {
 
 export const changelog: ChangelogEntry[] = [
   {
+    version: '0.18.0',
+    date: '2026-02-16',
+    changes: {
+      added: [
+        'Added a mandatory Full Execute acknowledgment dialog when switching into Full Execute mode',
+        'Assistant turn footer now shows mode and model metadata before completion timing',
+      ],
+      changed: [
+        'Renamed Execute to Full Execute in user-facing UI while keeping the internal execute identifier for compatibility',
+        'Mode order is now consistent across selectors and shortcuts: Auto, Full Execute, Plan, Explore, Review',
+        'New unsent chats now reset to the saved default mode preference (or Auto when unset)',
+        'Mode selection visuals now keep persistent accent highlighting with clearer change-state animation',
+      ],
+      fixed: [
+        'Full Execute permission bypass now applies only while execute mode is active for that stream and no longer changes global Allow All session state',
+        'Mode rail corners now render correctly with rounded top corners on welcome/new-chat view and flat top edges in active chat view',
+      ],
+    },
+  },
+  {
     version: '0.17.0',
     date: '2026-02-14',
     changes: {

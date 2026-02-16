@@ -17,6 +17,8 @@ export interface MessageUsage {
   totalTokens: number
   tokensPerSecond?: number
   durationMs?: number
+  mode?: AgentMode
+  model?: string
 }
 
 export interface MessageAttachment {
@@ -204,6 +206,45 @@ const INLINE_TOOL_CALL_END_TOKEN = '<|tool_call_end|>'
 const WORKTREE_MENTION_REGEX = /\b(work[\s-]?tree|git[\s-]?work[\s-]?tree|git tree)\b/i
 const WORKTREE_MENTION_COOLDOWN_MS = 5 * 60 * 1000
 const worktreeGuidanceByConversation = new Map<string, { planningShown: boolean; lastMentionAt: number }>()
+const DEFAULT_MODE_PREFERENCE_KEY = 'defaultMode'
+const AGENT_MODES: AgentMode[] = ['auto', 'execute', 'plan', 'explore', 'review']
+const FULL_EXECUTE_CONFIRM_MESSAGE = [
+  'Enable Full Execute?',
+  '',
+  'Full Execute runs actions without per-action permission prompts while this mode is active.',
+  'Use this only in environments you trust (for example, a sandbox, VM, or disposable workspace).',
+  'You are responsible for actions taken in this mode.',
+].join('\n')
+
+function isAgentMode(value: unknown): value is AgentMode {
+  return typeof value === 'string' && AGENT_MODES.includes(value as AgentMode)
+}
+
+async function getPreferredDefaultMode(): Promise<AgentMode> {
+  if (typeof window === 'undefined' || !window.jelico?.soul?.getPreference) {
+    return 'auto'
+  }
+
+  try {
+    const preference = await window.jelico.soul.getPreference(DEFAULT_MODE_PREFERENCE_KEY)
+    return isAgentMode(preference?.value) ? preference.value : 'auto'
+  } catch (error) {
+    console.warn('[Chat Store] Failed to load default mode preference, falling back to auto:', error)
+    return 'auto'
+  }
+}
+
+function isModeTransitionAllowed(currentMode: AgentMode, nextMode: AgentMode): boolean {
+  if (nextMode !== 'execute' || currentMode === 'execute') {
+    return true
+  }
+
+  if (typeof window === 'undefined' || typeof window.confirm !== 'function') {
+    return true
+  }
+
+  return window.confirm(FULL_EXECUTE_CONFIRM_MESSAGE)
+}
 
 function inferWorktreeBranchType(text: string): 'feat' | 'fix' | 'refactor' | 'docs' | 'test' | 'chore' {
   const value = text.toLowerCase()
@@ -704,6 +745,9 @@ export const useChatStore = create<ChatStore>((set, get) => ({
     }
 
     if (!id) {
+      const preferredMode = await getPreferredDefaultMode()
+      const currentMode = get().mode
+
       set({
         activeConversationId: null,
         messages: [],
@@ -717,6 +761,16 @@ export const useChatStore = create<ChatStore>((set, get) => ({
       // New Chat: keep current workspace selection (user can switch to Sandbox explicitly)
       // No conversation = no artifacts to show
       useArtifactStore.getState().closeCanvas()
+
+      // Reset fresh unsent chats to the user's saved default mode (auto when unset).
+      if (preferredMode === 'execute') {
+        get().setMode('execute')
+        if (get().mode !== 'execute' && currentMode !== 'auto') {
+          set({ mode: 'auto' })
+        }
+      } else if (preferredMode !== currentMode) {
+        set({ mode: preferredMode })
+      }
       return
     }
 
@@ -839,9 +893,9 @@ export const useChatStore = create<ChatStore>((set, get) => ({
     if (skillMatch) {
       finalContent = skillMatch.skill.prompt.replace('{{context}}', skillMatch.context)
       if (skillMatch.skill.mode) {
-        finalMode = skillMatch.skill.mode
-        // Temporarily set mode for this message
-        set({ mode: finalMode })
+        // Route skill mode changes through the same mode guard.
+        get().setMode(skillMatch.skill.mode)
+        finalMode = get().mode
       }
     }
 
@@ -1475,6 +1529,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
         : totalDurationMs
 
       try {
+        const completedMode = get().mode
         // Calculate tokens per second using actual generation time
         let usage: Message['usage'] = undefined
         if (stats?.usage) {
@@ -1488,6 +1543,8 @@ export const useChatStore = create<ChatStore>((set, get) => ({
             totalTokens: stats.usage.totalTokens,
             tokensPerSecond,
             durationMs: totalDurationMs,
+            mode: completedMode,
+            model,
           }
         }
 
@@ -1931,12 +1988,18 @@ export const useChatStore = create<ChatStore>((set, get) => ({
     }
   },
 
-  setMode: (mode) => set({ mode }),
+  setMode: (mode) => {
+    const currentMode = get().mode
+    if (mode === currentMode) return
+    if (!isModeTransitionAllowed(currentMode, mode)) return
+    set({ mode })
+  },
 
   setModeTransitioning: (transitioning) => set({ modeTransitioning: transitioning }),
 
   handleModeSwitch: (_fromMode, toMode, reason) => {
     const { modes } = require('../lib/modes') as { modes: Record<AgentMode, { name: string }> }
+    const modeBefore = get().mode
 
     // Cancel any pending mode transition timeout to prevent orphaned callbacks
     if (modeTransitionTimeoutId) {
@@ -1944,8 +2007,13 @@ export const useChatStore = create<ChatStore>((set, get) => ({
       modeTransitionTimeoutId = null
     }
 
+    get().setMode(toMode)
+    const modeAfter = get().mode
+    if (modeAfter !== toMode || modeAfter === modeBefore) {
+      return
+    }
+
     set({
-      mode: toMode,
       modeTransitioning: true,
       modeSwitchReason: `Switching to ${modes[toMode].name}: ${reason}`,
     })

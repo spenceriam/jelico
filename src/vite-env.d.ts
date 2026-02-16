@@ -286,6 +286,8 @@ interface MessageUsageData {
   totalTokens: number
   tokensPerSecond?: number
   durationMs?: number
+  mode?: 'auto' | 'explore' | 'execute' | 'plan' | 'review'
+  model?: string
 }
 
 interface StreamParams {

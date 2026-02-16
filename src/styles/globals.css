@@ -203,6 +203,31 @@
     animation: shimmer 2s linear infinite;
   }
 
+  @keyframes mode-selection-sweep {
+    0% {
+      background-position: 180% 0;
+      opacity: 0;
+    }
+    12% {
+      opacity: 0.45;
+    }
+    100% {
+      background-position: -180% 0;
+      opacity: 0;
+    }
+  }
+
+  .mode-selection-sweep {
+    background-image: linear-gradient(
+      110deg,
+      transparent 20%,
+      var(--accent-bright) 50%,
+      transparent 80%
+    );
+    background-size: 220% 100%;
+    animation: mode-selection-sweep 0.85s ease-out 1;
+  }
+
   /* Pulsing dots animation - staggered for wave effect */
   @keyframes pulse-dot {
     0%, 100% {
