@@ -2,7 +2,11 @@ import { useEffect, useState, useRef } from 'react'
 import { modes, cycleMode, type AgentMode } from '../../lib/modes'
 import { useChatStore } from '../../stores/chat'
 
-export function ModeSelector() {
+interface ModeSelectorProps {
+  flatTop?: boolean
+}
+
+export function ModeSelector({ flatTop = false }: ModeSelectorProps) {
   const { mode, setMode, modeTransitioning } = useChatStore()
   const [animatingMode, setAnimatingMode] = useState<AgentMode | null>(null)
   const prevModeRef = useRef(mode)
@@ -11,7 +15,7 @@ export function ModeSelector() {
   useEffect(() => {
     if (mode !== prevModeRef.current) {
       setAnimatingMode(mode)
-      const timer = setTimeout(() => setAnimatingMode(null), 500)
+      const timer = setTimeout(() => setAnimatingMode(null), 700)
       prevModeRef.current = mode
       return () => clearTimeout(timer)
     }
@@ -72,7 +76,7 @@ export function ModeSelector() {
   return (
     <div className="flex items-center justify-center w-full">
       <div className={`
-        flex bg-bg-surface rounded-t-none rounded-b-lg overflow-hidden p-0 gap-0 transition-all duration-300
+        flex bg-bg-surface ${flatTop ? 'rounded-t-none rounded-b-lg' : 'rounded-lg'} overflow-hidden p-0 gap-0 transition-all duration-300
         ${modeTransitioning ? 'ring-2 ring-accent/50 ring-offset-2 ring-offset-bg-surface' : ''}
       `}>
         {Object.values(modes).map((m) => (
@@ -81,20 +85,22 @@ export function ModeSelector() {
             onClick={() => setMode(m.id)}
             disabled={modeTransitioning}
             className={`
-              relative px-3 py-2 text-sm font-medium rounded-none
+              relative overflow-hidden px-3 py-2 text-sm font-medium
+              ${flatTop ? 'first:rounded-bl-lg last:rounded-br-lg' : 'first:rounded-l-lg last:rounded-r-lg'}
               transition-all duration-200
               ${m.id === mode
-                ? 'bg-bg-hover text-text-primary shadow-sm'
+                ? 'bg-accent/22 text-accent shadow-sm ring-1 ring-inset ring-accent z-10'
                 : 'text-text-muted hover:text-text-secondary'
               }
-              ${animatingMode === m.id ? 'animate-pulse ring-2 ring-accent' : ''}
-              ${modeTransitioning && m.id === mode ? 'animate-pulse' : ''}
               ${modeTransitioning ? 'cursor-wait' : ''}
             `}
             title={`${m.description} (${m.shortcut})`}
           >
+            {animatingMode === m.id && (
+              <span className="pointer-events-none absolute inset-0 z-0 mode-selection-sweep" />
+            )}
             <span className="relative z-10">{m.name}</span>
-            <span className="ml-1 text-[0.68em] text-text-faint">
+            <span className="relative z-10 ml-1 text-[0.68em] text-text-faint">
               {m.shortcut}
             </span>
           </button>
