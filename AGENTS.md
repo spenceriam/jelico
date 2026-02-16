@@ -73,7 +73,7 @@ The Soul/Memory system should make Jelico increasingly personalized - it learns 
 ## Project overview
 Jelico is an AI Productivity Desktop built with Electron, React, TypeScript, and Vite. It provides a frictionless AI assistant experience with multi-provider support (Anthropic, OpenAI, Google), workspace management, conversation persistence, and a soul/memory system that learns user patterns and preferences over time.
 
-**Current Version:** 0.17.0
+**Current Version:** 0.18.0
 
 **License:** GNU General Public License v3.0 (GPL-3.0-or-later)
 - See LICENSE file in project root
@@ -283,7 +283,7 @@ electron/prompts/
 - **BackupSettings**: Export/import data, clear all data
 
 ### Mode & Workspace
-- **ModeSelector**: Mode switching (Auto, Code, Write, Think, Research)
+- **ModeSelector**: Mode switching (Auto, Full Execute, Plan, Explore, Review)
 - **WorkspaceSelector**: Folder selection, sandbox mode
 
 ## IPC Communication

@@ -2,6 +2,22 @@
 
 All notable changes to Jelico will be documented in this file.
 
+## [0.18.0] - 2026-02-16
+
+### Added
+- Added a mandatory Full Execute acknowledgment prompt on each transition into Full Execute mode.
+- Added turn footer metadata showing mode and model before completion time.
+
+### Changed
+- Renamed Execute to Full Execute in the UI while keeping the internal `execute` mode identifier for compatibility.
+- Reordered mode selection consistently to: Auto, Full Execute, Plan, Explore, Review across selector, settings, skills, and keyboard mapping.
+- New unsent chats now reset to the saved default mode preference, or Auto when no default is set.
+- Updated selected mode visuals to use persistent accent styling with clearer active-state indication and transition shimmer.
+
+### Fixed
+- Full Execute permission bypass is now scoped to the active stream only and does not alter global session permission toggles.
+- Restored rounded top corners for the mode selector on welcome/new-chat view while keeping flat top edges in active chat view.
+
 ## [0.16.1] - 2026-02-13
 
 ### Changed
