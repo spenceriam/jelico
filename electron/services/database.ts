@@ -644,6 +644,8 @@ interface MessageUsageRow {
   totalTokens: number
   tokensPerSecond?: number
   durationMs?: number
+  mode?: string
+  model?: string
 }
 
 interface MessageRow {

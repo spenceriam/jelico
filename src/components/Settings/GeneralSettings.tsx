@@ -11,6 +11,11 @@ const AGENT_MODES: { id: AgentMode; name: string; description: string }[] = [
   { id: 'explore', name: 'Explore', description: 'Read-only understanding and analysis' },
   { id: 'review', name: 'Review', description: 'Quality assurance and feedback' },
 ]
+const DEFAULT_MODE_PREFERENCE_KEY = 'defaultMode'
+
+function isAgentMode(value: unknown): value is AgentMode {
+  return AGENT_MODES.some((mode) => mode.id === value)
+}
 
 function parseSemver(version: string): [number, number, number] {
   const cleaned = version.trim().replace(/^v/i, '')
@@ -34,7 +39,7 @@ function compareSemver(a: string, b: string): number {
 }
 
 export function GeneralSettings() {
-  const { mode: defaultMode, setMode: setDefaultMode } = useChatStore()
+  const { setMode } = useChatStore()
   const { info, currentVersion, isChecking, isDownloading, downloadProgress, lastDownloadedTo, error, checkForUpdates, downloadUpdate } = useUpdateStore()
   const versionStatus = (() => {
     if (!info) return null
@@ -60,6 +65,7 @@ export function GeneralSettings() {
   const [soundNotificationsEnabled, setSoundNotificationsEnabled] = useState(false)
   const [notifyOnTurnComplete, setNotifyOnTurnComplete] = useState(true)
   const [notifyOnNeedsInput, setNotifyOnNeedsInput] = useState(true)
+  const [defaultMode, setDefaultMode] = useState<AgentMode>('auto')
 
   const [isLoadingSettings, setIsLoadingSettings] = useState(true)
 
@@ -75,6 +81,7 @@ export function GeneralSettings() {
           soundNotifications,
           turnCompleteNotifications,
           needsInputNotifications,
+          savedDefaultMode,
         ] = await Promise.all([
           window.jelico.soul.getPreference('learningEnabled'),
           window.jelico.soul.getPreference('crossSandboxSearch'),
@@ -82,6 +89,7 @@ export function GeneralSettings() {
           window.jelico.soul.getPreference('soundNotificationsEnabled'),
           window.jelico.soul.getPreference('notifyOnTurnComplete'),
           window.jelico.soul.getPreference('notifyOnNeedsInput'),
+          window.jelico.soul.getPreference(DEFAULT_MODE_PREFERENCE_KEY),
         ])
 
         if (learning?.value !== undefined) setLearningEnabled(learning.value as boolean)
@@ -90,6 +98,9 @@ export function GeneralSettings() {
         if (soundNotifications?.value !== undefined) setSoundNotificationsEnabled(soundNotifications.value as boolean)
         if (turnCompleteNotifications?.value !== undefined) setNotifyOnTurnComplete(turnCompleteNotifications.value as boolean)
         if (needsInputNotifications?.value !== undefined) setNotifyOnNeedsInput(needsInputNotifications.value as boolean)
+        if (savedDefaultMode?.value !== undefined && isAgentMode(savedDefaultMode.value)) {
+          setDefaultMode(savedDefaultMode.value)
+        }
       } catch (err) {
         console.error('Failed to load settings:', err)
       } finally {
@@ -126,6 +137,16 @@ export function GeneralSettings() {
     } catch (err) {
       console.error('Failed to save notification settings:', err)
     }
+  }
+
+  const handleSetDefaultMode = async (mode: AgentMode) => {
+    setDefaultMode(mode)
+    try {
+      await window.jelico.soul.setPreference(DEFAULT_MODE_PREFERENCE_KEY, mode, 1.0)
+    } catch (err) {
+      console.error('Failed to save default mode:', err)
+    }
+    setMode(mode)
   }
 
   // Save learning settings when they change
@@ -283,7 +304,7 @@ export function GeneralSettings() {
           {AGENT_MODES.map((agentMode) => (
             <button
               key={agentMode.id}
-              onClick={() => setDefaultMode(agentMode.id)}
+              onClick={() => handleSetDefaultMode(agentMode.id)}
               className={`flex items-center justify-between px-4 py-3 rounded-lg border transition-colors text-left ${
                 defaultMode === agentMode.id
                   ? 'border-accent bg-accent/10'

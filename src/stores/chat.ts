@@ -17,6 +17,8 @@ export interface MessageUsage {
   totalTokens: number
   tokensPerSecond?: number
   durationMs?: number
+  mode?: AgentMode
+  model?: string
 }
 
 export interface MessageAttachment {
@@ -204,6 +206,8 @@ const INLINE_TOOL_CALL_END_TOKEN = '<|tool_call_end|>'
 const WORKTREE_MENTION_REGEX = /\b(work[\s-]?tree|git[\s-]?work[\s-]?tree|git tree)\b/i
 const WORKTREE_MENTION_COOLDOWN_MS = 5 * 60 * 1000
 const worktreeGuidanceByConversation = new Map<string, { planningShown: boolean; lastMentionAt: number }>()
+const DEFAULT_MODE_PREFERENCE_KEY = 'defaultMode'
+const AGENT_MODES: AgentMode[] = ['auto', 'execute', 'plan', 'explore', 'review']
 const FULL_EXECUTE_CONFIRM_MESSAGE = [
   'Enable Full Execute?',
   '',
@@ -211,6 +215,24 @@ const FULL_EXECUTE_CONFIRM_MESSAGE = [
   'Use this only in environments you trust (for example, a sandbox, VM, or disposable workspace).',
   'You are responsible for actions taken in this mode.',
 ].join('\n')
+
+function isAgentMode(value: unknown): value is AgentMode {
+  return typeof value === 'string' && AGENT_MODES.includes(value as AgentMode)
+}
+
+async function getPreferredDefaultMode(): Promise<AgentMode> {
+  if (typeof window === 'undefined' || !window.jelico?.soul?.getPreference) {
+    return 'auto'
+  }
+
+  try {
+    const preference = await window.jelico.soul.getPreference(DEFAULT_MODE_PREFERENCE_KEY)
+    return isAgentMode(preference?.value) ? preference.value : 'auto'
+  } catch (error) {
+    console.warn('[Chat Store] Failed to load default mode preference, falling back to auto:', error)
+    return 'auto'
+  }
+}
 
 function isModeTransitionAllowed(currentMode: AgentMode, nextMode: AgentMode): boolean {
   if (nextMode !== 'execute' || currentMode === 'execute') {
@@ -723,6 +745,9 @@ export const useChatStore = create<ChatStore>((set, get) => ({
     }
 
     if (!id) {
+      const preferredMode = await getPreferredDefaultMode()
+      const currentMode = get().mode
+
       set({
         activeConversationId: null,
         messages: [],
@@ -736,6 +761,16 @@ export const useChatStore = create<ChatStore>((set, get) => ({
       // New Chat: keep current workspace selection (user can switch to Sandbox explicitly)
       // No conversation = no artifacts to show
       useArtifactStore.getState().closeCanvas()
+
+      // Reset fresh unsent chats to the user's saved default mode (auto when unset).
+      if (preferredMode === 'execute') {
+        get().setMode('execute')
+        if (get().mode !== 'execute' && currentMode !== 'auto') {
+          set({ mode: 'auto' })
+        }
+      } else if (preferredMode !== currentMode) {
+        set({ mode: preferredMode })
+      }
       return
     }
 
@@ -1494,6 +1529,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
         : totalDurationMs
 
       try {
+        const completedMode = get().mode
         // Calculate tokens per second using actual generation time
         let usage: Message['usage'] = undefined
         if (stats?.usage) {
@@ -1507,6 +1543,8 @@ export const useChatStore = create<ChatStore>((set, get) => ({
             totalTokens: stats.usage.totalTokens,
             tokensPerSecond,
             durationMs: totalDurationMs,
+            mode: completedMode,
+            model,
           }
         }
 

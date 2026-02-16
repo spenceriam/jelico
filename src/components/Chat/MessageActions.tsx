@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { Copy, Check, RefreshCw } from 'lucide-react'
 import type { MessageUsage, ToolCall, ToolResult } from '../../stores/chat'
+import { modes } from '../../lib/modes'
 import { formatElapsedTime } from '../../utils/format'
 
 interface MessageActionsProps {
@@ -40,6 +41,8 @@ function formatToolCallsForCopy(toolCalls?: ToolCall[], toolResults?: ToolResult
 
 export function MessageActions({ content, toolCalls, toolResults, usage, onRegenerate, isRegenerating }: MessageActionsProps) {
   const [copied, setCopied] = useState(false)
+  const modeLabel = usage?.mode ? modes[usage.mode]?.name ?? usage.mode : null
+  const modelLabel = usage?.model || null
 
   const handleCopy = async () => {
     try {
@@ -95,6 +98,18 @@ export function MessageActions({ content, toolCalls, toolResults, usage, onRegen
       {/* Completion time - show only elapsed time, hide token stats */}
       {usage && usage.durationMs !== undefined && usage.durationMs > 0 && (
         <div className="flex items-center gap-1 ml-auto text-xs text-text-muted" title={`${usage.totalTokens.toLocaleString()} tokens | ${usage.tokensPerSecond || 0} tok/s`}>
+          {modeLabel && (
+            <span className="text-accent">{modeLabel}</span>
+          )}
+          {modeLabel && modelLabel && (
+            <span className="text-text-faint">•</span>
+          )}
+          {modelLabel && (
+            <span className="text-text-secondary">{modelLabel}</span>
+          )}
+          {(modeLabel || modelLabel) && (
+            <span className="text-text-faint">•</span>
+          )}
           <span>Completed in</span>
           <span className="text-accent font-medium">{formatElapsedTime(usage.durationMs)}</span>
         </div>
