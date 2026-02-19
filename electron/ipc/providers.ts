@@ -2,6 +2,97 @@ import { ipcMain } from 'electron'
 import { providerDb } from '../services/database'
 import { keychainService } from '../services/keychain'
 
+// OpenAI family context sizes for fallback
+const OPENAI_FAMILY_CONTEXT: Record<string, number> = {
+  'gpt-4o': 128000,
+  'gpt-4o-mini': 128000,
+  'gpt-4-turbo': 128000,
+  'gpt-4': 8192,
+  'gpt-4-32k': 32768,
+  'gpt-3.5-turbo': 16385,
+  'o1': 200000,
+  'o1-mini': 128000,
+  'o3-mini': 200000,
+}
+
+// Build models endpoint URL from base URL
+function buildModelsEndpoint(baseUrl?: string | null): string {
+  const trimmed = (baseUrl || '').replace(/\/+$/, '')
+  if (!trimmed) return 'https://api.openai.com/v1/models'
+  if (trimmed.endsWith('/models')) return trimmed
+  if (trimmed.endsWith('/v1')) return `${trimmed}/models`
+  return `${trimmed}/v1/models`
+}
+
+// Extract context size from model metadata
+function extractContextSize(model: any): number | null {
+  const candidates = [
+    model?.context_length,
+    model?.contextLength,
+    model?.max_context_length,
+    model?.maxContextLength,
+    model?.input_token_limit,
+    model?.inputTokenLimit,
+    model?.max_input_tokens,
+    model?.maxInputTokens,
+    model?.limits?.context_window,
+    model?.limits?.contextLength,
+    model?.architecture?.context_length,
+    model?.metadata?.context_length,
+  ]
+  for (const value of candidates) {
+    const n = Number(value)
+    if (Number.isFinite(n) && n > 0) return n
+  }
+  return null
+}
+
+// Find OpenAI family fallback by model ID
+function findOpenAIFamilyFallback(modelId: string): number | null {
+  const normalized = modelId.toLowerCase()
+  if (OPENAI_FAMILY_CONTEXT[normalized]) return OPENAI_FAMILY_CONTEXT[normalized]
+  for (const [key, size] of Object.entries(OPENAI_FAMILY_CONTEXT)) {
+    if (normalized.includes(key)) return size
+  }
+  return null
+}
+
+// Resolve context size from /models endpoint
+async function resolveContextSizeFromModelsEndpoint(
+  modelId: string,
+  baseUrl?: string | null,
+  apiKey?: string | null
+): Promise<number | null> {
+  try {
+    const response = await fetch(buildModelsEndpoint(baseUrl), {
+      headers: {
+        Accept: 'application/json',
+        ...(apiKey ? { Authorization: `Bearer ${apiKey}` } : {}),
+      },
+    })
+    if (!response.ok) return null
+
+    const payload = await response.json()
+    const models: any[] = Array.isArray(payload?.data)
+      ? payload.data
+      : Array.isArray(payload?.models)
+        ? payload.models
+        : []
+
+    const normalizedId = modelId.toLowerCase()
+    const shortId = normalizedId.split('/').pop() || normalizedId
+    const target = models.find((m) => {
+      const id = String(m?.id || m?.name || '').toLowerCase()
+      return id === normalizedId || id === shortId || id.endsWith(`/${shortId}`)
+    })
+    if (!target) return null
+
+    return extractContextSize(target)
+  } catch {
+    return null
+  }
+}
+
 // Fallback models only used when API fetch fails
 const FALLBACK_MODELS: Record<string, Array<{ id: string; name: string }>> = {
   anthropic: [
@@ -427,9 +518,18 @@ export function registerProviderHandlers() {
           return 128000
         }
 
+        case 'openai-compatible':
+        case 'custom': {
+          // Critical fix: actively probe /models for OpenAI-compatible/custom backends
+          const resolved = await resolveContextSizeFromModelsEndpoint(modelId, baseUrl, apiKey)
+          if (resolved) return resolved
+          // Fallback to OpenAI family patterns
+          return findOpenAIFamilyFallback(modelId)
+        }
+
         default:
-          // For custom/unknown providers, return null (will need fallback)
-          return null
+          // For unknown providers, try generic /models endpoint
+          return await resolveContextSizeFromModelsEndpoint(modelId, baseUrl, apiKey)
       }
     } catch (err) {
       console.error('[Providers] Failed to get model context size:', err)
