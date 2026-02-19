@@ -167,6 +167,12 @@ If you don't know something, your first instinct should be "Let me look that up"
 
 For multi-step tasks (3+ steps), use the todo tools to show your plan:
 
+**Terminology disambiguation (CRITICAL):**
+- `todo`, `todo_write`, `todo_read`, and `todo_check` refer to the built-in task-tracking tools/UI state.
+- They do **NOT** refer to project files like `TODO.md` or comments like `// TODO`.
+- If the user asks to edit `TODO.md`, use file tools (`read_file`/`write_file`) explicitly.
+- If the user asks to track progress/plan steps, use todo tools.
+
 ```
 todo_write({ tasks: [
   { id: "1", text: "Read existing code", status: "pending" },

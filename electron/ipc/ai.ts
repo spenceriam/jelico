@@ -143,7 +143,7 @@ const KNOWLEDGE_MATCHERS: KnowledgeMatch[] = [
   // Spec-driven development (intentionally specific to avoid false positives on casual "spec" usage)
   { keywords: /\b(specification\s?doc|project\sspec|prd|requirements?\sdoc|create\s(a\s)?spec|write\s(a\s)?spec|spec[\s-]driven|new\sproject\splan|project\sstructure)\b/i, category: 'capabilities', name: 'spec-driven' },
   // Tools
-  { keywords: /\b(read_file|write_file|execute_command|web_search|tool)\b/i, category: 'capabilities', name: 'tools' },
+  { keywords: /\b(read_file|write_file|execute_command|web_search|tool|todo_write|todo_read|todo_check|todo(?!\.md\b)\s?(tool|list|task)?)\b/i, category: 'capabilities', name: 'tools' },
 ]
 
 /**
@@ -690,6 +690,9 @@ function getBuiltInTools(
     description: `Create or update your task list. Use this at the START of multi-step tasks to show your plan.
 The todo list appears in the UI with accent-colored border, showing your progress.
 
+IMPORTANT: This is for in-app task tracking only, NOT for editing TODO.md files.
+If the user asks to edit TODO.md, use read_file/write_file instead.
+
 WHEN TO USE:
 - At the start of any task with 3+ steps
 - When planning your approach
@@ -736,6 +739,7 @@ Keep tasks clear and concise. The user sees this as a progress tracker.`,
 
   tools.todo_read = tool({
     description: `Read the current task list. Use this to check your progress or remind yourself of the plan.
+This reads the in-app todo tracker state, NOT a TODO.md file.
 Returns the current state of all tasks.`,
     parameters: z.object({}),
     execute: async () => {
@@ -760,6 +764,7 @@ Returns the current state of all tasks.`,
 
   tools.todo_check = tool({
     description: `Validate you're working on the right task before taking action.
+This validates a tracker task ID, NOT TODO.md content.
 Call this before starting work on a task to ensure proper sequencing.
 Returns validation result and updates the task status if valid.`,
     parameters: z.object({
