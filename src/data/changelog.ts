@@ -21,6 +21,23 @@ export interface ChangelogEntry {
 
 export const changelog: ChangelogEntry[] = [
   {
+    version: '0.19.0',
+    date: '2026-02-19',
+    changes: {
+      added: [
+        'Todos now persist to database instead of localStorage for cross-window sync',
+        'Added todo migration from localStorage to database',
+        'Added getModelContextSize probing for custom/OpenAI-compatible providers',
+        'Added permission scoping with exact-command matching (no more wildcards)',
+      ],
+      fixed: [
+        'Fixed todo intent drift - AI now correctly uses built-in Todo panel',
+        'Fixed context window limits for local/custom models',
+        'Fixed permission scoping - commands are now exact-match only',
+      ],
+    },
+  },
+  {
     version: '0.18.0',
     date: '2026-02-16',
     changes: {
