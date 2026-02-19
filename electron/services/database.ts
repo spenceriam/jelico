@@ -23,6 +23,7 @@ interface DbSchema {
   artifacts: ArtifactRow[]
   memories: MemoryRow[]
   permissions: PermissionRow[]
+  todos: TodoRow[]
 }
 
 let db: DbSchema = {
@@ -33,6 +34,7 @@ let db: DbSchema = {
   artifacts: [],
   memories: [],
   permissions: [],
+  todos: [],
 }
 
 function getDbPath() {
@@ -61,7 +63,7 @@ function loadDb(): void {
     }
   } catch (err) {
     console.error('Failed to load database:', err)
-    db = { providers: [], conversations: [], messages: [], workspaces: [], artifacts: [], memories: [], permissions: [] }
+    db = { providers: [], conversations: [], messages: [], workspaces: [], artifacts: [], memories: [], permissions: [], todos: [] }
   }
 }
 
@@ -1465,5 +1467,104 @@ export const permissionDb = {
   clearOncePermissions(): void {
     db.permissions = db.permissions.filter(p => p.permission !== 'allow_once')
     saveDb()
+  },
+}
+
+// Todo types and database operations (Issue #48: Move from localStorage to database)
+export type TodoStatus = 'pending' | 'in_progress' | 'done' | 'failed' | 'cancelled'
+
+interface TodoRow {
+  id: string
+  conversation_id: string
+  text: string
+  status: TodoStatus
+  created_at: number
+  updated_at: number
+}
+
+export const todoDb = {
+  getByConversation(conversationId: string): TodoRow[] {
+    return db.todos
+      .filter(t => t.conversation_id === conversationId)
+      .sort((a, b) => a.created_at - b.created_at)
+  },
+
+  replaceAllForConversation(conversationId: string, todos: Omit<TodoRow, 'conversation_id'>[]): void {
+    // Remove existing todos for this conversation
+    db.todos = db.todos.filter(t => t.conversation_id !== conversationId)
+    
+    // Add new todos
+    const now = Date.now()
+    const newTodos: TodoRow[] = todos.map((todo, index) => ({
+      ...todo,
+      conversation_id: conversationId,
+      // Ensure timestamps are set
+      created_at: todo.created_at || now + index,
+      updated_at: todo.updated_at || now + index,
+    }))
+    
+    db.todos.push(...newTodos)
+    saveDb()
+  },
+
+  updateTodo(conversationId: string, todoId: string, updates: Partial<Pick<TodoRow, 'text' | 'status'>>): TodoRow | null {
+    const todo = db.todos.find(t => t.id === todoId && t.conversation_id === conversationId)
+    if (!todo) return null
+
+    if (updates.text !== undefined) todo.text = updates.text
+    if (updates.status !== undefined) todo.status = updates.status
+    todo.updated_at = Date.now()
+
+    saveDb()
+    return todo
+  },
+
+  deleteByConversation(conversationId: string): void {
+    db.todos = db.todos.filter(t => t.conversation_id !== conversationId)
+    saveDb()
+  },
+
+  // Migration: Import todos from localStorage (one-time)
+  migrateFromLocalStorage(): void {
+    try {
+      const TODOS_STORAGE_KEY = 'jelico.todosByConversation.v1'
+      const raw = globalThis?.window?.localStorage?.getItem(TODOS_STORAGE_KEY)
+      if (!raw) return
+
+      const parsed = JSON.parse(raw)
+      if (!parsed || typeof parsed !== 'object') return
+
+      let migratedCount = 0
+      for (const [conversationId, todos] of Object.entries(parsed)) {
+        if (!Array.isArray(todos)) continue
+        
+        // Check if we already have todos for this conversation
+        const existing = db.todos.filter(t => t.conversation_id === conversationId)
+        if (existing.length > 0) continue // Skip if already migrated
+
+        const validTodos = todos
+          .filter((t: any) => t && typeof t === 'object' && typeof t.id === 'string')
+          .map((t: any) => ({
+            id: t.id,
+            conversation_id: conversationId,
+            text: String(t.text || ''),
+            status: (t.status as TodoStatus) || 'pending',
+            created_at: Number(t.createdAt) || Date.now(),
+            updated_at: Number(t.updatedAt) || Date.now(),
+          }))
+
+        if (validTodos.length > 0) {
+          db.todos.push(...validTodos)
+          migratedCount += validTodos.length
+        }
+      }
+
+      if (migratedCount > 0) {
+        saveDb()
+        console.log(`[Migration] Migrated ${migratedCount} todos from localStorage to database`)
+      }
+    } catch (err) {
+      console.error('[Migration] Failed to migrate todos from localStorage:', err)
+    }
   },
 }
