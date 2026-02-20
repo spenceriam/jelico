@@ -69,6 +69,13 @@ const PROVIDER_TYPES = [
     defaultModel: 'glm-4.7',
   },
   {
+    type: 'minimax' as const,
+    name: 'MiniMax',
+    description: 'OpenAI Compatible',
+    icon: 'M',
+    defaultModel: 'MiniMax-M1',
+  },
+  {
     type: 'openai-compatible' as const,
     name: 'OpenAI Compatible',
     description: 'Custom Endpoint',

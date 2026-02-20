@@ -414,6 +414,11 @@ function getProviderInstance(providerConfig: any, apiKey: string) {
         apiKey,
         baseURL: 'https://open.bigmodel.cn/api/coding/paas/v4',
       })
+    case 'minimax':
+      return createOpenAI({
+        apiKey,
+        baseURL: 'https://api.minimax.io',
+      })
 
     // Generic compatible providers
     case 'openai-compatible':

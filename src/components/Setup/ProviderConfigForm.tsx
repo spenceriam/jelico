@@ -10,6 +10,7 @@ const API_KEY_URLS: Record<string, string> = {
   'zai-china': 'open.bigmodel.cn',
   'zai-coding': 'open.bigmodel.cn',
   'zai-coding-china': 'open.bigmodel.cn',
+  minimax: 'platform.minimax.io',
 }
 
 // Fallback models shown before API key is entered or when fetch fails
@@ -64,6 +65,7 @@ const FALLBACK_MODELS: Record<string, Array<{ id: string; name: string }>> = {
     { id: 'glm-4.5-air', name: 'GLM-4.5 Air' },
     { id: 'glm-4.5-flash', name: 'GLM-4.5 Flash' },
   ],
+  minimax: [],
   // Generic providers - user enters model manually
   'openai-compatible': [],
   'anthropic-compatible': [],
@@ -464,6 +466,7 @@ function getDefaultName(type: string): string {
     'zai-china': 'Z.ai China',
     'zai-coding': 'Z.ai Coding',
     'zai-coding-china': 'Z.ai Coding CN',
+    minimax: 'MiniMax',
     'openai-compatible': 'OpenAI Compatible',
     'anthropic-compatible': 'Anthropic Compatible',
     local: 'Local Server',

@@ -24,6 +24,7 @@ export function normalizeWebProviderType(rawType: string | null | undefined): We
     case 'anthropic':
       return 'anthropic'
     case 'openai':
+    case 'minimax':
       return 'openai'
     case 'google':
       return 'google'
