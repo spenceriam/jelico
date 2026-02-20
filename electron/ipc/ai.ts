@@ -1407,15 +1407,59 @@ For type="html": after creating it, self-test with artifact_test before claiming
         console.warn('[AI] Artifact validation warnings:', validation.warnings)
       }
 
+      let thumbnailBase64: string | undefined
+      let thumbnailMimeType: string | undefined
+      let thumbnailWidth: number | undefined
+      let thumbnailHeight: number | undefined
+      let thumbnailError: string | undefined
+
+      if (type === 'html') {
+        let testSessionId: string | undefined
+        try {
+          const openResult = await openArtifactTestSession({
+            html: content,
+            width: 1200,
+            height: 800,
+          })
+          testSessionId = openResult.sessionId
+
+          const screenshotResult = await artifactTestScreenshot(testSessionId, { thumbWidth: 300 })
+          if (screenshotResult.success && screenshotResult.thumbnailBase64) {
+            thumbnailBase64 = screenshotResult.thumbnailBase64
+            thumbnailMimeType = screenshotResult.thumbnailMimeType
+            thumbnailWidth = screenshotResult.thumbnailWidth
+            thumbnailHeight = screenshotResult.thumbnailHeight
+          } else {
+            thumbnailError = screenshotResult.error || 'Failed to capture HTML thumbnail'
+            console.warn('[AI] create_artifact thumbnail capture failed:', thumbnailError)
+          }
+        } catch (error) {
+          thumbnailError = error instanceof Error ? error.message : String(error)
+          console.warn('[AI] create_artifact thumbnail capture failed:', thumbnailError)
+        } finally {
+          if (testSessionId) {
+            await closeArtifactTestSession(testSessionId)
+          }
+        }
+      }
+
       if (sendArtifact) {
         sendArtifact({ type, title, content, language })
+      }
+      const combinedWarnings = [...validation.warnings]
+      if (thumbnailError) {
+        combinedWarnings.push(`Thumbnail capture failed: ${thumbnailError}`)
       }
       return {
         success: true,
         message: type === 'html'
           ? `Artifact "${title}" created successfully. Next step required: run artifact_test and verify behavior before claiming success.`
           : `Artifact "${title}" created successfully`,
-        warnings: validation.warnings.length > 0 ? validation.warnings : undefined,
+        warnings: combinedWarnings.length > 0 ? combinedWarnings : undefined,
+        thumbnailBase64,
+        thumbnailMimeType,
+        thumbnailWidth,
+        thumbnailHeight,
       }
     },
   })
@@ -1494,7 +1538,7 @@ Actions:
 - evaluate: Run JavaScript and return result
 - extract: Read text/html from page or selector
 - wait_for: Wait until text and/or selector appears
-- screenshot: Capture PNG screenshot path
+- screenshot: Capture PNG screenshot path and return thumbnail JPEG
 - close: Close a test session
 
 Notes:
@@ -1527,6 +1571,7 @@ Notes:
       timeout_ms: z.number().int().min(250).max(60000).optional().describe('Timeout for wait_for in ms'),
       width: z.number().int().min(320).max(2560).optional().describe('Viewport width for open'),
       height: z.number().int().min(240).max(1600).optional().describe('Viewport height for open'),
+      thumb_width: z.number().int().min(1).max(2048).optional().describe('For screenshot: thumbnail width in px (default 300)'),
     }).passthrough(),
     execute: async (args) => {
       try {
@@ -1544,6 +1589,7 @@ Notes:
           timeout_ms: args.timeout_ms ?? (args as any).timeoutMs,
           width: args.width,
           height: args.height,
+          thumb_width: args.thumb_width ?? (args as any).thumbWidth,
         }
 
         switch (normalizedArgs.action) {
@@ -1619,7 +1665,7 @@ Notes:
             if (!normalizedArgs.session_id) {
               return { success: false, error: 'screenshot action requires session_id' }
             }
-            return await artifactTestScreenshot(normalizedArgs.session_id)
+            return await artifactTestScreenshot(normalizedArgs.session_id, { thumbWidth: normalizedArgs.thumb_width })
           }
 
           case 'close': {

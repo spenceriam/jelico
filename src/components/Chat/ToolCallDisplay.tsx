@@ -374,6 +374,7 @@ export function SingleToolCallDisplay({
   processingTone?: number
 }) {
   const [expanded, setExpanded] = useState(false)
+  const [isThumbnailOpen, setIsThumbnailOpen] = useState(false)
 
   const { agents } = useAgentStore()
   const activeConversationId = useChatStore((state) => state.activeConversationId)
@@ -563,6 +564,18 @@ export function SingleToolCallDisplay({
       })
       .sort((a, b) => b.updatedAt - a.updatedAt)[0] || null
     : null
+  const createArtifactResult = toolCall.name === 'create_artifact' && toolResult?.result && typeof toolResult.result === 'object'
+    ? toolResult.result as Record<string, unknown>
+    : null
+  const thumbnailBase64 = typeof createArtifactResult?.thumbnailBase64 === 'string'
+    ? createArtifactResult.thumbnailBase64
+    : null
+  const thumbnailMimeType = typeof createArtifactResult?.thumbnailMimeType === 'string'
+    ? createArtifactResult.thumbnailMimeType
+    : 'image/jpeg'
+  const thumbnailDataUrl = thumbnailBase64
+    ? `data:${thumbnailMimeType};base64,${thumbnailBase64}`
+    : null
 
   const handleArtifactClick = () => {
     if (createdArtifact) {
@@ -639,6 +652,21 @@ export function SingleToolCallDisplay({
           </button>
         </div>
       )}
+      {toolCall.name === 'create_artifact' && hasResult && !formattedResult?.isError && thumbnailDataUrl && (
+        <div className="px-3 pb-3 border-t border-border bg-bg-surface">
+          <button
+            onClick={() => setIsThumbnailOpen(true)}
+            className="mt-2 rounded border border-border overflow-hidden hover:border-accent/70 transition-colors"
+            aria-label="Open artifact thumbnail preview"
+          >
+            <img
+              src={thumbnailDataUrl}
+              alt="HTML artifact thumbnail preview"
+              className="block w-full max-w-[300px] h-auto"
+            />
+          </button>
+        </div>
+      )}
 
       {/* Sub-agent error - only show errors inline (not a full panel) */}
       {toolCall.name === 'spawn_agent' && subAgent?.status === 'failed' && subAgent.error && (
@@ -701,6 +729,20 @@ export function SingleToolCallDisplay({
               </div>
             </div>
           )}
+        </div>
+      )}
+
+      {isThumbnailOpen && thumbnailDataUrl && (
+        <div
+          className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center p-4"
+          onClick={() => setIsThumbnailOpen(false)}
+        >
+          <img
+            src={thumbnailDataUrl}
+            alt="Expanded HTML artifact thumbnail preview"
+            className="w-[70vw] max-h-[70vh] object-contain rounded shadow-2xl"
+            onClick={(event) => event.stopPropagation()}
+          />
         </div>
       )}
     </div>
