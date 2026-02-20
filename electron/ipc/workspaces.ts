@@ -40,14 +40,12 @@ function resolveGitPath(baseDir: string, value: string): string {
 async function isGitRepository(
   dirPath: string
 ): Promise<{ isGit: boolean; isWorktree?: boolean; projectPath?: string; branch?: string }> {
-  const gitDir = path.join(dirPath, '.git')
-  const isGit = fs.existsSync(gitDir)
-
-  if (!isGit) {
-    return { isGit: false, projectPath: dirPath }
-  }
-
   try {
+    const { stdout: insideWorkTreeOut } = await execAsync('git rev-parse --is-inside-work-tree', { cwd: dirPath })
+    if (insideWorkTreeOut.trim() !== 'true') {
+      return { isGit: false, projectPath: dirPath }
+    }
+
     const [{ stdout: branchOut }, { stdout: gitDirOut }, { stdout: gitCommonDirOut }, { stdout: topLevelOut }] = await Promise.all([
       execAsync('git rev-parse --abbrev-ref HEAD', { cwd: dirPath }),
       execAsync('git rev-parse --git-dir', { cwd: dirPath }),
@@ -62,7 +60,7 @@ async function isGitRepository(
 
     return { isGit: true, isWorktree, projectPath, branch: branchOut.trim() }
   } catch {
-    return { isGit: true, projectPath: dirPath }
+    return { isGit: false, projectPath: dirPath }
   }
 }
 
@@ -82,8 +80,9 @@ async function listWorktrees(repoPath: string): Promise<{ path: string; branch: 
         current = { path: line.substring(9), isBare: false }
       } else if (line.startsWith('HEAD ')) {
         // Ignore HEAD commit
-      } else if (line.startsWith('branch refs/heads/')) {
-        current.branch = line.substring(18)
+      } else if (line.startsWith('branch ')) {
+        const rawBranch = line.substring(7)
+        current.branch = rawBranch.startsWith('refs/heads/') ? rawBranch.substring(11) : rawBranch
       } else if (line === 'bare') {
         current.isBare = true
       } else if (line.startsWith('detached')) {
@@ -97,6 +96,47 @@ async function listWorktrees(repoPath: string): Promise<{ path: string; branch: 
     return worktrees.filter(w => !w.isBare)
   } catch {
     return []
+  }
+}
+
+type WorkspaceDbRow = ReturnType<typeof workspaceDb.list>[number]
+
+async function discoverAndUpsertWorktrees(workspaces: WorkspaceDbRow[]): Promise<void> {
+  const repositoryRoots = new Set<string>()
+
+  for (const workspace of workspaces) {
+    if (workspace.is_git !== 1) continue
+    repositoryRoots.add(workspace.project_path || workspace.path)
+  }
+
+  for (const repositoryRoot of repositoryRoots) {
+    const worktrees = await listWorktrees(repositoryRoot)
+
+    for (const worktree of worktrees) {
+      const worktreePath = path.resolve(worktree.path)
+      const normalizedRoot = path.resolve(repositoryRoot)
+      const isMainWorktree = worktreePath === normalizedRoot
+      const existing = workspaceDb.getByPath(worktreePath)
+
+      if (existing) {
+        workspaceDb.update(existing.id, {
+          isGit: true,
+          isWorktree: !isMainWorktree,
+          projectPath: normalizedRoot,
+          gitBranch: worktree.branch,
+        })
+        continue
+      }
+
+      workspaceDb.create({
+        name: path.basename(worktreePath),
+        path: worktreePath,
+        isGit: true,
+        isWorktree: !isMainWorktree,
+        projectPath: normalizedRoot,
+        gitBranch: worktree.branch,
+      })
+    }
   }
 }
 
@@ -205,7 +245,9 @@ export function registerWorkspaceHandlers() {
       }) || workspace
     }))
 
-    return hydrated.map(toConfig)
+    await discoverAndUpsertWorktrees(hydrated)
+
+    return workspaceDb.list().map(toConfig)
   })
 
   // Get a specific workspace

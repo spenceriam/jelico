@@ -21,9 +21,20 @@ export interface ChangelogEntry {
 
 export const changelog: ChangelogEntry[] = [
   {
-    version: '0.18.0',
-    date: '2026-02-16',
+    version: '0.19.0',
+    date: '2026-02-20',
     changes: {
+      added: [
+        'HTML artifacts now show thumbnail preview in chat with click-to-expand lightbox',
+        'Artifact thumbnails are auto-captured at 300px width during creation',
+        'Git work trees are now auto-discovered and shown in workspace list',
+        'Workspaces now use git command detection instead of .git folder detection',
+      ],
+      fixed: [
+        'Git work trees were incorrectly marked as non-git repositories',
+      ],
+    },
+  },
       added: [
         'Added a mandatory Full Execute acknowledgment dialog when switching into Full Execute mode',
         'Assistant turn footer now shows mode and model metadata before completion timing',
