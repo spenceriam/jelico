@@ -6,6 +6,7 @@ import {
   XCircle,
   ExternalLink
 } from 'lucide-react'
+import { DiffViewer } from '../Canvas/DiffViewer'
 import type { ToolCall, ToolResult } from '../../stores/chat'
 import { useChatStore } from '../../stores/chat'
 import { useAgentStore, type SubAgent } from '../../stores/agents'
@@ -361,6 +362,42 @@ function formatToolResult(result: unknown): { content: string; isError: boolean 
   return { content: String(result), isError: false }
 }
 
+function pickStringValue(source: Record<string, unknown>, keys: string[]): string | null {
+  for (const key of keys) {
+    const value = source[key]
+    if (typeof value === 'string') return value
+  }
+  return null
+}
+
+function getToolCallDiffPreview(toolCall: ToolCall, toolResult?: ToolResult): { original: string; modified: string } | null {
+  if (toolCall.name !== 'write_file' && toolCall.name !== 'edit_file') {
+    return null
+  }
+
+  const args = toolCall.args || {}
+  const resultObj = (toolResult?.result && typeof toolResult.result === 'object')
+    ? (toolResult.result as Record<string, unknown>)
+    : {}
+
+  if (toolCall.name === 'write_file') {
+    const modified = pickStringValue(args, ['content'])
+      ?? pickStringValue(resultObj, ['newContent', 'modifiedContent', 'updatedContent', 'content'])
+    if (modified === null) return null
+    const original = pickStringValue(resultObj, ['originalContent', 'previousContent', 'oldContent', 'existingContent', 'beforeContent'])
+      ?? pickStringValue(args as Record<string, unknown>, ['originalContent', 'oldContent', 'beforeContent'])
+      ?? ''
+    return { original, modified }
+  }
+
+  const original = pickStringValue(args as Record<string, unknown>, ['original', 'originalContent', 'oldContent', 'beforeContent', 'old_string', 'oldText', 'search'])
+    ?? pickStringValue(resultObj, ['original', 'originalContent', 'previousContent', 'oldContent', 'beforeContent'])
+  const modified = pickStringValue(args as Record<string, unknown>, ['modified', 'modifiedContent', 'newContent', 'content', 'afterContent', 'new_string', 'newText', 'replace'])
+    ?? pickStringValue(resultObj, ['modified', 'modifiedContent', 'newContent', 'updatedContent', 'content', 'afterContent'])
+  if (original === null || modified === null) return null
+  return { original, modified }
+}
+
 // Single tool call display - exported for use in interleaved message segments
 export function SingleToolCallDisplay({
   toolCall,
@@ -476,6 +513,7 @@ export function SingleToolCallDisplay({
 
   const { status, hasResult, isInProgress, isCanceled } = resolveToolCallState(toolCall, toolResult, isStreaming)
   const formattedResult = hasResult && toolResult ? formatToolResult(toolResult.result) : null
+  const diffPreview = getToolCallDiffPreview(toolCall, toolResult)
   const hasError = !isCanceled && ((hasResult && formattedResult?.isError) || status === 'error')
 
   const formatArtifactType = () => {
@@ -711,6 +749,17 @@ export function SingleToolCallDisplay({
           )}
 
           {/* Result - shown directly when expanded (not shown for spawn_agent) */}
+          {diffPreview && toolCall.name !== 'spawn_agent' && (
+            <div className="px-3 py-2">
+              <div className="text-xs text-text-muted mb-2">Changes preview</div>
+              <DiffViewer
+                original={diffPreview.original}
+                modified={diffPreview.modified}
+                className="rounded border border-border bg-bg-deep max-h-80 overflow-auto"
+              />
+            </div>
+          )}
+
           {formattedResult && toolCall.name !== 'spawn_agent' && (
             <div className="px-3 py-2">
               <pre className={`text-xs font-mono overflow-x-auto max-h-48 overflow-y-auto rounded p-2 ${

@@ -21,6 +21,15 @@ export interface ChangelogEntry {
 
 export const changelog: ChangelogEntry[] = [
   {
+    version: '0.24.0',
+    date: '2026-02-22',
+    changes: {
+      added: [
+        'Write file and edit file now show diff view before applying changes (Issue #53)',
+      ],
+    },
+  },
+  {
     version: '0.23.0',
     date: '2026-02-22',
     changes: {
