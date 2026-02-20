@@ -139,6 +139,7 @@ export function Message({
   userName,
 }: MessageProps) {
   const [copied, setCopied] = useState(false)
+  const [lightboxImageUrl, setLightboxImageUrl] = useState<string | null>(null)
   const isUser = message.role === 'user'
   const isAssistant = message.role === 'assistant'
   const timestamp = formatTimestamp(message.createdAt)
@@ -167,6 +168,14 @@ export function Message({
     } catch (err) {
       console.error('Failed to copy:', err)
     }
+  }
+
+  const openLightbox = (imageUrl: string) => {
+    setLightboxImageUrl(imageUrl)
+  }
+
+  const closeLightbox = () => {
+    setLightboxImageUrl(null)
   }
 
   // Get icon for attachment type
@@ -199,12 +208,30 @@ export function Message({
                   const IconComponent = getAttachmentIcon(att.type)
                   const isTextAttachment = att.type === 'text' && att.data
 
+                  const imageSrc = att.type === 'image'
+                    ? `data:${att.mimeType};base64,${att.data}`
+                    : null
+
                   return (
                     <div key={att.id} className="text-sm">
                       <div className="flex items-center gap-2 text-text-muted mb-1">
                         <IconComponent className="w-4 h-4" />
                         <span>{att.name}</span>
                       </div>
+                      {imageSrc && (
+                        <button
+                          type="button"
+                          onClick={() => openLightbox(imageSrc)}
+                          className="block rounded-lg overflow-hidden border border-border hover:border-accent transition-colors"
+                          title="Open full-size preview"
+                        >
+                          <img
+                            src={imageSrc}
+                            alt={att.name}
+                            className="max-h-40 max-w-full object-cover"
+                          />
+                        </button>
+                      )}
                       {/* Show text content for pasted text */}
                       {isTextAttachment && (
                         <pre className="text-xs bg-bg-deep rounded-lg p-3 overflow-x-auto whitespace-pre-wrap font-mono text-text-secondary max-h-60 overflow-y-auto">
@@ -267,6 +294,28 @@ export function Message({
           </div>
         </div>
         <UserAvatar name={userName} />
+        {lightboxImageUrl && (
+          <div
+            className="fixed inset-0 z-50 flex items-center justify-center bg-bg-void/80 backdrop-blur-sm p-4"
+            onClick={closeLightbox}
+          >
+            <div className="flex flex-col gap-2" onClick={(e) => e.stopPropagation()}>
+              <img
+                src={lightboxImageUrl}
+                alt="Full-size preview"
+                className="max-w-[70vw] max-h-[70vh] object-contain rounded-lg"
+              />
+              <a
+                href={lightboxImageUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-xs text-accent hover:underline break-all"
+              >
+                {lightboxImageUrl}
+              </a>
+            </div>
+          </div>
+        )}
       </div>
     )
   }
@@ -328,6 +377,23 @@ export function Message({
             {children}
           </a>
         ),
+        img: ({ src, alt }) => {
+          if (!src) return null
+          return (
+            <button
+              type="button"
+              onClick={() => openLightbox(src)}
+              className="my-3 block rounded-lg overflow-hidden border border-border hover:border-accent transition-colors"
+              title="Open full-size preview"
+            >
+              <img
+                src={src}
+                alt={alt || 'Image'}
+                className="max-h-48 max-w-full object-contain"
+              />
+            </button>
+          )
+        },
         h1: ({ children }) => (
           <h1 className="text-xl font-semibold text-text-primary mb-3 mt-4 first:mt-0">
             {children}
@@ -425,6 +491,28 @@ export function Message({
           )}
         </div>
       </div>
+      {lightboxImageUrl && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-bg-void/80 backdrop-blur-sm p-4"
+          onClick={closeLightbox}
+        >
+          <div className="flex flex-col gap-2" onClick={(e) => e.stopPropagation()}>
+            <img
+              src={lightboxImageUrl}
+              alt="Full-size preview"
+              className="max-w-[70vw] max-h-[70vh] object-contain rounded-lg"
+            />
+            <a
+              href={lightboxImageUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-xs text-accent hover:underline break-all"
+            >
+              {lightboxImageUrl}
+            </a>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
