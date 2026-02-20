@@ -21,6 +21,17 @@ export interface ChangelogEntry {
 
 export const changelog: ChangelogEntry[] = [
   {
+    version: '0.19.0',
+    date: '2026-02-20',
+    changes: {
+      added: [
+        'HTML artifacts now show thumbnail preview in chat with click-to-expand lightbox',
+        'Artifact thumbnails are auto-captured at 300px width during creation',
+        'Lightbox modal shows expanded artifact preview at 70% viewport size',
+      ],
+    },
+  },
+  {
     version: '0.18.0',
     date: '2026-02-16',
     changes: {
