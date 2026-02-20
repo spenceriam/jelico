@@ -21,6 +21,15 @@ export interface ChangelogEntry {
 
 export const changelog: ChangelogEntry[] = [
   {
+    version: '0.22.0',
+    date: '2026-02-22',
+    changes: {
+      fixed: [
+        'OpenAI compatible provider now strips <think> tags from Minimax and other providers (Issue #50)',
+      ],
+    },
+  },
+  {
     version: '0.19.0',
     date: '2026-02-20',
     changes: {
