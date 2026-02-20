@@ -1,4 +1,21 @@
-import { ChangelogEntry } from '../types/changelog'
+/**
+ * Jelico Changelog
+ *
+ * Format: Each entry represents a version with its changes.
+ * Categories: added, changed, fixed, removed, security
+ */
+
+interface ChangelogEntry {
+  version: string
+  date: string
+  changes: {
+    added?: string[]
+    changed?: string[]
+    fixed?: string[]
+    removed?: string[]
+    security?: string[]
+  }
+}
 
 export const changelog: ChangelogEntry[] = [
   {
