@@ -2,7 +2,7 @@ import { contextBridge, ipcRenderer } from 'electron'
 
 // Expose protected methods that allow the renderer process to use
 // the ipcRenderer without exposing the entire object
-contextBridge.exposeInMainWorld('jelico', {
+const api = {
   providers: {
     list: () => ipcRenderer.invoke('providers:list'),
     get: (id: string) => ipcRenderer.invoke('providers:get', id),
@@ -51,6 +51,17 @@ contextBridge.exposeInMainWorld('jelico', {
       ipcRenderer.invoke('workspaces:createWorktree', workspaceId, branch, targetPath),
     removeWorktree: (mainWorkspaceId: string, worktreePath: string) =>
       ipcRenderer.invoke('workspaces:removeWorktree', mainWorkspaceId, worktreePath),
+    getGitDiff: (workspaceId: string) => ipcRenderer.invoke('workspaces:getGitDiff', workspaceId),
+    getGitFilePatch: (workspaceId: string, filePath: string) =>
+      ipcRenderer.invoke('workspaces:getGitFilePatch', workspaceId, filePath),
+    discardFileChanges: (workspaceId: string, filePath: string) =>
+      ipcRenderer.invoke('workspaces:discardFileChanges', workspaceId, filePath),
+  },
+  connectors: {
+    listTemplates: () => ipcRenderer.invoke('connectors:listTemplates'),
+    listConnections: () => ipcRenderer.invoke('connectors:listConnections'),
+    connectStub: (id: string, accountLabel?: string) => ipcRenderer.invoke('connectors:connectStub', id, accountLabel),
+    disconnect: (id: string) => ipcRenderer.invoke('connectors:disconnect', id),
   },
   artifacts: {
     list: () => ipcRenderer.invoke('artifacts:list'),
@@ -357,4 +368,7 @@ contextBridge.exposeInMainWorld('jelico', {
       return ipcRenderer.invoke('ai:increaseAgentLimit', params)
     },
   },
-})
+}
+
+contextBridge.exposeInMainWorld('jelico', api)
+contextBridge.exposeInMainWorld('violet', api)

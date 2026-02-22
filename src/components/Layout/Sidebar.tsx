@@ -316,7 +316,7 @@ export function Sidebar() {
       <div className="p-4">
         <div className="flex items-center gap-2">
           <JelicoLogo size={22} className="w-[22px] h-[22px] flex-shrink-0" />
-          <div className="font-display text-xl font-normal text-text-primary tracking-tight">Jelico</div>
+          <div className="font-display text-xl font-semibold text-text-primary tracking-tight">Violet</div>
         </div>
       </div>
 

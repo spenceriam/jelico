@@ -2,10 +2,16 @@ import { ipcMain, dialog, BrowserWindow } from 'electron'
 import { workspaceDb, conversationDb } from '../services/database'
 import * as fs from 'fs'
 import * as path from 'path'
-import { exec } from 'child_process'
+import { exec, execFile } from 'child_process'
 import { promisify } from 'util'
 
 const execAsync = promisify(exec)
+const execFileAsync = promisify(execFile)
+
+async function runGit(repoPath: string, args: string[]) {
+  const { stdout } = await execFileAsync('git', args, { cwd: repoPath, timeout: 30_000, maxBuffer: 1024 * 1024 * 8 })
+  return stdout
+}
 
 interface WorkspaceConfig {
   id: string
@@ -142,7 +148,7 @@ async function discoverAndUpsertWorktrees(workspaces: WorkspaceDbRow[]): Promise
 
 async function listBranches(repoPath: string): Promise<{ name: string; isRemote: boolean; isCurrent: boolean }[]> {
   try {
-    const { stdout } = await execAsync('git branch -a --format="%(HEAD) %(refname:short)"', { cwd: repoPath })
+    const stdout = await runGit(repoPath, ['branch', '-a', '--format=%(HEAD) %(refname:short)'])
     return stdout.split('\n').filter(Boolean).map(line => {
       const isCurrent = line.startsWith('*')
       const rawName = line.substring(2).trim()
@@ -186,17 +192,17 @@ async function createWorktree(repoPath: string, branch: string, targetPath: stri
 
     if (localBranchExists) {
       // Use existing local branch
-      await execAsync(`git worktree add "${targetPath}" "${branch}"`, { cwd: repoPath })
+      await runGit(repoPath, ['worktree', 'add', targetPath, branch])
     } else if (remoteBranchExists) {
       // Create local branch that tracks the remote branch.
-      await execAsync(`git worktree add -b "${branch}" "${targetPath}" "origin/${branch}"`, { cwd: repoPath })
+      await runGit(repoPath, ['worktree', 'add', '-b', branch, targetPath, `origin/${branch}`])
     } else {
       // Create a new branch from main/master when available; otherwise fallback to current HEAD.
       const preferredBaseRef = await getPreferredWorktreeBaseRef(repoPath)
       if (preferredBaseRef) {
-        await execAsync(`git worktree add -b "${branch}" "${targetPath}" "${preferredBaseRef}"`, { cwd: repoPath })
+        await runGit(repoPath, ['worktree', 'add', '-b', branch, targetPath, preferredBaseRef])
       } else {
-        await execAsync(`git worktree add -b "${branch}" "${targetPath}"`, { cwd: repoPath })
+        await runGit(repoPath, ['worktree', 'add', '-b', branch, targetPath])
       }
     }
     return true
@@ -208,11 +214,88 @@ async function createWorktree(repoPath: string, branch: string, targetPath: stri
 
 async function removeWorktree(repoPath: string, worktreePath: string): Promise<boolean> {
   try {
-    await execAsync(`git worktree remove "${worktreePath}" --force`, { cwd: repoPath })
+    await runGit(repoPath, ['worktree', 'remove', worktreePath, '--force'])
     return true
   } catch {
     return false
   }
+}
+
+interface GitDiffFile {
+  path: string
+  status: string
+  added: number
+  deleted: number
+}
+
+interface GitDiffPayload {
+  summary: {
+    filesChanged: number
+    insertions: number
+    deletions: number
+  }
+  files: GitDiffFile[]
+  raw: string
+}
+
+const MAX_RAW_DIFF_SIZE = 1_000_000
+
+async function getGitDiff(repoPath: string): Promise<GitDiffPayload> {
+  const [rawDiff, numStatOut, statusOut] = await Promise.all([
+    runGit(repoPath, ['diff', '--no-color']),
+    runGit(repoPath, ['diff', '--numstat']),
+    runGit(repoPath, ['diff', '--name-status']),
+  ])
+
+  const numMap = new Map<string, { added: number; deleted: number }>()
+  let insertions = 0
+  let deletions = 0
+
+  for (const row of numStatOut.split('\n').filter(Boolean)) {
+    const [addedRaw, deletedRaw, ...rest] = row.split('\t')
+    const filePath = rest.join('\t')
+    const added = Number.parseInt(addedRaw, 10)
+    const deleted = Number.parseInt(deletedRaw, 10)
+    const safeAdded = Number.isFinite(added) ? added : 0
+    const safeDeleted = Number.isFinite(deleted) ? deleted : 0
+    numMap.set(filePath, { added: safeAdded, deleted: safeDeleted })
+    insertions += safeAdded
+    deletions += safeDeleted
+  }
+
+  const files: GitDiffFile[] = []
+  for (const row of statusOut.split('\n').filter(Boolean)) {
+    const [status, ...rest] = row.split('\t')
+    const filePath = rest.join('\t')
+    const stats = numMap.get(filePath) || { added: 0, deleted: 0 }
+    files.push({
+      path: filePath,
+      status,
+      added: stats.added,
+      deleted: stats.deleted,
+    })
+  }
+
+  const raw = rawDiff.length > MAX_RAW_DIFF_SIZE
+    ? `${rawDiff.slice(0, MAX_RAW_DIFF_SIZE)}\n\n...truncated for display`
+    : rawDiff
+
+  return {
+    summary: {
+      filesChanged: files.length,
+      insertions,
+      deletions,
+    },
+    files,
+    raw,
+  }
+}
+
+async function getGitFilePatch(repoPath: string, filePath: string): Promise<string> {
+  if (path.isAbsolute(filePath)) {
+    throw new Error('filePath must be repository-relative')
+  }
+  return await runGit(repoPath, ['diff', '--no-color', '--', filePath])
 }
 
 export function registerWorkspaceHandlers() {
@@ -438,6 +521,35 @@ export function registerWorkspaceHandlers() {
       workspaceDb.delete(worktreeWorkspace.id)
     }
 
+    return true
+  })
+
+  ipcMain.handle('workspaces:getGitDiff', async (_, workspaceId: string) => {
+    const workspace = workspaceDb.get(workspaceId)
+    if (!workspace || !workspace.is_git) {
+      throw new Error('Workspace is not a git repository')
+    }
+    return await getGitDiff(workspace.path)
+  })
+
+  ipcMain.handle('workspaces:getGitFilePatch', async (_, workspaceId: string, filePath: string) => {
+    const workspace = workspaceDb.get(workspaceId)
+    if (!workspace || !workspace.is_git) {
+      throw new Error('Workspace is not a git repository')
+    }
+    return await getGitFilePatch(workspace.path, filePath)
+  })
+
+  ipcMain.handle('workspaces:discardFileChanges', async (_, workspaceId: string, filePath: string) => {
+    const workspace = workspaceDb.get(workspaceId)
+    if (!workspace || !workspace.is_git) {
+      throw new Error('Workspace is not a git repository')
+    }
+
+    if (path.isAbsolute(filePath)) {
+      throw new Error('filePath must be repository-relative')
+    }
+    await runGit(workspace.path, ['restore', '--', filePath])
     return true
   })
 }

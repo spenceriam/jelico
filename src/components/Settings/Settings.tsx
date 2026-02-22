@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { X, Plus, Trash2, Check, AlertCircle, Settings as SettingsIcon, Zap, Database, Edit2, Loader2, Search, HardDrive, Key, Eye, EyeOff, Shield, User, Palette } from 'lucide-react'
+import { X, Plus, Trash2, Check, AlertCircle, Settings as SettingsIcon, Zap, Database, Edit2, Loader2, Search, HardDrive, Key, Eye, EyeOff, Shield, User, Palette, Link2 } from 'lucide-react'
 import { useProviderStore } from '../../stores/providers'
 import { useUIStore } from '../../stores/ui'
 import { SkillManager } from '../Skills/SkillManager'
@@ -9,10 +9,11 @@ import { GeneralSettings } from './GeneralSettings'
 import { PermissionsSettings } from './PermissionsSettings'
 import { ProfileSettings } from './ProfileSettings'
 import { AppearanceSettings } from './AppearanceSettings'
+import { ConnectorsSettings } from './ConnectorsSettings'
 // MicrophoneSettings disabled - WASM crashes on Windows ARM64, will revisit later
 // import { MicrophoneSettings } from './MicrophoneSettings'
 
-type SettingsTab = 'profile' | 'appearance' | 'general' | 'providers' | 'permissions' | 'skills' | 'backup'
+type SettingsTab = 'profile' | 'appearance' | 'general' | 'providers' | 'connectors' | 'permissions' | 'skills' | 'backup'
 
 interface SettingsProps {
   onClose: () => void
@@ -217,6 +218,17 @@ export function Settings({ onClose }: SettingsProps) {
           >
             <Shield className="w-4 h-4" />
             Permissions
+          </button>
+          <button
+            onClick={() => setActiveTab('connectors')}
+            className={`px-4 py-3 text-sm flex items-center gap-2 border-b-2 -mb-px transition-colors ${
+              activeTab === 'connectors'
+                ? 'border-accent text-accent'
+                : 'border-transparent text-text-muted hover:text-text-primary'
+            }`}
+          >
+            <Link2 className="w-4 h-4" />
+            Connectors
           </button>
           <button
             onClick={() => setActiveTab('skills')}
@@ -493,6 +505,8 @@ export function Settings({ onClose }: SettingsProps) {
           {activeTab === 'skills' && <SkillManager />}
 
           {activeTab === 'permissions' && <PermissionsSettings />}
+
+          {activeTab === 'connectors' && <ConnectorsSettings />}
 
           {activeTab === 'general' && <GeneralSettings />}
 

@@ -51,6 +51,15 @@ interface Window {
       listBranches: (workspaceId: string) => Promise<GitBranch[]>
       createWorktree: (workspaceId: string, branch: string, targetPath?: string) => Promise<Workspace>
       removeWorktree: (mainWorkspaceId: string, worktreePath: string) => Promise<boolean>
+      getGitDiff: (workspaceId: string) => Promise<GitDiffPayload>
+      getGitFilePatch: (workspaceId: string, filePath: string) => Promise<string>
+      discardFileChanges: (workspaceId: string, filePath: string) => Promise<boolean>
+    }
+    connectors: {
+      listTemplates: () => Promise<ConnectorTemplate[]>
+      listConnections: () => Promise<ConnectorConnection[]>
+      connectStub: (id: string, accountLabel?: string) => Promise<ConnectorConnection>
+      disconnect: (id: string) => Promise<ConnectorConnection>
     }
     compaction: {
       getThresholds: () => Promise<CompactionThresholds>
@@ -469,6 +478,38 @@ interface Workspace {
   projectPath?: string
   gitBranch?: string
   createdAt: number
+  updatedAt: number
+}
+
+interface GitDiffFile {
+  path: string
+  status: string
+  added: number
+  deleted: number
+}
+
+interface GitDiffPayload {
+  summary: {
+    filesChanged: number
+    insertions: number
+    deletions: number
+  }
+  files: GitDiffFile[]
+  raw: string
+}
+
+interface ConnectorTemplate {
+  id: 'github' | 'linear' | 'slack' | 'notion'
+  label: string
+  description: string
+  authType: 'oauth' | 'token'
+  status: 'planned' | 'beta'
+}
+
+interface ConnectorConnection {
+  id: 'github' | 'linear' | 'slack' | 'notion'
+  connected: boolean
+  accountLabel?: string
   updatedAt: number
 }
 

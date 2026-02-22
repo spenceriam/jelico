@@ -1,8 +1,9 @@
 import { useState, useRef, useEffect } from 'react'
-import { ChevronDown, Plus, GitBranch, Folder, X, RefreshCw, GitFork, Box, Download } from 'lucide-react'
+import { ChevronDown, Plus, GitBranch, Folder, X, RefreshCw, GitFork, Box, Download, GitCompare } from 'lucide-react'
 import { useWorkspaceStore, type Workspace } from '../../stores/workspaces'
 import { useSandboxStore } from '../../stores/sandbox'
 import { useChatStore } from '../../stores/chat'
+import { GitDiffReviewModal } from './GitDiffReviewModal'
 
 interface GitBranchInfo {
   name: string
@@ -26,6 +27,7 @@ export function WorkspaceSelector() {
   const [branchPickerOpen, setBranchPickerOpen] = useState<string | null>(null)
   const [branches, setBranches] = useState<GitBranchInfo[]>([])
   const [isLoadingBranches, setIsLoadingBranches] = useState(false)
+  const [diffWorkspace, setDiffWorkspace] = useState<{ id: string; name: string } | null>(null)
   const dropdownRef = useRef<HTMLDivElement>(null)
 
   const activeWorkspace = workspaces.find(w => w.id === activeWorkspaceId)
@@ -212,6 +214,10 @@ export function WorkspaceSelector() {
                     onDelete={(e) => handleDelete(e, workspace.id)}
                     onRefreshGit={(e) => handleRefreshGit(e, workspace.id)}
                     onOpenBranchPicker={(e) => handleOpenBranchPicker(e, workspace.id)}
+                    onOpenDiff={(e) => {
+                      e.stopPropagation()
+                      setDiffWorkspace({ id: workspace.id, name: workspace.name })
+                    }}
                     showBranchPicker={branchPickerOpen === workspace.id}
                   />
                   {branchPickerOpen === workspace.id && (
@@ -239,6 +245,14 @@ export function WorkspaceSelector() {
           </div>
         </div>
       )}
+
+      {diffWorkspace && (
+        <GitDiffReviewModal
+          workspaceId={diffWorkspace.id}
+          workspaceName={diffWorkspace.name}
+          onClose={() => setDiffWorkspace(null)}
+        />
+      )}
     </div>
   )
 }
@@ -250,6 +264,7 @@ function WorkspaceItem({
   onDelete,
   onRefreshGit,
   onOpenBranchPicker,
+  onOpenDiff,
   showBranchPicker,
 }: {
   workspace: Workspace
@@ -258,6 +273,7 @@ function WorkspaceItem({
   onDelete: (e: React.MouseEvent) => void
   onRefreshGit: (e: React.MouseEvent) => void
   onOpenBranchPicker: (e: React.MouseEvent) => void
+  onOpenDiff: (e: React.MouseEvent) => void
   showBranchPicker: boolean
 }) {
   return (
@@ -288,6 +304,13 @@ function WorkspaceItem({
       <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
         {workspace.isGit && (
           <>
+            <button
+              onClick={onOpenDiff}
+              className="p-1 text-text-muted hover:text-text-primary rounded"
+              title="Review local changes"
+            >
+              <GitCompare className="w-3 h-3" />
+            </button>
             <button
               onClick={onOpenBranchPicker}
               className={`p-1 rounded ${showBranchPicker ? 'text-accent' : 'text-text-muted hover:text-text-primary'}`}
