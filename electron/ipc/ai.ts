@@ -114,6 +114,47 @@ function sleep(ms: number): Promise<void> {
 }
 
 /**
+ * Think tag parser for Minimax and other providers that emit <think> blocks
+ * Strips <think>...</think> content from text streams
+ * Handles partial tags across chunk boundaries
+ */
+function stripThinkTags(text: string, state: { inThink: boolean; buffer: string }): { text: string; state: { inThink: boolean; buffer: string } } {
+  let result = ''
+  let i = 0
+  
+  while (i < text.length) {
+    if (state.inThink) {
+      // Looking for </think>
+      const endTag = '</think>'
+      const endIdx = text.indexOf(endTag, i)
+      if (endIdx !== -1) {
+        state.inThink = false
+        i = endIdx + endTag.length
+      } else {
+        // Still in think block, consume rest
+        break
+      }
+    } else {
+      // Looking for <think>
+      const startTag = '<think>'
+      const startIdx = text.indexOf(startTag, i)
+      if (startIdx !== -1) {
+        // Add text before <think>
+        result += text.slice(i, startIdx)
+        state.inThink = true
+        i = startIdx + startTag.length
+      } else {
+        // No <think> found, add rest
+        result += text.slice(i)
+        break
+      }
+    }
+  }
+  
+  return { text: result, state }
+}
+
+/**
  * Contextual Knowledge Loader
  *
  * Analyzes the user's message and pre-loads relevant documentation/skills
@@ -2675,6 +2716,9 @@ If you find yourself frequently hitting limits, suggest breaking the task into m
           let lastToolInputUpdate = 0
           let accumulatedToolInput = '' // Accumulate the actual tool input JSON
 
+          // Track think tag state for Minimax and other providers
+          let thinkState = { inThink: false, buffer: '' }
+
           for await (const part of result.fullStream) {
             if (abortController.signal.aborted) break
 
@@ -2695,12 +2739,18 @@ If you find yourself frequently hitting limits, suggest breaking the task into m
                 // Some providers may use 'content' or 'chunk'
                 const textChunk = (part as any).text || (part as any).textDelta || (part as any).content || (part as any).chunk
                 if (textChunk) {
-                  event.sender.send(`ai:chunk:${channelId}`, textChunk)
-                  textAfterLastToolResult += textChunk
-                  totalStreamedTextLength += textChunk.length  // Track total to prevent duplicate sending
-                  streamedTextTail = (streamedTextTail + textChunk).slice(-4)
-                  // Mark that AI provided text since last tool result (harness tracking)
-                  textSentSinceLastResult = true
+                  // Strip think tags for Minimax and other providers (Issue #50)
+                  const { text: cleanedChunk, state: newThinkState } = stripThinkTags(textChunk, thinkState)
+                  thinkState = newThinkState
+                  
+                  if (cleanedChunk) {
+                    event.sender.send(`ai:chunk:${channelId}`, cleanedChunk)
+                    textAfterLastToolResult += cleanedChunk
+                    totalStreamedTextLength += cleanedChunk.length  // Track total to prevent duplicate sending
+                    streamedTextTail = (streamedTextTail + cleanedChunk).slice(-4)
+                    // Mark that AI provided text since last tool result (harness tracking)
+                    textSentSinceLastResult = true
+                  }
                 }
                 break
 
