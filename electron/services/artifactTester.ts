@@ -538,7 +538,11 @@ export async function artifactTestWaitFor(input: {
   }
 }
 
-export async function artifactTestScreenshot(sessionId: string) {
+interface ArtifactTestScreenshotOptions {
+  thumbWidth?: number
+}
+
+export async function artifactTestScreenshot(sessionId: string, options: ArtifactTestScreenshotOptions = {}) {
   const session = getSession(sessionId)
   if (!session) return { success: false, error: `Session not found: ${sessionId}` }
 
@@ -547,11 +551,21 @@ export async function artifactTestScreenshot(sessionId: string) {
   const outputPath = path.join(app.getPath('temp'), `jelico-artifact-test-${sessionId}-${Date.now()}.png`)
   await fs.writeFile(outputPath, png)
 
+  const requestedThumbWidth = Math.round(options.thumbWidth ?? 300)
+  const thumbWidth = Math.max(1, Number.isFinite(requestedThumbWidth) ? requestedThumbWidth : 300)
+  const thumbnail = image.resize({ width: thumbWidth, quality: 'best' })
+  const thumbnailJpeg = thumbnail.toJPEG(80).toString('base64')
+
   const size = image.getSize()
+  const thumbnailSize = thumbnail.getSize()
   return {
     success: true,
     path: outputPath,
     width: size.width,
     height: size.height,
+    thumbnailBase64: thumbnailJpeg,
+    thumbnailMimeType: 'image/jpeg',
+    thumbnailWidth: thumbnailSize.width,
+    thumbnailHeight: thumbnailSize.height,
   }
 }
