@@ -8,6 +8,7 @@ import { permissionDb } from './database.js'
 
 // Types
 export type PermissionAction = 'allow_always' | 'allow_once' | 'deny'
+export type PermissionScope = 'once' | 'conversation' | 'workspace' | 'deny'
 export type ActionType = 'read' | 'write' | 'delete' | 'execute' | 'web' | 'spawn'
 
 interface PendingRequest {
@@ -23,6 +24,7 @@ interface PermissionRequest {
   description: string
   preview?: string
   workspaceId?: string
+  conversationId?: string
 }
 
 // Session-scoped permissions (cleared on app restart)
@@ -206,47 +208,57 @@ export function classifyAction(toolName: string, args: Record<string, unknown>):
 
 /**
  * Generate a cache key for session permissions
+ * Now includes conversationId for conversation-scoped permissions
  */
-function getSessionKey(toolName: string, action: string, workspaceId?: string): string {
+function getSessionKey(toolName: string, action: string, workspaceId?: string, conversationId?: string): string {
+  // Include conversationId in key for conversation-scoped permissions
+  if (conversationId) {
+    return `${toolName}:${action}:${workspaceId || 'global'}:${conversationId}`
+  }
   return `${toolName}:${action}:${workspaceId || 'global'}`
 }
 
-function getRememberedActionPattern(toolName: string, action: string): string {
-  if (toolName === 'write_file') {
-    return 'Write to:*'
-  }
-
-  if (toolName === 'execute_command') {
-    return 'Run:*'
-  }
-
-  const separatorIndex = action.indexOf(':')
-  if (separatorIndex !== -1) {
-    return `${action.slice(0, separatorIndex + 1)}*`
-  }
-
+/**
+ * Get the exact action pattern - no wildcards for security
+ * Issue #57: Permission scoping should be exact by default
+ */
+function getRememberedActionPattern(toolName: string, action: string, scope: PermissionScope = 'once'): string {
+  // Always return exact action - no wildcards for security
+  // 'mkdir docs' and 'mkdir src' are treated as distinct commands
   return action
 }
 
-function getSessionLookupKeys(toolName: string, action: string, workspaceId?: string): string[] {
-  const exactKey = getSessionKey(toolName, action, workspaceId)
-  const rememberedPattern = getRememberedActionPattern(toolName, action)
-
-  if (rememberedPattern === action) {
-    return [exactKey]
+/**
+ * Get session lookup keys for permission checking
+ * Checks: exact match first, then conversation-scoped, then workspace-scoped
+ */
+function getSessionLookupKeys(toolName: string, action: string, workspaceId?: string, conversationId?: string): string[] {
+  const keys: string[] = []
+  
+  // 1. Exact match with conversation scope (highest priority)
+  if (conversationId) {
+    keys.push(getSessionKey(toolName, action, workspaceId, conversationId))
   }
-
-  const wildcardKey = getSessionKey(toolName, rememberedPattern, workspaceId)
-  return [wildcardKey, exactKey]
+  
+  // 2. Exact match without conversation scope (for workspace/global permissions)
+  keys.push(getSessionKey(toolName, action, workspaceId))
+  
+  // 3. Global exact match
+  keys.push(getSessionKey(toolName, action, undefined, conversationId))
+  keys.push(getSessionKey(toolName, action))
+  
+  return keys
 }
 
 /**
  * Check if an action is allowed without prompting
+ * Now supports conversation-scoped permissions (Issue #57)
  */
 export async function checkPermission(
   toolName: string,
   args: Record<string, unknown>,
-  workspaceId?: string
+  workspaceId?: string,
+  conversationId?: string
 ): Promise<{ allowed: boolean; reason?: string }> {
   // Global "allow all" session flag
   if (allowAllSession) {
@@ -275,14 +287,13 @@ export async function checkPermission(
     return { allowed: true, reason: 'artifact_safe' }
   }
 
-  // Check session permissions
-  const sessionKeys = getSessionLookupKeys(toolName, description, workspaceId)
-  const exactSessionKey = sessionKeys[sessionKeys.length - 1]
+  // Check session permissions with conversation scope
+  const sessionKeys = getSessionLookupKeys(toolName, description, workspaceId, conversationId)
   for (const sessionKey of sessionKeys) {
     const sessionPermission = sessionPermissions.get(sessionKey)
     if (sessionPermission === 'allow_always' || sessionPermission === 'allow_once') {
-      // Remove exact one-time grants after use, keep remembered wildcard grants.
-      if (sessionPermission === 'allow_once' && sessionKey === exactSessionKey) {
+      // Remove one-time grants after use
+      if (sessionPermission === 'allow_once') {
         sessionPermissions.delete(sessionKey)
       }
       return { allowed: true, reason: 'session_permission' }
@@ -342,6 +353,7 @@ function getOldestPendingRequest(): (PermissionRequest & { requestId: string }) 
 
 /**
  * Handle permission response from renderer
+ * Now supports conversation-scoped permissions (Issue #57)
  */
 export function handlePermissionResponse(
   requestId: string,
@@ -349,7 +361,9 @@ export function handlePermissionResponse(
   remember: boolean,
   toolName: string,
   action: string,
-  workspaceId?: string
+  workspaceId?: string,
+  conversationId?: string,
+  scope: PermissionScope = 'once'
 ) {
   const pending = pendingRequests.get(requestId)
   if (!pending) {
@@ -359,13 +373,28 @@ export function handlePermissionResponse(
 
   pendingRequests.delete(requestId)
 
-  const scopedAction = remember ? getRememberedActionPattern(toolName, action) : action
+  // Use exact action - no wildcards for security
+  const scopedAction = action
 
   // Session grant scopes:
-  // - allow once: exact action unless user chose "remember in this session"
-  // - allow always (persisted): also store in session immediately to avoid race conditions
+  // - once: exact action, no persistence
+  // - conversation: exact action, conversation-scoped
+  // - workspace: exact action, workspace-scoped
+  // - deny: deny the action
   if (permission === 'allow_once' || (permission === 'allow_always' && remember)) {
-    const sessionKey = getSessionKey(toolName, scopedAction, workspaceId)
+    // Determine the scope for the session key
+    let sessionKey: string
+    if (scope === 'conversation' && conversationId) {
+      // Conversation-scoped permission
+      sessionKey = getSessionKey(toolName, scopedAction, workspaceId, conversationId)
+    } else if (scope === 'workspace') {
+      // Workspace-scoped permission
+      sessionKey = getSessionKey(toolName, scopedAction, workspaceId)
+    } else {
+      // 'once' or default - use exact action with conversation if available
+      sessionKey = getSessionKey(toolName, scopedAction, workspaceId, conversationId)
+    }
+    
     const sessionPermission: PermissionAction = permission === 'allow_always' ? 'allow_always' : 'allow_once'
     sessionPermissions.set(sessionKey, sessionPermission)
   }
@@ -430,6 +459,8 @@ ipcMain.handle('permission:respond', async (_, data: {
   toolName: string
   action: string
   workspaceId?: string
+  conversationId?: string
+  scope?: PermissionScope
 }) => {
   handlePermissionResponse(
     data.requestId,
@@ -437,7 +468,9 @@ ipcMain.handle('permission:respond', async (_, data: {
     data.remember,
     data.toolName,
     data.action,
-    data.workspaceId
+    data.workspaceId,
+    data.conversationId,
+    data.scope
   )
   return { success: true }
 })
