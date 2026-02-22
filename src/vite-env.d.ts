@@ -216,7 +216,7 @@ interface Window {
 
 interface ProviderConfig {
   id: string
-  type: 'anthropic' | 'openai' | 'google' | 'ollama' | 'openrouter' | 'custom' | 'local' | 'zai' | 'zai-china' | 'zai-coding' | 'zai-coding-china' | 'openai-compatible' | 'anthropic-compatible'
+  type: 'anthropic' | 'openai' | 'google' | 'ollama' | 'openrouter' | 'custom' | 'local' | 'zai' | 'zai-china' | 'zai-coding' | 'zai-coding-china' | 'minimax' | 'openai-compatible' | 'anthropic-compatible'
   name: string
   baseUrl?: string
   defaultModel: string

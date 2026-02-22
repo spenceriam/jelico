@@ -21,6 +21,15 @@ export interface ChangelogEntry {
 
 export const changelog: ChangelogEntry[] = [
   {
+    version: '0.23.0',
+    date: '2026-02-22',
+    changes: {
+      added: [
+        'Added Minimax as a native provider option (Issue #51)',
+      ],
+    },
+  },
+  {
     version: '0.22.0',
     date: '2026-02-22',
     changes: {
