@@ -21,26 +21,19 @@ export interface ChangelogEntry {
 
 export const changelog: ChangelogEntry[] = [
   {
-    version: '0.20.0',
-    date: '2026-02-22',
-    changes: {
-      added: [
-        'Git work trees are now auto-discovered and shown in workspace list',
-        'Workspaces now use git command detection instead of .git folder detection',
-      ],
-      fixed: [
-        'Git work trees were incorrectly marked as non-git repositories',
-      ],
-    },
-  },
-  {
     version: '0.19.0',
     date: '2026-02-20',
     changes: {
       added: [
         'HTML artifacts now show thumbnail preview in chat with click-to-expand lightbox',
         'Artifact thumbnails are auto-captured at 300px width during creation',
-        'Lightbox modal shows expanded artifact preview at 70% viewport size',
+        'Git work trees are now auto-discovered and shown in workspace list',
+        'Workspaces now use git command detection instead of .git folder detection',
+        'Images in chat messages are now clickable for full-size preview',
+        'Lightbox modal for viewing full-size images in messages',
+      ],
+      fixed: [
+        'Git work trees were incorrectly marked as non-git repositories',
       ],
     },
   },
