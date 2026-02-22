@@ -98,6 +98,13 @@ contextBridge.exposeInMainWorld('jelico', {
     deleteByScope: (scope: string, scopeId?: string) => ipcRenderer.invoke('memory:deleteByScope', scope, scopeId),
     decayConfidence: (decayRate?: number) => ipcRenderer.invoke('memory:decayConfidence', decayRate),
   },
+  todos: {
+    getByConversation: (conversationId: string) => ipcRenderer.invoke('todos:getByConversation', conversationId),
+    replaceAll: (conversationId: string, todos: any[]) => ipcRenderer.invoke('todos:replaceAll', conversationId, todos),
+    update: (conversationId: string, todoId: string, updates: any) => ipcRenderer.invoke('todos:update', conversationId, todoId, updates),
+    deleteByConversation: (conversationId: string) => ipcRenderer.invoke('todos:deleteByConversation', conversationId),
+    migrateFromLocalStorage: () => ipcRenderer.invoke('todos:migrateFromLocalStorage'),
+  },
   permissions: {
     list: (workspaceId?: string) => ipcRenderer.invoke('permissions:list', workspaceId),
     get: (id: string) => ipcRenderer.invoke('permissions:get', id),

@@ -147,6 +147,13 @@ interface Window {
       deleteByScope: (scope: MemoryScope, scopeId?: string) => Promise<{ success: boolean }>
       decayConfidence: (decayRate?: number) => Promise<{ success: boolean }>
     }
+    todos: {
+      getByConversation: (conversationId: string) => Promise<TodoTask[]>
+      replaceAll: (conversationId: string, todos: TodoTask[]) => Promise<{ success: boolean }>
+      update: (conversationId: string, todoId: string, updates: Partial<TodoTask>) => Promise<{ success: boolean; todo?: TodoTask }>
+      deleteByConversation: (conversationId: string) => Promise<{ success: boolean }>
+      migrateFromLocalStorage: () => Promise<{ success: boolean; migrated: number }>
+    }
     permissions: {
       list: (workspaceId?: string) => Promise<PermissionRecord[]>
       get: (id: string) => Promise<PermissionRecord | null>
@@ -363,7 +370,7 @@ interface ModeSwitchEvent {
 interface TodoTask {
   id: string
   text: string
-  status: 'pending' | 'in_progress' | 'done'
+  status: 'pending' | 'in_progress' | 'done' | 'failed' | 'cancelled'
 }
 
 interface ReasoningEvent {

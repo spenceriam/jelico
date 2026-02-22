@@ -6,6 +6,8 @@
  * - todo_write: Create/update task list
  * - todo_read: Get current task state
  * - todo_check: Validate working on right task
+ * 
+ * Issue #48 Fix: Moved from localStorage to database for proper sync
  */
 
 import { create } from 'zustand'
@@ -23,22 +25,22 @@ export interface TodoItem {
 interface TodoState {
   // State
   todos: TodoItem[]
-  todosByConversation: Record<string, TodoItem[]>
   isVisible: boolean
   conversationId: string | null
+  isLoading: boolean
 
   // Actions
-  setTodos: (conversationId: string, todos: Omit<TodoItem, 'createdAt' | 'updatedAt'>[]) => void
+  setTodos: (conversationId: string, todos: Omit<TodoItem, 'createdAt' | 'updatedAt'>[]) => Promise<void>
   updateTodo: (
     id: string,
     updates: Partial<Pick<TodoItem, 'text' | 'status'>>,
     conversationId?: string
-  ) => void
+  ) => Promise<void>
   getTodo: (id: string) => TodoItem | undefined
-  clearTodos: (conversationId?: string) => void
-  setConversationId: (id: string | null) => void
+  clearTodos: (conversationId?: string) => Promise<void>
+  setConversationId: (id: string | null) => Promise<void>
   setVisible: (visible: boolean) => void
-  deleteConversationTodos: (conversationId: string) => void
+  deleteConversationTodos: (conversationId: string) => Promise<void>
   hydrateConversationFromMessages: (
     conversationId: string,
     messages: Array<{
@@ -47,7 +49,8 @@ interface TodoState {
         args?: Record<string, unknown>
       }>
     }>
-  ) => void
+  ) => Promise<void>
+  loadTodos: (conversationId: string) => Promise<void>
 
   // Computed
   getProgress: () => { completed: number; failed: number; cancelled: number; total: number }
@@ -55,69 +58,50 @@ interface TodoState {
   getActiveTasks: () => TodoItem[]
 }
 
-const TODOS_STORAGE_KEY = 'jelico.todosByConversation.v1'
-
-function readPersistedTodosByConversation(): Record<string, TodoItem[]> {
-  try {
-    if (typeof window === 'undefined' || !window.localStorage) {
-      return {}
-    }
-
-    const raw = window.localStorage.getItem(TODOS_STORAGE_KEY)
-    if (!raw) return {}
-
-    const parsed = JSON.parse(raw)
-    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
-      return {}
-    }
-
-    const entries = Object.entries(parsed).filter(([conversationId, value]) => {
-      if (!conversationId || typeof conversationId !== 'string') return false
-      if (!Array.isArray(value)) return false
-
-      return value.every((item) =>
-        item &&
-        typeof item === 'object' &&
-        typeof (item as any).id === 'string' &&
-        typeof (item as any).text === 'string' &&
-        typeof (item as any).status === 'string' &&
-        typeof (item as any).createdAt === 'number' &&
-        typeof (item as any).updatedAt === 'number'
-      )
-    }) as Array<[string, TodoItem[]]>
-
-    return Object.fromEntries(entries)
-  } catch {
-    return {}
-  }
-}
-
-function writePersistedTodosByConversation(todosByConversation: Record<string, TodoItem[]>) {
-  try {
-    if (typeof window === 'undefined' || !window.localStorage) {
-      return
-    }
-    window.localStorage.setItem(TODOS_STORAGE_KEY, JSON.stringify(todosByConversation))
-  } catch {
-    // Ignore localStorage write failures
+// Helper to convert database row to store format
+function rowToTodo(row: any): TodoItem {
+  return {
+    id: row.id,
+    text: row.text,
+    status: row.status,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
   }
 }
 
 export const useTodoStore = create<TodoState>((set, get) => ({
   todos: [],
-  todosByConversation: readPersistedTodosByConversation(),
   isVisible: false,
   conversationId: null,
+  isLoading: false,
 
-  setTodos: (conversationId, todos) => {
+  loadTodos: async (conversationId: string) => {
+    if (!conversationId) return
+    
+    set({ isLoading: true })
+    try {
+      const rows = await window.jelico.todos.getByConversation(conversationId)
+      const todos = rows.map(rowToTodo)
+      set({
+        todos,
+        isVisible: todos.length > 0,
+        isLoading: false,
+      })
+    } catch (error) {
+      console.error('[TodoStore] Failed to load todos:', error)
+      set({ isLoading: false })
+    }
+  },
+
+  setTodos: async (conversationId, todos) => {
     if (!conversationId) return
 
     const now = Date.now()
-    const existingTodos = get().todosByConversation[conversationId] || []
+    const currentTodos = get().todos
 
     // Preserve timestamps for existing todos, add new ones
     const updatedTodos = todos.map(todo => {
-      const existing = existingTodos.find(t => t.id === todo.id)
+      const existing = currentTodos.find(t => t.id === todo.id)
       if (existing) {
         // Update existing: keep createdAt, update updatedAt if changed
         const hasChanged = existing.text !== todo.text || existing.status !== todo.status
@@ -135,134 +119,127 @@ export const useTodoStore = create<TodoState>((set, get) => ({
       }
     })
 
-    set((state) => {
-      const nextTodosByConversation = {
-        ...state.todosByConversation,
-        [conversationId]: updatedTodos,
-      }
-
-      if (state.conversationId !== conversationId) {
-        return {
-          todosByConversation: nextTodosByConversation,
-        }
-      }
-
-      return {
-        todosByConversation: nextTodosByConversation,
-        todos: updatedTodos,
-        isVisible: updatedTodos.length > 0,
-      }
+    // Update local state
+    set({
+      todos: updatedTodos,
+      isVisible: updatedTodos.length > 0,
     })
 
-    writePersistedTodosByConversation(get().todosByConversation)
+    // Persist to database
+    try {
+      await window.jelico.todos.replaceAll(
+        conversationId,
+        updatedTodos.map(t => ({
+          id: t.id,
+          text: t.text,
+          status: t.status,
+          created_at: t.createdAt,
+          updated_at: t.updatedAt,
+        }))
+      )
+    } catch (error) {
+      console.error('[TodoStore] Failed to save todos:', error)
+    }
   },
 
-  updateTodo: (id, updates, conversationId) => {
+  updateTodo: async (id, updates, conversationId) => {
     const targetConversationId = conversationId ?? get().conversationId
     if (!targetConversationId) return
 
     const now = Date.now()
-    set((state) => {
-      const currentTodos = state.todosByConversation[targetConversationId] || []
-      const updatedTodos = currentTodos.map(todo =>
-        todo.id === id
-          ? { ...todo, ...updates, updatedAt: now }
-          : todo
-      )
+    const currentTodos = get().todos
+    const updatedTodos = currentTodos.map(todo =>
+      todo.id === id
+        ? { ...todo, ...updates, updatedAt: now }
+        : todo
+    )
 
-      const nextTodosByConversation = {
-        ...state.todosByConversation,
-        [targetConversationId]: updatedTodos,
-      }
+    // Update local state
+    set({ todos: updatedTodos })
 
-      if (state.conversationId !== targetConversationId) {
-        return {
-          todosByConversation: nextTodosByConversation,
-        }
-      }
-
-      return {
-        todosByConversation: nextTodosByConversation,
-        todos: updatedTodos,
-      }
-    })
-
-    writePersistedTodosByConversation(get().todosByConversation)
+    // Persist to database
+    try {
+      await window.jelico.todos.update(targetConversationId, id, {
+        text: updates.text,
+        status: updates.status,
+      })
+    } catch (error) {
+      console.error('[TodoStore] Failed to update todo:', error)
+    }
   },
 
   getTodo: (id) => {
     return get().todos.find(t => t.id === id)
   },
 
-  clearTodos: (conversationId) => {
+  clearTodos: async (conversationId) => {
     const targetConversationId = conversationId ?? get().conversationId
-    if (!targetConversationId) {
-      set({ todos: [], isVisible: false })
-      return
+    
+    // Update local state
+    set({ todos: [], isVisible: false })
+
+    // Persist to database
+    if (targetConversationId) {
+      try {
+        await window.jelico.todos.deleteByConversation(targetConversationId)
+      } catch (error) {
+        console.error('[TodoStore] Failed to clear todos:', error)
+      }
     }
-
-    set((state) => {
-      const nextTodosByConversation = { ...state.todosByConversation }
-      delete nextTodosByConversation[targetConversationId]
-
-      if (state.conversationId !== targetConversationId) {
-        return {
-          todosByConversation: nextTodosByConversation,
-        }
-      }
-
-      return {
-        todosByConversation: nextTodosByConversation,
-        todos: [],
-        isVisible: false,
-      }
-    })
-
-    writePersistedTodosByConversation(get().todosByConversation)
   },
 
-  setConversationId: (id) => {
+  setConversationId: async (id) => {
     if (id === get().conversationId) return
 
-    const nextTodos = id ? (get().todosByConversation[id] || []) : []
-    set({
-      conversationId: id,
-      todos: nextTodos,
-      isVisible: nextTodos.length > 0,
-    })
+    // Load todos for the new conversation
+    if (id) {
+      await get().loadTodos(id)
+    } else {
+      set({ todos: [], isVisible: false })
+    }
+
+    set({ conversationId: id })
   },
 
   setVisible: (visible) => {
     set({ isVisible: visible })
   },
 
-  deleteConversationTodos: (conversationId) => {
-    set((state) => {
-      if (!state.todosByConversation[conversationId]) return {}
+  deleteConversationTodos: async (conversationId) => {
+    // Update local state if this is the current conversation
+    if (conversationId === get().conversationId) {
+      set({ todos: [], isVisible: false })
+    }
 
-      const nextTodosByConversation = { ...state.todosByConversation }
-      delete nextTodosByConversation[conversationId]
-
-      if (state.conversationId !== conversationId) {
-        return { todosByConversation: nextTodosByConversation }
-      }
-
-      return {
-        todosByConversation: nextTodosByConversation,
-        todos: [],
-        isVisible: false,
-      }
-    })
-
-    writePersistedTodosByConversation(get().todosByConversation)
+    // Persist to database
+    try {
+      await window.jelico.todos.deleteByConversation(conversationId)
+    } catch (error) {
+      console.error('[TodoStore] Failed to delete conversation todos:', error)
+    }
   },
 
-  hydrateConversationFromMessages: (conversationId, messages) => {
+  hydrateConversationFromMessages: async (conversationId, messages) => {
     if (!conversationId) return
 
-    const existing = get().todosByConversation[conversationId]
+    // Check if we already have todos for this conversation
+    const existing = get().todos
     if (existing && existing.length > 0) {
       return
+    }
+
+    // Also check database
+    try {
+      const dbTodos = await window.jelico.todos.getByConversation(conversationId)
+      if (dbTodos.length > 0) {
+        set({
+          todos: dbTodos.map(rowToTodo),
+          isVisible: true,
+        })
+        return
+      }
+    } catch (error) {
+      console.error('[TodoStore] Failed to check existing todos:', error)
     }
 
     const validStatuses = new Set<TodoStatus>(['pending', 'in_progress', 'done', 'failed', 'cancelled'])
@@ -307,7 +284,7 @@ export const useTodoStore = create<TodoState>((set, get) => ({
       return
     }
 
-    get().setTodos(conversationId, recoveredTasks)
+    await get().setTodos(conversationId, recoveredTasks)
   },
 
   getProgress: () => {

@@ -11,6 +11,7 @@ import { registerArtifactHandlers } from './ipc/artifacts'
 import { registerSandboxHandlers } from './ipc/sandbox'
 import { registerMemoryHandlers } from './ipc/memory'
 import { registerPermissionHandlers } from './ipc/permissions'
+import { registerTodoHandlers } from './ipc/todos'
 import { registerSoulHandlers } from './ipc/soul'
 import { registerBackupHandlers } from './ipc/backup'
 import { registerSpeechHandlers } from './ipc/speech'
@@ -327,6 +328,7 @@ app.whenReady().then(async () => {
   registerSandboxHandlers()
   registerMemoryHandlers()
   registerPermissionHandlers()
+  registerTodoHandlers()
   registerSoulHandlers()
   registerBackupHandlers()
   registerSpeechHandlers()
