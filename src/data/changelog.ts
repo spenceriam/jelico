@@ -21,6 +21,19 @@ export interface ChangelogEntry {
 
 export const changelog: ChangelogEntry[] = [
   {
+    version: '0.20.0',
+    date: '2026-02-22',
+    changes: {
+      added: [
+        'Git work trees are now auto-discovered and shown in workspace list',
+        'Workspaces now use git command detection instead of .git folder detection',
+      ],
+      fixed: [
+        'Git work trees were incorrectly marked as non-git repositories',
+      ],
+    },
+  },
+  {
     version: '0.19.0',
     date: '2026-02-20',
     changes: {
