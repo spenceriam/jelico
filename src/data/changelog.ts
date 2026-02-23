@@ -21,6 +21,15 @@ export interface ChangelogEntry {
 
 export const changelog: ChangelogEntry[] = [
   {
+    version: '0.29.0',
+    date: '2026-02-23',
+    changes: {
+      fixed: [
+        'Canvas divider now uses dynamic max width based on window size (Fixes #59)',
+      ],
+    },
+  },
+  {
     version: '0.28.0',
     date: '2026-02-23',
     changes: {
