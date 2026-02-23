@@ -375,8 +375,8 @@ export function CanvasPanel() {
         </div>
       </div>
 
-      {/* Content - with vertical scroll. min-h-0 fixes flexbox height calculation for Monaco */}
-      <div className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden">
+      {/* Content - overflow-hidden prevents scroll issues with Monaco editor. Individual viewers handle their own scrolling. */}
+      <div className="flex-1 min-h-0 overflow-hidden">
         {displayArtifact ? (
           <ArtifactContent artifact={displayArtifact} />
         ) : conversationArtifacts.length === 0 ? (
