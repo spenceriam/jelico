@@ -21,6 +21,15 @@ export interface ChangelogEntry {
 
 export const changelog: ChangelogEntry[] = [
   {
+    version: '0.30.0',
+    date: '2026-02-23',
+    changes: {
+      fixed: [
+        'Text overflow in streaming content and tool output now wraps correctly (Fixes #60)',
+      ],
+    },
+  },
+  {
     version: '0.29.0',
     date: '2026-02-23',
     changes: {

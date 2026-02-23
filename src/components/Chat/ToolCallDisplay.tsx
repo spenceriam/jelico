@@ -741,7 +741,7 @@ export function SingleToolCallDisplay({
               )}
 
               {progressPreview && (
-                <div className="ml-4 rounded bg-bg-deep px-2.5 py-2 text-xs text-text-secondary whitespace-pre-wrap">
+                <div className="ml-4 rounded bg-bg-deep px-2.5 py-2 text-xs text-text-secondary whitespace-pre-wrap break-words">
                   {progressPreview}
                 </div>
               )}

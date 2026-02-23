@@ -245,7 +245,7 @@ export function Message({
             )}
             {/* Show text content */}
             {hasContent && (
-              <p className="whitespace-pre-wrap text-sm">{message.content}</p>
+              <p className="whitespace-pre-wrap text-sm break-words">{message.content}</p>
             )}
             {/* Show placeholder if completely empty (shouldn't happen) */}
             {!hasContent && !hasAttachments && (
@@ -350,7 +350,7 @@ export function Message({
           return <MarkdownCodeBlock language={match[1]} codeContent={codeContent} />
         },
         p: ({ children }) => (
-          <p className="mb-3 last:mb-0 text-sm text-text-primary leading-relaxed">
+          <p className="mb-3 last:mb-0 text-sm text-text-primary leading-relaxed [overflow-wrap:anywhere]">
             {children}
           </p>
         ),
@@ -365,14 +365,14 @@ export function Message({
           </ol>
         ),
         li: ({ children }) => (
-          <li className="text-sm text-text-primary">{children}</li>
+          <li className="text-sm text-text-primary [overflow-wrap:anywhere]">{children}</li>
         ),
         a: ({ children, href }) => (
           <a
             href={href}
             target="_blank"
             rel="noopener noreferrer"
-            className="text-accent hover:underline"
+            className="text-accent hover:underline [overflow-wrap:anywhere]"
           >
             {children}
           </a>
