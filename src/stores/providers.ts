@@ -32,8 +32,8 @@ interface ProviderStore {
   addProvider: (input: ProviderInput) => Promise<ProviderConfig>
   updateProvider: (id: string, updates: Partial<ProviderInput>) => Promise<void>
   deleteProvider: (id: string) => Promise<void>
-  setActiveProvider: (id: string) => void
-  setActiveModel: (model: string) => void
+  setActiveProvider: (id: string) => Promise<void>
+  setActiveModel: (model: string) => Promise<void>
   testConnection: (id: string) => Promise<boolean>
   getModels: (type: string, baseUrl?: string) => Promise<Array<{ id: string; name: string }>>
 }
@@ -117,28 +117,44 @@ export const useProviderStore = create<ProviderStore>((set, get) => ({
     }
   },
 
-  setActiveProvider: (id) => {
+  setActiveProvider: async (id) => {
     const provider = get().providers.find(p => p.id === id)
-    if (provider) {
-      set({
-        activeProviderId: id,
-        activeModel: provider.defaultModel,
-      })
-      // Persist: same method as Settings — update the provider's defaultModel in the database
-      window.jelico.providers.update(id, { defaultModel: provider.defaultModel }).catch((err) => {
-        console.warn('[Providers] Failed to persist active provider:', err)
-      })
+    if (!provider) {
+      console.warn(`[Providers] Provider ${id} not found`)
+      return
+    }
+
+    // Update state immediately for UI responsiveness
+    set({
+      activeProviderId: id,
+      activeModel: provider.defaultModel,
+      error: null,
+    })
+
+    // Persist to database
+    try {
+      await window.jelico.providers.update(id, { defaultModel: provider.defaultModel })
+      console.log(`[Providers] Set active provider: ${provider.name} (${id})`)
+    } catch (err: any) {
+      console.error('[Providers] Failed to persist active provider:', err)
+      set({ error: `Failed to set active provider: ${err.message}` })
     }
   },
 
-  setActiveModel: (model) => {
-    set({ activeModel: model })
-    // Persist: save the model to the active provider's defaultModel in the database
+  setActiveModel: async (model) => {
     const { activeProviderId } = get()
-    if (activeProviderId && model) {
-      window.jelico.providers.update(activeProviderId, { defaultModel: model }).catch((err) => {
-        console.warn('[Providers] Failed to persist active model:', err)
-      })
+    if (!activeProviderId || !model) return
+
+    // Update state immediately
+    set({ activeModel: model, error: null })
+
+    // Persist to database
+    try {
+      await window.jelico.providers.update(activeProviderId, { defaultModel: model })
+      console.log(`[Providers] Set active model: ${model}`)
+    } catch (err: any) {
+      console.error('[Providers] Failed to persist active model:', err)
+      set({ error: `Failed to set active model: ${err.message}` })
     }
   },
 
