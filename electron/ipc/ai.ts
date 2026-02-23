@@ -184,7 +184,7 @@ const KNOWLEDGE_MATCHERS: KnowledgeMatch[] = [
   // Spec-driven development (intentionally specific to avoid false positives on casual "spec" usage)
   { keywords: /\b(specification\s?doc|project\sspec|prd|requirements?\sdoc|create\s(a\s)?spec|write\s(a\s)?spec|spec[\s-]driven|new\sproject\splan|project\sstructure)\b/i, category: 'capabilities', name: 'spec-driven' },
   // Tools
-  { keywords: /\b(read_file|write_file|execute_command|web_search|tool)\b/i, category: 'capabilities', name: 'tools' },
+  { keywords: /\b(read_file|write_file|execute_command|execute_script|web_search|tool)\b/i, category: 'capabilities', name: 'tools' },
 ]
 
 /**
@@ -2351,6 +2351,105 @@ Note: If recommended option, list it first with "(Recommended)" suffix.`,
       },
     })
   }
+
+  // Execute script tool - sandboxed Node.js execution for tool orchestration
+  tools.execute_script = tool({
+    description: `Execute a Node.js script in a sandboxed environment. The script can orchestrate multiple tool calls locally and return processed results. Useful for filtering data before sending to LLM. Script has access to: read_file, write_file, list_directory (sandbox only). Max execution time: 10 seconds. Max output size: 100KB.`,
+    parameters: z.object({
+      script: z.string().describe('The Node.js script to execute (ES module format)'),
+      timeout: z.number().optional().describe('Execution timeout in milliseconds (default: 10000, max: 30000)'),
+    }),
+    execute: async ({ script, timeout = 10000 }) => {
+      // Validate script parameter
+      if (!script) {
+        return {
+          success: false,
+          error: 'Missing required parameter: script. You MUST provide a script to execute.',
+        }
+      }
+
+      // Enforce timeout limits
+      const execTimeout = Math.min(timeout, 30000) // Max 30 seconds
+
+      try {
+        // Get sandbox path for this conversation
+        const sandboxPath = streamContext.conversationId
+          ? getSandboxPath(streamContext.conversationId)
+          : streamContext.workspacePath
+
+        // Check permission
+        if (!bypassPermissionsForMode) {
+          const result = await requestPermission({
+            toolName: 'execute_script',
+            action: 'Execute Node.js script in sandbox',
+            description: 'The AI wants to run a Node.js script in the sandbox to orchestrate tools locally.',
+            preview: script.slice(0, 200) + (script.length > 200 ? '...' : ''),
+            workspaceId: streamContext.workspacePath,
+          })
+          if (result.permission === 'deny') {
+            return { success: false, error: 'Permission denied by user' }
+          }
+        }
+
+        // Write script to temp file in sandbox
+        const { path: tempPath } = await writeSandboxFile(
+          streamContext.conversationId!,
+          `.temp-script-${Date.now()}.mjs`,
+          script
+        )
+
+        console.log('[Tool:execute_script] Running script:', tempPath)
+        console.log('[Tool:execute_script] Sandbox:', sandboxPath)
+
+        // Execute script with vm module for isolation
+        const { exec } = await import('child_process')
+        const { promisify } = await import('util')
+        const execAsync = promisify(exec)
+
+        const result = await execAsync(`node "${tempPath}"`, {
+          cwd: sandboxPath,
+          timeout: execTimeout,
+          maxBuffer: 100 * 1024, // 100KB output limit
+          env: {
+            PATH: process.env.PATH,
+            NODE_ENV: 'sandbox',
+          },
+        })
+
+        // Clean up temp script
+        try {
+          const fs = await import('fs/promises')
+          await fs.unlink(tempPath)
+        } catch (cleanupError) {
+          console.warn('[Tool:execute_script] Failed to cleanup temp file:', cleanupError)
+        }
+
+        console.log('[Tool:execute_script] Success, stdout length:', result.stdout?.length || 0)
+
+        return {
+          success: true,
+          stdout: result.stdout,
+          stderr: result.stderr,
+          result: result.stdout, // Primary output for LLM
+        }
+      } catch (error: any) {
+        console.error('[Tool:execute_script] Error:', {
+          message: error.message,
+          killed: error.killed,
+          stdout: error.stdout?.slice(0, 200),
+          stderr: error.stderr?.slice(0, 200),
+        })
+
+        return {
+          success: false,
+          error: error.message,
+          killed: error.killed,
+          stdout: error.stdout || '',
+          stderr: error.stderr || '',
+        }
+      }
+    },
+  })
 
   return normalizeToolSchemas(tools)
 }
