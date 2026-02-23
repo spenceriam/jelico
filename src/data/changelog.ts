@@ -21,6 +21,15 @@ export interface ChangelogEntry {
 
 export const changelog: ChangelogEntry[] = [
   {
+    version: '0.31.0',
+    date: '2026-02-23',
+    changes: {
+      added: [
+        'Programmatic tool orchestration with execute_script (Fixes #61)',
+      ],
+    },
+  },
+  {
     version: '0.30.0',
     date: '2026-02-23',
     changes: {
