@@ -23,7 +23,7 @@ import { WelcomeScreen, type OnboardingProfile } from './components/Onboarding/W
 // Default and constraints for canvas panel width
 const DEFAULT_CANVAS_WIDTH = 500
 const MIN_CANVAS_WIDTH = 300
-const MAX_CANVAS_WIDTH = 800
+const MIN_CHAT_WIDTH = 400
 const WINDOW_DRAG_START_THRESHOLD = 2
 const INTERACTIVE_DOUBLE_CLICK_SELECTOR = [
   'button',
@@ -79,6 +79,12 @@ export default function App() {
   const { loadFromStorage: loadTheme } = useThemeStore()
   const { startListening, loadCurrentVersion } = useUpdateStore()
   const commandPalette = useCommandPalette()
+  const getMaxCanvasWidth = useCallback(() => {
+    // Account for sidebar width (w-64 = 256px) when calculating available space
+    const sidebarWidth = sidebarCollapsed ? 0 : 256
+    const availableWidth = Math.max(0, window.innerWidth - sidebarWidth)
+    return Math.max(MIN_CANVAS_WIDTH, availableWidth - MIN_CHAT_WIDTH)
+  }, [sidebarCollapsed])
 
   // Resizable canvas panel state
   const [canvasWidth, setCanvasWidth] = useState(DEFAULT_CANVAS_WIDTH)
@@ -115,11 +121,22 @@ export default function App() {
     const savedWidth = localStorage.getItem('jelico-canvas-width')
     if (savedWidth) {
       const width = parseInt(savedWidth, 10)
-      if (width >= MIN_CANVAS_WIDTH && width <= MAX_CANVAS_WIDTH) {
-        setCanvasWidth(width)
+      const maxCanvasWidth = getMaxCanvasWidth()
+      if (!Number.isNaN(width)) {
+        setCanvasWidth(Math.min(maxCanvasWidth, Math.max(MIN_CANVAS_WIDTH, width)))
       }
     }
-  }, [])
+  }, [getMaxCanvasWidth])
+
+  useEffect(() => {
+    const updateCanvasBounds = () => {
+      const maxCanvasWidth = getMaxCanvasWidth()
+      setCanvasWidth((currentWidth) => Math.min(maxCanvasWidth, Math.max(MIN_CANVAS_WIDTH, currentWidth)))
+    }
+
+    window.addEventListener('resize', updateCanvasBounds)
+    return () => window.removeEventListener('resize', updateCanvasBounds)
+  }, [getMaxCanvasWidth])
 
   useEffect(() => {
     document.documentElement.style.setProperty('--app-font-scale', appFontScale.toString())
@@ -306,10 +323,11 @@ export default function App() {
 
     // Moving left increases width, moving right decreases.
     const delta = current.startX - e.clientX
-    const newWidth = Math.min(MAX_CANVAS_WIDTH, Math.max(MIN_CANVAS_WIDTH, current.startWidth + delta))
+    const maxCanvasWidth = getMaxCanvasWidth()
+    const newWidth = Math.min(maxCanvasWidth, Math.max(MIN_CANVAS_WIDTH, current.startWidth + delta))
     current.currentWidth = newWidth
     setCanvasWidth(newWidth)
-  }, [finishResize])
+  }, [finishResize, getMaxCanvasWidth])
 
   const handleResizeEnd = useCallback(() => {
     finishResize()
