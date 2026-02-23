@@ -99,9 +99,3 @@ GPL-3.0-or-later. See `LICENSE` for details.
 Contributions are welcome. Please read `CONTRIBUTING.md` for setup, workflow, and guidelines.
 
 [sbp]
-
-## Status
-
-Current version: 0.9.2
-
-If you want a specific section added (installation, contributing, architecture deep dive), tell me what to include.

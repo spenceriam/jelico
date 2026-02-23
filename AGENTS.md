@@ -690,6 +690,75 @@ todo_write({ tasks: [
 - **Always update**: Add new entry at TOP of array BEFORE running `npm version`
 - **Categories**: added, changed, fixed, removed, security
 
+## User-Friendly Changelog Workflow
+
+**CRITICAL**: Every PR that changes user-facing functionality MUST update both changelogs.
+
+### Two Changelogs
+
+1. **Technical Changelog** (`src/data/changelog.ts`)
+   - For developers
+   - Includes issue references like `(Fixes #123)`
+   - Technical language
+
+2. **User-Friendly Changelog** (`CHANGELOG.md` in repo root)
+   - For end users
+   - Plain English, no issue numbers
+   - Explains what the change means for users
+   - Appears as a tab in GitHub repo
+
+### When Creating a PR
+
+**ALWAYS** update `CHANGELOG.md` if your PR:
+- Adds a new feature users can see or use
+- Fixes a bug users might have experienced
+- Changes how something looks or behaves
+- Improves performance or reliability
+
+**Format for CHANGELOG.md:**
+```markdown
+## [X.Y.Z] - YYYY-MM-DD
+
+### New
+- **Feature Name** — Plain English description of what it does and why users care.
+
+### Fixed
+- **Bug Name** — What was broken and how it's better now.
+
+### Changed
+- **Thing Changed** — What changed and how it affects users.
+```
+
+**Writing Tips:**
+- Use "New" for features, "Fixed" for bugs, "Changed" for improvements/modifications
+- Lead with the user benefit: "AI can now..." or "You can now..."
+- Avoid technical jargon (no "async functions," "race conditions," etc.)
+- Keep it to one sentence per bullet
+- Add new versions at the TOP of the file
+
+### Example
+
+**Technical changelog entry:**
+```typescript
+{
+  version: '0.27.0',
+  date: '2026-02-23',
+  changes: {
+    fixed: [
+      'Provider/model selector non-interactive when multiple providers configured (Fixes #55)',
+    ],
+  },
+}
+```
+
+**User-friendly changelog entry:**
+```markdown
+## [0.27.0] - 2026-02-23
+
+### Fixed
+- **Provider Switching** — The provider and model selector now works reliably when you have multiple providers configured. No more unresponsive dropdowns when switching between AI providers.
+```
+
 ## Development server notes
 - Default port: 5173, automatically tries 5174 if 5173 is in use
 - Electron launches after Vite server is ready
