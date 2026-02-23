@@ -21,6 +21,15 @@ export interface ChangelogEntry {
 
 export const changelog: ChangelogEntry[] = [
   {
+    version: '0.28.0',
+    date: '2026-02-23',
+    changes: {
+      changed: [
+        'Default typography changed from 14px to 12px (Fixes #58)',
+      ],
+    },
+  },
+  {
     version: '0.27.0',
     date: '2026-02-23',
     changes: {
