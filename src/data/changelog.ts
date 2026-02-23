@@ -21,6 +21,15 @@ export interface ChangelogEntry {
 
 export const changelog: ChangelogEntry[] = [
   {
+    version: '0.26.0',
+    date: '2026-02-23',
+    changes: {
+      fixed: [
+        'Editor view in canvas now renders correctly without scroll-related artifacts (Fixes #54)',
+      ],
+    },
+  },
+  {
     version: '0.24.0',
     date: '2026-02-22',
     changes: {
