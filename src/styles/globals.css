@@ -6,40 +6,40 @@
   :root {
     --app-font-scale: 1;
 
-    /* Background colors - Violet dark defaults */
-    --bg-void: #070b12;
-    --bg-deep: #0b1321;
-    --bg-surface: #101a2b;
-    --bg-elevated: #162235;
-    --bg-hover: #1c2c44;
-    --bg-active: #243552;
+    /* Background colors - dark mode defaults */
+    --bg-void: #08080a;
+    --bg-deep: #0d0d10;
+    --bg-surface: #141418;
+    --bg-elevated: #1a1a20;
+    --bg-hover: #222228;
+    --bg-active: #2a2a32;
 
     /* Text colors */
-    --text-primary: #e8eef8;
-    --text-secondary: #9db0cb;
-    --text-muted: #6f86a7;
-    --text-faint: #4f6078;
+    --text-primary: #e8e6e3;
+    --text-secondary: #a09a92;
+    --text-muted: #6b6660;
+    --text-faint: #4a4540;
 
-    /* Accent colors - Electric cyan defaults */
-    --accent: #22d3ee;
-    --accent-bright: #67e8f9;
-    --accent-dim: #06b6d4;
-    --accent-glow: rgba(34, 211, 238, 0.2);
+    /* Accent colors - Gold theme defaults */
+    --accent: #d4a574;
+    --accent-bright: #e8c49a;
+    --accent-dim: #b8863d;
+    --accent-glow: rgba(212, 165, 116, 0.15);
 
     /* Status colors */
-    --success: #4ade80;
-    --error: #fb7185;
-    --warning: #f59e0b;
-    --info: #38bdf8;
+    --success: #5cb97b;
+    --error: #e85c5c;
+    --warning: #e8a84c;
+    --info: #5c9ee8;
 
     /* Border colors */
-    --border: #2a3a52;
-    --border-subtle: #1b2638;
+    --border: #2a2926;
+    --border-subtle: #1f1e1c;
     --border-strong: rgba(255, 255, 255, 0.15);
 
     /* Fonts */
-    --font-display: 'Outfit', 'DM Sans', -apple-system, sans-serif;
-    --font-body: 'DM Sans', 'Outfit', -apple-system, sans-serif;
+    --font-display: 'Instrument Serif', Georgia, serif;
+    --font-body: 'DM Sans', -apple-system, sans-serif;
     --font-mono: 'JetBrains Mono', monospace;
 
     /* Border radius */
@@ -54,21 +54,21 @@
 
   /* Light mode overrides */
   :root.light {
-    --bg-void: #f3f7ff;
-    --bg-deep: #e7eefb;
+    --bg-void: #f5f5f5;
+    --bg-deep: #ebebeb;
     --bg-surface: #ffffff;
-    --bg-elevated: #f8fbff;
-    --bg-hover: #edf4ff;
-    --bg-active: #deebff;
+    --bg-elevated: #fafafa;
+    --bg-hover: #f0f0f0;
+    --bg-active: #e5e5e5;
 
-    --text-primary: #122033;
-    --text-secondary: #344966;
-    --text-muted: #557197;
-    --text-faint: #7f96b6;
+    --text-primary: #1a1a1a;
+    --text-secondary: #4a4a4a;
+    --text-muted: #6a6a6a;
+    --text-faint: #9a9a9a;
 
-    --border: #d4e1f5;
-    --border-subtle: #e8f0ff;
-    --border-strong: #bad0ef;
+    --border: #e0e0e0;
+    --border-subtle: #f0f0f0;
+    --border-strong: #d0d0d0;
   }
 
   :root.os-mac {

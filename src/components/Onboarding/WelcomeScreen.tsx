@@ -78,7 +78,7 @@ export function WelcomeScreen({ onComplete }: WelcomeScreenProps) {
           <div className="text-center mb-10">
             <JelicoLogo className="welcome-logo mb-6" />
             <h1 className="font-display text-[32px] font-normal text-text-primary mb-3 tracking-tight">
-              Hello! I'm Violet.
+              Hello! I'm Jelico.
             </h1>
             <p className="text-text-secondary text-lg">
               I'm excited to work with you. Let's get to know each other.

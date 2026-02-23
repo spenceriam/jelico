@@ -164,10 +164,10 @@ export function ProviderSetup({ isModal, onComplete, onCancel }: ProviderSetupPr
               <JelicoLogo className="welcome-logo" />
             )}
             <h1 className="font-display text-[32px] font-normal text-text-primary mb-2 tracking-tight">
-              {isModal ? 'Add a provider' : 'Welcome to Violet'}
+              {isModal ? 'Add a provider' : 'Welcome to Jelico'}
             </h1>
             <p className="text-text-secondary text-base mb-12">
-              {isModal ? 'Connect another AI service.' : 'Your agentic coding workspace'}
+              {isModal ? 'Connect another AI service.' : 'Your AI productivity partner'}
             </p>
 
             {!isModal && (

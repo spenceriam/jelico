@@ -539,7 +539,7 @@ export function ChatInput({ disabled, isStreaming, centered }: ChatInputProps) {
               ? 'Select a provider to start...'
               : isStreaming
               ? 'Message will be queued...'
-              : 'Message Violet...'
+              : 'Message Jelico...'
           }
           disabled={disabled}
           rows={centered ? 4 : 1}

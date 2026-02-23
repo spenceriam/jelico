@@ -18,9 +18,8 @@ import { registerSpeechHandlers } from './ipc/speech'
 import { registerCompactionHandlers } from './ipc/compaction'
 import { registerUpdateHandlers } from './ipc/updates'
 import { registerWindowHandlers } from './ipc/window'
-import { registerConnectorHandlers } from './ipc/connectors'
 
-const APP_DISPLAY_NAME = 'Violet'
+const APP_DISPLAY_NAME = 'Jelico'
 
 // Get version and git info
 const packageJson = require('../package.json')
@@ -30,7 +29,7 @@ const APP_VERSION = packageJson.version
 // keychainService handles legacy app-name decryption for compatibility.
 app.setName(APP_DISPLAY_NAME)
 if (process.platform === 'win32') {
-  app.setAppUserModelId('com.violet.app')
+  app.setAppUserModelId('com.jelico.app')
 }
 
 function getGitHash(): string {
@@ -50,7 +49,7 @@ function getGitRepoUrl(): string {
     }
     return remoteUrl.replace('.git', '')
   } catch {
-    return 'https://github.com/spenceriam/violet'
+    return 'https://github.com/spenceriam/jelico'
   }
 }
 
@@ -148,14 +147,14 @@ function createMenu() {
       label: 'Help',
       submenu: [
         {
-          label: 'About Violet',
+          label: 'About Jelico',
           click: () => {
             const commitUrl = `${repoUrl}/commit/${gitHash}`
             dialog.showMessageBox(mainWindow!, {
               type: 'info',
-              title: 'About Violet',
-              message: 'Violet',
-              detail: `Version: ${APP_VERSION}\nCommit: ${gitHash}\n\nAgentic Coding Desktop\nBuild fast with controlled autonomy.`,
+              title: 'About Jelico',
+              message: 'Jelico',
+              detail: `Version: ${APP_VERSION}\nCommit: ${gitHash}\n\nAI Productivity Desktop\nGet stuff done. Frictionlessly.`,
               buttons: ['OK', 'View on GitHub'],
             }).then(({ response }) => {
               if (response === 1) {
@@ -336,7 +335,6 @@ app.whenReady().then(async () => {
   registerCompactionHandlers()
   registerUpdateHandlers()
   registerWindowHandlers()
-  registerConnectorHandlers()
 
   // Create window
   createWindow()
