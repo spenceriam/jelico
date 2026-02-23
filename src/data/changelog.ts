@@ -21,6 +21,15 @@ export interface ChangelogEntry {
 
 export const changelog: ChangelogEntry[] = [
   {
+    version: '0.27.0',
+    date: '2026-02-23',
+    changes: {
+      fixed: [
+        'Provider/model selector is now interactive when multiple providers are configured (Fixes #55)',
+      ],
+    },
+  },
+  {
     version: '0.26.0',
     date: '2026-02-23',
     changes: {
