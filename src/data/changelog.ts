@@ -21,6 +21,17 @@ export interface ChangelogEntry {
 
 export const changelog: ChangelogEntry[] = [
   {
+    version: '0.33.1',
+    date: '2026-02-24',
+    changes: {
+      fixed: [
+        'Resolved provider/model TypeScript regressions that caused release builds to fail after v0.33.0 (Fixes #79)',
+        'Provider setup model loading now falls back to direct model fetch when preview model discovery returns no results',
+        'Patched release pipeline by moving build-tagged output to a main-backed commit with the CI fixes applied',
+      ],
+    },
+  },
+  {
     version: '0.33.0',
     date: '2026-02-24',
     changes: {

@@ -2,6 +2,13 @@
 
 All notable changes to Jelico are documented in this file.
 
+## [0.33.1] - 2026-02-24
+
+### Fixed
+- **Release Build Stability** — Fixed provider/model TypeScript issues that caused the `v0.33.0` release build jobs to fail.
+- **Provider Model Loading** — Provider setup now falls back to an alternate model fetch path when preview model discovery returns no results.
+- **Release Pipeline Recovery** — This patch rebases the release tag onto the fixed `main` commit so build and release can complete successfully.
+
 ## [0.33.0] - 2026-02-24
 
 ### New
