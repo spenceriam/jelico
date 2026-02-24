@@ -26,6 +26,7 @@ interface Window {
       updateMessage: (messageId: string, updates: Partial<MessageInput>) => Promise<Message | null>
       updateTitle: (id: string, title: string) => Promise<void>
       updateWorkspaceId: (id: string, workspaceId: string | null) => Promise<Conversation | null>
+      updateModelProvider: (id: string, providerId: string, model: string) => Promise<Conversation | null>
       transferToWorkspace: (id: string, workspaceId: string | null) => Promise<{
         success: boolean
         transferred: number

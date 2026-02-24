@@ -21,6 +21,24 @@ export interface ChangelogEntry {
 
 export const changelog: ChangelogEntry[] = [
   {
+    version: '0.32.0',
+    date: '2026-02-24',
+    changes: {
+      added: [
+        'Provider/model selector redesigned to a flat read-only list with provider settings shortcut and improved long-label wrapping (Fixes #79)',
+        'Conversation provider/model selection is now persisted per conversation and restored when switching chats',
+        'models.dev model catalog service added for context-size lookups with launch refresh and cache persistence',
+      ],
+      changed: [
+        'Provider settings edit flow now supports updating display name, endpoint URL, and default model from one action',
+      ],
+      fixed: [
+        'Model selector now renders valid options for compatible and non-standard providers instead of empty sections (Fixes #79)',
+        'Model switching is blocked during active streaming turns and only applies before send or after turn completion',
+      ],
+    },
+  },
+  {
     version: '0.31.0',
     date: '2026-02-23',
     changes: {

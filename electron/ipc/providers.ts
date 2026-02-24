@@ -1,6 +1,12 @@
 import { ipcMain } from 'electron'
 import { providerDb } from '../services/database'
 import { keychainService } from '../services/keychain'
+import {
+  getModelCatalogStatus,
+  initializeModelCatalog,
+  lookupModelsDevContextLimit,
+  refreshModelCatalog,
+} from '../services/modelCatalog'
 
 // OpenAI family context sizes for fallback
 const OPENAI_FAMILY_CONTEXT: Record<string, number> = {
@@ -243,6 +249,8 @@ function toApiFormat(row: any) {
 }
 
 export function registerProviderHandlers() {
+  initializeModelCatalog()
+
   // List all providers
   ipcMain.handle('providers:list', async () => {
     const providers = providerDb.list()
@@ -409,6 +417,11 @@ export function registerProviderHandlers() {
     }
   })
 
+  ipcMain.handle('providers:refreshModelCatalog', async () => {
+    await refreshModelCatalog(true)
+    return getModelCatalogStatus()
+  })
+
   // Get context window size for a specific model from the provider's API
   ipcMain.handle('providers:getModelContextSize', async (_, providerId: string, modelId: string) => {
     try {
@@ -420,6 +433,13 @@ export function registerProviderHandlers() {
 
       const apiKey = await keychainService.getApiKey(providerId)
       const baseUrl = provider.base_url
+
+      // Keep catalog fresh and prefer models.dev when available.
+      await refreshModelCatalog(false)
+      const fromModelsDev = lookupModelsDevContextLimit(provider.type, modelId)
+      if (fromModelsDev) {
+        return fromModelsDev
+      }
 
       switch (provider.type) {
         case 'anthropic': {

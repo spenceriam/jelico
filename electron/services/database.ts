@@ -406,6 +406,16 @@ export const conversationDb = {
     }
   },
 
+  updateModelProvider(id: string, providerId: string, model: string): void {
+    const conv = db.conversations.find(c => c.id === id)
+    if (conv) {
+      conv.provider_id = providerId
+      conv.model = model
+      conv.updated_at = Date.now()
+      saveDb()
+    }
+  },
+
   touch(id: string): void {
     const conv = db.conversations.find(c => c.id === id)
     if (conv) {

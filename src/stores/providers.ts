@@ -34,6 +34,7 @@ interface ProviderStore {
   deleteProvider: (id: string) => Promise<void>
   setActiveProvider: (id: string) => Promise<void>
   setActiveModel: (model: string) => Promise<void>
+  setActiveSelection: (providerId: string, model: string) => void
   testConnection: (id: string) => Promise<boolean>
   getModels: (type: string, baseUrl?: string) => Promise<Array<{ id: string; name: string }>>
 }
@@ -156,6 +157,15 @@ export const useProviderStore = create<ProviderStore>((set, get) => ({
       console.error('[Providers] Failed to persist active model:', err)
       set({ error: `Failed to set active model: ${err.message}` })
     }
+  },
+
+  setActiveSelection: (providerId, model) => {
+    if (!providerId || !model) return
+    set({
+      activeProviderId: providerId,
+      activeModel: model,
+      error: null,
+    })
   },
 
   testConnection: async (id) => {

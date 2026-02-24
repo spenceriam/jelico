@@ -31,8 +31,10 @@ export function Settings({ onClose }: SettingsProps) {
   const [testingId, setTestingId] = useState<string | null>(null)
   const [testResults, setTestResults] = useState<Record<string, boolean>>({})
 
-  // Edit model state
+  // Edit provider state (name, endpoint, model)
   const [editingProviderId, setEditingProviderId] = useState<string | null>(null)
+  const [editNameValue, setEditNameValue] = useState('')
+  const [editBaseUrlValue, setEditBaseUrlValue] = useState('')
   const [editModelValue, setEditModelValue] = useState('')
   const [openRouterModels, setOpenRouterModels] = useState<OpenRouterModel[]>([])
   const [loadingModels, setLoadingModels] = useState(false)
@@ -62,8 +64,10 @@ export function Settings({ onClose }: SettingsProps) {
     }
   }
 
-  const startEditingModel = async (provider: any) => {
+  const startEditingProvider = async (provider: any) => {
     setEditingProviderId(provider.id)
+    setEditNameValue(provider.name || '')
+    setEditBaseUrlValue(provider.baseUrl || '')
     setEditModelValue(provider.defaultModel)
     setModelSearch('')
     setOpenRouterModels([])
@@ -85,21 +89,33 @@ export function Settings({ onClose }: SettingsProps) {
     }
   }
 
-  const saveModelEdit = async () => {
+  const saveProviderEdit = async () => {
     if (!editingProviderId || !editModelValue.trim()) return
 
-    await updateProvider(editingProviderId, { defaultModel: editModelValue.trim() })
+    const trimmedName = editNameValue.trim()
+    const trimmedBaseUrl = editBaseUrlValue.trim()
+    await updateProvider(editingProviderId, {
+      name: trimmedName || providers.find((p) => p.id === editingProviderId)?.name || 'Provider',
+      baseUrl: trimmedBaseUrl,
+      defaultModel: editModelValue.trim(),
+    })
+
     // Update active model if this is the active provider
     if (editingProviderId === activeProviderId) {
-      setActiveModel(editModelValue.trim())
+      await setActiveModel(editModelValue.trim())
     }
+
     setEditingProviderId(null)
+    setEditNameValue('')
+    setEditBaseUrlValue('')
     setEditModelValue('')
     setOpenRouterModels([])
   }
 
-  const cancelEditModel = () => {
+  const cancelEditProvider = () => {
     setEditingProviderId(null)
+    setEditNameValue('')
+    setEditBaseUrlValue('')
     setEditModelValue('')
     setOpenRouterModels([])
     setModelSearch('')
@@ -293,9 +309,9 @@ export function Settings({ onClose }: SettingsProps) {
                             <span>·</span>
                             <span className="font-mono text-xs">{provider.defaultModel}</span>
                             <button
-                              onClick={() => startEditingModel(provider)}
+                              onClick={() => startEditingProvider(provider)}
                               className="p-1 text-text-muted hover:text-text-primary hover:bg-bg-hover rounded transition-colors"
-                              title="Change model"
+                              title="Edit provider"
                             >
                               <Edit2 className="w-3 h-3" />
                             </button>
@@ -335,11 +351,33 @@ export function Settings({ onClose }: SettingsProps) {
                         </div>
                       </div>
 
-                      {/* Edit model form */}
+                      {/* Edit provider form */}
                       {editingProviderId === provider.id && (
                         <div className="mt-4 pt-4 border-t border-border">
                           <label className="block text-sm font-medium text-text-secondary mb-2">
-                            Change Model
+                            Display Name <span className="text-text-muted font-normal">(optional)</span>
+                          </label>
+                          <input
+                            type="text"
+                            value={editNameValue}
+                            onChange={(e) => setEditNameValue(e.target.value)}
+                            className="w-full px-3 py-2 text-sm bg-bg-deep border border-border rounded focus:outline-none focus:border-accent text-text-primary mb-3"
+                            placeholder={provider.name}
+                          />
+
+                          <label className="block text-sm font-medium text-text-secondary mb-2">
+                            Endpoint URL <span className="text-text-muted font-normal">(optional)</span>
+                          </label>
+                          <input
+                            type="text"
+                            value={editBaseUrlValue}
+                            onChange={(e) => setEditBaseUrlValue(e.target.value)}
+                            className="w-full px-3 py-2 text-sm bg-bg-deep border border-border rounded focus:outline-none focus:border-accent text-text-primary font-mono mb-3"
+                            placeholder="https://api.example.com/v1"
+                          />
+
+                          <label className="block text-sm font-medium text-text-secondary mb-2">
+                            Default Model
                           </label>
 
                           {provider.type === 'openrouter' ? (
@@ -404,14 +442,14 @@ export function Settings({ onClose }: SettingsProps) {
 
                           <div className="flex items-center gap-2 mt-3">
                             <button
-                              onClick={saveModelEdit}
+                              onClick={saveProviderEdit}
                               disabled={!editModelValue.trim()}
                               className="px-3 py-1.5 text-sm bg-accent text-black rounded hover:bg-accent-bright transition-colors disabled:opacity-50"
                             >
                               Save
                             </button>
                             <button
-                              onClick={cancelEditModel}
+                              onClick={cancelEditProvider}
                               className="px-3 py-1.5 text-sm text-text-secondary hover:text-text-primary hover:bg-bg-hover rounded transition-colors"
                             >
                               Cancel

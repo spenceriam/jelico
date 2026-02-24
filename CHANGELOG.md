@@ -2,6 +2,20 @@
 
 All notable changes to Jelico are documented in this file.
 
+## [0.32.0] - 2026-02-24
+
+### New
+- **Provider/Model Selector Refresh** — The model picker now shows cleaner `Provider / Model` choices with a read-only dropdown, better wrapping for long names at larger font sizes, and direct access to Provider settings from the gear icon.
+- **Conversation Model Tracking** — Changing the selected provider/model now stays tied to the active conversation so switching chats restores the right provider/model combination.
+
+### Changed
+- **Provider Editing in Settings** — The provider edit action now lets you update display name, endpoint URL, and default model in one place.
+- **Context Window Source Priority** — Context size lookup now prioritizes `models.dev` data with local caching and automatic refresh behavior at launch.
+
+### Fixed
+- **Missing Models in Selector** — Provider/model dropdown no longer renders empty sections for newer provider types; every configured provider now produces a valid selectable option.
+- **Long Label Truncation** — Long provider/model strings no longer get cut off with ellipses in the dropdown, preventing ambiguous selections.
+
 ## [0.31.0] - 2026-02-23
 
 ### New
