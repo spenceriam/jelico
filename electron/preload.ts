@@ -10,6 +10,8 @@ contextBridge.exposeInMainWorld('jelico', {
     update: (id: string, updates: any) => ipcRenderer.invoke('providers:update', id, updates),
     delete: (id: string) => ipcRenderer.invoke('providers:delete', id),
     test: (id: string) => ipcRenderer.invoke('providers:test', id),
+    previewModels: (type: string, apiKey: string, baseUrl?: string) =>
+      ipcRenderer.invoke('providers:previewModels', type, apiKey, baseUrl),
     fetchOpenRouterModels: (apiKey: string) => ipcRenderer.invoke('providers:fetchOpenRouterModels', apiKey),
     getModelContextSize: (providerId: string, modelId: string) =>
       ipcRenderer.invoke('providers:getModelContextSize', providerId, modelId),

@@ -75,10 +75,32 @@ function extractContextLimit(model: any): number | null {
   return null
 }
 
+function extractOutputLimit(model: any): number | null {
+  const candidates = [
+    model?.limit?.output,
+    model?.output_token_limit,
+    model?.outputTokenLimit,
+    model?.max_output_tokens,
+    model?.maxOutputTokens,
+    model?.limits?.output,
+    model?.limits?.output_tokens,
+    model?.metadata?.output_tokens,
+  ]
+
+  for (const candidate of candidates) {
+    const size = toPositiveNumber(candidate)
+    if (size) return size
+  }
+
+  return null
+}
+
 let initialized = false
 let inMemoryProviders: Record<string, unknown> | null = null
 let providerModelIndex = new Map<string, Map<string, number>>()
 let globalModelIndex = new Map<string, number>()
+let providerModelOutputIndex = new Map<string, Map<string, number>>()
+let globalModelOutputIndex = new Map<string, number>()
 let etag: string | null = null
 let lastCheckedAt = 0
 let lastUpdatedAt = 0
@@ -98,6 +120,8 @@ function indexModelId(target: Map<string, number>, id: string, contextLimit: num
 function rebuildIndexes(providers: Record<string, unknown>) {
   providerModelIndex = new Map()
   globalModelIndex = new Map()
+  providerModelOutputIndex = new Map()
+  globalModelOutputIndex = new Map()
 
   for (const [providerKey, providerValue] of Object.entries(providers)) {
     if (!providerValue || typeof providerValue !== 'object') continue
@@ -107,31 +131,47 @@ function rebuildIndexes(providers: Record<string, unknown>) {
     if (!models || typeof models !== 'object') continue
 
     const providerMap = new Map<string, number>()
+    const providerOutputMap = new Map<string, number>()
 
     for (const [modelKey, modelValue] of Object.entries(models as Record<string, unknown>)) {
       if (!modelValue || typeof modelValue !== 'object') continue
 
       const modelRecord = modelValue as Record<string, unknown>
       const contextLimit = extractContextLimit(modelRecord)
-      if (!contextLimit) continue
+      const outputLimit = extractOutputLimit(modelRecord)
+      if (!contextLimit && !outputLimit) continue
 
       const ids = new Set<string>()
       ids.add(modelKey)
       if (typeof modelRecord.id === 'string') ids.add(modelRecord.id)
 
       for (const id of ids) {
-        indexModelId(providerMap, id, contextLimit)
-        indexModelId(globalModelIndex, id, contextLimit)
+        if (contextLimit) {
+          indexModelId(providerMap, id, contextLimit)
+          indexModelId(globalModelIndex, id, contextLimit)
+        }
+
+        if (outputLimit) {
+          indexModelId(providerOutputMap, id, outputLimit)
+          indexModelId(globalModelOutputIndex, id, outputLimit)
+        }
 
         const shortId = shortModelId(id)
         if (shortId && shortId !== normalize(id)) {
-          indexModelId(providerMap, shortId, contextLimit)
-          indexModelId(globalModelIndex, shortId, contextLimit)
+          if (contextLimit) {
+            indexModelId(providerMap, shortId, contextLimit)
+            indexModelId(globalModelIndex, shortId, contextLimit)
+          }
+          if (outputLimit) {
+            indexModelId(providerOutputMap, shortId, outputLimit)
+            indexModelId(globalModelOutputIndex, shortId, outputLimit)
+          }
         }
       }
     }
 
     providerModelIndex.set(normalize(providerKey), providerMap)
+    providerModelOutputIndex.set(normalize(providerKey), providerOutputMap)
   }
 }
 
@@ -240,6 +280,16 @@ function lookupInProviderIndex(providerKey: string, modelId: string): number | n
   return providerMap.get(normalizedModelId) ?? providerMap.get(shortId) ?? null
 }
 
+function lookupInProviderOutputIndex(providerKey: string, modelId: string): number | null {
+  const providerMap = providerModelOutputIndex.get(normalize(providerKey))
+  if (!providerMap) return null
+
+  const normalizedModelId = normalize(modelId)
+  const shortId = shortModelId(modelId)
+
+  return providerMap.get(normalizedModelId) ?? providerMap.get(shortId) ?? null
+}
+
 export function lookupModelsDevContextLimit(providerType: string, modelId: string): number | null {
   if (!inMemoryProviders || !modelId) return null
 
@@ -251,6 +301,19 @@ export function lookupModelsDevContextLimit(providerType: string, modelId: strin
   const normalizedModelId = normalize(modelId)
   const shortId = shortModelId(modelId)
   return globalModelIndex.get(normalizedModelId) ?? globalModelIndex.get(shortId) ?? null
+}
+
+export function lookupModelsDevOutputLimit(providerType: string, modelId: string): number | null {
+  if (!inMemoryProviders || !modelId) return null
+
+  for (const providerKey of getProviderCandidates(providerType)) {
+    const fromProvider = lookupInProviderOutputIndex(providerKey, modelId)
+    if (fromProvider) return fromProvider
+  }
+
+  const normalizedModelId = normalize(modelId)
+  const shortId = shortModelId(modelId)
+  return globalModelOutputIndex.get(normalizedModelId) ?? globalModelOutputIndex.get(shortId) ?? null
 }
 
 export function initializeModelCatalog() {
@@ -272,6 +335,7 @@ export function getModelCatalogStatus() {
     hasSnapshot: Boolean(inMemoryProviders),
     providersIndexed: providerModelIndex.size,
     modelsIndexed: globalModelIndex.size,
+    outputModelsIndexed: globalModelOutputIndex.size,
     lastCheckedAt,
     lastUpdatedAt,
   }

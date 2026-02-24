@@ -11,6 +11,10 @@ const API_KEY_URLS: Record<string, string> = {
   'zai-coding': 'open.bigmodel.cn',
   'zai-coding-china': 'open.bigmodel.cn',
   minimax: 'platform.minimax.io',
+  'openai-compatible': '',
+  'anthropic-compatible': '',
+  custom: '',
+  local: '',
 }
 
 // Fallback models shown before API key is entered or when fetch fails
@@ -73,7 +77,18 @@ const FALLBACK_MODELS: Record<string, Array<{ id: string; name: string }>> = {
 }
 
 // Provider types that support dynamic model fetching
-const DYNAMIC_MODEL_PROVIDERS = ['anthropic', 'openai', 'google', 'openrouter', 'ollama']
+const DYNAMIC_MODEL_PROVIDERS = [
+  'anthropic',
+  'openai',
+  'google',
+  'openrouter',
+  'ollama',
+  'minimax',
+  'openai-compatible',
+  'anthropic-compatible',
+  'custom',
+  'local',
+]
 
 interface ProviderModel {
   id: string
@@ -85,6 +100,9 @@ interface ProviderModel {
 interface ProviderConfigFormProps {
   type: string
   defaultModel: string
+  initialName?: string
+  initialBaseUrl?: string
+  apiKeyUrl?: string
   onSave: (config: {
     name: string
     apiKey: string
@@ -94,13 +112,22 @@ interface ProviderConfigFormProps {
   isLoading?: boolean
 }
 
-export function ProviderConfigForm({ type, defaultModel, onSave, isLoading }: ProviderConfigFormProps) {
-  const [name, setName] = useState('')
+export function ProviderConfigForm({
+  type,
+  defaultModel,
+  initialName,
+  initialBaseUrl,
+  apiKeyUrl: apiKeyUrlOverride,
+  onSave,
+  isLoading,
+}: ProviderConfigFormProps) {
+  const [name, setName] = useState(initialName || '')
   const [apiKey, setApiKey] = useState('')
   const [model, setModel] = useState(defaultModel)
   const [baseUrl, setBaseUrl] = useState(
-    type === 'ollama' ? 'http://localhost:11434' :
-    type === 'local' ? 'http://localhost:8080/v1' : ''
+    initialBaseUrl ||
+    (type === 'ollama' ? 'http://localhost:11434' :
+    type === 'local' ? 'http://localhost:8080/v1' : '')
   )
   const [showKey, setShowKey] = useState(false)
 
@@ -112,8 +139,9 @@ export function ProviderConfigForm({ type, defaultModel, onSave, isLoading }: Pr
 
   const needsApiKey = type !== 'ollama' && type !== 'local'
   const needsBaseUrl = ['ollama', 'custom', 'openai-compatible', 'anthropic-compatible', 'local'].includes(type)
+  const modelIsOptional = ['openai-compatible', 'anthropic-compatible', 'custom', 'local', 'minimax'].includes(type)
   const isDynamic = DYNAMIC_MODEL_PROVIDERS.includes(type)
-  const apiKeyUrl = API_KEY_URLS[type]
+  const apiKeyUrl = apiKeyUrlOverride || API_KEY_URLS[type]
 
   // Function to fetch models from API
   const fetchModels = useCallback(async () => {
@@ -130,29 +158,7 @@ export function ProviderConfigForm({ type, defaultModel, onSave, isLoading }: Pr
     try {
       let fetchedModels: ProviderModel[] = []
 
-      if (type === 'openrouter') {
-        // OpenRouter uses dedicated handler
-        fetchedModels = await window.jelico.providers.fetchOpenRouterModels(apiKey)
-      } else if (type === 'ollama') {
-        // Ollama fetches from local server
-        const url = baseUrl || 'http://localhost:11434'
-        try {
-          const response = await fetch(`${url}/api/tags`)
-          if (response.ok) {
-            const data = await response.json()
-            fetchedModels = (data.models || []).map((m: any) => ({
-              id: m.name,
-              name: m.name,
-            }))
-          }
-        } catch {
-          fetchedModels = []
-        }
-      } else {
-        // Anthropic, OpenAI, Google - fetch via backend with temp API key
-        // We need to create a temporary mechanism to fetch with the key before saving
-        fetchedModels = await fetchModelsWithKey(type, apiKey, baseUrl)
-      }
+      fetchedModels = await window.jelico.providers.previewModels(type, apiKey, baseUrl)
 
       if (fetchedModels.length > 0) {
         setModels(fetchedModels)
@@ -197,7 +203,7 @@ export function ProviderConfigForm({ type, defaultModel, onSave, isLoading }: Pr
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
     onSave({
-      name: name || getDefaultName(type),
+      name: name || initialName || getDefaultName(type),
       apiKey,
       defaultModel: model,
       baseUrl: needsBaseUrl ? baseUrl : undefined,
@@ -276,7 +282,9 @@ export function ProviderConfigForm({ type, defaultModel, onSave, isLoading }: Pr
       {/* Model selector */}
       <div>
         <div className="flex items-center justify-between mb-1">
-          <label className="label mb-0">Default Model</label>
+          <label className="label mb-0">
+            Default Model{modelIsOptional ? ' (optional)' : ''}
+          </label>
           {isDynamic && modelsFetched && (
             <button
               type="button"
@@ -369,7 +377,7 @@ export function ProviderConfigForm({ type, defaultModel, onSave, isLoading }: Pr
       <div className="flex items-center justify-end gap-3 pt-4">
         <button
           type="submit"
-          disabled={isLoading || (needsApiKey && !apiKey) || !model}
+          disabled={isLoading || (needsApiKey && !apiKey) || (!modelIsOptional && !model)}
           className="btn btn-primary disabled:opacity-50 disabled:cursor-not-allowed"
         >
           {isLoading ? 'Saving...' : 'Save & Continue'}
@@ -426,6 +434,14 @@ async function fetchModelsWithKey(
           })
       }
 
+      case 'minimax':
+      case 'openai-compatible':
+      case 'anthropic-compatible':
+      case 'custom':
+      case 'local': {
+        return await fetchOpenAICompatibleModels(apiKey, baseUrl, type)
+      }
+
       case 'google': {
         const response = await fetch(
           `https://generativelanguage.googleapis.com/v1/models?key=${apiKey}`
@@ -472,4 +488,88 @@ function getDefaultName(type: string): string {
     local: 'Local Server',
   }
   return names[type] || 'Provider'
+}
+
+function buildModelsEndpointCandidates(type: string, baseUrl?: string): string[] {
+  if (!baseUrl) {
+    if (type === 'openai') return ['https://api.openai.com/v1/models']
+    return []
+  }
+
+  const trimmed = baseUrl.replace(/\/+$/, '')
+  const candidates: string[] = []
+
+  const pushUnique = (url: string) => {
+    if (!candidates.includes(url)) {
+      candidates.push(url)
+    }
+  }
+
+  if (trimmed.endsWith('/models')) {
+    pushUnique(trimmed)
+  } else if (trimmed.endsWith('/v1')) {
+    pushUnique(`${trimmed}/models`)
+  } else {
+    pushUnique(`${trimmed}/v1/models`)
+  }
+
+  if (trimmed.endsWith('/anthropic')) {
+    try {
+      const parsed = new URL(trimmed)
+      pushUnique(`${parsed.origin}/v1/models`)
+    } catch {
+      // Ignore invalid URL and use existing candidates only.
+    }
+  }
+
+  return candidates
+}
+
+async function fetchOpenAICompatibleModels(
+  apiKey: string,
+  baseUrl?: string,
+  type: string = 'openai-compatible'
+): Promise<ProviderModel[]> {
+  const endpoints = buildModelsEndpointCandidates(type, baseUrl)
+  if (endpoints.length === 0) {
+    return []
+  }
+
+  for (const endpoint of endpoints) {
+    try {
+      const response = await fetch(endpoint, {
+        headers: {
+          Accept: 'application/json',
+          ...(apiKey ? { Authorization: `Bearer ${apiKey}` } : {}),
+        },
+      })
+      if (!response.ok) {
+        continue
+      }
+
+      const payload = await response.json()
+      const models = Array.isArray(payload?.data)
+        ? payload.data
+        : Array.isArray(payload?.models)
+          ? payload.models
+          : []
+
+      const normalized = models
+        .map((model: any) => {
+          const id = String(model?.id || model?.name || '').trim()
+          if (!id) return null
+          const displayName = String(model?.name || model?.display_name || id).trim() || id
+          return { id, name: displayName }
+        })
+        .filter(Boolean) as ProviderModel[]
+
+      if (normalized.length > 0) {
+        return normalized.sort((a, b) => a.name.localeCompare(b.name))
+      }
+    } catch {
+      // Try next candidate endpoint
+    }
+  }
+
+  return []
 }

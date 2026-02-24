@@ -21,6 +21,26 @@ export interface ChangelogEntry {
 
 export const changelog: ChangelogEntry[] = [
   {
+    version: '0.33.0',
+    date: '2026-02-24',
+    changes: {
+      added: [
+        'Provider settings now surface inline API test status/results and clearer missing-model validation',
+        'MiniMax setup split into MiniMax API and MiniMax Coding Plan presets for safer configuration',
+      ],
+      changed: [
+        'Model selector now displays model name in the chip, uses provider/model rows in dropdown, and improves wrapping for long labels',
+        'Sandbox file discovery now resolves against conversation sandbox root when no workspace is selected',
+      ],
+      fixed: [
+        'Anthropic-compatible MiniMax endpoint normalization now targets /v1/messages path correctly (Fixes #79)',
+        'Hidden active provider/model now falls back to the next visible option instead of leaving hidden selection active',
+        'Tool-call repair now recovers malformed large create_artifact and write_file payloads more reliably',
+        'Runtime output token cap now uses models.dev output metadata with AI SDK v6 maxOutputTokens to reduce truncated tool payloads',
+      ],
+    },
+  },
+  {
     version: '0.32.0',
     date: '2026-02-24',
     changes: {

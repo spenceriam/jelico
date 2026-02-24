@@ -36,11 +36,27 @@ export function ModelSelector({ compact = false }: ModelSelectorProps) {
   const isSwitchLocked = Boolean(isStreaming && activeConversationId)
 
   const displayLabel = useMemo(() => {
-    return activeModel || 'Select model'
-  }, [activeModel])
+    const activeVisibleProvider = providers.find(
+      (provider) =>
+        provider.id === activeProviderId &&
+        !provider.hiddenFromSelector &&
+        !!provider.defaultModel?.trim()
+    )
+
+    if (activeModel && activeVisibleProvider) return activeModel
+    if (providers.some((provider) => !provider.hiddenFromSelector && !!provider.defaultModel?.trim())) {
+      return 'Select model'
+    }
+    return 'No models available'
+  }, [providers, activeProviderId, activeModel])
+
+  const visibleProviders = useMemo(
+    () => providers.filter((provider) => !provider.hiddenFromSelector && !!provider.defaultModel?.trim()),
+    [providers]
+  )
 
   const options = useMemo(() => {
-    return providers.map((provider) => {
+    return visibleProviders.map((provider) => {
       const model = provider.defaultModel
       return {
         id: provider.id,
@@ -52,7 +68,7 @@ export function ModelSelector({ compact = false }: ModelSelectorProps) {
         isActive: activeProviderId === provider.id && activeModel === model,
       }
     })
-  }, [providers, activeProviderId, activeModel])
+  }, [visibleProviders, activeProviderId, activeModel])
 
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
@@ -160,7 +176,7 @@ export function ModelSelector({ compact = false }: ModelSelectorProps) {
           )}
 
           {options.length === 0 ? (
-            <div className="px-3 py-3 text-sm text-text-muted">No providers configured</div>
+            <div className="px-3 py-3 text-sm text-text-muted">No visible providers configured</div>
           ) : (
             options.map((option) => {
               const selectionKey = `${option.id}:${option.model}`

@@ -8,7 +8,12 @@ interface Window {
       create: (provider: ProviderInput) => Promise<ProviderConfig>
       update: (id: string, updates: Partial<ProviderInput>) => Promise<ProviderConfig>
       delete: (id: string) => Promise<void>
-      test: (id: string) => Promise<boolean>
+      test: (id: string) => Promise<{ ok: boolean; message: string; status?: number }>
+      previewModels: (
+        type: string,
+        apiKey: string,
+        baseUrl?: string
+      ) => Promise<OpenRouterModel[]>
       fetchOpenRouterModels: (apiKey: string) => Promise<OpenRouterModel[]>
       getModelContextSize: (providerId: string, modelId: string) => Promise<number | null>
     }
@@ -221,6 +226,7 @@ interface ProviderConfig {
   name: string
   baseUrl?: string
   defaultModel: string
+  hiddenFromSelector?: boolean
   isDefault: boolean
   createdAt: number
   updatedAt: number
@@ -231,6 +237,7 @@ interface ProviderInput {
   name: string
   baseUrl?: string
   defaultModel: string
+  hiddenFromSelector?: boolean
   isDefault?: boolean
 }
 

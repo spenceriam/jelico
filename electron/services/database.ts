@@ -60,6 +60,17 @@ function loadDb(): void {
       if (!db.permissions) {
         db.permissions = []
       }
+      if (!db.todos) {
+        db.todos = []
+      }
+      // Provider visibility migration: ensure legacy records have explicit flag.
+      if (db.providers?.length) {
+        db.providers.forEach((provider: any) => {
+          if (provider.hidden_from_selector === undefined) {
+            provider.hidden_from_selector = 0
+          }
+        })
+      }
     }
   } catch (err) {
     console.error('Failed to load database:', err)
@@ -268,10 +279,9 @@ export async function initDatabase(): Promise<void> {
 // Provider operations
 export const providerDb = {
   list(): ProviderRow[] {
-    return [...db.providers].sort((a, b) => {
-      if (a.is_default !== b.is_default) return b.is_default - a.is_default
-      return a.name.localeCompare(b.name)
-    })
+    // Preserve insertion order for stable UI ordering.
+    // Deleting a provider should not reshuffle the remaining list.
+    return [...db.providers]
   },
 
   get(id: string): ProviderRow | null {
@@ -296,6 +306,7 @@ export const providerDb = {
       name: provider.name,
       base_url: provider.baseUrl || null,
       default_model: provider.defaultModel,
+      hidden_from_selector: provider.hiddenFromSelector ? 1 : 0,
       is_default: isDefault ? 1 : 0,
       created_at: now,
       updated_at: now,
@@ -321,6 +332,7 @@ export const providerDb = {
     if (updates.name !== undefined) provider.name = updates.name
     if (updates.baseUrl !== undefined) provider.base_url = updates.baseUrl || null
     if (updates.defaultModel !== undefined) provider.default_model = updates.defaultModel
+    if (updates.hiddenFromSelector !== undefined) provider.hidden_from_selector = updates.hiddenFromSelector ? 1 : 0
     if (updates.isDefault !== undefined) provider.is_default = updates.isDefault ? 1 : 0
     provider.updated_at = now
 
@@ -595,6 +607,7 @@ interface ProviderRow {
   name: string
   base_url: string | null
   default_model: string
+  hidden_from_selector: number
   is_default: number
   created_at: number
   updated_at: number
@@ -605,6 +618,7 @@ interface ProviderInput {
   name: string
   baseUrl?: string
   defaultModel: string
+  hiddenFromSelector?: boolean
   isDefault?: boolean
 }
 

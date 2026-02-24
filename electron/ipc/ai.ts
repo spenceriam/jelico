@@ -58,6 +58,7 @@ import {
   type WebProviderRuntime,
 } from '../services/webAdapter'
 import { scanWorkspaceSpecs, formatSpecContext } from '../services/specScanner'
+import { lookupModelsDevOutputLimit, refreshModelCatalog } from '../services/modelCatalog'
 
 // Start orphan cleanup on module load
 startOrphanCleanup()
@@ -362,6 +363,31 @@ function logAIRequest(url: string, method: string, body: any) {
   }
 }
 
+function normalizeAnthropicCompatibleBaseUrl(baseUrl?: string | null): string | undefined {
+  const trimmed = String(baseUrl || '').trim().replace(/\/+$/, '')
+  if (!trimmed) return undefined
+  if (trimmed.endsWith('/messages')) return trimmed.replace(/\/messages$/, '')
+  if (trimmed.endsWith('/v1')) return trimmed
+  return `${trimmed}/v1`
+}
+
+async function resolveProviderMaxOutputTokens(providerConfig: any, modelId: string): Promise<number | undefined> {
+  const normalizedModel = String(modelId || '').trim()
+  if (!normalizedModel) return undefined
+
+  try {
+    await refreshModelCatalog(false)
+    const limit = lookupModelsDevOutputLimit(providerConfig.type, normalizedModel)
+    if (limit && Number.isFinite(limit) && limit > 0) {
+      return Math.round(limit)
+    }
+  } catch (error) {
+    console.warn('[AI] Failed to resolve models.dev output token limit:', error)
+  }
+
+  return undefined
+}
+
 function getProviderInstance(providerConfig: any, apiKey: string) {
   switch (providerConfig.type) {
     case 'anthropic':
@@ -417,7 +443,7 @@ function getProviderInstance(providerConfig: any, apiKey: string) {
     case 'minimax':
       return createOpenAI({
         apiKey,
-        baseURL: 'https://api.minimax.io',
+        baseURL: providerConfig.base_url || 'https://api.minimax.io',
       })
 
     // Generic compatible providers
@@ -427,9 +453,12 @@ function getProviderInstance(providerConfig: any, apiKey: string) {
         baseURL: providerConfig.base_url,
       })
     case 'anthropic-compatible':
-      return createOpenAI({
+      return createAnthropic({
         apiKey,
-        baseURL: providerConfig.base_url,
+        baseURL: normalizeAnthropicCompatibleBaseUrl(providerConfig.base_url),
+        headers: {
+          Authorization: `Bearer ${apiKey}`,
+        },
       })
     case 'local':
       return createOpenAI({
@@ -440,6 +469,14 @@ function getProviderInstance(providerConfig: any, apiKey: string) {
     default:
       throw new Error(`Unknown provider type: ${providerConfig.type}`)
   }
+}
+
+function isModelProviderMismatch(providerType: string, modelId: string): string | null {
+  const normalized = String(modelId || '').toLowerCase()
+  if (providerType === 'openai-compatible' && normalized.includes('highspeed')) {
+    return 'Model appears to require Anthropic-compatible provider type (highspeed model on OpenAI-compatible provider).'
+  }
+  return null
 }
 
 // Tool result tracking for proper context
@@ -1441,9 +1478,15 @@ For type="html": after creating it, self-test with artifact_test before claiming
       const validation = validateArtifact(type, content, language)
       if (!validation.valid) {
         console.error('[AI] Artifact validation failed:', validation.errors)
+        const likelyTruncatedHtml =
+          type === 'html' &&
+          validation.errors.some((error) => /unclosed tags/i.test(error))
+
         return {
           success: false,
-          error: `Artifact validation failed:\n${validation.errors.join('\n')}\n\nPlease fix these issues and try again.`,
+          error: likelyTruncatedHtml
+            ? `Artifact validation failed:\n${validation.errors.join('\n')}\n\nThe HTML appears truncated (likely output token limit). Retry with a more compact version or split work into smaller updates.`
+            : `Artifact validation failed:\n${validation.errors.join('\n')}\n\nPlease fix these issues and try again.`,
           validationErrors: validation.errors,
         }
       }
@@ -1736,19 +1779,59 @@ Notes:
     },
   })
 
-  // Helper to resolve paths relative to workspace
-  const resolvePath = async (inputPath: string): Promise<string> => {
+  // Helper to resolve paths relative to workspace or sandbox
+  const resolvePath = async (inputPath: string): Promise<{
+    resolvedPath: string
+    inSandbox: boolean
+    sandboxRelativePath?: string
+  }> => {
     const pathModule = await import('path')
-    // If workspace is set and path is relative, resolve against workspace
-    if (streamContext.workspacePath && !pathModule.isAbsolute(inputPath)) {
-      return pathModule.resolve(streamContext.workspacePath, inputPath)
+    const trimmedInput = (inputPath || '.').trim() || '.'
+
+    // Workspace mode: resolve relative paths against workspace
+    if (streamContext.workspacePath) {
+      if (!pathModule.isAbsolute(trimmedInput)) {
+        return {
+          resolvedPath: pathModule.resolve(streamContext.workspacePath, trimmedInput),
+          inSandbox: false,
+        }
+      }
+
+      return {
+        resolvedPath: pathModule.resolve(trimmedInput),
+        inSandbox: false,
+      }
     }
-    return inputPath
+
+    // Sandbox mode: force all paths to stay inside this conversation sandbox
+    if (!streamContext.conversationId) {
+      throw new Error('Sandbox mode requires a conversation context.')
+    }
+
+    const sandboxDir = getConversationSandboxPath(streamContext.conversationId)
+    const normalizedInput = trimmedInput
+      .replace(/^[a-zA-Z]:/, '') // strip Windows drive letters
+      .replace(/^[/\\]+/, '')    // strip leading slashes
+      .replace(/\\/g, '/')
+
+    const resolvedPath = pathModule.resolve(sandboxDir, normalizedInput)
+    const relativePath = pathModule.relative(sandboxDir, resolvedPath)
+
+    if (relativePath.startsWith('..') || pathModule.isAbsolute(relativePath)) {
+      throw new Error('Path must stay within sandbox when no workspace is selected.')
+    }
+
+    const sandboxRelativePath = relativePath.replace(/\\/g, '/') || '.'
+    return {
+      resolvedPath,
+      inSandbox: true,
+      sandboxRelativePath,
+    }
   }
 
   // Read file tool - always available
   tools.read_file = tool({
-    description: 'Read the contents of a file at the specified path. You MUST provide the path parameter. Relative paths are resolved against the workspace.',
+    description: 'Read the contents of a file at the specified path. You MUST provide the path parameter. Relative paths are resolved against the workspace. When no workspace is selected, paths resolve inside the conversation sandbox only.',
     parameters: z.object({
       path: z.string().describe('The file path to read (relative to workspace or absolute)'),
     }),
@@ -1759,9 +1842,16 @@ Notes:
       }
       try {
         const fs = await import('fs/promises')
-        const resolvedPath = await resolvePath(path)
-        const content = await fs.readFile(resolvedPath, 'utf-8')
-        return { success: true, content, resolvedPath }
+        const resolved = await resolvePath(path)
+        const content = await fs.readFile(resolved.resolvedPath, 'utf-8')
+        return {
+          success: true,
+          content,
+          resolvedPath: resolved.inSandbox
+            ? `[Sandbox] ${resolved.sandboxRelativePath}`
+            : resolved.resolvedPath,
+          sandbox: resolved.inSandbox,
+        }
       } catch (error: any) {
         return { success: false, error: error.message }
       }
@@ -1770,20 +1860,27 @@ Notes:
 
   // List directory tool - always available
   tools.list_directory = tool({
-    description: 'List files and directories at the specified path. Relative paths are resolved against the workspace.',
+    description: 'List files and directories at the specified path. Relative paths are resolved against the workspace. When no workspace is selected, paths resolve inside the conversation sandbox only.',
     parameters: z.object({
       path: z.string().describe('The directory path to list (relative to workspace or absolute)'),
     }),
     execute: async ({ path }) => {
       try {
         const fs = await import('fs/promises')
-        const resolvedPath = await resolvePath(path)
-        const entries = await fs.readdir(resolvedPath, { withFileTypes: true })
+        const resolved = await resolvePath(path)
+        const entries = await fs.readdir(resolved.resolvedPath, { withFileTypes: true })
         const items = entries.map(entry => ({
           name: entry.name,
           type: entry.isDirectory() ? 'directory' : 'file',
         }))
-        return { success: true, items, resolvedPath }
+        return {
+          success: true,
+          items,
+          resolvedPath: resolved.inSandbox
+            ? `[Sandbox] ${resolved.sandboxRelativePath}`
+            : resolved.resolvedPath,
+          sandbox: resolved.inSandbox,
+        }
       } catch (error: any) {
         return { success: false, error: error.message }
       }
@@ -1792,7 +1889,7 @@ Notes:
 
   // Search files tool - always available
   tools.search_files = tool({
-    description: 'Search for files matching a pattern. Relative directory paths are resolved against the workspace.',
+    description: 'Search for files matching a pattern. Relative directory paths are resolved against the workspace. When no workspace is selected, searches are constrained to the conversation sandbox.',
     parameters: z.object({
       directory: z.string().describe('The directory to search in (relative to workspace or absolute)'),
       pattern: z.string().describe('Glob pattern to match files'),
@@ -1800,9 +1897,16 @@ Notes:
     execute: async ({ directory, pattern }) => {
       try {
         const { glob } = await import('glob')
-        const resolvedDir = await resolvePath(directory)
-        const files = await glob(pattern, { cwd: resolvedDir })
-        return { success: true, files, resolvedDirectory: resolvedDir }
+        const resolved = await resolvePath(directory)
+        const files = await glob(pattern, { cwd: resolved.resolvedPath })
+        return {
+          success: true,
+          files,
+          resolvedDirectory: resolved.inSandbox
+            ? `[Sandbox] ${resolved.sandboxRelativePath}`
+            : resolved.resolvedPath,
+          sandbox: resolved.inSandbox,
+        }
       } catch (error: any) {
         return { success: false, error: error.message }
       }
@@ -2138,7 +2242,7 @@ Note: If recommended option, list it first with "(Recommended)" suffix.`,
   // Write file tool - only if canWrite
   if (canWrite) {
     tools.write_file = tool({
-      description: 'Write content to a file at the specified path. You MUST provide both path and content parameters. With a workspace selected, relative paths are resolved inside the workspace and blocked if they escape. When no workspace is selected, files are written to a sandbox directory.',
+      description: 'Write content to a file at the specified path. You MUST provide both path and content parameters. With a workspace selected, relative paths are resolved inside the workspace and blocked if they escape. When no workspace is selected, files are written to a sandbox directory. For single-output deliverables (games/pages/demos/docs meant for Canvas), create_artifact first unless the user explicitly asks for files.',
       parameters: z.object({
         path: z.string().min(1).describe('The file path to write to (relative paths work best in sandbox mode)'),
         content: z.string().describe('The content to write'),
@@ -2569,9 +2673,15 @@ export function registerAIHandlers() {
         return
       }
 
+      const modelId = params.model || providerConfig.default_model
+      const providerModelMismatch = isModelProviderMismatch(providerConfig.type, modelId)
+      if (providerModelMismatch) {
+        event.sender.send(`ai:error:${channelId}`, providerModelMismatch)
+        return
+      }
+
       // Create provider instance
       const provider = getProviderInstance(providerConfig, apiKey || '')
-      const modelId = params.model || providerConfig.default_model
       const mode: AgentMode = params.mode || 'auto'
 
       // Build OS/environment context for terminal commands
@@ -2604,6 +2714,14 @@ export function registerAIHandlers() {
 
       // Add OS context after the main prompt
       systemPrompt += `\n\n${osContext}`
+
+      // Runtime guardrails for sandbox behavior + artifact-first UX
+      systemPrompt += `\n\n## Runtime Guardrails
+- In sandbox mode (no workspace selected), treat "." as the conversation sandbox root only.
+- Do NOT inspect repository/project roots when sandbox mode is active unless the user explicitly asks.
+- Do NOT create planning/spec files (e.g., SPEC.md, PRD.md) unless the user explicitly asks.
+- For single deliverables like HTML games/pages/demos/diagrams, prefer create_artifact first.
+- Use write_file first only when the user explicitly asks for files or for multi-file project scaffolding.`
 
       if (projectConversationContext) {
         systemPrompt += `\n\n${projectConversationContext}`
@@ -2743,19 +2861,20 @@ If you find yourself frequently hitting limits, suggest breaking the task into m
           }
         })
 
+      // Retry loop for transient errors
+      let lastError: any = null
+      const streamMaxTokens = await resolveProviderMaxOutputTokens(providerConfig, modelId)
       if (DEBUG_API_REQUESTS) {
         console.log('\n[AI] ========== STREAM START ==========')
         console.log('[AI] Model:', modelId)
         console.log('[AI] Mode:', mode)
         console.log('[AI] Provider type:', providerConfig.type)
+        console.log('[AI] Max output tokens:', streamMaxTokens ?? '(provider default)')
         console.log('[AI] Tool count:', Object.keys(tools).length)
         console.log('[AI] Tool names:', Object.keys(tools))
         console.log('[AI] System prompt length:', systemPrompt.length)
         console.log('[AI] Message count:', messages.length)
       }
-
-      // Retry loop for transient errors
-      let lastError: any = null
       for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
         if (attempt > 0) {
           console.log(`[AI] Retry attempt ${attempt}/${MAX_RETRIES}`)
@@ -2776,6 +2895,7 @@ If you find yourself frequently hitting limits, suggest breaking the task into m
             messages,
             tools,
             toolChoice: 'auto',
+            maxOutputTokens: streamMaxTokens,
             stopWhen: stepCountIs(MAX_TOOL_STEPS),
             abortSignal: abortController.signal,
             experimental_repairToolCall: createToolCallRepair(chatModel),
@@ -3686,6 +3806,10 @@ Be concise but informative. The user needs to understand what happened.`
       }
 
       const provider = getProviderInstance(providerConfig, apiKey || '')
+      const providerModelMismatch = isModelProviderMismatch(providerConfig.type, params.model)
+      if (providerModelMismatch) {
+        return { success: false, error: providerModelMismatch }
+      }
 
       // Use a quick non-streaming call for title generation
       const { generateText } = await import('ai')
@@ -3709,7 +3833,7 @@ Be concise but informative. The user needs to understand what happened.`
             content: `Generate a title for this conversation:\n\n<user_message>\n${userSnippet}\n</user_message>`,
           },
         ],
-        maxTokens: 20,
+        maxOutputTokens: 20,
       })
 
       // Clean up the title
