@@ -6,7 +6,7 @@ interface ProviderConfig {
   name: string
   baseUrl?: string
   defaultModel: string
-  hiddenFromSelector: boolean
+  hiddenFromSelector?: boolean
   isDefault: boolean
   createdAt: number
   updatedAt: number

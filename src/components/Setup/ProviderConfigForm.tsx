@@ -159,6 +159,9 @@ export function ProviderConfigForm({
       let fetchedModels: ProviderModel[] = []
 
       fetchedModels = await window.jelico.providers.previewModels(type, apiKey, baseUrl)
+      if (fetchedModels.length === 0) {
+        fetchedModels = await fetchModelsWithKey(type, apiKey, baseUrl)
+      }
 
       if (fetchedModels.length > 0) {
         setModels(fetchedModels)
