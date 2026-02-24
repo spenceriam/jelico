@@ -4,8 +4,21 @@ import { useProviderStore } from '../../stores/providers'
 import { ProviderConfigForm } from './ProviderConfigForm'
 import { JelicoLogo } from '../Brand/JelicoLogo'
 
-const PROVIDER_TYPES = [
+interface ProviderOption {
+  id: string
+  type: 'anthropic' | 'openai' | 'google' | 'ollama' | 'openrouter' | 'custom' | 'local' | 'zai' | 'zai-china' | 'zai-coding' | 'zai-coding-china' | 'minimax' | 'openai-compatible' | 'anthropic-compatible'
+  name: string
+  description: string
+  icon: string
+  defaultModel: string
+  defaultBaseUrl?: string
+  defaultProviderName?: string
+  apiKeyUrl?: string
+}
+
+const PROVIDER_TYPES: ProviderOption[] = [
   {
+    id: 'anthropic',
     type: 'anthropic' as const,
     name: 'Anthropic',
     description: 'Claude',
@@ -13,6 +26,7 @@ const PROVIDER_TYPES = [
     defaultModel: 'claude-sonnet-4-20250514',
   },
   {
+    id: 'openai',
     type: 'openai' as const,
     name: 'OpenAI',
     description: 'GPT-4o',
@@ -20,6 +34,7 @@ const PROVIDER_TYPES = [
     defaultModel: 'gpt-4o',
   },
   {
+    id: 'google',
     type: 'google' as const,
     name: 'Google',
     description: 'Gemini',
@@ -27,6 +42,7 @@ const PROVIDER_TYPES = [
     defaultModel: 'gemini-1.5-pro',
   },
   {
+    id: 'ollama',
     type: 'ollama' as const,
     name: 'Ollama',
     description: 'Local LLMs',
@@ -34,6 +50,7 @@ const PROVIDER_TYPES = [
     defaultModel: 'llama3.1',
   },
   {
+    id: 'openrouter',
     type: 'openrouter' as const,
     name: 'OpenRouter',
     description: 'Any Model',
@@ -41,6 +58,7 @@ const PROVIDER_TYPES = [
     defaultModel: 'anthropic/claude-3.5-sonnet',
   },
   {
+    id: 'zai',
     type: 'zai' as const,
     name: 'Z.ai',
     description: 'Global API',
@@ -48,6 +66,7 @@ const PROVIDER_TYPES = [
     defaultModel: 'glm-4.7',
   },
   {
+    id: 'zai-china',
     type: 'zai-china' as const,
     name: 'Z.ai China',
     description: 'CN API',
@@ -55,6 +74,7 @@ const PROVIDER_TYPES = [
     defaultModel: 'glm-4.7',
   },
   {
+    id: 'zai-coding',
     type: 'zai-coding' as const,
     name: 'Z.ai Coding',
     description: 'Global Coding',
@@ -62,6 +82,7 @@ const PROVIDER_TYPES = [
     defaultModel: 'glm-4.7',
   },
   {
+    id: 'zai-coding-china',
     type: 'zai-coding-china' as const,
     name: 'Z.ai Coding CN',
     description: 'CN Coding',
@@ -69,13 +90,27 @@ const PROVIDER_TYPES = [
     defaultModel: 'glm-4.7',
   },
   {
-    type: 'minimax' as const,
-    name: 'MiniMax',
-    description: 'OpenAI Compatible',
+    id: 'minimax-api',
+    type: 'openai-compatible' as const,
+    name: 'MiniMax API',
+    description: 'Official API',
     icon: 'M',
     defaultModel: 'MiniMax-M1',
+    defaultBaseUrl: 'https://api.minimax.io/v1',
+    defaultProviderName: 'MiniMax API',
   },
   {
+    id: 'minimax-coding-plan',
+    type: 'anthropic-compatible' as const,
+    name: 'MiniMax Coding Plan',
+    description: 'Anthropic Compatible',
+    icon: 'M',
+    defaultModel: '',
+    defaultBaseUrl: 'https://api.minimax.io/anthropic/v1',
+    defaultProviderName: 'MiniMax Coding Plan',
+  },
+  {
+    id: 'openai-compatible',
     type: 'openai-compatible' as const,
     name: 'OpenAI Compatible',
     description: 'Custom Endpoint',
@@ -83,6 +118,7 @@ const PROVIDER_TYPES = [
     defaultModel: 'gpt-4',
   },
   {
+    id: 'anthropic-compatible',
     type: 'anthropic-compatible' as const,
     name: 'Anthropic Compatible',
     description: 'Custom Endpoint',
@@ -90,6 +126,7 @@ const PROVIDER_TYPES = [
     defaultModel: 'claude-3-sonnet',
   },
   {
+    id: 'local',
     type: 'local' as const,
     name: 'Local Server',
     description: 'OpenAI API',
@@ -97,6 +134,7 @@ const PROVIDER_TYPES = [
     defaultModel: 'default',
   },
   {
+    id: 'custom',
     type: 'custom' as const,
     name: 'Custom',
     description: 'OpenAI API',
@@ -112,7 +150,7 @@ interface ProviderSetupProps {
 }
 
 export function ProviderSetup({ isModal, onComplete, onCancel }: ProviderSetupProps) {
-  const [selectedType, setSelectedType] = useState<typeof PROVIDER_TYPES[number] | null>(null)
+  const [selectedType, setSelectedType] = useState<ProviderOption | null>(null)
   const { addProvider } = useProviderStore()
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -131,10 +169,10 @@ export function ProviderSetup({ isModal, onComplete, onCancel }: ProviderSetupPr
     try {
       await addProvider({
         type: selectedType.type,
-        name: config.name || selectedType.name,
+        name: config.name || selectedType.defaultProviderName || selectedType.name,
         apiKey: config.apiKey,
         defaultModel: config.defaultModel,
-        baseUrl: config.baseUrl,
+        baseUrl: config.baseUrl || selectedType.defaultBaseUrl,
         isDefault: true,
       })
       onComplete()
@@ -180,7 +218,7 @@ export function ProviderSetup({ isModal, onComplete, onCancel }: ProviderSetupPr
           <div className="grid grid-cols-3 gap-3 mb-8">
             {PROVIDER_TYPES.map((provider) => (
               <button
-                key={provider.type}
+                key={provider.id}
                 onClick={() => setSelectedType(provider)}
                 className="provider-card"
               >
@@ -227,6 +265,9 @@ export function ProviderSetup({ isModal, onComplete, onCancel }: ProviderSetupPr
           <ProviderConfigForm
             type={selectedType.type}
             defaultModel={selectedType.defaultModel}
+            initialName={selectedType.defaultProviderName || selectedType.name}
+            initialBaseUrl={selectedType.defaultBaseUrl}
+            apiKeyUrl={selectedType.apiKeyUrl}
             onSave={handleProviderSave}
             isLoading={isLoading}
           />

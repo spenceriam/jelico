@@ -6,6 +6,7 @@ interface ProviderConfig {
   name: string
   baseUrl?: string
   defaultModel: string
+  hiddenFromSelector?: boolean
   isDefault: boolean
   createdAt: number
   updatedAt: number
@@ -16,6 +17,7 @@ interface ProviderInput {
   name: string
   baseUrl?: string
   defaultModel: string
+  hiddenFromSelector?: boolean
   isDefault?: boolean
   apiKey?: string
 }
@@ -34,7 +36,8 @@ interface ProviderStore {
   deleteProvider: (id: string) => Promise<void>
   setActiveProvider: (id: string) => Promise<void>
   setActiveModel: (model: string) => Promise<void>
-  testConnection: (id: string) => Promise<boolean>
+  setActiveSelection: (providerId: string, model: string) => void
+  testConnection: (id: string) => Promise<{ ok: boolean; message: string; status?: number }>
   getModels: (type: string, baseUrl?: string) => Promise<Array<{ id: string; name: string }>>
 }
 
@@ -49,11 +52,16 @@ export const useProviderStore = create<ProviderStore>((set, get) => ({
     set({ isLoading: true, error: null })
     try {
       const providers = await window.jelico.providers.list()
-      const defaultProvider = providers.find(p => p.isDefault)
+      const currentActive = providers.find(
+        p => p.id === get().activeProviderId && !p.hiddenFromSelector && !!p.defaultModel?.trim()
+      )
+      const defaultProvider = providers.find(p => p.isDefault && !p.hiddenFromSelector && !!p.defaultModel?.trim())
+      const firstVisibleProvider = providers.find(p => !p.hiddenFromSelector && !!p.defaultModel?.trim())
+      const selectedProvider = currentActive || defaultProvider || firstVisibleProvider || null
       set({
         providers,
-        activeProviderId: defaultProvider?.id || providers[0]?.id || null,
-        activeModel: defaultProvider?.defaultModel || providers[0]?.defaultModel || null,
+        activeProviderId: selectedProvider?.id || null,
+        activeModel: selectedProvider?.defaultModel || null,
         isLoading: false,
       })
     } catch (error: any) {
@@ -68,8 +76,14 @@ export const useProviderStore = create<ProviderStore>((set, get) => ({
       const providers = await window.jelico.providers.list()
 
       // If this is the first/default provider, set it as active
-      const activeProviderId = provider.isDefault ? provider.id : get().activeProviderId || provider.id
-      const activeModel = provider.isDefault ? provider.defaultModel : get().activeModel || provider.defaultModel
+      const currentActive = providers.find(
+        p => p.id === get().activeProviderId && !p.hiddenFromSelector && !!p.defaultModel?.trim()
+      )
+      const defaultProvider = providers.find(p => p.isDefault && !p.hiddenFromSelector && !!p.defaultModel?.trim())
+      const firstVisibleProvider = providers.find(p => !p.hiddenFromSelector && !!p.defaultModel?.trim())
+      const selectedProvider = currentActive || defaultProvider || firstVisibleProvider || null
+      const activeProviderId = selectedProvider?.id || null
+      const activeModel = selectedProvider?.defaultModel || null
 
       set({
         providers,
@@ -89,7 +103,18 @@ export const useProviderStore = create<ProviderStore>((set, get) => ({
     try {
       await window.jelico.providers.update(id, updates)
       const providers = await window.jelico.providers.list()
-      set({ providers, isLoading: false })
+      let { activeProviderId, activeModel } = get()
+      const activeProvider = providers.find(p => p.id === activeProviderId)
+
+      if (!activeProvider || activeProvider.hiddenFromSelector || !activeProvider.defaultModel?.trim()) {
+        const fallback = providers.find(p => !p.hiddenFromSelector && !!p.defaultModel?.trim()) || null
+        activeProviderId = fallback?.id || null
+        activeModel = fallback?.defaultModel || null
+      } else if (activeModel !== activeProvider.defaultModel && updates.defaultModel !== undefined && activeProvider.id === id) {
+        activeModel = activeProvider.defaultModel
+      }
+
+      set({ providers, activeProviderId, activeModel, isLoading: false })
     } catch (error: any) {
       set({ error: error.message, isLoading: false })
       throw error
@@ -105,9 +130,22 @@ export const useProviderStore = create<ProviderStore>((set, get) => ({
       // Update active provider if needed
       let { activeProviderId, activeModel } = get()
       if (activeProviderId === id) {
-        const defaultProvider = providers.find(p => p.isDefault) || providers[0]
-        activeProviderId = defaultProvider?.id || null
-        activeModel = defaultProvider?.defaultModel || null
+        const defaultProvider = providers.find(p => p.isDefault && !p.hiddenFromSelector && !!p.defaultModel?.trim())
+        const firstVisibleProvider = providers.find(p => !p.hiddenFromSelector && !!p.defaultModel?.trim())
+        const fallback = defaultProvider || firstVisibleProvider || null
+        activeProviderId = fallback?.id || null
+        activeModel = fallback?.defaultModel || null
+      } else {
+        const activeProvider = providers.find(p => p.id === activeProviderId)
+        if (!activeProvider || activeProvider.hiddenFromSelector || !activeProvider.defaultModel?.trim()) {
+          const defaultProvider = providers.find(p => p.isDefault && !p.hiddenFromSelector && !!p.defaultModel?.trim())
+          const firstVisibleProvider = providers.find(p => !p.hiddenFromSelector && !!p.defaultModel?.trim())
+          const fallback = defaultProvider || firstVisibleProvider || null
+          activeProviderId = fallback?.id || null
+          activeModel = fallback?.defaultModel || null
+        } else {
+          activeModel = activeProvider.defaultModel
+        }
       }
 
       set({ providers, activeProviderId, activeModel, isLoading: false })
@@ -158,11 +196,43 @@ export const useProviderStore = create<ProviderStore>((set, get) => ({
     }
   },
 
+  setActiveSelection: (providerId, model) => {
+    if (!providerId || !model) return
+    set({
+      activeProviderId: providerId,
+      activeModel: model,
+      error: null,
+    })
+  },
+
   testConnection: async (id) => {
     try {
-      return await window.jelico.providers.test(id)
-    } catch {
-      return false
+      const result = await window.jelico.providers.test(id)
+
+      if (typeof result === 'boolean') {
+        return {
+          ok: result,
+          message: result ? 'Connection successful' : 'Connection failed',
+        }
+      }
+
+      if (result && typeof result === 'object') {
+        const maybe = result as any
+        const ok = Boolean(maybe.ok ?? maybe.success)
+        const message = typeof maybe.message === 'string' && maybe.message.trim()
+          ? maybe.message.trim()
+          : ok
+            ? 'Connection successful'
+            : 'Connection failed'
+        const statusNumber = Number(maybe.status)
+        const status = Number.isFinite(statusNumber) ? statusNumber : undefined
+
+        return { ok, message, status }
+      }
+
+      return { ok: false, message: 'Connection failed' }
+    } catch (error: any) {
+      return { ok: false, message: error?.message || 'Connection test failed' }
     }
   },
 

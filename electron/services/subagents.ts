@@ -31,6 +31,8 @@ import {
   normalizeWebProviderType,
   type WebProviderRuntime,
 } from './webAdapter'
+import { lookupModelsDevOutputLimit, refreshModelCatalog } from './modelCatalog'
+import { getConversationSandboxPath } from './sandbox'
 import { normalizeToolSchemas, createToolCallRepair } from '../lib/tooling'
 
 // Configuration
@@ -678,6 +680,14 @@ export async function spawnSubAgent(params: {
 /**
  * Run a sub-agent (internal)
  */
+function normalizeAnthropicCompatibleBaseUrl(baseUrl?: string | null): string | undefined {
+  const trimmed = String(baseUrl || '').trim().replace(/\/+$/, '')
+  if (!trimmed) return undefined
+  if (trimmed.endsWith('/messages')) return trimmed.replace(/\/messages$/, '')
+  if (trimmed.endsWith('/v1')) return trimmed
+  return `${trimmed}/v1`
+}
+
 /**
  * Create provider client
  *
@@ -743,17 +753,24 @@ function getProviderClient(providerConfig: any, apiKey: string | null) {
     case 'minimax':
       return createOpenAI({
         apiKey: apiKey || '',
-        baseURL: 'https://api.minimax.io',
+        baseURL: providerConfig.base_url || 'https://api.minimax.io',
       })
 
     // Generic compatible providers
     case 'custom':
     case 'openai-compatible':
-    case 'anthropic-compatible':
     case 'local':
       return createOpenAI({
         apiKey: apiKey || 'local',
         baseURL: providerConfig.base_url || 'http://localhost:8080/v1',
+      })
+    case 'anthropic-compatible':
+      return createAnthropic({
+        apiKey: apiKey || '',
+        baseURL: normalizeAnthropicCompatibleBaseUrl(providerConfig.base_url),
+        headers: {
+          Authorization: `Bearer ${apiKey || ''}`,
+        },
       })
 
     default:
@@ -767,6 +784,23 @@ function getProviderClient(providerConfig: any, apiKey: string | null) {
       }
       throw new Error(`Unknown provider type: ${providerConfig.type}`)
   }
+}
+
+async function resolveProviderMaxOutputTokens(providerConfig: any, modelId: string): Promise<number | undefined> {
+  const normalizedModel = String(modelId || '').trim()
+  if (!normalizedModel) return undefined
+
+  try {
+    await refreshModelCatalog(false)
+    const limit = lookupModelsDevOutputLimit(providerConfig.type, normalizedModel)
+    if (limit && Number.isFinite(limit) && limit > 0) {
+      return Math.round(limit)
+    }
+  } catch (error) {
+    console.warn('[SubAgents] Failed to resolve models.dev output token limit:', error)
+  }
+
+  return undefined
 }
 
 // Markers that indicate the sub-agent needs clarification
@@ -951,6 +985,7 @@ type SendArtifactCallback = (artifact: {
 function getSubAgentTools(
   mode: string,
   workspacePath?: string,
+  conversationId?: string,
   agentContext?: {
     agentId: string
     agentName: string
@@ -965,6 +1000,37 @@ function getSubAgentTools(
 
   const tools: Record<string, any> = {}
 
+  const resolveScopedPath = async (inputPath: string): Promise<string> => {
+    const pathModule = await import('path')
+    const trimmedInput = (inputPath || '.').trim() || '.'
+
+    if (workspacePath) {
+      if (!pathModule.isAbsolute(trimmedInput)) {
+        return pathModule.resolve(workspacePath, trimmedInput)
+      }
+      return pathModule.resolve(trimmedInput)
+    }
+
+    if (!conversationId) {
+      throw new Error('Sandbox mode requires a conversation context.')
+    }
+
+    const sandboxDir = getConversationSandboxPath(conversationId)
+    const normalizedInput = trimmedInput
+      .replace(/^[a-zA-Z]:/, '')
+      .replace(/^[/\\]+/, '')
+      .replace(/\\/g, '/')
+
+    const resolvedPath = pathModule.resolve(sandboxDir, normalizedInput)
+    const relativePath = pathModule.relative(sandboxDir, resolvedPath)
+
+    if (relativePath.startsWith('..') || pathModule.isAbsolute(relativePath)) {
+      throw new Error('Path must stay within sandbox when no workspace is selected.')
+    }
+
+    return resolvedPath
+  }
+
   // Read file tool - always available
   tools.read_file = tool({
     description: 'Read the contents of a file at the specified path',
@@ -974,7 +1040,8 @@ function getSubAgentTools(
     execute: async ({ path }) => {
       try {
         const fs = await import('fs/promises')
-        const content = await fs.readFile(path, 'utf-8')
+        const resolvedPath = await resolveScopedPath(path)
+        const content = await fs.readFile(resolvedPath, 'utf-8')
         return { success: true, content }
       } catch (error: any) {
         return { success: false, error: error.message }
@@ -991,7 +1058,8 @@ function getSubAgentTools(
     execute: async ({ path }) => {
       try {
         const fs = await import('fs/promises')
-        const entries = await fs.readdir(path, { withFileTypes: true })
+        const resolvedPath = await resolveScopedPath(path)
+        const entries = await fs.readdir(resolvedPath, { withFileTypes: true })
         const items = entries.map(entry => ({
           name: entry.name,
           type: entry.isDirectory() ? 'directory' : 'file',
@@ -1013,7 +1081,8 @@ function getSubAgentTools(
     execute: async ({ directory, pattern }) => {
       try {
         const { glob } = await import('glob')
-        const files = await glob(pattern, { cwd: directory })
+        const resolvedDir = await resolveScopedPath(directory)
+        const files = await glob(pattern, { cwd: resolvedDir })
         return { success: true, files }
       } catch (error: any) {
         return { success: false, error: error.message }
@@ -1363,7 +1432,7 @@ async function runSubAgent(agentId: string): Promise<void> {
     // In forceSummaryMode, disable all tools to force text output
     const tools = agent.forceSummaryMode
       ? {}  // No tools - forces model to output text only
-      : getSubAgentTools(agent.mode, agent.workspacePath, {
+      : getSubAgentTools(agent.mode, agent.workspacePath, agent.conversationId, {
           agentId,
           agentName: agent.name,
           sendArtifact,
@@ -1378,11 +1447,13 @@ async function runSubAgent(agentId: string): Promise<void> {
     // Using client(model) defaults to Responses API which doesn't support
     // tool calling on most providers (OpenRouter, Ollama, Z.ai, etc.)
     const chatModel = client.chat(agent.model)
+    const maxTokens = await resolveProviderMaxOutputTokens(providerConfig, agent.model)
     const response = await streamText({
       model: chatModel,
       messages: agent.messages,
       tools,
       toolChoice: 'auto',
+      maxOutputTokens: maxTokens,
       maxSteps: 5, // Allow up to 5 tool call steps per agent run
       abortSignal: abortController.signal,
       experimental_repairToolCall: createToolCallRepair(chatModel),

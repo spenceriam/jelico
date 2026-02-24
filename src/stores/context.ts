@@ -101,6 +101,11 @@ interface ContextState {
     providerId: string,
     modelId: string
   ) => Promise<void>
+  switchConversationModel: (
+    conversationId: string,
+    providerId: string,
+    modelId: string
+  ) => Promise<void>
   updateTokenCount: (
     conversationId: string,
     tokenCount: number
@@ -133,6 +138,55 @@ interface ContextState {
   setConversationCompacting: (conversationId: string, isCompacting: boolean) => void
 }
 
+async function resolveModelContextSize(providerId: string, modelId: string): Promise<number> {
+  let modelContextSize = FALLBACK_CONTEXT_SIZE
+  let source: 'api' | 'fallback' | 'default' = 'fallback'
+
+  const cacheKey = `${providerId}:${modelId}`
+  const cached = contextSizeCache.get(cacheKey)
+
+  if (cached && Date.now() - cached.fetchedAt < CACHE_TTL_MS) {
+    return cached.size
+  }
+
+  try {
+    const size = await window.jelico.providers.getModelContextSize(providerId, modelId)
+    if (size && size > 0) {
+      modelContextSize = size
+      source = 'api'
+    }
+  } catch (err) {
+    console.error('[Context] Error fetching context size:', err)
+  }
+
+  if (source !== 'api') {
+    const normalizedModelId = modelId.toLowerCase().replace(/[:@]/g, '-')
+
+    if (KNOWN_CONTEXT_SIZES[modelId]) {
+      modelContextSize = KNOWN_CONTEXT_SIZES[modelId]
+      source = 'default'
+    } else {
+      const knownModel = Object.entries(KNOWN_CONTEXT_SIZES).find(([key]) =>
+        normalizedModelId.includes(key.toLowerCase()) ||
+        key.toLowerCase().includes(normalizedModelId)
+      )
+
+      if (knownModel) {
+        modelContextSize = knownModel[1]
+        source = 'default'
+      }
+    }
+  }
+
+  contextSizeCache.set(cacheKey, {
+    size: modelContextSize,
+    fetchedAt: Date.now(),
+    source,
+  })
+
+  return modelContextSize
+}
+
 export const useContextStore = create<ContextState>((set, get) => ({
   conversationContexts: {},
   compactionThreshold: COMPACTION_THRESHOLDS.COMPACT,
@@ -142,58 +196,7 @@ export const useContextStore = create<ContextState>((set, get) => ({
   isCompacting: false,
 
   initConversationContext: async (conversationId, providerId, modelId) => {
-    // Issue #56: Multi-tier context size lookup
-    let modelContextSize = FALLBACK_CONTEXT_SIZE
-    let source: 'api' | 'fallback' | 'default' = 'fallback'
-
-    const cacheKey = `${providerId}:${modelId}`
-    const cached = contextSizeCache.get(cacheKey)
-    
-    // 1. Check cache first
-    if (cached && Date.now() - cached.fetchedAt < CACHE_TTL_MS) {
-      modelContextSize = cached.size
-      source = cached.source
-      console.log(`[Context] Using cached context size for ${modelId}: ${modelContextSize}`)
-    } else {
-      // 2. Check known model sizes
-      const normalizedModelId = modelId.toLowerCase().replace(/[:@]/g, '-')
-      
-      // Try exact match first
-      if (KNOWN_CONTEXT_SIZES[modelId]) {
-        modelContextSize = KNOWN_CONTEXT_SIZES[modelId]
-        source = 'default'
-        console.log(`[Context] Using known context size for ${modelId}: ${modelContextSize}`)
-      } else {
-        // Try partial match
-        const knownModel = Object.entries(KNOWN_CONTEXT_SIZES).find(([key]) => 
-          normalizedModelId.includes(key.toLowerCase()) || 
-          key.toLowerCase().includes(normalizedModelId)
-        )
-        
-        if (knownModel) {
-          modelContextSize = knownModel[1]
-          source = 'default'
-          console.log(`[Context] Using matched context size for ${modelId} -> ${knownModel[0]}: ${modelContextSize}`)
-        } else {
-          // 3. Fetch from provider API
-          try {
-            const size = await window.jelico.providers.getModelContextSize(providerId, modelId)
-            if (size && size > 0) {
-              modelContextSize = size
-              source = 'api'
-              console.log(`[Context] Fetched context size for ${modelId}: ${size}`)
-            } else {
-              console.warn(`[Context] Could not fetch context size for ${modelId}, using fallback: ${FALLBACK_CONTEXT_SIZE}`)
-            }
-          } catch (err) {
-            console.error('[Context] Error fetching context size:', err)
-          }
-        }
-      }
-      
-      // Cache the result
-      contextSizeCache.set(cacheKey, { size: modelContextSize, fetchedAt: Date.now(), source })
-    }
+    const modelContextSize = await resolveModelContextSize(providerId, modelId)
 
     set((state) => ({
       conversationContexts: {
@@ -212,6 +215,38 @@ export const useContextStore = create<ContextState>((set, get) => ({
         },
       },
     }))
+  },
+
+  switchConversationModel: async (conversationId, providerId, modelId) => {
+    const existing = get().conversationContexts[conversationId]
+    const modelContextSize = await resolveModelContextSize(providerId, modelId)
+
+    set((state) => {
+      const current = state.conversationContexts[conversationId]
+      const tokenCount = current?.currentTokenCount ?? existing?.currentTokenCount ?? 0
+      const peakTokenCountSinceCompaction = Math.max(
+        current?.peakTokenCountSinceCompaction ?? existing?.peakTokenCountSinceCompaction ?? 0,
+        tokenCount
+      )
+
+      return {
+        conversationContexts: {
+          ...state.conversationContexts,
+          [conversationId]: {
+            providerId,
+            modelId,
+            modelContextSize,
+            currentTokenCount: tokenCount,
+            peakTokenCountSinceCompaction,
+            totalCompactions: current?.totalCompactions ?? existing?.totalCompactions ?? 0,
+            lastCompactionAt: current?.lastCompactionAt ?? existing?.lastCompactionAt ?? null,
+            lastCompactionBeforeTokens: current?.lastCompactionBeforeTokens ?? existing?.lastCompactionBeforeTokens ?? null,
+            lastCompactionAfterTokens: current?.lastCompactionAfterTokens ?? existing?.lastCompactionAfterTokens ?? null,
+            compactionSummary: current?.compactionSummary ?? existing?.compactionSummary ?? null,
+          },
+        },
+      }
+    })
   },
 
   updateTokenCount: (conversationId, tokenCount) => {

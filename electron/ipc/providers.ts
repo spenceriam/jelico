@@ -1,6 +1,12 @@
 import { ipcMain } from 'electron'
 import { providerDb } from '../services/database'
 import { keychainService } from '../services/keychain'
+import {
+  getModelCatalogStatus,
+  initializeModelCatalog,
+  lookupModelsDevContextLimit,
+  refreshModelCatalog,
+} from '../services/modelCatalog'
 
 // OpenAI family context sizes for fallback
 const OPENAI_FAMILY_CONTEXT: Record<string, number> = {
@@ -22,6 +28,47 @@ function buildModelsEndpoint(baseUrl?: string | null): string {
   if (trimmed.endsWith('/models')) return trimmed
   if (trimmed.endsWith('/v1')) return `${trimmed}/models`
   return `${trimmed}/v1/models`
+}
+
+const MINIMAX_COMPAT_MODELS: Array<{ id: string; name: string }> = [
+  { id: 'MiniMax-M2.5', name: 'MiniMax-M2.5' },
+  { id: 'MiniMax-M2.5-highspeed', name: 'MiniMax-M2.5-highspeed' },
+  { id: 'MiniMax-M2.1', name: 'MiniMax-M2.1' },
+  { id: 'MiniMax-M2.1-highspeed', name: 'MiniMax-M2.1-highspeed' },
+  { id: 'MiniMax-M2', name: 'MiniMax-M2' },
+]
+
+function isMiniMaxBaseUrl(baseUrl?: string | null): boolean {
+  const normalized = String(baseUrl || '').toLowerCase()
+  return normalized.includes('api.minimax.io') || normalized.includes('api.minimaxi.com')
+}
+
+function normalizeAnthropicCompatibleBaseUrl(baseUrl?: string | null): string | null {
+  const trimmed = String(baseUrl || '').trim().replace(/\/+$/, '')
+  if (!trimmed) return null
+  if (trimmed.endsWith('/messages')) return trimmed.replace(/\/messages$/, '')
+  if (trimmed.endsWith('/v1')) return trimmed
+  return `${trimmed}/v1`
+}
+
+function buildCompatibleModelsEndpoints(baseUrl?: string | null): string[] {
+  const primary = buildModelsEndpoint(baseUrl)
+  const endpoints = [primary]
+
+  const trimmed = (baseUrl || '').replace(/\/+$/, '')
+  if (trimmed.endsWith('/anthropic') || trimmed.endsWith('/anthropic/v1')) {
+    try {
+      const parsed = new URL(trimmed)
+      const fallback = `${parsed.origin}/v1/models`
+      if (!endpoints.includes(fallback)) {
+        endpoints.push(fallback)
+      }
+    } catch {
+      // Ignore malformed base URL and keep primary endpoint only.
+    }
+  }
+
+  return endpoints
 }
 
 // Extract context size from model metadata
@@ -63,34 +110,39 @@ async function resolveContextSizeFromModelsEndpoint(
   baseUrl?: string | null,
   apiKey?: string | null
 ): Promise<number | null> {
-  try {
-    const response = await fetch(buildModelsEndpoint(baseUrl), {
-      headers: {
-        Accept: 'application/json',
-        ...(apiKey ? { Authorization: `Bearer ${apiKey}` } : {}),
-      },
-    })
-    if (!response.ok) return null
+  const endpoints = buildCompatibleModelsEndpoints(baseUrl)
+  for (const endpoint of endpoints) {
+    try {
+      const response = await fetch(endpoint, {
+        headers: {
+          Accept: 'application/json',
+          ...(apiKey ? { Authorization: `Bearer ${apiKey}` } : {}),
+        },
+      })
+      if (!response.ok) continue
 
-    const payload = await response.json()
-    const models: any[] = Array.isArray(payload?.data)
-      ? payload.data
-      : Array.isArray(payload?.models)
-        ? payload.models
-        : []
+      const payload = await response.json()
+      const models: any[] = Array.isArray(payload?.data)
+        ? payload.data
+        : Array.isArray(payload?.models)
+          ? payload.models
+          : []
 
-    const normalizedId = modelId.toLowerCase()
-    const shortId = normalizedId.split('/').pop() || normalizedId
-    const target = models.find((m) => {
-      const id = String(m?.id || m?.name || '').toLowerCase()
-      return id === normalizedId || id === shortId || id.endsWith(`/${shortId}`)
-    })
-    if (!target) return null
+      const normalizedId = modelId.toLowerCase()
+      const shortId = normalizedId.split('/').pop() || normalizedId
+      const target = models.find((m) => {
+        const id = String(m?.id || m?.name || '').toLowerCase()
+        return id === normalizedId || id === shortId || id.endsWith(`/${shortId}`)
+      })
+      if (!target) continue
 
-    return extractContextSize(target)
-  } catch {
-    return null
+      return extractContextSize(target)
+    } catch {
+      // Try next endpoint candidate.
+    }
   }
+
+  return null
 }
 
 // Fallback models only used when API fetch fails
@@ -236,13 +288,271 @@ function toApiFormat(row: any) {
     name: row.name,
     baseUrl: row.base_url,
     defaultModel: row.default_model,
+    hiddenFromSelector: row.hidden_from_selector === 1,
     isDefault: row.is_default === 1,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   }
 }
 
+async function fetchCompatibleModels(apiKey: string | null, baseUrl?: string): Promise<Array<{ id: string; name: string }>> {
+  const endpoints = buildCompatibleModelsEndpoints(baseUrl)
+  const authHeaderCandidates: Array<Record<string, string>> = apiKey
+    ? [
+        { Authorization: `Bearer ${apiKey}` },
+        { 'x-api-key': apiKey, 'anthropic-version': '2023-06-01' },
+        { 'x-api-key': apiKey },
+      ]
+    : [{}]
+
+  for (const endpoint of endpoints) {
+    for (const authHeaders of authHeaderCandidates) {
+      try {
+        const response = await fetch(endpoint, {
+          headers: {
+            Accept: 'application/json',
+            ...authHeaders,
+          },
+        })
+
+        if (!response.ok) {
+          continue
+        }
+
+        const payload = await response.json()
+        const models: any[] = Array.isArray(payload?.data)
+          ? payload.data
+          : Array.isArray(payload?.models)
+            ? payload.models
+            : []
+
+        const normalized = models
+          .map((model: any) => {
+            const id = String(model?.id || model?.name || '').trim()
+            if (!id) return null
+            const name = String(model?.name || model?.display_name || id).trim() || id
+            return { id, name }
+          })
+          .filter(Boolean) as Array<{ id: string; name: string }>
+
+        if (normalized.length > 0) {
+          return normalized.sort((a, b) => a.name.localeCompare(b.name))
+        }
+      } catch {
+        // Try next header combination or endpoint candidate.
+      }
+    }
+  }
+
+  if (isMiniMaxBaseUrl(baseUrl)) {
+    return MINIMAX_COMPAT_MODELS
+  }
+
+  return []
+}
+
+interface ProviderTestResult {
+  ok: boolean
+  message: string
+  status?: number
+}
+
+function extractProviderErrorMessage(status: number, payload: unknown): string {
+  const statusSummary = (() => {
+    if (status === 401 || status === 403) return 'Authentication failed. Check your API key.'
+    if (status === 404) return 'Endpoint not found. Check provider endpoint URL.'
+    if (status >= 500) return 'Provider service error. Please try again.'
+    return `Request failed (${status})`
+  })()
+
+  if (typeof payload === 'string') {
+    const trimmed = payload.trim()
+    if (trimmed) {
+      const lowered = trimmed.toLowerCase()
+      const looksHtml =
+        lowered.includes('<!doctype html') ||
+        lowered.includes('<html') ||
+        lowered.includes('<body')
+
+      if (looksHtml) return statusSummary
+
+      const singleLine = trimmed.replace(/\s+/g, ' ')
+      if (singleLine.length > 180) return `${singleLine.slice(0, 177)}...`
+      return singleLine
+    }
+  }
+
+  if (payload && typeof payload === 'object') {
+    const asAny = payload as any
+    const fromErrorObject = asAny?.error?.message
+    const fromMessage = asAny?.message
+    const fromDetail = asAny?.detail
+
+    const pickMessage = (value: unknown): string | null => {
+      if (typeof value !== 'string') return null
+      const trimmed = value.trim()
+      if (!trimmed) return null
+
+      const lowered = trimmed.toLowerCase()
+      const looksHtml =
+        lowered.includes('<!doctype html') ||
+        lowered.includes('<html') ||
+        lowered.includes('<body')
+
+      if (looksHtml) return statusSummary
+
+      const singleLine = trimmed.replace(/\s+/g, ' ')
+      if (singleLine.length > 180) return `${singleLine.slice(0, 177)}...`
+      return singleLine
+    }
+
+    const errorMessage = pickMessage(fromErrorObject)
+    if (errorMessage) return errorMessage
+    const message = pickMessage(fromMessage)
+    if (message) return message
+    const detail = pickMessage(fromDetail)
+    if (detail) return detail
+  }
+
+  return statusSummary
+}
+
+async function probeProviderEndpoint(url: string, init?: RequestInit): Promise<ProviderTestResult> {
+  try {
+    const response = await fetch(url, init)
+    if (response.ok) {
+      return { ok: true, message: 'Connection successful' }
+    }
+
+    let errorPayload: unknown = null
+    try {
+      const contentType = response.headers.get('content-type') || ''
+      if (contentType.includes('application/json')) {
+        errorPayload = await response.json()
+      } else {
+        errorPayload = await response.text()
+      }
+    } catch {
+      errorPayload = null
+    }
+
+    return {
+      ok: false,
+      status: response.status,
+      message: extractProviderErrorMessage(response.status, errorPayload),
+    }
+  } catch (error: any) {
+    return {
+      ok: false,
+      message: error?.message || 'Network error',
+    }
+  }
+}
+
+async function probeCompatibleModelsEndpoint(
+  baseUrl: string | null,
+  apiKey: string | null
+): Promise<ProviderTestResult> {
+  const endpoints = buildCompatibleModelsEndpoints(baseUrl)
+  const authHeaderCandidates: Array<Record<string, string>> = apiKey
+    ? [
+        { Authorization: `Bearer ${apiKey}` },
+        { 'x-api-key': apiKey, 'anthropic-version': '2023-06-01' },
+        { 'x-api-key': apiKey },
+      ]
+    : [{}]
+  let lastFailure: ProviderTestResult | null = null
+
+  for (const endpoint of endpoints) {
+    for (const authHeaders of authHeaderCandidates) {
+      const result = await probeProviderEndpoint(endpoint, {
+        headers: {
+          Accept: 'application/json',
+          ...authHeaders,
+        },
+      })
+
+      if (result.ok) {
+        return result
+      }
+
+      lastFailure = result
+    }
+  }
+
+  return lastFailure || { ok: false, message: 'Connection test failed' }
+}
+
+async function probeMiniMaxAnthropicMessageEndpoint(
+  baseUrl: string | null,
+  apiKey: string,
+  modelId: string
+): Promise<ProviderTestResult> {
+  const normalizedBase = normalizeAnthropicCompatibleBaseUrl(baseUrl)
+  if (!normalizedBase) {
+    return { ok: false, message: 'Missing provider endpoint URL' }
+  }
+  const endpoint = `${normalizedBase}/messages`
+
+  const authHeaderVariants: Array<Record<string, string>> = [
+    { Authorization: `Bearer ${apiKey}` },
+    { Authorization: apiKey },
+    { 'x-api-key': apiKey },
+  ]
+
+  let lastFailure: ProviderTestResult | null = null
+  for (const authHeaders of authHeaderVariants) {
+    try {
+      const response = await fetch(endpoint, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'anthropic-version': '2023-06-01',
+          ...authHeaders,
+        },
+        body: JSON.stringify({
+          model: modelId,
+          max_tokens: 8,
+          messages: [
+            {
+              role: 'user',
+              content: [{ type: 'text', text: 'ping' }],
+            },
+          ],
+        }),
+      })
+
+      if (response.ok) {
+        return { ok: true, message: 'Connection successful' }
+      }
+
+      let payload: unknown = null
+      try {
+        const contentType = response.headers.get('content-type') || ''
+        payload = contentType.includes('application/json') ? await response.json() : await response.text()
+      } catch {
+        payload = null
+      }
+
+      lastFailure = {
+        ok: false,
+        status: response.status,
+        message: extractProviderErrorMessage(response.status, payload),
+      }
+    } catch (error: any) {
+      lastFailure = {
+        ok: false,
+        message: error?.message || 'Network error',
+      }
+    }
+  }
+
+  return lastFailure || { ok: false, message: 'Connection test failed' }
+}
+
 export function registerProviderHandlers() {
+  initializeModelCatalog()
+
   // List all providers
   ipcMain.handle('providers:list', async () => {
     const providers = providerDb.list()
@@ -298,31 +608,103 @@ export function registerProviderHandlers() {
   // Test provider connection
   ipcMain.handle('providers:test', async (_, id: string) => {
     const provider = providerDb.get(id)
-    if (!provider) return false
+    if (!provider) {
+      return { ok: false, message: 'Provider not found' } satisfies ProviderTestResult
+    }
+
+    const normalizedModel = String(provider.default_model || '').toLowerCase()
+    if (
+      provider.type === 'openai-compatible' &&
+      normalizedModel.includes('highspeed')
+    ) {
+      return {
+        ok: false,
+        message: 'Highspeed models require Anthropic-compatible provider type.',
+      } satisfies ProviderTestResult
+    }
 
     const apiKey = await keychainService.getApiKey(id)
-    if (!apiKey && provider.type !== 'ollama') return false
+    if (!apiKey && provider.type !== 'ollama' && provider.type !== 'local') {
+      return { ok: false, message: 'Missing API key' } satisfies ProviderTestResult
+    }
 
     try {
-      // Simple test: try to create the provider instance
-      // In a real implementation, you'd make a test API call
       switch (provider.type) {
-        case 'anthropic':
-        case 'openai':
-        case 'google':
-        case 'openrouter':
-          // For now, just verify we have a key
-          return !!apiKey
-        case 'ollama':
-          // Test Ollama connection
+        case 'anthropic': {
+          return await probeProviderEndpoint('https://api.anthropic.com/v1/models', {
+            headers: {
+              'x-api-key': apiKey!,
+              'anthropic-version': '2023-06-01',
+            },
+          })
+        }
+        case 'openai': {
+          return await probeProviderEndpoint(buildModelsEndpoint(provider.base_url), {
+            headers: {
+              Accept: 'application/json',
+              Authorization: `Bearer ${apiKey!}`,
+            },
+          })
+        }
+        case 'google': {
+          return await probeProviderEndpoint(`https://generativelanguage.googleapis.com/v1/models?key=${apiKey}`)
+        }
+        case 'openrouter': {
+          return await probeProviderEndpoint('https://openrouter.ai/api/v1/models', {
+            headers: {
+              Authorization: `Bearer ${apiKey!}`,
+            },
+          })
+        }
+        case 'ollama': {
           const baseUrl = provider.base_url || 'http://localhost:11434'
-          const response = await fetch(`${baseUrl}/api/tags`)
-          return response.ok
+          return await probeProviderEndpoint(`${baseUrl}/api/tags`)
+        }
+        case 'openai-compatible':
+        case 'custom':
+        case 'local': {
+          if (!provider.default_model?.trim()) {
+            return { ok: false, message: 'Missing model name/id' } satisfies ProviderTestResult
+          }
+          return await probeCompatibleModelsEndpoint(provider.base_url, apiKey || null)
+        }
+        case 'anthropic-compatible':
+        case 'minimax': {
+          if (!provider.default_model?.trim()) {
+            return { ok: false, message: 'Missing model name/id' } satisfies ProviderTestResult
+          }
+
+          if (provider.type === 'anthropic-compatible' && isMiniMaxBaseUrl(provider.base_url)) {
+            return await probeMiniMaxAnthropicMessageEndpoint(
+              provider.base_url,
+              apiKey!,
+              provider.default_model
+            )
+          }
+
+          // Anthropic-compatible providers may use /anthropic in base URL.
+          // Probe standard and fallback model-list endpoints.
+          return await probeCompatibleModelsEndpoint(provider.base_url, apiKey || null)
+        }
+        case 'zai':
+        case 'zai-china':
+        case 'zai-coding':
+        case 'zai-coding-china':
+          return {
+            ok: !!apiKey,
+            message: apiKey ? 'API key configured' : 'Missing API key',
+          } satisfies ProviderTestResult
         default:
-          return !!apiKey
+          return {
+            ok: !!apiKey,
+            message: apiKey ? 'API key configured' : 'Missing API key',
+          } satisfies ProviderTestResult
       }
-    } catch {
-      return false
+    } catch (error: any) {
+      return {
+        ok: false,
+        message: error?.message || 'Connection test failed',
+      } satisfies ProviderTestResult
     }
   })
 
@@ -374,6 +756,13 @@ export function registerProviderHandlers() {
         // OpenRouter still uses the dedicated handler with API key
         return []
 
+      case 'openai-compatible':
+      case 'anthropic-compatible':
+      case 'custom':
+      case 'local':
+      case 'minimax':
+        return await fetchCompatibleModels(apiKey, baseUrl)
+
       default:
         return FALLBACK_MODELS[type] || []
     }
@@ -409,6 +798,67 @@ export function registerProviderHandlers() {
     }
   })
 
+  // Preview models before provider is saved (setup flow)
+  ipcMain.handle('providers:previewModels', async (_, type: string, apiKey?: string, baseUrl?: string) => {
+    switch (type) {
+      case 'anthropic':
+        if (apiKey) return await fetchAnthropicModels(apiKey)
+        return FALLBACK_MODELS.anthropic
+
+      case 'openai':
+        if (apiKey) return await fetchOpenAIModels(apiKey, baseUrl)
+        return FALLBACK_MODELS.openai
+
+      case 'google':
+        if (apiKey) return await fetchGoogleModels(apiKey)
+        return FALLBACK_MODELS.google
+
+      case 'openrouter':
+        if (apiKey) {
+          try {
+            const response = await fetch('https://openrouter.ai/api/v1/models', {
+              headers: { Authorization: `Bearer ${apiKey}` },
+            })
+            if (!response.ok) return []
+            const data = await response.json()
+            return (data.data || [])
+              .map((m: any) => ({ id: m.id, name: m.name || m.id }))
+              .sort((a: any, b: any) => a.name.localeCompare(b.name))
+          } catch {
+            return []
+          }
+        }
+        return []
+
+      case 'ollama': {
+        try {
+          const url = baseUrl || 'http://localhost:11434'
+          const response = await fetch(`${url}/api/tags`)
+          if (!response.ok) return []
+          const data = await response.json()
+          return data.models?.map((m: any) => ({ id: m.name, name: m.name })) || []
+        } catch {
+          return []
+        }
+      }
+
+      case 'openai-compatible':
+      case 'anthropic-compatible':
+      case 'custom':
+      case 'local':
+      case 'minimax':
+        return await fetchCompatibleModels(apiKey || null, baseUrl)
+
+      default:
+        return FALLBACK_MODELS[type] || []
+    }
+  })
+
+  ipcMain.handle('providers:refreshModelCatalog', async () => {
+    await refreshModelCatalog(true)
+    return getModelCatalogStatus()
+  })
+
   // Get context window size for a specific model from the provider's API
   ipcMain.handle('providers:getModelContextSize', async (_, providerId: string, modelId: string) => {
     try {
@@ -420,6 +870,13 @@ export function registerProviderHandlers() {
 
       const apiKey = await keychainService.getApiKey(providerId)
       const baseUrl = provider.base_url
+
+      // Keep catalog fresh and prefer models.dev when available.
+      await refreshModelCatalog(false)
+      const fromModelsDev = lookupModelsDevContextLimit(provider.type, modelId)
+      if (fromModelsDev) {
+        return fromModelsDev
+      }
 
       switch (provider.type) {
         case 'anthropic': {

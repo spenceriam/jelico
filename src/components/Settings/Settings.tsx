@@ -1,7 +1,9 @@
-import { useState, useEffect } from 'react'
-import { X, Plus, Trash2, Check, AlertCircle, Settings as SettingsIcon, Zap, Database, Edit2, Loader2, Search, HardDrive, Key, Eye, EyeOff, Shield, User, Palette } from 'lucide-react'
+import { useState, useEffect, useRef } from 'react'
+import { X, Plus, Trash2, Check, AlertCircle, AlertTriangle, Settings as SettingsIcon, Zap, Database, Edit2, Loader2, Search, HardDrive, Eye, EyeOff, Shield, User, Palette } from 'lucide-react'
 import { useProviderStore } from '../../stores/providers'
 import { useUIStore } from '../../stores/ui'
+import { useChatStore } from '../../stores/chat'
+import { useContextStore } from '../../stores/context'
 import { SkillManager } from '../Skills/SkillManager'
 import { useSkillStore } from '../../stores/skills'
 import { BackupSettings } from './BackupSettings'
@@ -24,36 +26,76 @@ interface OpenRouterModel {
 }
 
 export function Settings({ onClose }: SettingsProps) {
-  const { providers, deleteProvider, testConnection, updateProvider, setActiveModel, activeProviderId } = useProviderStore()
+  const { providers, deleteProvider, testConnection, updateProvider, setActiveModel, setActiveSelection, activeProviderId } = useProviderStore()
   const { openProviderSetup, settingsTab } = useUIStore()
+  const { activeConversationId, addSystemNotification } = useChatStore((state) => ({
+    activeConversationId: state.activeConversationId,
+    addSystemNotification: state.addSystemNotification,
+  }))
+  const switchConversationModel = useContextStore((state) => state.switchConversationModel)
   const { loadSkills } = useSkillStore()
   const [activeTab, setActiveTab] = useState<SettingsTab>(settingsTab || 'profile')
   const [testingId, setTestingId] = useState<string | null>(null)
-  const [testResults, setTestResults] = useState<Record<string, boolean>>({})
+  const [testResults, setTestResults] = useState<
+    Record<string, { ok: boolean; message: string; status?: number }>
+  >({})
+  const testResultTimersRef = useRef<Record<string, ReturnType<typeof setTimeout>>>({})
 
-  // Edit model state
+  // Edit provider state (name, endpoint, model)
   const [editingProviderId, setEditingProviderId] = useState<string | null>(null)
+  const [editNameValue, setEditNameValue] = useState('')
+  const [editBaseUrlValue, setEditBaseUrlValue] = useState('')
   const [editModelValue, setEditModelValue] = useState('')
   const [openRouterModels, setOpenRouterModels] = useState<OpenRouterModel[]>([])
   const [loadingModels, setLoadingModels] = useState(false)
   const [modelSearch, setModelSearch] = useState('')
+  const settingsContentRef = useRef<HTMLDivElement>(null)
+  const providerCardRefs = useRef<Record<string, HTMLDivElement | null>>({})
 
-  // Edit API key state
-  const [editingKeyProviderId, setEditingKeyProviderId] = useState<string | null>(null)
-  const [editKeyValue, setEditKeyValue] = useState('')
-  const [showKey, setShowKey] = useState(false)
-  const [currentKey, setCurrentKey] = useState<string | null>(null)
-  const [loadingKey, setLoadingKey] = useState(false)
+  // API key state within provider edit form
+  const [editApiKeyValue, setEditApiKeyValue] = useState('')
+  const [showCurrentKey, setShowCurrentKey] = useState(false)
+  const [currentApiKey, setCurrentApiKey] = useState<string | null>(null)
+  const [loadingCurrentApiKey, setLoadingCurrentApiKey] = useState(false)
+  const [invalidStoredApiKey, setInvalidStoredApiKey] = useState(false)
 
   useEffect(() => {
     loadSkills()
   }, [])
 
+  useEffect(() => {
+    return () => {
+      for (const timer of Object.values(testResultTimersRef.current)) {
+        clearTimeout(timer)
+      }
+      testResultTimersRef.current = {}
+    }
+  }, [])
+
   const handleTest = async (id: string) => {
+    if (testResultTimersRef.current[id]) {
+      clearTimeout(testResultTimersRef.current[id])
+      delete testResultTimersRef.current[id]
+    }
+
+    setTestResults(prev => {
+      const next = { ...prev }
+      delete next[id]
+      return next
+    })
     setTestingId(id)
     const result = await testConnection(id)
     setTestResults(prev => ({ ...prev, [id]: result }))
     setTestingId(null)
+
+    testResultTimersRef.current[id] = setTimeout(() => {
+      setTestResults(prev => {
+        const next = { ...prev }
+        delete next[id]
+        return next
+      })
+      delete testResultTimersRef.current[id]
+    }, 5000)
   }
 
   const handleDelete = async (id: string) => {
@@ -62,19 +104,70 @@ export function Settings({ onClose }: SettingsProps) {
     }
   }
 
-  const startEditingModel = async (provider: any) => {
+  const scrollProviderCardToTop = (providerId: string) => {
+    requestAnimationFrame(() => {
+      const container = settingsContentRef.current
+      const card = providerCardRefs.current[providerId]
+      if (!container || !card) return
+
+      const containerRect = container.getBoundingClientRect()
+      const cardRect = card.getBoundingClientRect()
+      const nextTop = container.scrollTop + (cardRect.top - containerRect.top)
+      container.scrollTo({ top: Math.max(0, nextTop), behavior: 'smooth' })
+    })
+  }
+
+  const startEditingProvider = async (provider: any) => {
+    if (testResultTimersRef.current[provider.id]) {
+      clearTimeout(testResultTimersRef.current[provider.id])
+      delete testResultTimersRef.current[provider.id]
+    }
+    setTestResults(prev => {
+      if (!(provider.id in prev)) return prev
+      const next = { ...prev }
+      delete next[provider.id]
+      return next
+    })
+
     setEditingProviderId(provider.id)
+    setEditNameValue(provider.name || '')
+    setEditBaseUrlValue(provider.baseUrl || '')
     setEditModelValue(provider.defaultModel)
+    setEditApiKeyValue('')
+    setShowCurrentKey(false)
+    setCurrentApiKey(null)
+    setInvalidStoredApiKey(false)
     setModelSearch('')
     setOpenRouterModels([])
+    scrollProviderCardToTop(provider.id)
 
-    // Fetch models for OpenRouter
+    // Load current API key for inline editing
+    let providerApiKey: string | null = null
+    let keyLooksLikeModel = false
+    setLoadingCurrentApiKey(true)
+    try {
+      providerApiKey = await window.jelico.keychain.getApiKey(provider.id)
+      const normalizedStored = providerApiKey?.trim() || ''
+      const normalizedModel = (provider.defaultModel || '').trim()
+      keyLooksLikeModel = !!normalizedStored && normalizedStored === normalizedModel
+      setInvalidStoredApiKey(keyLooksLikeModel)
+      setCurrentApiKey(keyLooksLikeModel ? null : providerApiKey)
+    } catch (error) {
+      console.error('Failed to get API key:', error)
+      setCurrentApiKey(null)
+      setInvalidStoredApiKey(false)
+      providerApiKey = null
+      keyLooksLikeModel = false
+    } finally {
+      setLoadingCurrentApiKey(false)
+    }
+
+    // Fetch models for OpenRouter when key is available
     if (provider.type === 'openrouter') {
       setLoadingModels(true)
       try {
-        const apiKey = await window.jelico.keychain.getApiKey(provider.id)
-        if (apiKey) {
-          const models = await window.jelico.providers.fetchOpenRouterModels(apiKey)
+        if (providerApiKey && !keyLooksLikeModel) {
+          const models = await window.jelico.providers.fetchOpenRouterModels(providerApiKey)
           setOpenRouterModels(models.map((m: any) => ({ id: m.id, name: m.name })))
         }
       } catch (error) {
@@ -85,61 +178,136 @@ export function Settings({ onClose }: SettingsProps) {
     }
   }
 
-  const saveModelEdit = async () => {
-    if (!editingProviderId || !editModelValue.trim()) return
+  const saveProviderEdit = async () => {
+    if (!editingProviderId) return
 
-    await updateProvider(editingProviderId, { defaultModel: editModelValue.trim() })
-    // Update active model if this is the active provider
-    if (editingProviderId === activeProviderId) {
-      setActiveModel(editModelValue.trim())
+    const currentProvider = providers.find((p) => p.id === editingProviderId)
+    if (!currentProvider) return
+
+    const trimmedName = editNameValue.trim()
+    const trimmedBaseUrl = editBaseUrlValue.trim()
+    const trimmedModel = editModelValue.trim()
+    const normalizedCurrentBaseUrl = (currentProvider.baseUrl || '').trim()
+    const resolvedName = trimmedName || currentProvider.name || 'Provider'
+
+    const providerChanged =
+      resolvedName !== currentProvider.name ||
+      trimmedBaseUrl !== normalizedCurrentBaseUrl ||
+      trimmedModel !== currentProvider.defaultModel
+
+    const keyChanged = !!editApiKeyValue.trim()
+
+    if (providerChanged) {
+      await updateProvider(editingProviderId, {
+        name: resolvedName,
+        baseUrl: trimmedBaseUrl,
+        defaultModel: trimmedModel,
+      })
     }
+
+    // Update active model if this is the active provider
+    if (providerChanged && editingProviderId === activeProviderId && trimmedModel !== currentProvider.defaultModel) {
+      await setActiveModel(trimmedModel)
+    }
+
+    if (keyChanged) {
+      await window.jelico.keychain.setApiKey(editingProviderId, editApiKeyValue.trim())
+    }
+
     setEditingProviderId(null)
+    setEditNameValue('')
+    setEditBaseUrlValue('')
     setEditModelValue('')
+    setEditApiKeyValue('')
+    setShowCurrentKey(false)
+    setCurrentApiKey(null)
+    setLoadingCurrentApiKey(false)
+    setInvalidStoredApiKey(false)
     setOpenRouterModels([])
   }
 
-  const cancelEditModel = () => {
+  const isProviderEditDirty = (provider: any) => {
+    const trimmedName = editNameValue.trim()
+    const trimmedBaseUrl = editBaseUrlValue.trim()
+    const trimmedModel = editModelValue.trim()
+    const normalizedCurrentBaseUrl = (provider.baseUrl || '').trim()
+    const resolvedName = trimmedName || provider.name || 'Provider'
+
+    return (
+      resolvedName !== provider.name ||
+      trimmedBaseUrl !== normalizedCurrentBaseUrl ||
+      trimmedModel !== provider.defaultModel ||
+      !!editApiKeyValue.trim()
+    )
+  }
+
+  const handleEditProviderClick = async (provider: any) => {
+    if (editingProviderId !== provider.id) {
+      await startEditingProvider(provider)
+      return
+    }
+
+    if (isProviderEditDirty(provider)) {
+      await saveProviderEdit()
+      return
+    }
+
+    cancelEditProvider()
+  }
+
+  const toggleProviderVisibility = async (provider: any) => {
+    const willHide = !provider.hiddenFromSelector
+    const providersAfterToggle = providers.map((p) =>
+      p.id === provider.id
+        ? { ...p, hiddenFromSelector: willHide }
+        : p
+    )
+    const fallbackVisible =
+      providersAfterToggle.find((p) => !p.hiddenFromSelector && !!p.defaultModel?.trim()) || null
+
+    await updateProvider(provider.id, {
+      hiddenFromSelector: willHide,
+    })
+
+    if (willHide && activeProviderId === provider.id && fallbackVisible) {
+      setActiveSelection(fallbackVisible.id, fallbackVisible.defaultModel)
+
+      if (activeConversationId) {
+        try {
+          await window.jelico.conversations.updateModelProvider(
+            activeConversationId,
+            fallbackVisible.id,
+            fallbackVisible.defaultModel
+          )
+          await switchConversationModel(
+            activeConversationId,
+            fallbackVisible.id,
+            fallbackVisible.defaultModel
+          )
+          addSystemNotification({
+            type: 'model_changed',
+            conversationId: activeConversationId,
+            modelName: `${fallbackVisible.name} / ${fallbackVisible.defaultModel}`,
+          })
+        } catch (error) {
+          console.warn('[Settings] Failed to switch conversation after hiding provider:', error)
+        }
+      }
+    }
+  }
+
+  const cancelEditProvider = () => {
     setEditingProviderId(null)
+    setEditNameValue('')
+    setEditBaseUrlValue('')
     setEditModelValue('')
+    setEditApiKeyValue('')
+    setShowCurrentKey(false)
+    setCurrentApiKey(null)
+    setLoadingCurrentApiKey(false)
+    setInvalidStoredApiKey(false)
     setOpenRouterModels([])
     setModelSearch('')
-  }
-
-  // API Key editing functions
-  const startEditingKey = async (providerId: string) => {
-    setEditingKeyProviderId(providerId)
-    setEditKeyValue('')
-    setShowKey(false)
-    setLoadingKey(true)
-    try {
-      const key = await window.jelico.keychain.getApiKey(providerId)
-      setCurrentKey(key)
-    } catch (error) {
-      console.error('Failed to get API key:', error)
-      setCurrentKey(null)
-    } finally {
-      setLoadingKey(false)
-    }
-  }
-
-  const saveKeyEdit = async () => {
-    if (!editingKeyProviderId || !editKeyValue.trim()) return
-    try {
-      await window.jelico.keychain.setApiKey(editingKeyProviderId, editKeyValue.trim())
-      setEditingKeyProviderId(null)
-      setEditKeyValue('')
-      setCurrentKey(null)
-      setShowKey(false)
-    } catch (error) {
-      console.error('Failed to save API key:', error)
-    }
-  }
-
-  const cancelEditKey = () => {
-    setEditingKeyProviderId(null)
-    setEditKeyValue('')
-    setCurrentKey(null)
-    setShowKey(false)
   }
 
   const filteredModels = openRouterModels.filter(m =>
@@ -244,7 +412,7 @@ export function Settings({ onClose }: SettingsProps) {
         </div>
 
         {/* Content */}
-        <div className="flex-1 overflow-y-auto p-6">
+        <div ref={settingsContentRef} className="flex-1 overflow-y-auto p-6">
           {activeTab === 'profile' && <ProfileSettings />}
 
           {activeTab === 'appearance' && <AppearanceSettings />}
@@ -274,6 +442,7 @@ export function Settings({ onClose }: SettingsProps) {
                   {providers.map((provider) => (
                     <div
                       key={provider.id}
+                      ref={(el) => { providerCardRefs.current[provider.id] = el }}
                       className="p-4 bg-bg-elevated rounded-lg border border-border"
                     >
                       <div className="flex items-center justify-between">
@@ -282,40 +451,61 @@ export function Settings({ onClose }: SettingsProps) {
                             <span className="font-medium text-text-primary">
                               {provider.name}
                             </span>
-                            {provider.isDefault && (
+                            {activeProviderId === provider.id && (
                               <span className="px-1.5 py-0.5 text-xs bg-accent/10 text-accent rounded">
-                                Default
+                                Last used
                               </span>
                             )}
                           </div>
                           <div className="text-sm text-text-secondary mt-1 flex items-center gap-2">
                             <span>{provider.type}</span>
                             <span>·</span>
-                            <span className="font-mono text-xs">{provider.defaultModel}</span>
+                            <span className="font-mono text-xs">
+                              {provider.defaultModel?.trim() ? provider.defaultModel : 'No model configured'}
+                            </span>
                             <button
-                              onClick={() => startEditingModel(provider)}
+                              onClick={() => {
+                                void handleEditProviderClick(provider)
+                              }}
                               className="p-1 text-text-muted hover:text-text-primary hover:bg-bg-hover rounded transition-colors"
-                              title="Change model"
+                              title={editingProviderId === provider.id ? 'Save and close editor' : 'Edit provider'}
                             >
                               <Edit2 className="w-3 h-3" />
                             </button>
-                            <button
-                              onClick={() => startEditingKey(provider.id)}
-                              className="p-1 text-text-muted hover:text-text-primary hover:bg-bg-hover rounded transition-colors"
-                              title="Edit API key"
-                            >
-                              <Key className="w-3 h-3" />
-                            </button>
                           </div>
+                          {(testingId === provider.id || testResults[provider.id]) && (
+                            <div
+                              className={`text-xs mt-1 break-words ${
+                                testingId === provider.id
+                                  ? 'text-text-muted'
+                                  : testResults[provider.id].ok
+                                    ? 'text-success'
+                                    : 'text-error'
+                              }`}
+                            >
+                              {testingId === provider.id
+                                ? 'API test: In progress...'
+                                : `API test: ${testResults[provider.id].message}${testResults[provider.id].status ? ` (HTTP ${testResults[provider.id].status})` : ''}`}
+                            </div>
+                          )}
                         </div>
 
                         <div className="flex items-center gap-2">
                           {testResults[provider.id] !== undefined && (
-                            testResults[provider.id] ? (
+                            testResults[provider.id].ok ? (
                               <Check className="w-4 h-4 text-success" />
                             ) : (
                               <AlertCircle className="w-4 h-4 text-error" />
                             )
+                          )}
+
+                          {!provider.defaultModel?.trim() && (
+                            <span
+                              className="p-1.5 text-warning"
+                              title="Missing! Missing model name/id"
+                            >
+                              <AlertTriangle className="w-4 h-4" />
+                            </span>
                           )}
 
                           <button
@@ -327,6 +517,24 @@ export function Settings({ onClose }: SettingsProps) {
                           </button>
 
                           <button
+                            onClick={() => {
+                              void toggleProviderVisibility(provider)
+                            }}
+                            className="p-1.5 text-text-muted hover:text-text-primary hover:bg-bg-hover rounded-lg transition-colors"
+                            title={
+                              provider.hiddenFromSelector
+                                ? 'Show in chat model selector'
+                                : 'Hide from chat model selector'
+                            }
+                          >
+                            {provider.hiddenFromSelector ? (
+                              <EyeOff className="w-4 h-4" />
+                            ) : (
+                              <Eye className="w-4 h-4" />
+                            )}
+                          </button>
+
+                          <button
                             onClick={() => handleDelete(provider.id)}
                             className="p-1.5 text-text-muted hover:text-error hover:bg-bg-hover rounded-lg transition-colors"
                           >
@@ -335,11 +543,33 @@ export function Settings({ onClose }: SettingsProps) {
                         </div>
                       </div>
 
-                      {/* Edit model form */}
+                      {/* Edit provider form */}
                       {editingProviderId === provider.id && (
                         <div className="mt-4 pt-4 border-t border-border">
                           <label className="block text-sm font-medium text-text-secondary mb-2">
-                            Change Model
+                            Display Name <span className="text-text-muted font-normal">(optional)</span>
+                          </label>
+                          <input
+                            type="text"
+                            value={editNameValue}
+                            onChange={(e) => setEditNameValue(e.target.value)}
+                            className="w-full px-3 py-2 text-sm bg-bg-deep border border-border rounded focus:outline-none focus:border-accent text-text-primary mb-3"
+                            placeholder={provider.name}
+                          />
+
+                          <label className="block text-sm font-medium text-text-secondary mb-2">
+                            Endpoint URL <span className="text-text-muted font-normal">(optional)</span>
+                          </label>
+                          <input
+                            type="text"
+                            value={editBaseUrlValue}
+                            onChange={(e) => setEditBaseUrlValue(e.target.value)}
+                            className="w-full px-3 py-2 text-sm bg-bg-deep border border-border rounded focus:outline-none focus:border-accent text-text-primary font-mono mb-3"
+                            placeholder="https://api.example.com/v1"
+                          />
+
+                          <label className="block text-sm font-medium text-text-secondary mb-2">
+                            Default Model
                           </label>
 
                           {provider.type === 'openrouter' ? (
@@ -402,85 +632,74 @@ export function Settings({ onClose }: SettingsProps) {
                             />
                           )}
 
+                          <div className="mt-3">
+                            <label className="block text-sm font-medium text-text-secondary mb-2">
+                              API Key <span className="text-text-muted font-normal">(optional)</span>
+                            </label>
+
+                            {loadingCurrentApiKey ? (
+                              <div className="flex items-center gap-2 text-text-muted py-2">
+                                <Loader2 className="w-4 h-4 animate-spin" />
+                                <span>Loading key...</span>
+                              </div>
+                            ) : (
+                              <div className="space-y-3">
+                                {invalidStoredApiKey && (
+                                  <p className="text-xs text-warning">
+                                    Stored key looked like a model ID. Enter a new API key to replace it.
+                                  </p>
+                                )}
+
+                                {currentApiKey && (
+                                  <div className="p-3 bg-bg-deep border border-border rounded">
+                                    <div className="flex items-center justify-between">
+                                      <span className="text-xs text-text-muted">Current key:</span>
+                                      <button
+                                        type="button"
+                                        onClick={() => setShowCurrentKey(!showCurrentKey)}
+                                        className="p-1 text-text-muted hover:text-text-primary"
+                                      >
+                                        {showCurrentKey ? <EyeOff className="w-3 h-3" /> : <Eye className="w-3 h-3" />}
+                                      </button>
+                                    </div>
+                                    <code className="text-xs font-mono text-text-primary break-all">
+                                      {showCurrentKey
+                                        ? currentApiKey
+                                        : `${currentApiKey.substring(0, 10)}${'•'.repeat(20)}`}
+                                    </code>
+                                  </div>
+                                )}
+
+                                <div>
+                                  <label className="block text-xs text-text-muted mb-1">
+                                    Enter new API key:
+                                  </label>
+                                  <input
+                                    type="password"
+                                    value={editApiKeyValue}
+                                    onChange={(e) => setEditApiKeyValue(e.target.value)}
+                                    className="w-full px-3 py-2 text-sm bg-bg-deep border border-border rounded focus:outline-none focus:border-accent text-text-primary font-mono"
+                                    placeholder="Leave blank to keep current key"
+                                  />
+                                </div>
+                              </div>
+                            )}
+                          </div>
+
                           <div className="flex items-center gap-2 mt-3">
                             <button
-                              onClick={saveModelEdit}
-                              disabled={!editModelValue.trim()}
-                              className="px-3 py-1.5 text-sm bg-accent text-black rounded hover:bg-accent-bright transition-colors disabled:opacity-50"
+                              onClick={saveProviderEdit}
+                              className="px-3 py-1.5 text-sm bg-accent text-black rounded hover:bg-accent-bright transition-colors"
                             >
                               Save
                             </button>
                             <button
-                              onClick={cancelEditModel}
+                              onClick={cancelEditProvider}
                               className="px-3 py-1.5 text-sm text-text-secondary hover:text-text-primary hover:bg-bg-hover rounded transition-colors"
                             >
                               Cancel
                             </button>
                           </div>
-                        </div>
-                      )}
-
-                      {/* Edit API key form */}
-                      {editingKeyProviderId === provider.id && (
-                        <div className="mt-4 pt-4 border-t border-border">
-                          <label className="block text-sm font-medium text-text-secondary mb-2">
-                            API Key
-                          </label>
-
-                          {loadingKey ? (
-                            <div className="flex items-center gap-2 text-text-muted py-2">
-                              <Loader2 className="w-4 h-4 animate-spin" />
-                              <span>Loading key...</span>
-                            </div>
-                          ) : (
-                            <div className="space-y-3">
-                              {currentKey && (
-                                <div className="p-3 bg-bg-deep border border-border rounded">
-                                  <div className="flex items-center justify-between">
-                                    <span className="text-xs text-text-muted">Current key:</span>
-                                    <button
-                                      onClick={() => setShowKey(!showKey)}
-                                      className="p-1 text-text-muted hover:text-text-primary"
-                                    >
-                                      {showKey ? <EyeOff className="w-3 h-3" /> : <Eye className="w-3 h-3" />}
-                                    </button>
-                                  </div>
-                                  <code className="text-xs font-mono text-text-primary break-all">
-                                    {showKey ? currentKey : `${currentKey.substring(0, 10)}${'•'.repeat(20)}`}
-                                  </code>
-                                </div>
-                              )}
-
-                              <div>
-                                <label className="block text-xs text-text-muted mb-1">
-                                  Enter new API key:
-                                </label>
-                                <input
-                                  type="password"
-                                  value={editKeyValue}
-                                  onChange={(e) => setEditKeyValue(e.target.value)}
-                                  className="w-full px-3 py-2 text-sm bg-bg-deep border border-border rounded focus:outline-none focus:border-accent text-text-primary font-mono"
-                                  placeholder="sk-..."
-                                />
-                              </div>
-
-                              <div className="flex items-center gap-2">
-                                <button
-                                  onClick={saveKeyEdit}
-                                  disabled={!editKeyValue.trim()}
-                                  className="px-3 py-1.5 text-sm bg-accent text-black rounded hover:bg-accent-bright transition-colors disabled:opacity-50"
-                                >
-                                  Save New Key
-                                </button>
-                                <button
-                                  onClick={cancelEditKey}
-                                  className="px-3 py-1.5 text-sm text-text-secondary hover:text-text-primary hover:bg-bg-hover rounded transition-colors"
-                                >
-                                  Cancel
-                                </button>
-                              </div>
-                            </div>
-                          )}
                         </div>
                       )}
                     </div>

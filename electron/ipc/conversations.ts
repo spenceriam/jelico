@@ -101,6 +101,13 @@ export function registerConversationHandlers() {
     return conversation ? toConversationApi(conversation) : null
   })
 
+  // Update conversation provider/model pair
+  ipcMain.handle('conversations:updateModelProvider', async (_, id: string, providerId: string, model: string) => {
+    conversationDb.updateModelProvider(id, providerId, model)
+    const conversation = conversationDb.get(id)
+    return conversation ? toConversationApi(conversation) : null
+  })
+
   // Transfer conversation to new workspace (moves artifact files)
   ipcMain.handle('conversations:transferToWorkspace', async (_, id: string, workspaceId: string | null) => {
     // Get the workspace path if workspaceId provided

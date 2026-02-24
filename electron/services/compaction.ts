@@ -45,6 +45,14 @@ interface CompactionResult {
   error?: string
 }
 
+function normalizeAnthropicCompatibleBaseUrl(baseUrl?: string | null): string | undefined {
+  const trimmed = String(baseUrl || '').trim().replace(/\/+$/, '')
+  if (!trimmed) return undefined
+  if (trimmed.endsWith('/messages')) return trimmed.replace(/\/messages$/, '')
+  if (trimmed.endsWith('/v1')) return trimmed
+  return `${trimmed}/v1`
+}
+
 // Estimate tokens (rough: ~4 chars per token for English)
 function estimateTokens(text: string): number {
   return Math.ceil(text.length / 4)
@@ -228,6 +236,14 @@ async function generateSummary(
     provider = createAnthropic({ apiKey: apiKey! })
     // Use Haiku for summarization if available
     summaryModel = 'claude-3-5-haiku-20241022'
+  } else if (providerConfig.type === 'anthropic-compatible') {
+    provider = createAnthropic({
+      apiKey: apiKey!,
+      baseURL: normalizeAnthropicCompatibleBaseUrl(providerConfig.base_url),
+      headers: {
+        Authorization: `Bearer ${apiKey!}`,
+      },
+    })
   } else if (providerConfig.type === 'openrouter') {
     provider = createOpenAI({
       apiKey: apiKey!,
@@ -246,7 +262,7 @@ async function generateSummary(
   const result = await streamText({
     model: provider.chat(summaryModel),
     messages: [{ role: 'user', content: prompt }],
-    maxTokens: 4000, // Summary should be concise
+    maxOutputTokens: 4000, // Summary should be concise
   })
 
   let summary = ''
