@@ -94,6 +94,37 @@ const MAX_TOOL_INPUT_SIZE = 10 * 1024 * 1024
 const MAX_RETRIES = 2
 const RETRY_DELAY_MS = 1000
 
+// Internal/plumbing tools that should not influence end-of-turn wrap-up detection.
+// These are either represented by dedicated UI panels or invisible orchestration steps.
+const NON_USER_VISIBLE_TURN_TOOLS = new Set([
+  'wait_for_agent',
+  'get_agent_status',
+  'get_agents_summary',
+  'ask_user_question',
+  'todo_write',
+  'todo_read',
+  'todo_check',
+])
+
+const INTERNAL_WEB_GATE_RESULT_TYPES = new Set(['deferred_to_subagents', 'direct_limit_reached'])
+
+const USER_FACING_TOOL_LABELS: Record<string, string> = {
+  read_file: 'file reads',
+  write_file: 'file updates',
+  list_directory: 'directory listing',
+  search_files: 'file search',
+  execute_command: 'terminal commands',
+  web_search: 'web research',
+  web_fetch: 'web page fetches',
+  create_artifact: 'artifact creation',
+  update_artifact: 'artifact updates',
+  artifact_test: 'artifact testing',
+  spawn_agent: 'helper-agent tasks',
+  continue_agent: 'helper-agent follow-up',
+  dismiss_agent: 'helper-agent cleanup',
+  execute_script: 'script execution',
+}
+
 // Helper to check if error is retryable
 function isRetryableError(error: any): boolean {
   const message = error?.message?.toLowerCase() || ''
@@ -112,6 +143,98 @@ function isRetryableError(error: any): boolean {
 // Sleep helper for retry delays
 function sleep(ms: number): Promise<void> {
   return new Promise(resolve => setTimeout(resolve, ms))
+}
+
+function isInternalWebGateResultPayload(result: unknown): boolean {
+  if (!result || typeof result !== 'object') return false
+  const payload = result as Record<string, unknown>
+  if (payload.success !== true) return false
+  const results = payload.results as Record<string, unknown> | undefined
+  const resultType = typeof results?.type === 'string' ? results.type : ''
+  return INTERNAL_WEB_GATE_RESULT_TYPES.has(resultType)
+}
+
+function isMeaningfulTurnToolName(toolName: string): boolean {
+  return !NON_USER_VISIBLE_TURN_TOOLS.has(toolName)
+}
+
+function isMeaningfulTurnToolResult(toolName: string, result: unknown): boolean {
+  if (!isMeaningfulTurnToolName(toolName)) return false
+  if ((toolName === 'web_search' || toolName === 'web_fetch') && isInternalWebGateResultPayload(result)) {
+    return false
+  }
+  return true
+}
+
+function getUserFacingToolLabel(toolName: string): string {
+  if (USER_FACING_TOOL_LABELS[toolName]) return USER_FACING_TOOL_LABELS[toolName]
+  return toolName.replace(/_/g, ' ')
+}
+
+function formatNaturalList(items: string[]): string {
+  if (items.length === 0) return ''
+  if (items.length === 1) return items[0]
+  if (items.length === 2) return `${items[0]} and ${items[1]}`
+  return `${items.slice(0, -1).join(', ')}, and ${items[items.length - 1]}`
+}
+
+function didToolExecutionFail(exec: ToolExecution): boolean {
+  if (exec.error && exec.error.trim()) return true
+  const result = exec.result
+  if (!result || typeof result !== 'object') return false
+  const payload = result as Record<string, unknown>
+  if (payload.success === false) return true
+  if (typeof payload.error === 'string' && payload.error.trim()) return true
+  if (payload.error && typeof payload.error === 'object') return true
+  return false
+}
+
+function buildDeterministicTurnWrapUp(params: {
+  meaningfulExecutions: ToolExecution[]
+  usedSubAgents: boolean
+  createdArtifacts: Array<{ title: string; type: string }>
+  hasOrphanedResults: boolean
+}): string {
+  const lines: string[] = ['## Summary']
+  const uniqueActionLabels = Array.from(new Set(
+    params.meaningfulExecutions.map(exec => getUserFacingToolLabel(exec.name))
+  ))
+  const failedActionLabels = Array.from(new Set(
+    params.meaningfulExecutions
+      .filter(didToolExecutionFail)
+      .map(exec => getUserFacingToolLabel(exec.name))
+  ))
+
+  if (uniqueActionLabels.length > 0) {
+    lines.push(`Completed requested actions: ${formatNaturalList(uniqueActionLabels)}.`)
+  } else if (params.usedSubAgents) {
+    lines.push('Completed the requested helper-agent work for this turn.')
+  } else {
+    lines.push('Completed the requested actions for this turn.')
+  }
+
+  if (params.createdArtifacts.length > 0) {
+    const artifactLabels = params.createdArtifacts
+      .slice(0, 3)
+      .map(artifact => `${artifact.title} (${artifact.type})`)
+    const moreCount = Math.max(0, params.createdArtifacts.length - artifactLabels.length)
+    const artifactLine = moreCount > 0
+      ? `${artifactLabels.join(', ')}, and ${moreCount} more`
+      : artifactLabels.join(', ')
+    lines.push(`Artifacts created: ${artifactLine}. You can open them in the Canvas panel.`)
+  }
+
+  if (failedActionLabels.length > 0) {
+    lines.push(`Some actions reported errors: ${formatNaturalList(failedActionLabels)}. I can retry those steps if you want.`)
+  } else {
+    lines.push('All requested actions completed successfully.')
+  }
+
+  if (params.hasOrphanedResults) {
+    lines.push('Included additional helper-agent findings gathered during this turn.')
+  }
+
+  return lines.join('\n\n')
 }
 
 /**
@@ -2558,34 +2681,6 @@ Note: If recommended option, list it first with "(Recommended)" suffix.`,
   return normalizeToolSchemas(tools)
 }
 
-// Build context from tool executions for summary
-function buildToolContext(toolTracker: Map<string, ToolExecution>): string {
-  if (toolTracker.size === 0) return ''
-
-  const lines: string[] = ['## Tool Execution Summary\n']
-
-  for (const [id, exec] of toolTracker) {
-    lines.push(`### ${exec.name}`)
-    lines.push(`**Arguments:** ${JSON.stringify(exec.args, null, 2)}`)
-
-    if (exec.error) {
-      lines.push(`**Error:** ${exec.error}`)
-    } else if (exec.result !== undefined) {
-      const resultStr = typeof exec.result === 'object'
-        ? JSON.stringify(exec.result, null, 2)
-        : String(exec.result)
-      // Truncate long results
-      const truncated = resultStr.length > 500
-        ? resultStr.slice(0, 500) + '...[truncated]'
-        : resultStr
-      lines.push(`**Result:** ${truncated}`)
-    }
-    lines.push('')
-  }
-
-  return lines.join('\n')
-}
-
 export function registerAIHandlers() {
   // Stream AI response with tool support
   ipcMain.on('ai:stream', async (event, channelId: string, params: any) => {
@@ -2923,15 +3018,12 @@ If you find yourself frequently hitting limits, suggest breaking the task into m
             },
           })
 
-          // Track text generated after last tool result
-          let textAfterLastToolResult = ''
+          // Track text generated after the last meaningful (user-visible) action.
+          // Internal plumbing tools should not reset this.
+          let textAfterLastMeaningfulAction = ''
           let totalStreamedTextLength = 0  // Track total text sent to prevent duplicate sending
           let streamedTextTail = '' // Track tail for spacing decisions
-          let hadAnyToolCalls = false
-
-          // Track tool completion for potential future todo/status integration
-          let lastCompletedToolName: string | null = null
-          let textSentSinceLastResult = true // Track if AI provided feedback
+          let hadMeaningfulToolActivity = false
 
           // Track current tool receiving input (for progress display AND accumulation)
           let currentToolInputId: string | null = null
@@ -2969,11 +3061,9 @@ If you find yourself frequently hitting limits, suggest breaking the task into m
                   
                   if (cleanedChunk) {
                     event.sender.send(`ai:chunk:${channelId}`, cleanedChunk)
-                    textAfterLastToolResult += cleanedChunk
+                    textAfterLastMeaningfulAction += cleanedChunk
                     totalStreamedTextLength += cleanedChunk.length  // Track total to prevent duplicate sending
                     streamedTextTail = (streamedTextTail + cleanedChunk).slice(-4)
-                    // Mark that AI provided text since last tool result (harness tracking)
-                    textSentSinceLastResult = true
                   }
                 }
                 break
@@ -3047,7 +3137,6 @@ If you find yourself frequently hitting limits, suggest breaking the task into m
                       status: 'starting',
                     })
                   }
-                  hadAnyToolCalls = true
                 }
 
                 if (DEBUG_API_REQUESTS) {
@@ -3181,14 +3270,10 @@ If you find yourself frequently hitting limits, suggest breaking the task into m
                     status: 'starting',
                   })
                 }
-                hadAnyToolCalls = true
                 break
               }
 
               case 'tool-call': {
-                hadAnyToolCalls = true
-                const anyPart = part as any
-
                 // Validate and extract properties with fallbacks
                 const tcToolCallId = part.toolCallId || (part as any).id
                 const tcToolName = part.toolName || (part as any).name || 'unknown_tool'
@@ -3266,6 +3351,9 @@ If you find yourself frequently hitting limits, suggest breaking the task into m
                     status: 'executing',
                   }])
                 }
+                if (isMeaningfulTurnToolName(tcToolName)) {
+                  hadMeaningfulToolActivity = true
+                }
                 break
               }
 
@@ -3290,14 +3378,13 @@ If you find yourself frequently hitting limits, suggest breaking the task into m
                   result: toolResult,
                 }])
 
-                // Reset text tracker - we want to know if text comes AFTER tool results
-                textAfterLastToolResult = ''
-                hadAnyToolCalls = true
-
-                // HARNESS ENFORCEMENT: Track this tool completion for mandatory feedback
-                // Store the tool name so we can inject feedback if AI doesn't provide any
-                lastCompletedToolName = exec?.name || 'tool'
-                textSentSinceLastResult = false
+                const resultToolName = exec?.name || 'tool'
+                if (isMeaningfulTurnToolResult(resultToolName, toolResult)) {
+                  // Reset text tracker only for meaningful actions so trailing
+                  // internal tools (todo/status plumbing) don't trigger duplicate wrap-ups.
+                  textAfterLastMeaningfulAction = ''
+                  hadMeaningfulToolActivity = true
+                }
                 break
               }
 
@@ -3341,7 +3428,11 @@ If you find yourself frequently hitting limits, suggest breaking the task into m
                   toolCallId: teToolCallId,
                   result: { error: errorMessage },
                 }])
-                hadAnyToolCalls = true
+                const erroredToolName = errorExec?.name || 'tool'
+                if (isMeaningfulTurnToolName(erroredToolName)) {
+                  textAfterLastMeaningfulAction = ''
+                  hadMeaningfulToolActivity = true
+                }
                 break
               }
 
@@ -3356,7 +3447,7 @@ If you find yourself frequently hitting limits, suggest breaking the task into m
           // Only send if NO text was streamed at all (prevents duplicate sending on timeout)
           if (finalText && totalStreamedTextLength === 0) {
             event.sender.send(`ai:chunk:${channelId}`, finalText)
-            textAfterLastToolResult = finalText
+            textAfterLastMeaningfulAction = finalText
             totalStreamedTextLength += finalText.length
             streamedTextTail = (streamedTextTail + finalText).slice(-4)
           }
@@ -3495,146 +3586,47 @@ If you find yourself frequently hitting limits, suggest breaking the task into m
             }
           }
 
-          // Check if we need to generate a summary
-          // Summary is needed if: tool calls happened AND not much text after last tool
-          // Also generate summary if sub-agents were used to ensure artifacts are announced
-          const hasTextAfterTools = textAfterLastToolResult.trim().length > 50
           const usedSubAgents = allStreamAgents.length > 0
           const hasOrphanedResults = collectedOrphanResults.length > 0
 
-          // Build collected orphan results context for summary inclusion
-          let orphanResultsContext = ''
-          if (hasOrphanedResults) {
-            orphanResultsContext = '\n\n## Auto-Collected Agent Results\n' +
-              'The following agents were spawned but not explicitly awaited. Their results were automatically collected:\n\n' +
-              collectedOrphanResults.map(r => {
-                const header = `### ${r.name}\n**Task:** ${r.task}`
-                if (r.error) return `${header}\n**Error:** ${r.error}`
-                const artifactInfo = r.artifacts.length > 0
-                  ? `\n**Artifacts:** ${r.artifacts.map(a => `${a.title} (${a.type})`).join(', ')}`
-                  : ''
-                // Truncate very long results to keep summary manageable
-                const truncatedResult = r.result && r.result.length > 2000
-                  ? r.result.slice(0, 2000) + '\n...(truncated)'
-                  : (r.result || 'No result returned')
-                return `${header}${artifactInfo}\n**Result:**\n${truncatedResult}`
-              }).join('\n\n')
-          }
+          const subAgentArtifacts = allStreamAgents
+            .filter(a => a.createdArtifacts && a.createdArtifacts.length > 0)
+            .flatMap(a => a.createdArtifacts.map(art => ({ title: art.title, type: art.type })))
 
-          // Generate summary if:
-          // 1. Tools were used and AI didn't write much text after (normal case)
-          // 2. OR orphaned agent results need to be surfaced (ALWAYS, even if AI wrote text)
-          if (((hadAnyToolCalls || usedSubAgents) && !hasTextAfterTools && !abortController.signal.aborted) ||
-              (hasOrphanedResults && !abortController.signal.aborted)) {
+          const meaningfulExecutions = Array.from(toolTracker.values()).filter(exec =>
+            isMeaningfulTurnToolResult(exec.name, exec.result)
+          )
+          const hasTextAfterMeaningfulActions = /\S/.test(textAfterLastMeaningfulAction)
+          const requiresWrapUp =
+            hadMeaningfulToolActivity ||
+            usedSubAgents ||
+            subAgentArtifacts.length > 0 ||
+            hasOrphanedResults
 
-            // Build proper context with actual tool results and sub-agent artifacts
-            const toolContext = buildToolContext(toolTracker)
+          // Deterministic finalizer:
+          // If work happened but no closing text was produced after meaningful actions,
+          // append a single sanitized wrap-up. No second model call (prevents duplicate summaries).
+          if (requiresWrapUp && !hasTextAfterMeaningfulActions && !abortController.signal.aborted) {
+            let wrapUpText = buildDeterministicTurnWrapUp({
+              meaningfulExecutions,
+              usedSubAgents,
+              createdArtifacts: subAgentArtifacts,
+              hasOrphanedResults,
+            })
 
-            // Collect artifacts created by sub-agents
-            const subAgentArtifacts = allStreamAgents
-              .filter(a => a.createdArtifacts && a.createdArtifacts.length > 0)
-              .flatMap(a => a.createdArtifacts.map(art => ({ ...art, agentName: a.displayName })))
-
-            // Build artifact summary if any were created
-            const artifactSummary = subAgentArtifacts.length > 0
-              ? `\n\n## Artifacts Created\n${subAgentArtifacts.map(a => `- **${a.title}** (${a.type}) - created by ${a.agentName}`).join('\n')}`
-              : ''
-
-            try {
-              // Create a timeout for summary generation (30 seconds max)
-              const summaryAbort = new AbortController()
-              const summaryTimeout = setTimeout(() => {
-                console.warn('[AI] Summary generation timed out after 30 seconds')
-                summaryAbort.abort()
-              }, 30000)
-
-              // Adjust summary prompt based on whether we have orphaned results
-              const summarySystemPrompt = hasOrphanedResults
-                ? `You just executed tools and/or used sub-agents to help the user. Some agents were spawned but their results were not collected during the main response. Their results have been auto-collected and are included below.
-
-Provide a clear, helpful summary:
-1. What was accomplished (briefly)
-2. Key results or findings from ALL agents (including auto-collected ones)
-3. Artifacts created (if any) - mention they're visible in the Canvas
-4. Note that some agent results were auto-collected (the user should know)
-5. Next steps if applicable
-
-Be concise but informative. The user needs to understand what happened and see the research findings.`
-                : `You just executed tools and/or used sub-agents to help the user. Now provide a clear, helpful summary:
-1. What was accomplished (briefly)
-2. Key results or findings
-3. Artifacts created (if any) - mention they're visible in the Canvas
-4. Any issues encountered
-5. Next steps if applicable
-
-Be concise but informative. The user needs to understand what happened.`
-
-              const summaryResult = await streamText({
-                model: provider.chat(modelId),
-                system: summarySystemPrompt,
-                messages: [
-                  ...messages,
-                  { role: 'assistant', content: `I executed the following:\n\n${toolContext}${artifactSummary}${orphanResultsContext}` },
-                  { role: 'user', content: 'Please summarize what you did and the results.' },
-                ],
-                abortSignal: summaryAbort.signal,
-              })
-
-              clearTimeout(summaryTimeout)
-
-              // Ensure a blank line before the summary if text already streamed
-              const needsBlankLine = totalStreamedTextLength > 0
-              if (needsBlankLine) {
-                const hasDoubleNewline = streamedTextTail.endsWith('\n\n')
-                const hasSingleNewline = !hasDoubleNewline && streamedTextTail.endsWith('\n')
-                const prefix = hasDoubleNewline ? '' : (hasSingleNewline ? '\n' : '\n\n')
-                if (prefix) {
-                  event.sender.send(`ai:chunk:${channelId}`, prefix)
-                  totalStreamedTextLength += prefix.length
-                  streamedTextTail = (streamedTextTail + prefix).slice(-4)
-                }
+            if (totalStreamedTextLength > 0) {
+              const hasDoubleNewline = streamedTextTail.endsWith('\n\n')
+              const hasSingleNewline = !hasDoubleNewline && streamedTextTail.endsWith('\n')
+              const prefix = hasDoubleNewline ? '' : (hasSingleNewline ? '\n' : '\n\n')
+              if (prefix) {
+                wrapUpText = prefix + wrapUpText
               }
-
-              // Stream the summary
-              for await (const chunk of summaryResult.textStream) {
-                if (abortController.signal.aborted) break
-                event.sender.send(`ai:chunk:${channelId}`, chunk)
-                totalStreamedTextLength += chunk.length
-                streamedTextTail = (streamedTextTail + chunk).slice(-4)
-              }
-
-              // Add summary usage to totals
-              const summaryUsage = await summaryResult.usage
-              if (summaryUsage) {
-                const sUsage = typeof summaryUsage === 'string' ? JSON.parse(summaryUsage) : summaryUsage
-                promptTokens += sUsage?.promptTokens || sUsage?.inputTokens || 0
-                completionTokens += sUsage?.completionTokens || sUsage?.outputTokens || 0
-              }
-            } catch (summaryError: any) {
-              console.warn('[AI] Failed to generate summary:', summaryError.message)
-              // Send a fallback message with tool results, artifacts, and orphan results
-              let fallbackSummary = `---\n**Task Complete**\n${buildToolContext(toolTracker)}`
-              if (subAgentArtifacts.length > 0) {
-                fallbackSummary += `\n\n**Artifacts Created:**\n${subAgentArtifacts.map(a => `- ${a.title} (${a.type})`).join('\n')}\n\nCheck the Canvas panel to view.`
-              }
-              if (hasOrphanedResults) {
-                fallbackSummary += `\n\n**Auto-Collected Agent Results:**\n` +
-                  collectedOrphanResults.map(r => {
-                    if (r.error) return `- **${r.name}**: Error - ${r.error}`
-                    const resultPreview = r.result ? r.result.slice(0, 500) + (r.result.length > 500 ? '...' : '') : 'No result'
-                    return `- **${r.name}** (${r.task}): ${resultPreview}`
-                  }).join('\n')
-              }
-              if (totalStreamedTextLength > 0) {
-                const hasDoubleNewline = streamedTextTail.endsWith('\n\n')
-                const hasSingleNewline = !hasDoubleNewline && streamedTextTail.endsWith('\n')
-                const prefix = hasDoubleNewline ? '' : (hasSingleNewline ? '\n' : '\n\n')
-                if (prefix) {
-                  fallbackSummary = prefix + fallbackSummary
-                }
-              }
-              event.sender.send(`ai:chunk:${channelId}`, fallbackSummary)
             }
+
+            event.sender.send(`ai:chunk:${channelId}`, wrapUpText)
+            totalStreamedTextLength += wrapUpText.length
+            streamedTextTail = (streamedTextTail + wrapUpText).slice(-4)
+            textAfterLastMeaningfulAction += wrapUpText
           }
 
           // Some providers occasionally end after tools without returning assistant text.

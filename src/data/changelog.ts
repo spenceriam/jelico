@@ -21,6 +21,17 @@ export interface ChangelogEntry {
 
 export const changelog: ChangelogEntry[] = [
   {
+    version: '0.33.2',
+    date: '2026-02-24',
+    changes: {
+      fixed: [
+        'Duplicate end-of-turn summary blocks no longer appear when internal todo/status tools finish after a complete response (Fixes #80)',
+        'Turn finalization now uses deterministic, one-shot fallback wrap-up text instead of issuing a second model-generated summary call',
+        'Fallback wrap-up text now excludes internal orchestration details and keeps tool/progress internals out of user-visible responses',
+      ],
+    },
+  },
+  {
     version: '0.33.1',
     date: '2026-02-24',
     changes: {

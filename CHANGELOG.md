@@ -2,6 +2,13 @@
 
 All notable changes to Jelico are documented in this file.
 
+## [0.33.2] - 2026-02-24
+
+### Fixed
+- **Duplicate Final Summaries** — Assistant turns no longer append a second summary block after a complete response when internal task-tracking tools finish late.
+- **End-of-Turn Stability** — Missing wrap-ups are now filled with a deterministic one-time fallback instead of triggering another model-generated summary pass.
+- **Response Privacy Boundaries** — Fallback wrap-up text now avoids exposing internal orchestration details so users only see task-relevant outcomes.
+
 ## [0.33.1] - 2026-02-24
 
 ### Fixed
