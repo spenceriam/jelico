@@ -4,7 +4,7 @@ import { createAnthropic } from '@ai-sdk/anthropic'
 import { createOpenAI } from '@ai-sdk/openai'
 import { createGoogleGenerativeAI } from '@ai-sdk/google'
 import { z } from 'zod'
-import { providerDb, conversationDb, messageDb, workspaceDb } from '../services/database'
+import { providerDb, conversationDb, messageDb, workspaceDb, artifactDb } from '../services/database'
 import { keychainService } from '../services/keychain'
 import { getModeSystemPrompt, buildSystemPrompt, type AgentMode, getCachedPrompt } from '../lib/modes'
 import { formatSoulForContext } from '../services/soul'
@@ -235,6 +235,247 @@ function buildDeterministicTurnWrapUp(params: {
   }
 
   return lines.join('\n\n')
+}
+
+const MUTATION_VERB_REGEX = /\b(update|modify|edit|change|fix|improve|revise|rewrite|rework|redraw|recreate|adjust|tweak|add|remove|replace)\b/i
+const CREATION_VERB_REGEX = /\b(create|make|build|generate|scaffold)\b/i
+const ARTIFACT_TARGET_REGEX = /\b(artifact|canvas|html|svg|diagram|mermaid|game|ui|screen|page|component|prototype)\b/i
+const FILE_TARGET_REGEX = /\b(file|files|source|script|module|config|readme|package\.json|tsconfig|json|yaml|yml|toml|md|markdown)\b/i
+const ACTION_REFERENCE_REGEX = /\b(this|that|it|existing|current|same|again|from scratch)\b/i
+const EXPLANATION_ONLY_REGEX = /\b(explain|why|how|what|review|analysis|analy[sz]e|opinion|thoughts)\b/i
+const IMPERATIVE_REQUEST_REGEX = /\b(can you|could you|please|go ahead|i want you to|let's|try to)\b/i
+const ARTIFACT_COMPLETION_CLAIM_REGEX = /\b(created?|built|generated|updated?|modified|revised|redrawn|recreated|rewrote|fixed|changed|completed|done)\b[\s\S]{0,100}\b(artifact|canvas|html|svg|diagram|game|ui|component|page)\b/i
+const FILE_COMPLETION_CLAIM_REGEX = /\b(created?|updated?|edited?|modified|rewrote|wrote|fixed|changed|saved)\b[\s\S]{0,100}\b(file|files|code|script|module|config|readme|json|yaml|toml|ts|tsx|js|jsx|md)\b/i
+const MAX_COMPLETION_VALIDATION_REPAIRS = 1
+
+interface TurnValidationIssue {
+  code:
+    | 'artifact_missing_execution'
+    | 'artifact_execution_failed'
+    | 'file_missing_execution'
+    | 'file_execution_failed'
+    | 'file_write_verification_failed'
+  detail: string
+}
+
+interface TurnValidationResult {
+  valid: boolean
+  issues: TurnValidationIssue[]
+  requiresArtifactEvidence: boolean
+  requiresFileEvidence: boolean
+}
+
+function normalizeMessageContent(content: unknown): string {
+  if (typeof content === 'string') return content
+  if (!Array.isArray(content)) return ''
+
+  return content
+    .map((part) => {
+      if (!part || typeof part !== 'object') return ''
+      const obj = part as Record<string, unknown>
+      if (typeof obj.text === 'string') return obj.text
+      if (typeof obj.content === 'string') return obj.content
+      return ''
+    })
+    .join('\n')
+}
+
+function getLatestUserMessageText(messages: any[]): string {
+  if (!Array.isArray(messages)) return ''
+  for (let i = messages.length - 1; i >= 0; i -= 1) {
+    const message = messages[i]
+    if (!message || message.role !== 'user') continue
+    return normalizeMessageContent(message.content || '')
+  }
+  return ''
+}
+
+function isLikelyActionRequest(text: string): boolean {
+  const trimmed = text.trim()
+  if (!trimmed) return false
+
+  const looksQuestionOnly = trimmed.endsWith('?')
+  if (
+    looksQuestionOnly &&
+    EXPLANATION_ONLY_REGEX.test(trimmed) &&
+    !IMPERATIVE_REQUEST_REGEX.test(trimmed)
+  ) {
+    return false
+  }
+
+  return true
+}
+
+function hasMutationOrCreationVerb(text: string): boolean {
+  return MUTATION_VERB_REGEX.test(text) || CREATION_VERB_REGEX.test(text)
+}
+
+function isLikelyArtifactMutationRequest(text: string, hasExistingArtifacts: boolean): boolean {
+  if (!isLikelyActionRequest(text)) return false
+  if (!hasMutationOrCreationVerb(text)) return false
+  if (ARTIFACT_TARGET_REGEX.test(text)) return true
+  if (hasExistingArtifacts && ACTION_REFERENCE_REGEX.test(text)) return true
+  return false
+}
+
+function isLikelyFileMutationRequest(text: string): boolean {
+  if (!isLikelyActionRequest(text)) return false
+  if (!hasMutationOrCreationVerb(text)) return false
+  if (FILE_TARGET_REGEX.test(text)) return true
+  if (/[./\\][\w.-]+\.[a-z0-9]+/i.test(text)) return true
+  return false
+}
+
+function claimsArtifactMutation(text: string): boolean {
+  return ARTIFACT_COMPLETION_CLAIM_REGEX.test(text)
+}
+
+function claimsFileMutation(text: string): boolean {
+  return FILE_COMPLETION_CLAIM_REGEX.test(text)
+}
+
+function wasExecutionSuccessful(exec: ToolExecution): boolean {
+  if (didToolExecutionFail(exec)) return false
+  return exec.result !== undefined
+}
+
+function resolveValidationRepairDirective(validation: TurnValidationResult): string {
+  const repairLines = [
+    '## Completion Repair (Internal)',
+    'Your previous attempt failed internal completion validation for this same user request.',
+    'Do NOT mention validation, retries, or internal checks to the user.',
+    'Execute the required tool calls now before any completion claims.',
+    'Only state that work is complete after successful tool results are returned.',
+  ]
+
+  if (validation.requiresArtifactEvidence) {
+    repairLines.push('- Artifact work required: use create_artifact or update_artifact for the requested changes.')
+  }
+  if (validation.requiresFileEvidence) {
+    repairLines.push('- File work required: use write_file for the requested file changes.')
+  }
+
+  return repairLines.join('\n')
+}
+
+async function verifyWriteFileExecution(
+  exec: ToolExecution,
+  workspacePath?: string,
+  conversationId?: string
+): Promise<{ ok: boolean; reason?: string; target?: string }> {
+  const pathArg = typeof exec.args.path === 'string' ? exec.args.path : null
+  const contentArg = typeof exec.args.content === 'string' ? exec.args.content : null
+
+  if (!pathArg || contentArg === null) {
+    return { ok: false, reason: 'write_file tool arguments missing path/content.' }
+  }
+
+  const pathModule = await import('path')
+  const fs = await import('fs/promises')
+
+  let resolvedPath: string
+  if (workspacePath) {
+    const normalizedInput = pathArg.replace(/\\/g, '/')
+    const candidatePath = pathModule.isAbsolute(normalizedInput)
+      ? pathModule.resolve(normalizedInput)
+      : pathModule.resolve(workspacePath, normalizedInput)
+    const relativePath = pathModule.relative(workspacePath, candidatePath)
+    const normalizedRelative = relativePath.replace(/\\/g, '/')
+    if (normalizedRelative.startsWith('..') || pathModule.isAbsolute(relativePath)) {
+      return { ok: false, reason: `write_file escaped workspace bounds for path "${pathArg}".` }
+    }
+    resolvedPath = candidatePath
+  } else if (conversationId) {
+    const sandboxDir = getConversationSandboxPath(conversationId)
+    let sanitizedPath = pathArg.replace(/^[a-zA-Z]:/, '')
+    sanitizedPath = sanitizedPath.replace(/^[/\\]+/, '')
+    sanitizedPath = sanitizedPath.replace(/\\/g, '/')
+    const candidatePath = pathModule.resolve(sandboxDir, sanitizedPath)
+    const relativePath = pathModule.relative(sandboxDir, candidatePath)
+    if (relativePath.startsWith('..') || pathModule.isAbsolute(relativePath)) {
+      return { ok: false, reason: `write_file escaped sandbox bounds for path "${pathArg}".` }
+    }
+    resolvedPath = candidatePath
+  } else {
+    const normalizedInput = pathArg.replace(/\\/g, '/')
+    resolvedPath = pathModule.isAbsolute(normalizedInput)
+      ? pathModule.resolve(normalizedInput)
+      : pathModule.resolve(process.cwd(), normalizedInput)
+  }
+
+  let savedContent: string
+  try {
+    savedContent = await fs.readFile(resolvedPath, 'utf-8')
+  } catch (error: any) {
+    return { ok: false, reason: `Unable to read back written file "${resolvedPath}": ${error?.message || error}` }
+  }
+
+  if (savedContent !== contentArg) {
+    return {
+      ok: false,
+      reason: `File content mismatch after write for "${resolvedPath}".`,
+      target: resolvedPath,
+    }
+  }
+
+  return { ok: true, target: resolvedPath }
+}
+
+async function validateTurnMutations(params: {
+  assistantText: string
+  executions: ToolExecution[]
+  workspacePath?: string
+  conversationId?: string
+  expectedArtifactMutation: boolean
+  expectedFileMutation: boolean
+}): Promise<TurnValidationResult> {
+  const issues: TurnValidationIssue[] = []
+  const artifactExecutions = params.executions.filter((exec) => exec.name === 'create_artifact' || exec.name === 'update_artifact')
+  const writeExecutions = params.executions.filter((exec) => exec.name === 'write_file')
+
+  const successfulArtifactExecutions = artifactExecutions.filter(wasExecutionSuccessful)
+  const successfulWriteExecutions = writeExecutions.filter(wasExecutionSuccessful)
+
+  const claimedArtifactMutation = claimsArtifactMutation(params.assistantText)
+  const claimedFileMutation = claimsFileMutation(params.assistantText)
+
+  const requiresArtifactEvidence = params.expectedArtifactMutation || claimedArtifactMutation || artifactExecutions.length > 0
+  const requiresFileEvidence = params.expectedFileMutation || claimedFileMutation || writeExecutions.length > 0
+
+  if (requiresArtifactEvidence && successfulArtifactExecutions.length === 0) {
+    issues.push({
+      code: artifactExecutions.length > 0 ? 'artifact_execution_failed' : 'artifact_missing_execution',
+      detail: artifactExecutions.length > 0
+        ? 'Artifact mutation tool calls ran but did not complete successfully.'
+        : 'Artifact mutation was requested/claimed, but no successful create/update artifact tool call occurred.',
+    })
+  }
+
+  if (requiresFileEvidence && successfulWriteExecutions.length === 0) {
+    issues.push({
+      code: writeExecutions.length > 0 ? 'file_execution_failed' : 'file_missing_execution',
+      detail: writeExecutions.length > 0
+        ? 'File write tool calls ran but did not complete successfully.'
+        : 'File mutation was requested/claimed, but no successful write_file tool call occurred.',
+    })
+  }
+
+  for (const exec of successfulWriteExecutions) {
+    const verification = await verifyWriteFileExecution(exec, params.workspacePath, params.conversationId)
+    if (!verification.ok) {
+      issues.push({
+        code: 'file_write_verification_failed',
+        detail: verification.reason || 'Unable to verify a write_file result by reading the file back.',
+      })
+    }
+  }
+
+  return {
+    valid: issues.length === 0,
+    issues,
+    requiresArtifactEvidence,
+    requiresFileEvidence,
+  }
 }
 
 /**
@@ -1623,6 +1864,10 @@ For type="html": after creating it, self-test with artifact_test before claiming
       let thumbnailMimeType: string | undefined
       let thumbnailWidth: number | undefined
       let thumbnailHeight: number | undefined
+      let previewBase64: string | undefined
+      let previewMimeType: string | undefined
+      let previewWidth: number | undefined
+      let previewHeight: number | undefined
       let thumbnailError: string | undefined
 
       if (type === 'html') {
@@ -1635,12 +1880,16 @@ For type="html": after creating it, self-test with artifact_test before claiming
           })
           testSessionId = openResult.sessionId
 
-          const screenshotResult = await artifactTestScreenshot(testSessionId, { thumbWidth: 300 })
+          const screenshotResult = await artifactTestScreenshot(testSessionId, { thumbWidth: 300, waitMs: 1500 })
           if (screenshotResult.success && screenshotResult.thumbnailBase64) {
             thumbnailBase64 = screenshotResult.thumbnailBase64
             thumbnailMimeType = screenshotResult.thumbnailMimeType
             thumbnailWidth = screenshotResult.thumbnailWidth
             thumbnailHeight = screenshotResult.thumbnailHeight
+            previewBase64 = screenshotResult.previewBase64
+            previewMimeType = screenshotResult.previewMimeType
+            previewWidth = screenshotResult.previewWidth
+            previewHeight = screenshotResult.previewHeight
           } else {
             thumbnailError = screenshotResult.error || 'Failed to capture HTML thumbnail'
             console.warn('[AI] create_artifact thumbnail capture failed:', thumbnailError)
@@ -1672,6 +1921,10 @@ For type="html": after creating it, self-test with artifact_test before claiming
         thumbnailMimeType,
         thumbnailWidth,
         thumbnailHeight,
+        previewBase64,
+        previewMimeType,
+        previewWidth,
+        previewHeight,
       }
     },
   })
@@ -1723,15 +1976,71 @@ For type="html": after updating it, self-test with artifact_test before claiming
         console.warn('[AI] Artifact update validation warnings:', validation.warnings)
       }
 
+      let thumbnailBase64: string | undefined
+      let thumbnailMimeType: string | undefined
+      let thumbnailWidth: number | undefined
+      let thumbnailHeight: number | undefined
+      let previewBase64: string | undefined
+      let previewMimeType: string | undefined
+      let previewWidth: number | undefined
+      let previewHeight: number | undefined
+      let thumbnailError: string | undefined
+
+      if (type === 'html') {
+        let testSessionId: string | undefined
+        try {
+          const openResult = await openArtifactTestSession({
+            html: content,
+            width: 1200,
+            height: 800,
+          })
+          testSessionId = openResult.sessionId
+
+          const screenshotResult = await artifactTestScreenshot(testSessionId, { thumbWidth: 300, waitMs: 1500 })
+          if (screenshotResult.success && screenshotResult.thumbnailBase64) {
+            thumbnailBase64 = screenshotResult.thumbnailBase64
+            thumbnailMimeType = screenshotResult.thumbnailMimeType
+            thumbnailWidth = screenshotResult.thumbnailWidth
+            thumbnailHeight = screenshotResult.thumbnailHeight
+            previewBase64 = screenshotResult.previewBase64
+            previewMimeType = screenshotResult.previewMimeType
+            previewWidth = screenshotResult.previewWidth
+            previewHeight = screenshotResult.previewHeight
+          } else {
+            thumbnailError = screenshotResult.error || 'Failed to capture HTML thumbnail'
+            console.warn('[AI] update_artifact thumbnail capture failed:', thumbnailError)
+          }
+        } catch (error) {
+          thumbnailError = error instanceof Error ? error.message : String(error)
+          console.warn('[AI] update_artifact thumbnail capture failed:', thumbnailError)
+        } finally {
+          if (testSessionId) {
+            await closeArtifactTestSession(testSessionId)
+          }
+        }
+      }
+
       if (sendUpdateArtifact) {
         sendUpdateArtifact({ id, updates: { title, content, language } })
+      }
+      const combinedWarnings = [...validation.warnings]
+      if (thumbnailError) {
+        combinedWarnings.push(`Thumbnail capture failed: ${thumbnailError}`)
       }
       return {
         success: true,
         message: type === 'html'
           ? `Artifact "${id}" updated successfully. Next step required: run artifact_test and verify behavior before claiming success.`
           : `Artifact "${id}" updated successfully`,
-        warnings: validation.warnings.length > 0 ? validation.warnings : undefined,
+        warnings: combinedWarnings.length > 0 ? combinedWarnings : undefined,
+        thumbnailBase64,
+        thumbnailMimeType,
+        thumbnailWidth,
+        thumbnailHeight,
+        previewBase64,
+        previewMimeType,
+        previewWidth,
+        previewHeight,
       }
     },
   })
@@ -2956,6 +3265,16 @@ If you find yourself frequently hitting limits, suggest breaking the task into m
           }
         })
 
+      const latestUserText = getLatestUserMessageText(params.messages)
+      const existingArtifactCount = Array.isArray(params.artifacts) && params.artifacts.length > 0
+        ? params.artifacts.length
+        : (params.conversationId ? artifactDb.getByConversation(params.conversationId).length : 0)
+      const hasExistingArtifacts = existingArtifactCount > 0
+      const expectedArtifactMutation = isLikelyArtifactMutationRequest(latestUserText, hasExistingArtifacts)
+      const expectedFileMutation = isLikelyFileMutationRequest(latestUserText)
+      let completionValidationRepairAttempts = 0
+      let pendingCompletionRepairDirective = ''
+
       // Retry loop for transient errors
       let lastError: any = null
       const streamMaxTokens = await resolveProviderMaxOutputTokens(providerConfig, modelId)
@@ -2976,6 +3295,14 @@ If you find yourself frequently hitting limits, suggest breaking the task into m
           await sleep(RETRY_DELAY_MS * attempt) // Exponential backoff
         }
 
+        const attemptSystemPrompt = pendingCompletionRepairDirective
+          ? `${systemPrompt}\n\n${pendingCompletionRepairDirective}`
+          : systemPrompt
+        const shouldBufferCompletionSensitiveText =
+          expectedArtifactMutation ||
+          expectedFileMutation ||
+          !!pendingCompletionRepairDirective
+
         // Track step count for warning injection
         let stepCount = 0
         const MAX_TOOL_STEPS = 50
@@ -2986,7 +3313,7 @@ If you find yourself frequently hitting limits, suggest breaking the task into m
           const chatModel = provider.chat(modelId)
           const result = await streamText({
             model: chatModel,
-            system: systemPrompt,
+            system: attemptSystemPrompt,
             messages,
             tools,
             toolChoice: 'auto',
@@ -3021,9 +3348,20 @@ If you find yourself frequently hitting limits, suggest breaking the task into m
           // Track text generated after the last meaningful (user-visible) action.
           // Internal plumbing tools should not reset this.
           let textAfterLastMeaningfulAction = ''
-          let totalStreamedTextLength = 0  // Track total text sent to prevent duplicate sending
+          let totalStreamedTextLength = 0  // Track total text generated to prevent duplicate fallback text
           let streamedTextTail = '' // Track tail for spacing decisions
           let hadMeaningfulToolActivity = false
+          let assistantTextForValidation = ''
+          const bufferedAssistantChunks: string[] = []
+          const emitAssistantChunk = (chunk: string) => {
+            if (!chunk) return
+            assistantTextForValidation += chunk
+            if (shouldBufferCompletionSensitiveText) {
+              bufferedAssistantChunks.push(chunk)
+              return
+            }
+            event.sender.send(`ai:chunk:${channelId}`, chunk)
+          }
 
           // Track current tool receiving input (for progress display AND accumulation)
           let currentToolInputId: string | null = null
@@ -3060,7 +3398,7 @@ If you find yourself frequently hitting limits, suggest breaking the task into m
                   thinkState = newThinkState
                   
                   if (cleanedChunk) {
-                    event.sender.send(`ai:chunk:${channelId}`, cleanedChunk)
+                    emitAssistantChunk(cleanedChunk)
                     textAfterLastMeaningfulAction += cleanedChunk
                     totalStreamedTextLength += cleanedChunk.length  // Track total to prevent duplicate sending
                     streamedTextTail = (streamedTextTail + cleanedChunk).slice(-4)
@@ -3446,7 +3784,7 @@ If you find yourself frequently hitting limits, suggest breaking the task into m
           const finalText = await result.text
           // Only send if NO text was streamed at all (prevents duplicate sending on timeout)
           if (finalText && totalStreamedTextLength === 0) {
-            event.sender.send(`ai:chunk:${channelId}`, finalText)
+            emitAssistantChunk(finalText)
             textAfterLastMeaningfulAction = finalText
             totalStreamedTextLength += finalText.length
             streamedTextTail = (streamedTextTail + finalText).slice(-4)
@@ -3623,7 +3961,7 @@ If you find yourself frequently hitting limits, suggest breaking the task into m
               }
             }
 
-            event.sender.send(`ai:chunk:${channelId}`, wrapUpText)
+            emitAssistantChunk(wrapUpText)
             totalStreamedTextLength += wrapUpText.length
             streamedTextTail = (streamedTextTail + wrapUpText).slice(-4)
             textAfterLastMeaningfulAction += wrapUpText
@@ -3636,9 +3974,43 @@ If you find yourself frequently hitting limits, suggest breaking the task into m
             const fallbackText = usedToolsOrAgents
               ? 'Completed requested tool actions.'
               : 'No response text was returned. Please retry.'
-            event.sender.send(`ai:chunk:${channelId}`, fallbackText)
+            emitAssistantChunk(fallbackText)
             totalStreamedTextLength += fallbackText.length
             streamedTextTail = (streamedTextTail + fallbackText).slice(-4)
+          }
+
+          if (!abortController.signal.aborted) {
+            const turnValidation = await validateTurnMutations({
+              assistantText: assistantTextForValidation,
+              executions: Array.from(toolTracker.values()),
+              workspacePath: params.workspacePath,
+              conversationId: params.conversationId,
+              expectedArtifactMutation,
+              expectedFileMutation,
+            })
+
+            if (!turnValidation.valid) {
+              if (DEBUG_API_REQUESTS) {
+                console.warn('[AI] Completion validation failed:', turnValidation.issues)
+              }
+
+              if (
+                completionValidationRepairAttempts < MAX_COMPLETION_VALIDATION_REPAIRS &&
+                attempt < MAX_RETRIES
+              ) {
+                completionValidationRepairAttempts += 1
+                pendingCompletionRepairDirective = resolveValidationRepairDirective(turnValidation)
+                continue
+              }
+
+              throw new Error('I could not verify that the requested artifact/file updates were applied. Please retry.')
+            }
+          }
+
+          pendingCompletionRepairDirective = ''
+
+          if (!abortController.signal.aborted && shouldBufferCompletionSensitiveText && bufferedAssistantChunks.length > 0) {
+            event.sender.send(`ai:chunk:${channelId}`, bufferedAssistantChunks.join(''))
           }
 
           const totalTokens = promptTokens + completionTokens
@@ -3904,3 +4276,4 @@ If you find yourself frequently hitting limits, suggest breaking the task into m
     return { success: true }
   })
 }
+

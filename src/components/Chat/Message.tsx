@@ -33,6 +33,84 @@ interface MessageProps {
   userName?: string  // User's name for avatar initial
 }
 
+const IMAGE_MIME_BY_EXTENSION: Record<string, string> = {
+  png: 'image/png',
+  jpg: 'image/jpeg',
+  jpeg: 'image/jpeg',
+  gif: 'image/gif',
+  webp: 'image/webp',
+  bmp: 'image/bmp',
+  svg: 'image/svg+xml',
+  tif: 'image/tiff',
+  tiff: 'image/tiff',
+  avif: 'image/avif',
+  heic: 'image/heic',
+  heif: 'image/heif',
+}
+
+function getFileExtension(fileName: string): string {
+  const lastDot = fileName.lastIndexOf('.')
+  if (lastDot === -1 || lastDot === fileName.length - 1) return ''
+  return fileName.slice(lastDot + 1).toLowerCase()
+}
+
+function inferImageMimeTypeFromName(fileName: string): string | null {
+  const extension = getFileExtension(fileName)
+  return IMAGE_MIME_BY_EXTENSION[extension] || null
+}
+
+function inferImageMimeTypeFromBase64(base64Data: string): string | null {
+  const sample = base64Data.slice(0, 32)
+  if (sample.startsWith('iVBORw0KGgo')) return 'image/png'
+  if (sample.startsWith('/9j/')) return 'image/jpeg'
+  if (sample.startsWith('R0lGOD')) return 'image/gif'
+  if (sample.startsWith('UklGR')) return 'image/webp'
+  if (sample.startsWith('Qk')) return 'image/bmp'
+  if (sample.startsWith('PHN2Zy') || sample.startsWith('PD94bWwg')) return 'image/svg+xml'
+  return null
+}
+
+function normalizeImageMimeType(mimeType: string, fileName: string, base64Data: string): string {
+  const normalizedMime = mimeType.trim().toLowerCase()
+  if (normalizedMime.startsWith('image/')) return normalizedMime
+
+  const inferredFromName = inferImageMimeTypeFromName(fileName)
+  if (inferredFromName) return inferredFromName
+
+  const inferredFromData = inferImageMimeTypeFromBase64(base64Data)
+  if (inferredFromData) return inferredFromData
+
+  return 'image/png'
+}
+
+function isDataUrl(value: string): boolean {
+  return value.trim().toLowerCase().startsWith('data:')
+}
+
+function resolveAttachmentImageSource(att: MessageAttachment): string | null {
+  const rawData = att.data?.trim()
+  if (!rawData) return null
+
+  if (isDataUrl(rawData)) {
+    return rawData
+  }
+
+  if (
+    rawData.startsWith('http://') ||
+    rawData.startsWith('https://') ||
+    rawData.startsWith('blob:') ||
+    rawData.startsWith('file:')
+  ) {
+    return rawData
+  }
+
+  const compactBase64 = rawData.replace(/\s+/g, '')
+  if (!compactBase64) return null
+
+  const mimeType = normalizeImageMimeType(att.mimeType || '', att.name || '', compactBase64)
+  return `data:${mimeType};base64,${compactBase64}`
+}
+
 // User avatar - shows first initial or fallback icon
 function UserAvatar({ name }: { name?: string }) {
   const initial = name?.trim().charAt(0).toUpperCase()
@@ -140,6 +218,7 @@ export function Message({
 }: MessageProps) {
   const [copied, setCopied] = useState(false)
   const [lightboxImageUrl, setLightboxImageUrl] = useState<string | null>(null)
+  const [failedImagePreviews, setFailedImagePreviews] = useState<Record<string, boolean>>({})
   const isUser = message.role === 'user'
   const isAssistant = message.role === 'assistant'
   const timestamp = formatTimestamp(message.createdAt)
@@ -178,6 +257,16 @@ export function Message({
     setLightboxImageUrl(null)
   }
 
+  const markImagePreviewFailed = (key: string) => {
+    setFailedImagePreviews((prev) => (
+      prev[key]
+        ? prev
+        : { ...prev, [key]: true }
+    ))
+  }
+
+  const canOpenLightboxInNewTab = lightboxImageUrl ? !isDataUrl(lightboxImageUrl) : false
+
   // Get icon for attachment type
   const getAttachmentIcon = (type: string) => {
     switch (type) {
@@ -207,10 +296,11 @@ export function Message({
                 {message.attachments!.map((att) => {
                   const IconComponent = getAttachmentIcon(att.type)
                   const isTextAttachment = att.type === 'text' && att.data
-
+                  const imagePreviewKey = `att:${att.id}`
                   const imageSrc = att.type === 'image'
-                    ? `data:${att.mimeType};base64,${att.data}`
+                    ? resolveAttachmentImageSource(att)
                     : null
+                  const imagePreviewFailed = Boolean(failedImagePreviews[imagePreviewKey])
 
                   return (
                     <div key={att.id} className="text-sm">
@@ -218,7 +308,7 @@ export function Message({
                         <IconComponent className="w-4 h-4" />
                         <span>{att.name}</span>
                       </div>
-                      {imageSrc && (
+                      {imageSrc && !imagePreviewFailed && (
                         <button
                           type="button"
                           onClick={() => openLightbox(imageSrc)}
@@ -229,8 +319,14 @@ export function Message({
                             src={imageSrc}
                             alt={att.name}
                             className="max-h-40 max-w-full object-cover"
+                            onError={() => markImagePreviewFailed(imagePreviewKey)}
                           />
                         </button>
+                      )}
+                      {att.type === 'image' && (!imageSrc || imagePreviewFailed) && (
+                        <div className="rounded-lg border border-border bg-bg-deep px-3 py-2 text-xs text-text-muted">
+                          Preview unavailable for this image attachment.
+                        </div>
                       )}
                       {/* Show text content for pasted text */}
                       {isTextAttachment && (
@@ -303,16 +399,18 @@ export function Message({
               <img
                 src={lightboxImageUrl}
                 alt="Full-size preview"
-                className="max-w-[70vw] max-h-[70vh] object-contain rounded-lg"
+                className="max-w-[80vw] max-h-[80vh] object-contain rounded-lg"
               />
-              <a
-                href={lightboxImageUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-xs text-accent hover:underline break-all"
-              >
-                {lightboxImageUrl}
-              </a>
+              {canOpenLightboxInNewTab && (
+                <a
+                  href={lightboxImageUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-xs text-accent hover:underline"
+                >
+                  Open image in new tab
+                </a>
+              )}
             </div>
           </div>
         )}
@@ -379,6 +477,14 @@ export function Message({
         ),
         img: ({ src, alt }) => {
           if (!src) return null
+          const imagePreviewKey = `md:${src}`
+          if (failedImagePreviews[imagePreviewKey]) {
+            return (
+              <div className="my-3 rounded-lg border border-border bg-bg-deep px-3 py-2 text-xs text-text-muted">
+                Image preview unavailable.
+              </div>
+            )
+          }
           return (
             <button
               type="button"
@@ -390,6 +496,7 @@ export function Message({
                 src={src}
                 alt={alt || 'Image'}
                 className="max-h-48 max-w-full object-contain"
+                onError={() => markImagePreviewFailed(imagePreviewKey)}
               />
             </button>
           )
@@ -500,16 +607,18 @@ export function Message({
             <img
               src={lightboxImageUrl}
               alt="Full-size preview"
-              className="max-w-[70vw] max-h-[70vh] object-contain rounded-lg"
+              className="max-w-[80vw] max-h-[80vh] object-contain rounded-lg"
             />
-            <a
-              href={lightboxImageUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="text-xs text-accent hover:underline break-all"
-            >
-              {lightboxImageUrl}
-            </a>
+            {canOpenLightboxInNewTab && (
+              <a
+                href={lightboxImageUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-xs text-accent hover:underline"
+              >
+                Open image in new tab
+              </a>
+            )}
           </div>
         </div>
       )}

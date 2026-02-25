@@ -31,7 +31,22 @@ const SUPPORTED_FILE_TYPES = {
   document: ['application/pdf', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', 'application/vnd.openxmlformats-officedocument.presentationml.presentation'],
 }
 
-const ACCEPTED_EXTENSIONS = '.png,.jpg,.jpeg,.gif,.webp,.txt,.md,.json,.pdf,.docx,.pptx'
+const IMAGE_MIME_BY_EXTENSION: Record<string, string> = {
+  png: 'image/png',
+  jpg: 'image/jpeg',
+  jpeg: 'image/jpeg',
+  gif: 'image/gif',
+  webp: 'image/webp',
+  bmp: 'image/bmp',
+  svg: 'image/svg+xml',
+  tif: 'image/tiff',
+  tiff: 'image/tiff',
+  avif: 'image/avif',
+  heic: 'image/heic',
+  heif: 'image/heif',
+}
+
+const ACCEPTED_EXTENSIONS = '.png,.jpg,.jpeg,.gif,.webp,.bmp,.svg,.tif,.tiff,.avif,.heic,.heif,.txt,.md,.json,.pdf,.docx,.pptx'
 
 // Line threshold for collapsing pasted content
 const PASTE_COLLAPSE_THRESHOLD = 10
@@ -40,6 +55,28 @@ const chatDraftsByConversation = new Map<string, string>()
 
 function getDraftKey(conversationId: string | null): string {
   return conversationId || NEW_CHAT_DRAFT_KEY
+}
+
+function getFileExtension(fileName: string): string {
+  const lastDot = fileName.lastIndexOf('.')
+  if (lastDot === -1 || lastDot === fileName.length - 1) return ''
+  return fileName.slice(lastDot + 1).toLowerCase()
+}
+
+function inferMimeTypeFromFilename(fileName: string): string | null {
+  const extension = getFileExtension(fileName)
+  return IMAGE_MIME_BY_EXTENSION[extension] || null
+}
+
+function normalizeFileMimeType(file: File): string {
+  const raw = file.type.trim().toLowerCase()
+  if (raw && raw !== 'application/octet-stream') return raw
+
+  const inferredFromName = inferMimeTypeFromFilename(file.name)
+  if (inferredFromName) return inferredFromName
+
+  if (raw) return raw
+  return 'application/octet-stream'
 }
 
 interface ChatInputProps {
@@ -126,8 +163,11 @@ export function ChatInput({ disabled, isStreaming, centered }: ChatInputProps) {
   const getFileIcon = (file: File | undefined, type: string) => {
     if (type === 'pasted') return FileText
     if (!file) return File
-    if (SUPPORTED_FILE_TYPES.image.includes(file.type)) return Image
-    if (SUPPORTED_FILE_TYPES.text.includes(file.type)) return FileText
+
+    const normalizedMimeType = normalizeFileMimeType(file)
+    if (normalizedMimeType.startsWith('image/')) return Image
+    if (SUPPORTED_FILE_TYPES.text.includes(normalizedMimeType) || normalizedMimeType.startsWith('text/')) return FileText
+
     return File
   }
 
@@ -271,8 +311,8 @@ export function ChatInput({ disabled, isStreaming, centered }: ChatInputProps) {
 
   // Determine attachment type from MIME type
   const getAttachmentType = (mimeType: string): 'image' | 'text' | 'document' => {
-    if (SUPPORTED_FILE_TYPES.image.includes(mimeType)) return 'image'
-    if (SUPPORTED_FILE_TYPES.text.includes(mimeType)) return 'text'
+    if (mimeType.startsWith('image/')) return 'image'
+    if (SUPPORTED_FILE_TYPES.text.includes(mimeType) || mimeType.startsWith('text/')) return 'text'
     return 'document'
   }
 
@@ -292,12 +332,13 @@ export function ChatInput({ disabled, isStreaming, centered }: ChatInputProps) {
             data: att.content || '',
           }
         } else if (att.file) {
+          const normalizedMimeType = normalizeFileMimeType(att.file)
           const base64 = await fileToBase64(att.file)
           return {
             id: att.id,
-            type: getAttachmentType(att.file.type),
+            type: getAttachmentType(normalizedMimeType),
             name: att.name,
-            mimeType: att.file.type,
+            mimeType: normalizedMimeType,
             data: base64,
           }
         }
