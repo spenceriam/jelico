@@ -1022,8 +1022,10 @@ export const artifactDb = {
       }
     }
 
-    // If content is changing, create a revision instead
-    if (updates.content !== undefined && updates.content !== artifact.content) {
+    // If content is changing, create a revision instead.
+    // Stored rows keep content in files (row.content may be empty), so compare against hydrated content.
+    const persistedContent = hydrateArtifactContent(artifact)?.content ?? artifact.content
+    if (updates.content !== undefined && updates.content !== persistedContent) {
       return this.createRevision(id, updates)
     }
 

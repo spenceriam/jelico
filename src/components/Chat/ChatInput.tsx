@@ -128,6 +128,16 @@ export function ChatInput({ disabled, isStreaming, centered }: ChatInputProps) {
     textarea.style.height = `${Math.min(newHeight, maxHeight)}px`
   }, [centered])
 
+  const focusTextarea = useCallback(() => {
+    if (disabled) return
+    const textarea = textareaRef.current
+    if (!textarea) return
+
+    if (document.activeElement !== textarea) {
+      textarea.focus()
+    }
+  }, [disabled])
+
   // Restore draft when switching conversations (including new-chat view)
   useEffect(() => {
     const draft = chatDraftsByConversation.get(getDraftKey(activeConversationId)) || ''
@@ -138,20 +148,24 @@ export function ChatInput({ disabled, isStreaming, centered }: ChatInputProps) {
   // Robust focus management - handles view transitions and dialog dismissals
   useEffect(() => {
     // Multi-attempt focus to handle race conditions after dialogs/transitions
-    const focusAttempts = [50, 150, 300] // Try at multiple intervals
+    const frame = requestAnimationFrame(() => {
+      focusTextarea()
+    })
+    const focusAttempts = [50, 150, 300, 600, 900] // Try at multiple intervals
     const timers: NodeJS.Timeout[] = []
 
     focusAttempts.forEach(delay => {
       const timer = setTimeout(() => {
-        if (textareaRef.current && document.activeElement !== textareaRef.current) {
-          textareaRef.current.focus()
-        }
+        focusTextarea()
       }, delay)
       timers.push(timer)
     })
 
-    return () => timers.forEach(t => clearTimeout(t))
-  }, [activeConversationId]) // Re-run on mount and conversation change
+    return () => {
+      cancelAnimationFrame(frame)
+      timers.forEach(t => clearTimeout(t))
+    }
+  }, [activeConversationId, centered, focusTextarea]) // Re-run on mount and view/conversation changes
 
   // OS-aware modifier key
   const modKey = useMemo(() => isMac() ? '⌘' : 'Ctrl', [])
@@ -372,6 +386,20 @@ export function ChatInput({ disabled, isStreaming, centered }: ChatInputProps) {
   }, [input, attachments, activeProviderId, activeModel, sendMessage, activeConversationId, resizeTextarea])
 
   const handleKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
+    if (
+      e.key === 'Backspace' &&
+      input.length === 0 &&
+      attachments.length > 0 &&
+      !e.shiftKey &&
+      !e.ctrlKey &&
+      !e.metaKey &&
+      !e.altKey
+    ) {
+      e.preventDefault()
+      removeAttachment(attachments[attachments.length - 1].id)
+      return
+    }
+
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault()
       handleSubmit()
@@ -564,7 +592,7 @@ export function ChatInput({ disabled, isStreaming, centered }: ChatInputProps) {
         onDragOver={handleDragOver}
         onDragLeave={handleDragLeave}
         onDrop={handleDrop}
-        onClick={() => textareaRef.current?.focus()} // Click anywhere to focus
+        onClick={focusTextarea} // Click anywhere to focus
       >
         {/* Text area */}
         <textarea
@@ -583,6 +611,7 @@ export function ChatInput({ disabled, isStreaming, centered }: ChatInputProps) {
               : 'Message Jelico...'
           }
           disabled={disabled}
+          autoFocus
           rows={centered ? 4 : 1}
           className={`flex-1 bg-transparent text-sm text-text-primary placeholder:text-text-muted outline-none resize-none disabled:cursor-not-allowed focus:outline-none focus:ring-0 border-none leading-6 p-3 pb-0 select-text ${
             centered ? 'min-h-[96px] max-h-[200px]' : 'min-h-[24px] max-h-[150px]'
