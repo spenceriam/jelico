@@ -2,6 +2,15 @@
 
 All notable changes to Jelico are documented in this file.
 
+## [0.33.3] - 2026-02-25
+
+### Fixed
+- **Image Attachment Reliability** — Image uploads now preview correctly even when file MIME metadata is incomplete or inconsistent, reducing broken image cards in chat.
+- **Artifact Snapshot Timing** — HTML artifact snapshots now wait for render completion and capture the main visual area, so thumbnails better match what you see in the live preview.
+- **Thumbnail and Lightbox UX** — Artifact preview cards now use a smaller thumbnail, cleaner presentation, and a clear close button when viewing the expanded image.
+- **Artifact Update Visibility** — Updating an existing artifact now also returns preview imagery so create/update workflows stay consistent.
+- **False Completion Claims** — When artifact/file edits are requested, completion text is now gated by actual successful tool evidence, with one silent self-repair attempt before returning an error.
+
 ## [0.33.2] - 2026-02-24
 
 ### Fixed

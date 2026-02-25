@@ -1,10 +1,11 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import {
   ChevronDown,
   ChevronRight,
   CheckCircle,
   XCircle,
-  ExternalLink
+  ExternalLink,
+  X,
 } from 'lucide-react'
 import { DiffViewer } from '../Canvas/DiffViewer'
 import type { ToolCall, ToolResult } from '../../stores/chat'
@@ -55,6 +56,84 @@ export const HIDDEN_TOOLS = new Set([
 ])
 
 const INTERNAL_WEB_GATE_RESULT_TYPES = new Set(['deferred_to_subagents', 'direct_limit_reached'])
+
+function isPreviewUrl(value: string): boolean {
+  const normalized = value.trim().toLowerCase()
+  return (
+    normalized.startsWith('data:') ||
+    normalized.startsWith('http://') ||
+    normalized.startsWith('https://') ||
+    normalized.startsWith('blob:') ||
+    normalized.startsWith('file:')
+  )
+}
+
+function resolveArtifactImageSource(
+  result: Record<string, unknown> | null,
+  options: {
+    dataUrlKey: string
+    base64Key: string
+    mimeKey: string
+    defaultMimeType: string
+  }
+): string | null {
+  if (!result) return null
+
+  const explicitDataUrl = typeof result[options.dataUrlKey] === 'string'
+    ? String(result[options.dataUrlKey]).trim()
+    : ''
+  if (explicitDataUrl && isPreviewUrl(explicitDataUrl)) {
+    return explicitDataUrl
+  }
+
+  const rawPayload = typeof result[options.base64Key] === 'string'
+    ? String(result[options.base64Key]).trim()
+    : ''
+  if (!rawPayload) return null
+
+  if (isPreviewUrl(rawPayload)) {
+    return rawPayload
+  }
+
+  const compactBase64 = rawPayload.replace(/\s+/g, '')
+  if (!compactBase64) return null
+
+  let mimeType = typeof result[options.mimeKey] === 'string'
+    ? String(result[options.mimeKey]).trim().toLowerCase()
+    : options.defaultMimeType
+
+  if (mimeType.startsWith('data:')) {
+    if (mimeType.includes(',')) {
+      return mimeType
+    }
+    return `${mimeType},${compactBase64}`
+  }
+
+  mimeType = mimeType.replace(/;base64$/i, '').replace(/;$/, '')
+  if (!mimeType.includes('/')) {
+    mimeType = options.defaultMimeType
+  }
+
+  return `data:${mimeType};base64,${compactBase64}`
+}
+
+function resolveArtifactThumbnailSource(result: Record<string, unknown> | null): string | null {
+  return resolveArtifactImageSource(result, {
+    dataUrlKey: 'thumbnailDataUrl',
+    base64Key: 'thumbnailBase64',
+    mimeKey: 'thumbnailMimeType',
+    defaultMimeType: 'image/jpeg',
+  })
+}
+
+function resolveArtifactPreviewSource(result: Record<string, unknown> | null): string | null {
+  return resolveArtifactImageSource(result, {
+    dataUrlKey: 'previewDataUrl',
+    base64Key: 'previewBase64',
+    mimeKey: 'previewMimeType',
+    defaultMimeType: 'image/png',
+  })
+}
 
 function isInternalWebGateResultPayload(result: unknown): boolean {
   if (!result || typeof result !== 'object') return false
@@ -412,6 +491,8 @@ export function SingleToolCallDisplay({
 }) {
   const [expanded, setExpanded] = useState(false)
   const [isThumbnailOpen, setIsThumbnailOpen] = useState(false)
+  const [isThumbnailFailed, setIsThumbnailFailed] = useState(false)
+  const [isPreviewFailed, setIsPreviewFailed] = useState(false)
 
   const { agents } = useAgentStore()
   const activeConversationId = useChatStore((state) => state.activeConversationId)
@@ -574,53 +655,97 @@ export function SingleToolCallDisplay({
     ? `tool-call-pill-processing tool-call-pill-processing-tone-${(processingTone ?? 0) % 4}`
     : ''
 
+  const isCreateArtifactTool = toolCall.name === 'create_artifact'
+  const isUpdateArtifactTool = toolCall.name === 'update_artifact'
+  const isArtifactMutationTool = isCreateArtifactTool || isUpdateArtifactTool
+
   const isExpandable = (() => {
-    if (toolCall.name === 'create_artifact' && !hasResult && !formattedResult?.isError) {
+    if (isArtifactMutationTool && !hasResult && !formattedResult?.isError) {
       return false
     }
     return true
   })()
 
-  // Get artifact info if this is a create_artifact call
-  const artifactTitle = toolCall.name === 'create_artifact' && toolCall.args?.title
+  // Get artifact info if this is a create/update artifact call
+  const artifactTitle = typeof toolCall.args?.title === 'string'
     ? String(toolCall.args.title)
     : null
-  const artifactType = toolCall.name === 'create_artifact' && toolCall.args?.type
+  const artifactType = typeof toolCall.args?.type === 'string'
     ? String(toolCall.args.type).toLowerCase()
     : null
-  const createdArtifact = artifactTitle
-    ? artifacts
-      .filter((artifact) => {
-        const titleMatches = artifact.title === artifactTitle
-        const conversationMatches = activeConversationId
-          ? artifact.conversationId === activeConversationId
-          : true
-        const typeMatches = artifactType
-          ? artifact.type.toLowerCase() === artifactType
-          : true
-        return titleMatches && conversationMatches && typeMatches
-      })
-      .sort((a, b) => b.updatedAt - a.updatedAt)[0] || null
-    : null
-  const createArtifactResult = toolCall.name === 'create_artifact' && toolResult?.result && typeof toolResult.result === 'object'
-    ? toolResult.result as Record<string, unknown>
-    : null
-  const thumbnailBase64 = typeof createArtifactResult?.thumbnailBase64 === 'string'
-    ? createArtifactResult.thumbnailBase64
-    : null
-  const thumbnailMimeType = typeof createArtifactResult?.thumbnailMimeType === 'string'
-    ? createArtifactResult.thumbnailMimeType
-    : 'image/jpeg'
-  const thumbnailDataUrl = thumbnailBase64
-    ? `data:${thumbnailMimeType};base64,${thumbnailBase64}`
+  const expectsHtmlThumbnail = artifactType === 'html'
+  const updateArtifactId = isUpdateArtifactTool && typeof toolCall.args?.id === 'string'
+    ? String(toolCall.args.id)
     : null
 
+  const linkedArtifact = (() => {
+    if (isCreateArtifactTool && artifactTitle) {
+      const matches = artifacts
+        .filter((artifact) => {
+          const titleMatches = artifact.title === artifactTitle
+          const conversationMatches = activeConversationId
+            ? artifact.conversationId === activeConversationId
+            : true
+          const typeMatches = artifactType
+            ? artifact.type.toLowerCase() === artifactType
+            : true
+          return titleMatches && conversationMatches && typeMatches
+        })
+        .sort((a, b) => b.updatedAt - a.updatedAt)
+      return matches[0] || null
+    }
+
+    if (isUpdateArtifactTool && updateArtifactId) {
+      const matches = artifacts
+        .filter((artifact) => {
+          const conversationMatches = activeConversationId
+            ? artifact.conversationId === activeConversationId
+            : true
+          if (!conversationMatches) return false
+          return artifact.id === updateArtifactId || artifact.baseArtifactId === updateArtifactId
+        })
+        .sort((a, b) => b.updatedAt - a.updatedAt)
+      return matches[0] || null
+    }
+
+    return null
+  })()
+
+  const artifactMutationResult = isArtifactMutationTool && toolResult?.result && typeof toolResult.result === 'object'
+    ? toolResult.result as Record<string, unknown>
+    : null
+  const thumbnailDataUrl = resolveArtifactThumbnailSource(artifactMutationResult)
+  const previewDataUrl = resolveArtifactPreviewSource(artifactMutationResult) || thumbnailDataUrl
+  const expandedPreviewUrl = (isPreviewFailed ? thumbnailDataUrl : previewDataUrl) || thumbnailDataUrl
+  const artifactLinkLabel = isCreateArtifactTool && linkedArtifact
+    ? linkedArtifact.title
+    : 'Open current artifact'
+
   const handleArtifactClick = () => {
-    if (createdArtifact) {
-      selectArtifact(createdArtifact.id)
+    if (linkedArtifact) {
+      selectArtifact(linkedArtifact.id)
       openCanvas()
     }
   }
+
+  useEffect(() => {
+    if (!isThumbnailOpen) return
+
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        setIsThumbnailOpen(false)
+      }
+    }
+
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [isThumbnailOpen])
+
+  useEffect(() => {
+    setIsThumbnailOpen(false)
+    setIsThumbnailFailed(false)
+    setIsPreviewFailed(false)
+  }, [toolCall.id])
 
   return (
     <div className="border border-border rounded-lg overflow-hidden bg-bg-deep">
@@ -669,40 +794,52 @@ export function SingleToolCallDisplay({
         )}
       </button>
 
-      {/* Artifact creation in progress - simple indicator, no streaming preview */}
-      {toolCall.name === 'create_artifact' && !hasResult && (
+      {/* Artifact create/update in progress - simple indicator, no streaming preview */}
+      {isArtifactMutationTool && !hasResult && (
         <div className="px-3 py-2 border-t border-border bg-bg-surface">
           <span className="text-xs text-text-muted">
-            Creating {formatArtifactType()}...
+            {isCreateArtifactTool ? 'Creating ' : 'Updating '}
+            {formatArtifactType()}...
           </span>
         </div>
       )}
 
-      {/* Artifact link - shown inline when create_artifact completes */}
-      {toolCall.name === 'create_artifact' && hasResult && !formattedResult?.isError && createdArtifact && (
+      {/* Artifact link - shown inline when create/update completes */}
+      {isArtifactMutationTool && hasResult && !formattedResult?.isError && linkedArtifact && (
         <div className="px-3 py-2 border-t border-border bg-bg-surface">
           <button
             onClick={handleArtifactClick}
             className="flex items-center gap-2 text-xs text-accent hover:text-accent-bright transition-colors"
           >
             <ExternalLink className="w-3 h-3" />
-            <span className="underline">{createdArtifact.title}</span>
+            <span className="underline">{artifactLinkLabel}</span>
           </button>
         </div>
       )}
-      {toolCall.name === 'create_artifact' && hasResult && !formattedResult?.isError && thumbnailDataUrl && (
+      {isArtifactMutationTool && expectsHtmlThumbnail && hasResult && !formattedResult?.isError && thumbnailDataUrl && !isThumbnailFailed && (
         <div className="px-3 pb-3 border-t border-border bg-bg-surface">
           <button
-            onClick={() => setIsThumbnailOpen(true)}
+            onClick={() => {
+              setIsPreviewFailed(false)
+              setIsThumbnailOpen(true)
+            }}
             className="mt-2 rounded border border-border overflow-hidden hover:border-accent/70 transition-colors"
             aria-label="Open artifact thumbnail preview"
           >
             <img
               src={thumbnailDataUrl}
-              alt="HTML artifact thumbnail preview"
-              className="block w-full max-w-[300px] h-auto"
+              alt={isCreateArtifactTool ? 'HTML artifact thumbnail snapshot at creation' : 'HTML artifact thumbnail snapshot after update'}
+              className="block w-full max-w-[150px] h-auto"
+              onError={() => setIsThumbnailFailed(true)}
             />
           </button>
+        </div>
+      )}
+      {isArtifactMutationTool && expectsHtmlThumbnail && hasResult && !formattedResult?.isError && (!thumbnailDataUrl || isThumbnailFailed) && (
+        <div className="px-3 pb-3 border-t border-border bg-bg-surface">
+          <div className="mt-2 rounded border border-border bg-bg-deep px-2.5 py-2 text-xs text-text-muted">
+            Thumbnail preview unavailable.
+          </div>
         </div>
       )}
 
@@ -781,17 +918,34 @@ export function SingleToolCallDisplay({
         </div>
       )}
 
-      {isThumbnailOpen && thumbnailDataUrl && (
+      {isThumbnailOpen && expandedPreviewUrl && !isThumbnailFailed && (
         <div
           className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center p-4"
           onClick={() => setIsThumbnailOpen(false)}
         >
-          <img
-            src={thumbnailDataUrl}
-            alt="Expanded HTML artifact thumbnail preview"
-            className="w-[70vw] max-h-[70vh] object-contain rounded shadow-2xl"
-            onClick={(event) => event.stopPropagation()}
-          />
+          <div className="relative" onClick={(event) => event.stopPropagation()}>
+            <button
+              type="button"
+              onClick={() => setIsThumbnailOpen(false)}
+              className="absolute -top-3 -right-3 z-10 inline-flex h-8 w-8 items-center justify-center rounded-full border border-border bg-bg-elevated text-text-secondary hover:text-text-primary hover:border-border-strong transition-colors"
+              aria-label="Close preview"
+            >
+              <X className="w-4 h-4" />
+            </button>
+            <img
+              src={expandedPreviewUrl}
+              alt="Expanded HTML artifact thumbnail preview"
+              className="max-w-[90vw] max-h-[85vh] object-contain rounded shadow-2xl"
+              onError={() => {
+                if (!isPreviewFailed && previewDataUrl && thumbnailDataUrl && previewDataUrl !== thumbnailDataUrl) {
+                  setIsPreviewFailed(true)
+                  return
+                }
+                setIsThumbnailFailed(true)
+                setIsThumbnailOpen(false)
+              }}
+            />
+          </div>
         </div>
       )}
     </div>

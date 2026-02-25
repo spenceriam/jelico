@@ -21,6 +21,21 @@ export interface ChangelogEntry {
 
 export const changelog: ChangelogEntry[] = [
   {
+    version: '0.33.3',
+    date: '2026-02-25',
+    changes: {
+      fixed: [
+        'Chat attachment image previews now render reliably across common MIME/extension mismatches and malformed image payloads (Fixes #83)',
+        'HTML artifact thumbnail capture now waits for render settle, targets the primary visual surface, and preserves a higher-fidelity expandable preview',
+        'Artifact create/update preview cards now use a compact thumbnail, explicit close control, and safer fallback behavior when preview payloads fail to decode',
+        'Turn completion now validates artifact/file mutation claims against successful tool evidence and retries silently once before surfacing failure',
+      ],
+      changed: [
+        'Tool-call thumbnail previews now include update_artifact snapshots in addition to create_artifact output',
+      ],
+    },
+  },
+  {
     version: '0.33.2',
     date: '2026-02-24',
     changes: {

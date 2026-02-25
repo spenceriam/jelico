@@ -61,7 +61,7 @@ Jelico is a local-first AI desktop assistant. A native app where you chat with A
 
 The Soul/Memory system should make Jelico increasingly personalized - it learns YOUR coding style, YOUR preferences, YOUR common mistakes. Every conversation teaches it to help YOU better.
 
-**Current Status:** Soul/Memory systems exist but need verification that they're properly injected into AI prompts. Recent stability work also hardened end-of-turn summary finalization to prevent duplicate wrap-up blocks.
+**Current Status:** Soul/Memory systems exist but need verification that they're properly injected into AI prompts. Recent stability work hardened end-of-turn finalization, and artifact/chat image previews now include improved capture reliability plus deterministic mutation-evidence validation.
 
 ## Setup commands
 - Install dependencies: `npm install`
@@ -73,7 +73,7 @@ The Soul/Memory system should make Jelico increasingly personalized - it learns 
 ## Project overview
 Jelico is an AI Productivity Desktop built with Electron, React, TypeScript, and Vite. It provides a frictionless AI assistant experience with multi-provider support (Anthropic, OpenAI, Google), workspace management, conversation persistence, and a soul/memory system that learns user patterns and preferences over time.
 
-**Current Version:** 0.33.2
+**Current Version:** 0.33.3
 
 **License:** GNU General Public License v3.0 (GPL-3.0-or-later)
 - See LICENSE file in project root

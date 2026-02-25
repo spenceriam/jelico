@@ -540,13 +540,104 @@ export async function artifactTestWaitFor(input: {
 
 interface ArtifactTestScreenshotOptions {
   thumbWidth?: number
+  waitMs?: number
+}
+
+interface CaptureRect {
+  x: number
+  y: number
+  width: number
+  height: number
+}
+
+async function getPreferredCaptureRect(session: ArtifactTestSession): Promise<CaptureRect | null> {
+  try {
+    const rect = await executeInSession<CaptureRect | null>(session, `
+(() => {
+  const viewportWidth = window.innerWidth || document.documentElement.clientWidth || 0
+  const viewportHeight = window.innerHeight || document.documentElement.clientHeight || 0
+  if (!viewportWidth || !viewportHeight) return null
+
+  const minArea = Math.max(120 * 120, Math.floor(viewportWidth * viewportHeight * 0.08))
+
+  const toNumber = (value) => {
+    const parsed = Number(value)
+    return Number.isFinite(parsed) ? parsed : 0
+  }
+
+  const isVisible = (el) => {
+    const style = window.getComputedStyle(el)
+    if (style.display === 'none' || style.visibility === 'hidden') return false
+    if (toNumber(style.opacity) === 0) return false
+    return true
+  }
+
+  const clampRect = (rect) => {
+    const left = Math.max(0, Math.floor(rect.left))
+    const top = Math.max(0, Math.floor(rect.top))
+    const right = Math.min(viewportWidth, Math.ceil(rect.right))
+    const bottom = Math.min(viewportHeight, Math.ceil(rect.bottom))
+    const width = right - left
+    const height = bottom - top
+    if (width < 80 || height < 80) return null
+    return { x: left, y: top, width, height }
+  }
+
+  const canvases = Array.from(document.querySelectorAll('canvas'))
+  let best = null
+
+  for (const canvas of canvases) {
+    if (!(canvas instanceof Element)) continue
+    if (!isVisible(canvas)) continue
+
+    const clamped = clampRect(canvas.getBoundingClientRect())
+    if (!clamped) continue
+
+    const area = clamped.width * clamped.height
+    if (area < minArea) continue
+
+    if (!best || area > best.area) {
+      best = { ...clamped, area }
+    }
+  }
+
+  if (!best) return null
+
+  const pad = 12
+  const x = Math.max(0, best.x - pad)
+  const y = Math.max(0, best.y - pad)
+  const right = Math.min(viewportWidth, best.x + best.width + pad)
+  const bottom = Math.min(viewportHeight, best.y + best.height + pad)
+
+  const width = Math.max(1, right - x)
+  const height = Math.max(1, bottom - y)
+  return { x, y, width, height }
+})()
+`)
+
+    if (!rect) return null
+    if (rect.width <= 0 || rect.height <= 0) return null
+    return rect
+  } catch {
+    return null
+  }
 }
 
 export async function artifactTestScreenshot(sessionId: string, options: ArtifactTestScreenshotOptions = {}) {
   const session = getSession(sessionId)
   if (!session) return { success: false, error: `Session not found: ${sessionId}` }
 
-  const image = await session.win.webContents.capturePage()
+  // Let the page settle before capture so dynamic UIs are fully painted.
+  const requestedWaitMs = Math.round(options.waitMs ?? 1200)
+  const waitMs = Math.max(0, Math.min(5000, Number.isFinite(requestedWaitMs) ? requestedWaitMs : 1200))
+  if (waitMs > 0) {
+    await new Promise((resolve) => setTimeout(resolve, waitMs))
+  }
+
+  const preferredRect = await getPreferredCaptureRect(session)
+  const image = preferredRect
+    ? await session.win.webContents.capturePage(preferredRect)
+    : await session.win.webContents.capturePage()
   const png = image.toPNG()
   const outputPath = path.join(app.getPath('temp'), `jelico-artifact-test-${sessionId}-${Date.now()}.png`)
   await fs.writeFile(outputPath, png)
@@ -563,6 +654,10 @@ export async function artifactTestScreenshot(sessionId: string, options: Artifac
     path: outputPath,
     width: size.width,
     height: size.height,
+    previewBase64: png.toString('base64'),
+    previewMimeType: 'image/png',
+    previewWidth: size.width,
+    previewHeight: size.height,
     thumbnailBase64: thumbnailJpeg,
     thumbnailMimeType: 'image/jpeg',
     thumbnailWidth: thumbnailSize.width,
