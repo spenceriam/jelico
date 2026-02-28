@@ -2,6 +2,14 @@
 
 All notable changes to Jelico are documented in this file.
 
+## [0.33.6] - 2026-02-28
+
+### Fixed
+- **Streaming Message Order** — Assistant progress text now appears in the right chronological order with tool activity instead of being delayed and dumped as a late block under completed actions.
+
+### Changed
+- **Live Response Flow** — Buffering for completion-sensitive turns is now limited to validation-retry paths, so normal turns stream naturally while tools run.
+
 ## [0.33.5] - 2026-02-28
 
 ### Fixed
