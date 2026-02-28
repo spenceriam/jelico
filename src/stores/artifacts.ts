@@ -161,11 +161,26 @@ export const useArtifactStore = create<ArtifactStore>((set, get) => ({
 
       if (row) {
         const updatedArtifact = rowToArtifact(row)
-        set((state) => ({
-          artifacts: state.artifacts.map((a) =>
-            a.id === id ? updatedArtifact : a
-          ),
-        }))
+        const updatedBaseId = updatedArtifact.baseArtifactId || updatedArtifact.id
+        set((state) => {
+          const selectedArtifact = state.artifacts.find((artifact) => artifact.id === state.selectedArtifactId)
+          const selectedBaseId = selectedArtifact ? (selectedArtifact.baseArtifactId || selectedArtifact.id) : null
+          const shouldSelectUpdatedArtifact =
+            state.selectedArtifactId === id ||
+            state.selectedRevisionId === id ||
+            selectedBaseId === updatedBaseId
+
+          const remainingArtifacts = state.artifacts.filter((artifact) => {
+            const artifactBaseId = artifact.baseArtifactId || artifact.id
+            return artifact.id !== id && artifactBaseId !== updatedBaseId
+          })
+
+          return {
+            artifacts: [...remainingArtifacts, updatedArtifact],
+            selectedArtifactId: shouldSelectUpdatedArtifact ? updatedArtifact.id : state.selectedArtifactId,
+            selectedRevisionId: shouldSelectUpdatedArtifact ? null : state.selectedRevisionId,
+          }
+        })
       }
     } catch (error) {
       console.error('Failed to update artifact:', error)

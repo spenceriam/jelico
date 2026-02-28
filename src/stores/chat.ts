@@ -1168,12 +1168,26 @@ export const useChatStore = create<ChatStore>((set, get) => ({
     let lastChunkTime: number | null = null
     const inlineToolProtocolFilter = createInlineToolProtocolFilter()
 
+    const flattenTextFromSegments = (segments: StreamingSegment[]): string => {
+      let output = ''
+      for (const segment of segments) {
+        if (segment.type !== 'text' || !segment.content) continue
+        if (!output) {
+          output = segment.content
+          continue
+        }
+        const needsSeparator = !/[\s\n]$/.test(output) && !/^\s/.test(segment.content)
+        output += needsSeparator ? `\n\n${segment.content}` : segment.content
+      }
+      return output
+    }
+
     const appendStreamTextChunk = (chunk: string) => {
-      fullContent += chunk
       updateConversationStreamState((current) => {
         // Find or create the current text segment
         const segments = [...current.streamingSegments]
         const lastSegment = segments[segments.length - 1]
+        let nextStreamingContent = fullContent
 
         if (lastSegment?.type === 'text') {
           // Append to existing text segment
@@ -1181,14 +1195,21 @@ export const useChatStore = create<ChatStore>((set, get) => ({
             type: 'text',
             content: lastSegment.content + chunk,
           }
+          nextStreamingContent += chunk
         } else {
           // Create new text segment (first text, or text after a tool)
           segments.push({ type: 'text', content: chunk })
+          const needsSeparator =
+            nextStreamingContent.length > 0 &&
+            !/[\s\n]$/.test(nextStreamingContent) &&
+            !/^\s/.test(chunk)
+          nextStreamingContent += needsSeparator ? `\n\n${chunk}` : chunk
         }
+        fullContent = nextStreamingContent
 
         return {
           ...current,
-          streamingContent: fullContent,
+          streamingContent: nextStreamingContent,
           streamingSegments: segments,
         }
       })
@@ -1237,9 +1258,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
           toolCallId: tc.id,
         }))
 
-        const nextStreamingContent = segments.reduce((acc, seg) => {
-          return seg.type === 'text' ? acc + seg.content : acc
-        }, '')
+        const nextStreamingContent = flattenTextFromSegments(segments)
         fullContent = nextStreamingContent
 
         return {
@@ -1931,6 +1950,29 @@ export const useChatStore = create<ChatStore>((set, get) => ({
   },
 
   deleteConversation: async (id) => {
+    const wasActiveConversation = get().activeConversationId === id
+
+    // Optimistically clear active conversation state before slower delete work so
+    // the composer immediately returns to a clean, editable new-chat state.
+    if (wasActiveConversation) {
+      set((state) => {
+        const { [id]: _removedStream, ...restStreams } = state.conversationStreams
+        const { [id]: _removedInterrupted, ...restInterrupted } = state.interruptedConversations
+        return {
+          activeConversationId: null,
+          messages: [],
+          conversationStreams: restStreams,
+          interruptedConversations: restInterrupted,
+          ...projectStreamStateToActiveFields(createEmptyConversationStreamState()),
+          error: null,
+        }
+      })
+      useTodoStore.getState().setConversationId(null)
+      useClarificationStore.getState().setConversationId(null)
+      useArtifactStore.getState().clearStreamingPreview()
+      useArtifactStore.getState().closeCanvas()
+    }
+
     try {
       const streamChannelId = streamChannelByConversation.get(id)
       if (streamChannelId) {
@@ -1955,23 +1997,9 @@ export const useChatStore = create<ChatStore>((set, get) => ({
 
       await window.jelico.conversations.delete(id)
       const conversations = await window.jelico.conversations.list()
-      const { activeConversationId } = get()
 
-      if (activeConversationId === id) {
-        // Clear all state when deleting the active conversation
-        const { [id]: _removedStream, ...restStreams } = get().conversationStreams
-        const { [id]: _removedInterrupted, ...restInterrupted } = get().interruptedConversations
-        set({
-          conversations,
-          activeConversationId: null,
-          messages: [],
-          conversationStreams: restStreams,
-          interruptedConversations: restInterrupted,
-          ...projectStreamStateToActiveFields(createEmptyConversationStreamState()),
-          error: null,
-        })
-        useTodoStore.getState().setConversationId(null)
-        useClarificationStore.getState().setConversationId(null)
+      if (wasActiveConversation) {
+        set({ conversations })
       } else {
         set((state) => {
           const { [id]: _removedStream, ...restStreams } = state.conversationStreams

@@ -189,6 +189,53 @@ function didToolExecutionFail(exec: ToolExecution): boolean {
   return false
 }
 
+function getToolExecutionErrorMessage(exec: ToolExecution): string | null {
+  if (exec.error && exec.error.trim()) {
+    return normalizeMessageSnippet(exec.error)
+  }
+
+  const result = exec.result
+  if (!result || typeof result !== 'object') return null
+
+  const payload = result as Record<string, unknown>
+
+  if (typeof payload.error === 'string' && payload.error.trim()) {
+    return normalizeMessageSnippet(payload.error)
+  }
+
+  if (payload.error && typeof payload.error === 'object') {
+    const errObj = payload.error as Record<string, unknown>
+    const code = typeof errObj.code === 'string' ? errObj.code.trim() : ''
+    const message = typeof errObj.message === 'string' ? errObj.message.trim() : ''
+    if (code && message) return normalizeMessageSnippet(`${code}: ${message}`)
+    if (message) return normalizeMessageSnippet(message)
+    if (code) return normalizeMessageSnippet(code)
+    try {
+      return normalizeMessageSnippet(JSON.stringify(errObj))
+    } catch {
+      return 'Unknown error payload'
+    }
+  }
+
+  if (payload.success === false && typeof payload.message === 'string' && payload.message.trim()) {
+    return normalizeMessageSnippet(payload.message)
+  }
+
+  return null
+}
+
+function formatToolFailureDetail(exec: ToolExecution): string {
+  const label = getUserFacingToolLabel(exec.name)
+  const rawMessage = getToolExecutionErrorMessage(exec) || 'Unknown error'
+  const pathArg = typeof exec.args.path === 'string' ? exec.args.path.trim() : ''
+
+  if (pathArg && /enoent/i.test(rawMessage)) {
+    return `${label}: path not found (${truncateSnippet(pathArg, 80)}).`
+  }
+
+  return `${label}: ${truncateSnippet(rawMessage, 180)}`
+}
+
 function buildDeterministicTurnWrapUp(params: {
   meaningfulExecutions: ToolExecution[]
   usedSubAgents: boolean
@@ -196,17 +243,47 @@ function buildDeterministicTurnWrapUp(params: {
   hasOrphanedResults: boolean
 }): string {
   const lines: string[] = ['## Summary']
-  const uniqueActionLabels = Array.from(new Set(
-    params.meaningfulExecutions.map(exec => getUserFacingToolLabel(exec.name))
-  ))
-  const failedActionLabels = Array.from(new Set(
-    params.meaningfulExecutions
-      .filter(didToolExecutionFail)
-      .map(exec => getUserFacingToolLabel(exec.name))
-  ))
+  const actionSummaryMap = new Map<string, {
+    label: string
+    total: number
+    succeeded: number
+    failed: number
+    failedExecutions: ToolExecution[]
+  }>()
 
-  if (uniqueActionLabels.length > 0) {
-    lines.push(`Completed requested actions: ${formatNaturalList(uniqueActionLabels)}.`)
+  for (const exec of params.meaningfulExecutions) {
+    const label = getUserFacingToolLabel(exec.name)
+    const existing = actionSummaryMap.get(label) || {
+      label,
+      total: 0,
+      succeeded: 0,
+      failed: 0,
+      failedExecutions: [],
+    }
+    existing.total += 1
+    if (didToolExecutionFail(exec)) {
+      existing.failed += 1
+      existing.failedExecutions.push(exec)
+    } else {
+      existing.succeeded += 1
+    }
+    actionSummaryMap.set(label, existing)
+  }
+
+  const actionSummaries = Array.from(actionSummaryMap.values())
+  const successFragments = actionSummaries
+    .filter(summary => summary.succeeded > 0)
+    .map((summary) => {
+      if (summary.failed > 0) {
+        return `${summary.label} (${summary.succeeded} succeeded, ${summary.failed} failed)`
+      }
+      return `${summary.label} (${summary.succeeded} succeeded)`
+    })
+
+  if (successFragments.length > 0) {
+    lines.push(`Completed requested actions: ${formatNaturalList(successFragments)}.`)
+  } else if (actionSummaries.length > 0) {
+    lines.push('No requested actions completed successfully for this turn.')
   } else if (params.usedSubAgents) {
     lines.push('Completed the requested helper-agent work for this turn.')
   } else {
@@ -224,8 +301,28 @@ function buildDeterministicTurnWrapUp(params: {
     lines.push(`Artifacts created: ${artifactLine}. You can open them in the Canvas panel.`)
   }
 
-  if (failedActionLabels.length > 0) {
-    lines.push(`Some actions reported errors: ${formatNaturalList(failedActionLabels)}. I can retry those steps if you want.`)
+  const failedSummaries = actionSummaries.filter(summary => summary.failed > 0)
+  if (failedSummaries.length > 0) {
+    const failedActionFragments = failedSummaries.map(
+      summary => `${summary.label} (${summary.failed} failed)`
+    )
+    lines.push(`Some actions reported errors: ${formatNaturalList(failedActionFragments)}.`)
+
+    const failureDetails = failedSummaries
+      .flatMap(summary => summary.failedExecutions)
+      .slice(0, 3)
+      .map(formatToolFailureDetail)
+
+    if (failureDetails.length > 0) {
+      lines.push(`Key error details:\n${failureDetails.map(detail => `- ${detail}`).join('\n')}`)
+    }
+
+    const totalFailedCalls = failedSummaries.reduce((count, summary) => count + summary.failed, 0)
+    if (totalFailedCalls > failureDetails.length) {
+      lines.push(`Additional failed calls: ${totalFailedCalls - failureDetails.length}.`)
+    }
+
+    lines.push('I can retry the failed steps if you want.')
   } else {
     lines.push('All requested actions completed successfully.')
   }
@@ -264,6 +361,8 @@ interface TurnValidationResult {
   requiresArtifactEvidence: boolean
   requiresFileEvidence: boolean
 }
+
+type RequestComplexity = 'small' | 'medium' | 'large'
 
 function normalizeMessageContent(content: unknown): string {
   if (typeof content === 'string') return content
@@ -332,6 +431,117 @@ function claimsArtifactMutation(text: string): boolean {
 
 function claimsFileMutation(text: string): boolean {
   return FILE_COMPLETION_CLAIM_REGEX.test(text)
+}
+
+function classifyExecutionRequestComplexity(params: {
+  latestUserText: string
+  expectedArtifactMutation: boolean
+  expectedFileMutation: boolean
+}): RequestComplexity {
+  const rawText = params.latestUserText || ''
+  const text = normalizeMessageSnippet(rawText)
+  if (!text) return 'small'
+
+  const wordCount = text.split(/\s+/).filter(Boolean).length
+  const coordinationCount = (text.match(/\b(and|with|plus|also|then|must|include|including|while)\b/gi) || []).length
+  const hasStructuredList = /(?:\n\s*[-*]|\n\s*\d+[.)]|\b(first|second|third|then|after that)\b)/i.test(rawText)
+  const hasBroadScope = /\b(full|complete|from scratch|end-to-end|entire|all|comprehensive|multiple)\b/i.test(text)
+  const mutationRequested = params.expectedArtifactMutation || params.expectedFileMutation
+
+  let score = 0
+  if (mutationRequested) score += 2
+  if (wordCount >= 45) score += 2
+  else if (wordCount >= 20) score += 1
+  if (coordinationCount >= 4) score += 2
+  else if (coordinationCount >= 2) score += 1
+  if (hasStructuredList) score += 2
+  if (hasBroadScope) score += 1
+
+  if (score >= 6) return 'large'
+  if (score >= 3) return 'medium'
+  return 'small'
+}
+
+function extractKickoffActionPhrase(rawText: string): string | null {
+  let text = normalizeMessageSnippet(rawText || '')
+  if (!text) return null
+
+  text = text.replace(/^(can you|could you|would you|please|i need you to|i want you to|help me(?:\s+to)?|let['’]s|lets|try to)\s+/i, '')
+  text = text.replace(/^to\s+/i, '')
+  text = text.split(/[.!?]/)[0] || text
+  text = text.split(/\b(must|including|also|then|after that)\b/i)[0] || text
+  text = text.split(/[;:]/)[0] || text
+  text = text.replace(/[.?!]+$/g, '').trim()
+  if (!text) return null
+
+  const words = text.split(/\s+/).filter(Boolean)
+  if (words.length > 14) {
+    text = words.slice(0, 14).join(' ')
+  }
+
+  const lowered = text.toLowerCase()
+  if (lowered.startsWith('i ') || lowered.startsWith('we ') || lowered.startsWith('you ')) {
+    return null
+  }
+
+  return truncateSnippet(text, 90)
+}
+
+function buildTaskAwareKickoffText(params: {
+  latestUserText: string
+  requestComplexity: RequestComplexity
+}): string {
+  const actionPhrase = extractKickoffActionPhrase(params.latestUserText)
+  const action = actionPhrase
+    ? actionPhrase.charAt(0).toLowerCase() + actionPhrase.slice(1)
+    : null
+
+  if (params.requestComplexity === 'large') {
+    return action
+      ? `I will ${action} in clear steps and share progress as I go.\n\n`
+      : 'I will break this into clear steps and share progress as I go.\n\n'
+  }
+
+  if (params.requestComplexity === 'medium') {
+    return action
+      ? `I will ${action} in a few focused steps and keep updates concise.\n\n`
+      : 'I will work through this in a few focused steps and keep updates concise.\n\n'
+  }
+
+  return action
+    ? `I will ${action}.\n\n`
+    : 'I will handle this now.\n\n'
+}
+
+function normalizeKickoffLineForCompare(value: string): string {
+  return normalizeMessageSnippet(value)
+    .replace(/[^\w\s]/g, '')
+    .toLowerCase()
+}
+
+function stripLeadingKickoffIfDuplicated(content: string, kickoffTextTemplate: string): string {
+  if (!content || !content.trim()) return content
+
+  const lines = content.split(/\r?\n/)
+  const firstNonEmptyIndex = lines.findIndex((line) => !!line.trim())
+  if (firstNonEmptyIndex === -1) return content
+
+  const firstLine = lines[firstNonEmptyIndex].trim()
+  const kickoffFirstLine = normalizeMessageSnippet(kickoffTextTemplate).split('\n')[0]?.trim() || ''
+  const normalizedFirstLine = normalizeKickoffLineForCompare(firstLine)
+  const normalizedKickoff = normalizeKickoffLineForCompare(kickoffFirstLine)
+
+  const looksLikeGenericKickoff = /^(starting now|i will|i'll|let me)\b/i.test(firstLine)
+  const isDuplicateKickoff =
+    !!normalizedKickoff &&
+    (normalizedFirstLine === normalizedKickoff || normalizedFirstLine.startsWith(normalizedKickoff))
+
+  if (!isDuplicateKickoff && !looksLikeGenericKickoff) return content
+
+  let start = firstNonEmptyIndex + 1
+  while (start < lines.length && !lines[start].trim()) start += 1
+  const remaining = lines.slice(start).join('\n').trimStart()
+  return remaining || content
 }
 
 function wasExecutionSuccessful(exec: ToolExecution): boolean {
@@ -605,6 +815,79 @@ function normalizeMessageSnippet(value: string): string {
 function truncateSnippet(value: string, max: number = 160): string {
   if (value.length <= max) return value
   return `${value.slice(0, Math.max(0, max - 3)).trimEnd()}...`
+}
+
+function stripLeadingPlanPrefaceIfDuplicated(content: string): string {
+  if (!content || !content.trim()) return content
+
+  const lines = content.split(/\r?\n/)
+  if (lines.length === 0) return content
+
+  const isPrefaceLine = (value: string) => {
+    const normalized = normalizeMessageSnippet(value).toLowerCase()
+    if (!normalized) return true
+    return (
+      normalized.startsWith('i will ') ||
+      normalized.startsWith('i can ') ||
+      normalized.startsWith('i am ') ||
+      normalized.startsWith("i'm ") ||
+      normalized.startsWith('let me ') ||
+      normalized.startsWith('here is the plan') ||
+      normalized.startsWith("here's the plan") ||
+      normalized.startsWith('alright ')
+    )
+  }
+
+  let i = 0
+  while (i < lines.length && !lines[i].trim()) i += 1
+  if (i >= lines.length) return content
+
+  let consumedAny = false
+  let consumedPreface = false
+  while (i < lines.length && isPrefaceLine(lines[i])) {
+    consumedAny = true
+    consumedPreface = true
+    i += 1
+  }
+
+  while (i < lines.length && !lines[i].trim()) {
+    consumedAny = true
+    i += 1
+  }
+
+  let sawPlanHeading = false
+  if (i < lines.length && /^plan:?$/i.test(lines[i].trim())) {
+    sawPlanHeading = true
+    consumedAny = true
+    i += 1
+  }
+
+  let planLineCount = 0
+  while (i < lines.length) {
+    const trimmed = lines[i].trim()
+    if (!trimmed) {
+      consumedAny = true
+      i += 1
+      continue
+    }
+
+    if (/^\d+[.)]\s+/.test(trimmed) || /^[-*]\s+/.test(trimmed)) {
+      planLineCount += 1
+      consumedAny = true
+      i += 1
+      continue
+    }
+
+    break
+  }
+
+  // Only strip when we are confident this is a repeated preface/plan block.
+  if (!consumedAny) return content
+  if (!consumedPreface && !sawPlanHeading) return content
+  if (planLineCount < 2) return content
+
+  const remaining = lines.slice(i).join('\n').trimStart()
+  return remaining || content
 }
 
 function truncateFetchedContent(text: string, maxLength: number = 15000): string {
@@ -3272,8 +3555,18 @@ If you find yourself frequently hitting limits, suggest breaking the task into m
       const hasExistingArtifacts = existingArtifactCount > 0
       const expectedArtifactMutation = isLikelyArtifactMutationRequest(latestUserText, hasExistingArtifacts)
       const expectedFileMutation = isLikelyFileMutationRequest(latestUserText)
+      const requestComplexity = classifyExecutionRequestComplexity({
+        latestUserText,
+        expectedArtifactMutation,
+        expectedFileMutation,
+      })
+      const kickoffTextTemplate = buildTaskAwareKickoffText({
+        latestUserText,
+        requestComplexity,
+      })
       let completionValidationRepairAttempts = 0
       let pendingCompletionRepairDirective = ''
+      let kickoffSentInThisTurn = false
 
       // Retry loop for transient errors
       let lastError: any = null
@@ -3351,16 +3644,80 @@ If you find yourself frequently hitting limits, suggest breaking the task into m
           let totalStreamedTextLength = 0  // Track total text generated to prevent duplicate fallback text
           let streamedTextTail = '' // Track tail for spacing decisions
           let hadMeaningfulToolActivity = false
+          let hasVisibleAssistantOutput = false
+          let hasModelTextOutput = false
+          let emittedToolKickoffText = kickoffSentInThisTurn
+          let emittedTodoPlanPreview = false
           let assistantTextForValidation = ''
           const bufferedAssistantChunks: string[] = []
-          const emitAssistantChunk = (chunk: string) => {
+          let bufferedToolBoundaryPending = false
+          const emitAssistantChunk = (chunk: string, options?: { bypassBuffer?: boolean }) => {
             if (!chunk) return
             assistantTextForValidation += chunk
-            if (shouldBufferCompletionSensitiveText) {
-              bufferedAssistantChunks.push(chunk)
+            const shouldBufferChunk = shouldBufferCompletionSensitiveText && !options?.bypassBuffer
+            if (shouldBufferChunk) {
+              let bufferedChunk = chunk
+              if (bufferedToolBoundaryPending && bufferedAssistantChunks.length > 0) {
+                const lastBufferedChunk = bufferedAssistantChunks[bufferedAssistantChunks.length - 1] || ''
+                const needsSeparator = !/[\s\n]$/.test(lastBufferedChunk) && !/^\s/.test(bufferedChunk)
+                if (needsSeparator) {
+                  bufferedChunk = `\n\n${bufferedChunk}`
+                }
+              }
+              bufferedAssistantChunks.push(bufferedChunk)
+              bufferedToolBoundaryPending = false
               return
             }
             event.sender.send(`ai:chunk:${channelId}`, chunk)
+            hasVisibleAssistantOutput = true
+          }
+          const emitImmediateAssistantText = (chunk: string) => {
+            if (!chunk) return
+            emitAssistantChunk(chunk, { bypassBuffer: true })
+            textAfterLastMeaningfulAction += chunk
+            totalStreamedTextLength += chunk.length
+            streamedTextTail = (streamedTextTail + chunk).slice(-4)
+          }
+          const emitToolKickoffIfNeeded = () => {
+            if (emittedToolKickoffText || hasVisibleAssistantOutput) return
+
+            emitImmediateAssistantText(kickoffTextTemplate)
+            emittedToolKickoffText = true
+            kickoffSentInThisTurn = true
+          }
+          const emitTodoPlanPreviewIfNeeded = (toolName: string, toolArgs: Record<string, unknown>) => {
+            if (emittedTodoPlanPreview || hasModelTextOutput) return
+            if (requestComplexity === 'small') return
+            if (toolName !== 'todo_write') return
+
+            const rawTasks = Array.isArray(toolArgs.tasks) ? toolArgs.tasks : []
+            const taskTexts = rawTasks
+              .map((task) => {
+                if (!task || typeof task !== 'object') return ''
+                const taskObj = task as Record<string, unknown>
+                return typeof taskObj.text === 'string' ? normalizeMessageSnippet(taskObj.text) : ''
+              })
+              .filter((text) => !!text)
+
+            const minTasksForPreview = requestComplexity === 'large' ? 2 : 3
+            if (taskTexts.length < minTasksForPreview) return
+
+            // Show the full plan for normal-sized task lists so users get complete
+            // upfront context. Only truncate when the list is unusually long.
+            const previewCount = Math.min(taskTexts.length, 20)
+            const lines = taskTexts
+              .slice(0, previewCount)
+              .map((task, idx) => `${idx + 1}. ${truncateSnippet(task, 84)}`)
+
+            const extraCount = taskTexts.length - previewCount
+            const extraLine = extraCount > 0
+              ? `\n...plus ${extraCount} more step${extraCount === 1 ? '' : 's'}.`
+              : ''
+
+            const heading = 'Plan:'
+            const previewText = `${heading}\n${lines.join('\n')}${extraLine}\n\n`
+            emitImmediateAssistantText(previewText)
+            emittedTodoPlanPreview = true
           }
 
           // Track current tool receiving input (for progress display AND accumulation)
@@ -3372,6 +3729,14 @@ If you find yourself frequently hitting limits, suggest breaking the task into m
 
           // Track think tag state for Minimax and other providers
           let thinkState = { inThink: false, buffer: '' }
+
+          // For completion-sensitive turns (artifact/file mutation), emit kickoff early so
+          // users always see intent text before any tool activity appears.
+          if (shouldBufferCompletionSensitiveText) {
+            emitImmediateAssistantText(kickoffTextTemplate)
+            emittedToolKickoffText = true
+            kickoffSentInThisTurn = true
+          }
 
           for await (const part of result.fullStream) {
             if (abortController.signal.aborted) break
@@ -3398,6 +3763,7 @@ If you find yourself frequently hitting limits, suggest breaking the task into m
                   thinkState = newThinkState
                   
                   if (cleanedChunk) {
+                    hasModelTextOutput = true
                     emitAssistantChunk(cleanedChunk)
                     textAfterLastMeaningfulAction += cleanedChunk
                     totalStreamedTextLength += cleanedChunk.length  // Track total to prevent duplicate sending
@@ -3436,6 +3802,7 @@ If you find yourself frequently hitting limits, suggest breaking the task into m
                 break
 
               case 'tool-input-start': {
+                bufferedToolBoundaryPending = true
                 // Reset accumulator when a new tool input starts
                 accumulatedToolInput = ''
                 toolInputCharCount = 0
@@ -3450,6 +3817,7 @@ If you find yourself frequently hitting limits, suggest breaking the task into m
                 if (startToolId) {
                   currentToolInputId = startToolId
                 }
+                emitToolKickoffIfNeeded()
 
                 // Emit a tool call early so UI shows it before tool input progress
                 if (startToolId) {
@@ -3484,6 +3852,7 @@ If you find yourself frequently hitting limits, suggest breaking the task into m
               }
 
               case 'tool-input-end': {
+                bufferedToolBoundaryPending = true
                 // Check if the tool-input-end event includes the full input
                 const anyPart = part as any
                 const endInput = anyPart.input || anyPart.args || anyPart.arguments || anyPart.toolInput || anyPart.function?.arguments
@@ -3573,6 +3942,7 @@ If you find yourself frequently hitting limits, suggest breaking the task into m
               }
 
               case 'tool-call-streaming-start': {
+                bufferedToolBoundaryPending = true
                 // Validate required properties
                 const toolCallId = part.toolCallId || (part as any).id
                 const toolName = part.toolName || (part as any).name || 'unknown_tool'
@@ -3581,6 +3951,7 @@ If you find yourself frequently hitting limits, suggest breaking the task into m
                   console.warn('[AI] tool-call-streaming-start missing toolCallId:', part)
                   break
                 }
+                emitToolKickoffIfNeeded()
 
                 // Track this as the current tool receiving input
                 currentToolInputId = toolCallId
@@ -3612,6 +3983,7 @@ If you find yourself frequently hitting limits, suggest breaking the task into m
               }
 
               case 'tool-call': {
+                bufferedToolBoundaryPending = true
                 // Validate and extract properties with fallbacks
                 const tcToolCallId = part.toolCallId || (part as any).id
                 const tcToolName = part.toolName || (part as any).name || 'unknown_tool'
@@ -3620,6 +3992,7 @@ If you find yourself frequently hitting limits, suggest breaking the task into m
                   console.warn('[AI] tool-call missing toolCallId:', part)
                   break
                 }
+                emitToolKickoffIfNeeded()
 
                 // Get args from multiple sources - different providers put them in different places
                 // Also check function.arguments which is OpenAI's format
@@ -3654,6 +4027,7 @@ If you find yourself frequently hitting limits, suggest breaking the task into m
                 }
 
                 toolArgs = toolArgs || {}
+                emitTodoPlanPreviewIfNeeded(tcToolName, toolArgs as Record<string, unknown>)
 
                 // Clear tool input tracking - the tool is now complete
                 currentToolInputId = null
@@ -3696,6 +4070,7 @@ If you find yourself frequently hitting limits, suggest breaking the task into m
               }
 
               case 'tool-result': {
+                bufferedToolBoundaryPending = true
                 const trToolCallId = part.toolCallId || (part as any).id
                 const toolResult = (part as any).output || (part as any).result || (part as any).content
 
@@ -3737,6 +4112,7 @@ If you find yourself frequently hitting limits, suggest breaking the task into m
                 break
 
               case 'tool-error': {
+                bufferedToolBoundaryPending = true
                 // Tool execution failed - log the error details
                 const teToolCallId = part.toolCallId || (part as any).id
                 const toolError = (part as any).error || (part as any).message
@@ -4010,7 +4386,16 @@ If you find yourself frequently hitting limits, suggest breaking the task into m
           pendingCompletionRepairDirective = ''
 
           if (!abortController.signal.aborted && shouldBufferCompletionSensitiveText && bufferedAssistantChunks.length > 0) {
-            event.sender.send(`ai:chunk:${channelId}`, bufferedAssistantChunks.join(''))
+            let bufferedText = bufferedAssistantChunks.join('')
+            if (emittedToolKickoffText) {
+              bufferedText = stripLeadingKickoffIfDuplicated(bufferedText, kickoffTextTemplate)
+            }
+            if (emittedTodoPlanPreview) {
+              bufferedText = stripLeadingPlanPrefaceIfDuplicated(bufferedText)
+            }
+            if (bufferedText.trim()) {
+              event.sender.send(`ai:chunk:${channelId}`, bufferedText)
+            }
           }
 
           const totalTokens = promptTokens + completionTokens

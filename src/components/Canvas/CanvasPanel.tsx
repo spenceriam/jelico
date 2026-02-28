@@ -1,5 +1,5 @@
 import { X, FileCode, FileText, Image, Presentation, ChevronLeft, ChevronRight, ChevronDown, File, History, FolderOpen, Trash2 } from 'lucide-react'
-import { useState, useRef, useEffect } from 'react'
+import { useState, useRef, useEffect, useCallback } from 'react'
 import { useArtifactStore, type Artifact, type ArtifactType } from '../../stores/artifacts'
 import { useChatStore } from '../../stores/chat'
 import { CodeViewer } from './CodeViewer'
@@ -123,6 +123,7 @@ export function CanvasPanel() {
   const [revisions, setRevisions] = useState<Artifact[]>([])
   const dropdownRef = useRef<HTMLDivElement>(null)
   const revisionDropdownRef = useRef<HTMLDivElement>(null)
+  const revisionsRequestRef = useRef(0)
 
   // Filter artifacts to current conversation
   const conversationArtifacts = activeConversationId
@@ -149,15 +150,36 @@ export function CanvasPanel() {
     }
   }, [activeConversationId, selectedArtifact?.conversationId, conversationArtifacts.length, selectArtifact])
 
-  // Load revisions when artifact changes
+  // Load revisions when selected artifact identity/content changes
   useEffect(() => {
-    if (selectedArtifact) {
-      const baseId = getBaseArtifactId(selectedArtifact)
-      getRevisions(baseId).then(setRevisions)
-    } else {
+    if (!selectedArtifact) {
+      revisionsRequestRef.current += 1
       setRevisions([])
+      return
     }
-  }, [selectedArtifact, getBaseArtifactId, getRevisions])
+
+    const requestId = revisionsRequestRef.current + 1
+    revisionsRequestRef.current = requestId
+    const baseId = getBaseArtifactId(selectedArtifact)
+
+    getRevisions(baseId)
+      .then((nextRevisions) => {
+        if (revisionsRequestRef.current !== requestId) return
+        setRevisions(nextRevisions)
+      })
+      .catch((error) => {
+        console.error('Failed to load artifact revisions:', error)
+        if (revisionsRequestRef.current === requestId) {
+          setRevisions([])
+        }
+      })
+  }, [selectedArtifact?.id, selectedArtifact?.baseArtifactId, selectedArtifact?.updatedAt, getBaseArtifactId, getRevisions])
+
+  useEffect(() => {
+    if (!selectedRevisionId) return
+    if (revisions.some((revision) => revision.id === selectedRevisionId)) return
+    selectRevision(null)
+  }, [revisions, selectedRevisionId, selectRevision])
 
   // Get the artifact to display (selected revision or latest)
   const displayArtifact = selectedRevisionId
@@ -378,7 +400,7 @@ export function CanvasPanel() {
       {/* Content - overflow-hidden prevents scroll issues with Monaco editor. Individual viewers handle their own scrolling. */}
       <div className="flex-1 min-h-0 overflow-hidden">
         {displayArtifact ? (
-          <ArtifactContent artifact={displayArtifact} />
+          <ArtifactContent key={displayArtifact.id} artifact={displayArtifact} />
         ) : conversationArtifacts.length === 0 ? (
           <EmptyState />
         ) : null}
@@ -391,12 +413,12 @@ export function CanvasPanel() {
 function ArtifactContent({ artifact }: { artifact: Artifact }) {
   const { updateArtifact } = useArtifactStore()
 
-  const handleSave = async (content: string) => {
+  const handleSave = useCallback(async (content: string) => {
     await updateArtifact(artifact.id, {
       conversationId: artifact.conversationId,
       content,
     })
-  }
+  }, [updateArtifact, artifact.id, artifact.conversationId])
 
   if (!artifact.content || artifact.content.length === 0) {
     return (

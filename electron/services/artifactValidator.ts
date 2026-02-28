@@ -21,13 +21,21 @@ function validateHtml(content: string): ValidationResult {
   try {
     // Check for basic HTML structure
     const trimmed = content.trim().toLowerCase()
+    const structureOnlyContent = content.replace(
+      /<(script|style)\b[^>]*>[\s\S]*?<\/\1>/gi,
+      (fullMatch, tagName: string) => {
+        const openTagMatch = fullMatch.match(new RegExp(`<${tagName}\\b[^>]*>`, 'i'))
+        const openTag = openTagMatch?.[0] || `<${tagName}>`
+        return `${openTag}</${tagName}>`
+      }
+    )
 
     // Check for unclosed tags (basic check)
     const openTags: string[] = []
     const tagRegex = /<\/?([a-z][a-z0-9]*)\b[^>]*>/gi
     let match
 
-    while ((match = tagRegex.exec(content)) !== null) {
+    while ((match = tagRegex.exec(structureOnlyContent)) !== null) {
       const fullMatch = match[0]
       const tagName = match[1].toLowerCase()
 
