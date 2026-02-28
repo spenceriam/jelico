@@ -21,6 +21,20 @@ export interface ChangelogEntry {
 
 export const changelog: ChangelogEntry[] = [
   {
+    version: '0.33.5',
+    date: '2026-02-28',
+    changes: {
+      fixed: [
+        'Sandbox follow-up artifact edits now append to existing artifact revision history (same conversation + title + type) instead of creating duplicate artifacts when models call create_artifact for iterative edits (Fixes #103)',
+        'Windows app startup now enforces a single-instance lock so relaunch focuses the running window instead of creating parallel Jelico instances',
+        'App shutdown now closes hidden artifact test sessions on quit/close to prevent lingering background Electron processes after window close',
+      ],
+      changed: [
+        'Top titlebar safe-area fill, header bar, and bottom input rail now share the same bg-bg-surface shell color for consistent pane theming',
+      ],
+    },
+  },
+  {
     version: '0.33.4',
     date: '2026-02-28',
     changes: {

@@ -214,6 +214,19 @@ export async function closeArtifactTestSession(sessionId: string) {
   return { success: true }
 }
 
+export function closeAllArtifactTestSessions() {
+  for (const [id, session] of sessions.entries()) {
+    try {
+      if (!session.win.isDestroyed()) {
+        session.win.destroy()
+      }
+    } catch {
+      // Ignore shutdown errors.
+    }
+    sessions.delete(id)
+  }
+}
+
 export function listArtifactTestSessions() {
   const result: Array<{
     sessionId: string

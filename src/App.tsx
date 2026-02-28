@@ -433,7 +433,7 @@ export default function App() {
       >
         {/* macOS titlebar safe-area fill for the main pane */}
         <div
-          className="absolute top-0 left-0 right-0 bg-bg-elevated pointer-events-none"
+          className="absolute top-0 left-0 right-0 bg-bg-surface pointer-events-none"
           style={{ height: 'var(--titlebar-padding)' }}
           aria-hidden="true"
         />

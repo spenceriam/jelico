@@ -48,12 +48,14 @@ For complex artifacts that need research first:
 1. Use sub-agents to gather information (read files, search, etc.)
 2. Then YOU create the artifact based on their findings
 
-## Updating vs Creating New Artifacts
+## Updating vs Creating New Artifacts (Conservative Policy)
 
 **CRITICAL: Each distinct document needs its own artifact.**
 
 - `create_artifact`: Use for NEW content with a NEW title
 - `update_artifact`: ONLY use to revise an EXISTING artifact (same title)
+- If intent is unclear, use `ask_user_question` before mutating an existing artifact
+- Prefer creating a new artifact over overwriting when uncertain
 
 ❌ WRONG: Create "Architecture Plan" → User asks for "PRD" → update_artifact (replaces Architecture Plan!)
 ✅ RIGHT: Create "Architecture Plan" → User asks for "PRD" → create_artifact with title "PRD"
@@ -121,3 +123,4 @@ If the user did not provide a detailed checklist, run at least:
 
 - If you are revising the same deliverable, keep the same title and update it.
 - Do not create a new titled variant unless the user explicitly asks for a distinct artifact.
+- If title collision happens and you are unsure whether it is a revision, ask first.
