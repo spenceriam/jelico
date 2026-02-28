@@ -2,6 +2,16 @@
 
 All notable changes to Jelico are documented in this file.
 
+## [0.33.5] - 2026-02-28
+
+### Fixed
+- **Sandbox Artifact Revisions** — Follow-up edits to the same artifact in Sandbox now update the original artifact chain instead of creating duplicate artifact entries.
+- **Duplicate App Launches** — Opening Jelico while it is already running now focuses the existing window instead of starting another instance.
+- **Background Exit Cleanup** — Closing Jelico now also closes hidden artifact test windows so the app exits cleanly without lingering background processes.
+
+### Changed
+- **Shell Color Consistency** — The top bar and bottom chat rail now match the left pane surface color for a consistent UI shell appearance.
+
 ## [0.33.4] - 2026-02-28
 
 ### Changed

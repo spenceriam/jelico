@@ -630,7 +630,7 @@ export function ChatArea() {
       </div>
 
       {/* Input area */}
-      <div className="border-t border-border bg-bg-elevated">
+      <div className="border-t border-border bg-bg-surface">
         <div className="max-w-3xl mx-auto px-4 pt-0 pb-0">
           {/* Mode selector rail flush to top separator */}
           <div className="-mx-4 px-4 py-0">

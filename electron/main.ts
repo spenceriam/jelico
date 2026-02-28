@@ -18,6 +18,7 @@ import { registerSpeechHandlers } from './ipc/speech'
 import { registerCompactionHandlers } from './ipc/compaction'
 import { registerUpdateHandlers } from './ipc/updates'
 import { registerWindowHandlers } from './ipc/window'
+import { closeAllArtifactTestSessions } from './services/artifactTester'
 
 const APP_DISPLAY_NAME = 'Jelico'
 
@@ -58,6 +59,44 @@ const DIST = path.join(__dirname, '../dist')
 const VITE_DEV_SERVER_URL = process.env['VITE_DEV_SERVER_URL']
 
 let mainWindow: BrowserWindow | null = null
+let lastAlreadyRunningNoticeAt = 0
+let isAppQuitting = false
+
+const gotSingleInstanceLock = app.requestSingleInstanceLock()
+
+if (!gotSingleInstanceLock) {
+  app.quit()
+} else {
+  app.on('second-instance', () => {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      if (mainWindow.isMinimized()) {
+        mainWindow.restore()
+      }
+      if (!mainWindow.isVisible()) {
+        mainWindow.show()
+      }
+      mainWindow.focus()
+
+      const now = Date.now()
+      if (now - lastAlreadyRunningNoticeAt > 2000) {
+        lastAlreadyRunningNoticeAt = now
+        void dialog.showMessageBox(mainWindow, {
+          type: 'info',
+          title: 'Already Running',
+          message: 'Jelico is already running.',
+          detail: 'Brought the existing Jelico window to the front.',
+          buttons: ['OK'],
+          noLink: true,
+        }).catch(() => {
+          // Ignore popup failures.
+        })
+      }
+      return
+    }
+
+    createWindow()
+  })
+}
 
 function createMenu() {
   const isMac = process.platform === 'darwin'
@@ -220,6 +259,13 @@ function createWindow() {
 
   mainWindow.on('closed', () => {
     mainWindow = null
+
+    // Hidden artifact test windows can keep the process alive after the main
+    // window closes. Force a full exit on non-macOS for predictable shutdown.
+    if (process.platform !== 'darwin' && !isAppQuitting) {
+      closeAllArtifactTestSessions()
+      app.quit()
+    }
   })
 
   // Handle renderer crashes silently - log and reload
@@ -310,44 +356,51 @@ function setDockIcon() {
   }
 }
 
-// Initialize app
-app.whenReady().then(async () => {
-  // Create application menu
-  createMenu()
-  setDockIcon()
+if (gotSingleInstanceLock) {
+  // Initialize app
+  app.whenReady().then(async () => {
+    // Create application menu
+    createMenu()
+    setDockIcon()
 
-  // Initialize database (async)
-  await initDatabase()
+    // Initialize database (async)
+    await initDatabase()
 
-  // Register IPC handlers
-  registerProviderHandlers()
-  registerConversationHandlers()
-  registerAIHandlers()
-  registerWorkspaceHandlers()
-  registerArtifactHandlers()
-  registerSandboxHandlers()
-  registerMemoryHandlers()
-  registerPermissionHandlers()
-  registerTodoHandlers()
-  registerSoulHandlers()
-  registerBackupHandlers()
-  registerSpeechHandlers()
-  registerCompactionHandlers()
-  registerUpdateHandlers()
-  registerWindowHandlers()
+    // Register IPC handlers
+    registerProviderHandlers()
+    registerConversationHandlers()
+    registerAIHandlers()
+    registerWorkspaceHandlers()
+    registerArtifactHandlers()
+    registerSandboxHandlers()
+    registerMemoryHandlers()
+    registerPermissionHandlers()
+    registerTodoHandlers()
+    registerSoulHandlers()
+    registerBackupHandlers()
+    registerSpeechHandlers()
+    registerCompactionHandlers()
+    registerUpdateHandlers()
+    registerWindowHandlers()
 
-  // Create window
-  createWindow()
+    // Create window
+    createWindow()
 
-  app.on('activate', () => {
-    if (BrowserWindow.getAllWindows().length === 0) {
-      createWindow()
+    app.on('activate', () => {
+      if (BrowserWindow.getAllWindows().length === 0) {
+        createWindow()
+      }
+    })
+  })
+
+  app.on('before-quit', () => {
+    isAppQuitting = true
+    closeAllArtifactTestSessions()
+  })
+
+  app.on('window-all-closed', () => {
+    if (process.platform !== 'darwin') {
+      app.quit()
     }
   })
-})
-
-app.on('window-all-closed', () => {
-  if (process.platform !== 'darwin') {
-    app.quit()
-  }
-})
+}

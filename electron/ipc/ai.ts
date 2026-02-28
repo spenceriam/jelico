@@ -2143,6 +2143,27 @@ For type="html": after creating it, self-test with artifact_test before claiming
         console.warn('[AI] Artifact validation warnings:', validation.warnings)
       }
 
+      // Safety fallback: when the model accidentally uses create_artifact for follow-up
+      // edits, route to update_artifact if the same title+type already exists in this
+      // conversation. This preserves revision history instead of creating duplicates.
+      let existingArtifactId: string | null = null
+      const normalizedTitle = title.trim().toLowerCase()
+      if (streamContext.conversationId && normalizedTitle.length > 0) {
+        const existingArtifacts = artifactDb.getByConversation(streamContext.conversationId)
+          .filter((artifact) =>
+            artifact.type.toLowerCase() === type.toLowerCase() &&
+            artifact.title.trim().toLowerCase() === normalizedTitle
+          )
+          .sort((a, b) => b.updated_at - a.updated_at)
+
+        if (existingArtifacts.length > 0) {
+          existingArtifactId = existingArtifacts[0].id
+          console.log(
+            `[AI] create_artifact matched existing artifact "${title}" (${existingArtifactId}); routing to revision update`
+          )
+        }
+      }
+
       let thumbnailBase64: string | undefined
       let thumbnailMimeType: string | undefined
       let thumbnailWidth: number | undefined
@@ -2187,7 +2208,14 @@ For type="html": after creating it, self-test with artifact_test before claiming
         }
       }
 
-      if (sendArtifact) {
+      if (existingArtifactId) {
+        if (sendUpdateArtifact) {
+          sendUpdateArtifact({
+            id: existingArtifactId,
+            updates: { title, content, language },
+          })
+        }
+      } else if (sendArtifact) {
         sendArtifact({ type, title, content, language })
       }
       const combinedWarnings = [...validation.warnings]
@@ -2196,9 +2224,19 @@ For type="html": after creating it, self-test with artifact_test before claiming
       }
       return {
         success: true,
-        message: type === 'html'
-          ? `Artifact "${title}" created successfully. Next step required: run artifact_test and verify behavior before claiming success.`
-          : `Artifact "${title}" created successfully`,
+        message: (() => {
+          const actionLabel = existingArtifactId
+            ? `Artifact "${title}" updated as a new revision`
+            : `Artifact "${title}" created successfully`
+
+          if (type === 'html') {
+            return `${actionLabel}. Next step required: run artifact_test and verify behavior before claiming success.`
+          }
+
+          return actionLabel
+        })(),
+        artifactId: existingArtifactId || undefined,
+        action: existingArtifactId ? 'updated_existing' : 'created_new',
         warnings: combinedWarnings.length > 0 ? combinedWarnings : undefined,
         thumbnailBase64,
         thumbnailMimeType,
