@@ -12,6 +12,7 @@ import {
   checkPermission,
   requestPermission,
   classifyCommand,
+  getAllowAllSession,
 } from '../services/permissionChecker'
 import {
   spawnSubAgent,
@@ -339,6 +340,9 @@ const CREATION_VERB_REGEX = /\b(create|make|build|generate|scaffold)\b/i
 const ARTIFACT_TARGET_REGEX = /\b(artifact|canvas|html|svg|diagram|mermaid|game|ui|screen|page|component|prototype)\b/i
 const FILE_TARGET_REGEX = /\b(file|files|source|script|module|config|readme|package\.json|tsconfig|json|yaml|yml|toml|md|markdown)\b/i
 const ACTION_REFERENCE_REGEX = /\b(this|that|it|existing|current|same|again|from scratch)\b/i
+const ARTIFACT_UPDATE_INTENT_REGEX = /\b(update|modify|edit|change|fix|improve|revise|rework|adjust|tweak|continue|iterate|refine|polish)\b/i
+const ARTIFACT_NEW_INTENT_REGEX = /\b(new|another|separate|different|copy|variant|v2|v3|from scratch)\b/i
+const FILE_PATH_INTENT_REGEX = /\b(path|folder|directory|workspace|repo|save (?:it )?to|write (?:it )?to)\b/i
 const EXPLANATION_ONLY_REGEX = /\b(explain|why|how|what|review|analysis|analy[sz]e|opinion|thoughts)\b/i
 const IMPERATIVE_REQUEST_REGEX = /\b(can you|could you|please|go ahead|i want you to|let's|try to)\b/i
 const ARTIFACT_COMPLETION_CLAIM_REGEX = /\b(created?|built|generated|updated?|modified|revised|redrawn|recreated|rewrote|fixed|changed|completed|done)\b[\s\S]{0,100}\b(artifact|canvas|html|svg|diagram|game|ui|component|page)\b/i
@@ -423,6 +427,30 @@ function isLikelyFileMutationRequest(text: string): boolean {
   if (FILE_TARGET_REGEX.test(text)) return true
   if (/[./\\][\w.-]+\.[a-z0-9]+/i.test(text)) return true
   return false
+}
+
+function hasExplicitArtifactUpdateIntent(text: string): boolean {
+  if (!text.trim()) return false
+  if (!ARTIFACT_UPDATE_INTENT_REGEX.test(text)) return false
+  return ARTIFACT_TARGET_REGEX.test(text) || ACTION_REFERENCE_REGEX.test(text)
+}
+
+function hasExplicitNewArtifactIntent(text: string): boolean {
+  if (!text.trim()) return false
+  if (!CREATION_VERB_REGEX.test(text) && !ARTIFACT_NEW_INTENT_REGEX.test(text)) return false
+  if (ARTIFACT_NEW_INTENT_REGEX.test(text)) return true
+  return /\b(new|another|separate|different)\b/i.test(text)
+}
+
+function inferArtifactTypeFromPathAndContent(path: string, content: string): 'code' | 'document' | 'html' | 'svg' | 'mermaid' {
+  const lowerPath = path.toLowerCase()
+  const trimmed = content.trim()
+
+  if (lowerPath.endsWith('.html') || /<!doctype html|<html[\s>]/i.test(trimmed)) return 'html'
+  if (lowerPath.endsWith('.svg') || /<svg[\s>]/i.test(trimmed)) return 'svg'
+  if (lowerPath.endsWith('.mmd') || /(^|\n)\s*(flowchart|graph|sequenceDiagram|classDiagram|stateDiagram|erDiagram|gantt|mindmap|pie)\b/.test(trimmed)) return 'mermaid'
+  if (lowerPath.endsWith('.md') || lowerPath.endsWith('.markdown')) return 'document'
+  return 'code'
 }
 
 function claimsArtifactMutation(text: string): boolean {
@@ -1153,6 +1181,9 @@ function getBuiltInTools(
     model: string
     workspacePath?: string
     conversationId?: string
+    latestUserText?: string
+    expectedArtifactMutation?: boolean
+    allowAllSession?: boolean
     resetActivityTimeout?: () => void  // Allows blocking tools to keep stream alive
     spawnedAgentIds: Set<string>  // Track spawned agent IDs for orphan detection
     awaitedAgentIds: Set<string>  // Track awaited agent IDs for orphan detection
@@ -1410,6 +1441,91 @@ function getBuiltInTools(
     return null
   }
   const tools: Record<string, any> = {}
+  const shouldSkipClarificationPrompts = mode === 'execute' || streamContext.allowAllSession === true
+
+  const requestUserClarification = async (subject: string, questions: Array<{
+    header: string
+    question: string
+    options: Array<{ label: string; description?: string }>
+    multiSelect?: boolean
+  }>) => {
+    console.log('[AI] requestUserClarification: Starting, subject:', subject)
+
+    const { randomUUID } = await import('crypto')
+    const requestId = randomUUID()
+
+    const clarificationRequest = {
+      id: requestId,
+      subject,
+      questions: questions.map((q, idx) => ({
+        id: `q-${idx}`,
+        question: q.question,
+        header: q.header,
+        options: q.options,
+        multiSelect: q.multiSelect || false,
+        selectedOptions: [],
+        otherText: '',
+      })),
+      conversationId: streamContext.conversationId,
+      createdAt: Date.now(),
+    }
+
+    const answersPromise = new Promise<Record<string, string[]>>((resolve, reject) => {
+      pendingClarifications.set(requestId, {
+        resolve,
+        reject,
+        channelId: streamContext.channelId,
+        conversationId: streamContext.conversationId,
+        timeoutId: undefined,
+        resolved: false,
+      })
+    })
+
+    const { BrowserWindow } = await import('electron')
+    const windows = BrowserWindow.getAllWindows()
+    for (const win of windows) {
+      win.webContents.send('clarification:request', clarificationRequest)
+    }
+
+    if (streamContext.resetActivityTimeout) {
+      streamContext.resetActivityTimeout()
+    }
+
+    const keepAliveInterval = setInterval(() => {
+      if (streamContext.resetActivityTimeout) {
+        streamContext.resetActivityTimeout()
+      }
+    }, 10000)
+
+    try {
+      const answers = await answersPromise
+      return {
+        success: true as const,
+        answers,
+        message: 'User provided clarification. Proceed with their preferences.',
+      }
+    } catch (error: any) {
+      return {
+        success: false as const,
+        error: error.message || 'Failed to get user clarification',
+      }
+    } finally {
+      clearInterval(keepAliveInterval)
+      const pending = pendingClarifications.get(requestId)
+      if (pending?.timeoutId) {
+        clearTimeout(pending.timeoutId)
+      }
+      pendingClarifications.delete(requestId)
+    }
+  }
+
+  const flattenClarificationAnswers = (answers: Record<string, string[]> | undefined): string[] => {
+    if (!answers) return []
+    return Object.values(answers)
+      .flatMap((items) => (Array.isArray(items) ? items : []))
+      .map((value) => String(value || '').trim().toLowerCase())
+      .filter(Boolean)
+  }
 
   // Note: switch_mode tool removed - was causing AI to get distracted
   // instead of doing the actual task. Mode is now set by user only.
@@ -2143,9 +2259,41 @@ For type="html": after creating it, self-test with artifact_test before claiming
         console.warn('[AI] Artifact validation warnings:', validation.warnings)
       }
 
-      // Safety fallback: when the model accidentally uses create_artifact for follow-up
-      // edits, route to update_artifact if the same title+type already exists in this
-      // conversation. This preserves revision history instead of creating duplicates.
+      const latestUserText = streamContext.latestUserText || ''
+
+      // If the model picks create_artifact but the request looked file-centric, ask once
+      // unless we are in a no-approval execution path.
+      const lookedFileCentric =
+        isLikelyFileMutationRequest(latestUserText) &&
+        !isLikelyArtifactMutationRequest(latestUserText, true)
+      if (!shouldSkipClarificationPrompts && lookedFileCentric) {
+        const clarification = await requestUserClarification('Output Target', [
+          {
+            header: 'Output',
+            question: 'You asked for a result that may be better as a file. Should I create a Canvas artifact or write it to disk?',
+            options: [
+              { label: 'Write file (Recommended)', description: 'Save to workspace/sandbox file path.' },
+              { label: 'Create artifact', description: 'Show in Canvas for preview and iteration.' },
+            ],
+          },
+        ])
+
+        if (clarification.success) {
+          const selections = flattenClarificationAnswers(clarification.answers)
+          const choseFile = selections.some((value) => value.includes('write file'))
+          if (choseFile) {
+            return {
+              success: false,
+              error: 'User chose file output. Use write_file instead of create_artifact for this request.',
+              recommendedTool: 'write_file',
+            }
+          }
+        }
+      }
+
+      // Conservative artifact v2 policy:
+      // only auto-update a title match when user intent is clearly a revision.
+      // If ambiguous, ask (except execute/allow-all), otherwise create a new artifact.
       let existingArtifactId: string | null = null
       const normalizedTitle = title.trim().toLowerCase()
       if (streamContext.conversationId && normalizedTitle.length > 0) {
@@ -2157,10 +2305,54 @@ For type="html": after creating it, self-test with artifact_test before claiming
           .sort((a, b) => b.updated_at - a.updated_at)
 
         if (existingArtifacts.length > 0) {
-          existingArtifactId = existingArtifacts[0].id
-          console.log(
-            `[AI] create_artifact matched existing artifact "${title}" (${existingArtifactId}); routing to revision update`
-          )
+          const candidate = existingArtifacts[0]
+          const explicitUpdateIntent =
+            hasExplicitArtifactUpdateIntent(latestUserText) ||
+            (streamContext.expectedArtifactMutation === true && !hasExplicitNewArtifactIntent(latestUserText))
+          const explicitNewIntent = hasExplicitNewArtifactIntent(latestUserText)
+          const isAmbiguousIntent = (explicitUpdateIntent && explicitNewIntent) || (!explicitUpdateIntent && !explicitNewIntent)
+
+          if (explicitUpdateIntent && !explicitNewIntent) {
+            existingArtifactId = candidate.id
+            console.log(
+              `[AI] create_artifact matched existing artifact "${title}" (${existingArtifactId}); explicit revision intent detected`
+            )
+          } else if (isAmbiguousIntent && !shouldSkipClarificationPrompts) {
+            const clarification = await requestUserClarification('Artifact Revision', [
+              {
+                header: 'Revision',
+                question: `I found an existing "${title}" artifact. Should I update that one or create a new artifact?`,
+                options: [
+                  { label: 'Create new artifact (Recommended)', description: 'Safest option; avoids accidental overwrite.' },
+                  { label: 'Update existing artifact', description: 'Treat this as the next revision of the same artifact.' },
+                ],
+              },
+            ])
+
+            if (clarification.success) {
+              const selections = flattenClarificationAnswers(clarification.answers)
+              const choseUpdate = selections.some((value) => value.includes('update existing'))
+              const choseCreateNew = selections.some((value) => value.includes('create new'))
+              if (choseUpdate && !choseCreateNew) {
+                existingArtifactId = candidate.id
+                console.log(
+                  `[AI] create_artifact matched existing artifact "${title}" (${existingArtifactId}); user chose update`
+                )
+              } else {
+                console.log(
+                  `[AI] create_artifact matched existing artifact "${title}" but user chose create-new`
+                )
+              }
+            } else {
+              console.log(
+                `[AI] create_artifact clarification failed for "${title}", defaulting to create-new for safety`
+              )
+            }
+          } else {
+            console.log(
+              `[AI] create_artifact matched existing artifact "${title}" but using create-new (conservative policy)`
+            )
+          }
         }
       }
 
@@ -2896,99 +3088,7 @@ Note: If recommended option, list it first with "(Recommended)" suffix.`,
       })).min(1).max(4),
     }),
     execute: async ({ subject, questions }) => {
-      console.log('[AI] ask_user_question: Starting, subject:', subject)
-
-      const { randomUUID } = await import('crypto')
-      const requestId = randomUUID()
-      console.log('[AI] ask_user_question: Generated requestId:', requestId)
-
-      // Build the request to send to UI
-      const clarificationRequest = {
-        id: requestId,
-        subject,
-        questions: questions.map((q, idx) => ({
-          id: `q-${idx}`,
-          question: q.question,
-          header: q.header,
-          options: q.options,
-          multiSelect: q.multiSelect || false,
-          selectedOptions: [],
-          otherText: '',
-        })),
-        conversationId: streamContext.conversationId,
-        createdAt: Date.now(),
-      }
-
-      // Create a promise that will be resolved when user responds
-      // NO TIMEOUT - users have unlimited time to answer clarification questions
-      const answersPromise = new Promise<Record<string, string[]>>((resolve, reject) => {
-        pendingClarifications.set(requestId, {
-          resolve,
-          reject,
-          channelId: streamContext.channelId,
-          conversationId: streamContext.conversationId,
-          timeoutId: undefined, // No timeout
-          resolved: false,
-        })
-        console.log('[AI] ask_user_question: Stored pending clarification, waiting for user response (no timeout)...')
-      })
-
-      // Send request to UI via IPC
-      const { BrowserWindow } = await import('electron')
-      const windows = BrowserWindow.getAllWindows()
-      console.log('[AI] ask_user_question: Sending to', windows.length, 'window(s)')
-      for (const win of windows) {
-        win.webContents.send('clarification:request', clarificationRequest)
-      }
-
-      // Keep the stream alive while waiting for response
-      // CRITICAL: Reset activity timeout immediately to prevent 30s stream timeout
-      // Then keep resetting every 10 seconds until user responds
-      if (streamContext.resetActivityTimeout) {
-        streamContext.resetActivityTimeout()
-        console.log('[AI] ask_user_question: Activity timeout reset (preventing stream timeout while waiting)')
-      } else {
-        console.error('[AI] ask_user_question: CRITICAL - resetActivityTimeout not available! Stream may timeout.')
-      }
-
-      // Keep resetting the activity timeout every 10 seconds
-      const keepAliveInterval = setInterval(() => {
-        if (streamContext.resetActivityTimeout) {
-          streamContext.resetActivityTimeout()
-          console.log('[AI] ask_user_question: Keep-alive reset')
-        } else {
-          console.warn('[AI] ask_user_question: Keep-alive fired but resetActivityTimeout unavailable')
-        }
-      }, 10000)
-
-      try {
-        console.log('[AI] ask_user_question: Awaiting user response (this will block until user submits)...')
-        const startTime = Date.now()
-        const answers = await answersPromise
-        const elapsed = Date.now() - startTime
-        console.log('[AI] ask_user_question: User responded after', elapsed, 'ms with:', answers)
-
-        return {
-          success: true,
-          answers,
-          message: 'User provided clarification. Proceed with their preferences.',
-        }
-      } catch (error: any) {
-        console.error('[AI] ask_user_question: Error or timeout:', error.message)
-        return {
-          success: false,
-          error: error.message || 'Failed to get user clarification',
-        }
-      } finally {
-        clearInterval(keepAliveInterval)
-        // Clear the timeout to prevent memory leak
-        const pending = pendingClarifications.get(requestId)
-        if (pending?.timeoutId) {
-          clearTimeout(pending.timeoutId)
-        }
-        pendingClarifications.delete(requestId)
-        console.log('[AI] ask_user_question: Cleanup complete for', requestId)
-      }
+      return requestUserClarification(subject, questions)
     },
   })
 
@@ -3012,6 +3112,48 @@ Note: If recommended option, list it first with "(Recommended)" suffix.`,
             error: `Missing required parameters: ${missing.join(', ')}. You MUST provide path and content when calling write_file.`,
           }
         }
+
+        const latestUserText = streamContext.latestUserText || ''
+        const explicitFileRequest =
+          isLikelyFileMutationRequest(latestUserText) ||
+          FILE_PATH_INTENT_REGEX.test(latestUserText) ||
+          /[./\\][\w.-]+\.[a-z0-9]+/i.test(latestUserText)
+        const contentLooksArtifactLike =
+          /<!doctype html|<html[\s>]|<svg[\s>]/i.test(content) ||
+          /(^|\n)\s*(flowchart|graph|sequenceDiagram|classDiagram|stateDiagram|erDiagram|gantt|mindmap|pie)\b/.test(content)
+        const requestLooksArtifactLike = isLikelyArtifactMutationRequest(latestUserText, true)
+
+        if (
+          !shouldSkipClarificationPrompts &&
+          !explicitFileRequest &&
+          (requestLooksArtifactLike || contentLooksArtifactLike)
+        ) {
+          const clarification = await requestUserClarification('Output Target', [
+            {
+              header: 'Output',
+              question: 'Should I save this as a file on disk, or create it as a Canvas artifact?',
+              options: [
+                { label: 'Create artifact (Recommended)', description: 'Best for previews, demos, and iterative edits in Canvas.' },
+                { label: 'Write file', description: 'Save directly to workspace/sandbox path.' },
+              ],
+            },
+          ])
+
+          if (clarification.success) {
+            const selections = flattenClarificationAnswers(clarification.answers)
+            const choseArtifact = selections.some((value) => value.includes('create artifact'))
+            if (choseArtifact) {
+              return {
+                success: false,
+                error: 'User chose artifact output. Use create_artifact instead of write_file for this request.',
+                recommendedTool: 'create_artifact',
+                suggestedArtifactType: inferArtifactTypeFromPathAndContent(path, content),
+                suggestedTitle: path.split(/[\\/]/).pop() || 'New artifact',
+              }
+            }
+          }
+        }
+
         try {
           const pathModule = await import('path')
           const fs = await import('fs/promises')
@@ -3446,7 +3588,9 @@ export function registerAIHandlers() {
 - Do NOT inspect repository/project roots when sandbox mode is active unless the user explicitly asks.
 - Do NOT create planning/spec files (e.g., SPEC.md, PRD.md) unless the user explicitly asks.
 - For single deliverables like HTML games/pages/demos/diagrams, prefer create_artifact first.
-- Use write_file first only when the user explicitly asks for files or for multi-file project scaffolding.`
+- Use write_file first only when the user explicitly asks for files or for multi-file project scaffolding.
+- If unsure whether output should be artifact vs file, use ask_user_question before writing.
+- If unsure whether to update an existing artifact or create a new one, use ask_user_question before mutating.`
 
       if (projectConversationContext) {
         systemPrompt += `\n\n${projectConversationContext}`
@@ -3525,19 +3669,6 @@ If you find yourself frequently hitting limits, suggest breaking the task into m
       // Get current todos (for todo_read and todo_check)
       const getTodos = () => currentTodos
 
-      // Get tools based on mode
-      const streamContext = {
-        channelId,
-        providerId: params.providerId,
-        model: modelId,
-        workspacePath: params.workspacePath,
-        conversationId: params.conversationId,  // Track which conversation this stream belongs to
-        resetActivityTimeout, // Allow blocking tools like wait_for_agent to keep stream alive
-        spawnedAgentIds: new Set<string>(),  // Track spawned agent IDs for orphan detection
-        awaitedAgentIds: new Set<string>(),  // Track awaited agent IDs for orphan detection
-      }
-      const tools = getBuiltInTools(mode, streamContext, toolTracker, sendArtifact, sendSpawnAgent, sendUpdateArtifact, sendModeSwitch, sendTodos, getTodos)
-
       // Build messages (without system prompt - we pass it separately to streamText)
       const messages = params.messages.map((m: any) => {
           // Handle messages with attachments (multimodal)
@@ -3587,12 +3718,29 @@ If you find yourself frequently hitting limits, suggest breaking the task into m
         })
 
       const latestUserText = getLatestUserMessageText(params.messages)
+      const allowAllSession = getAllowAllSession()
       const existingArtifactCount = Array.isArray(params.artifacts) && params.artifacts.length > 0
         ? params.artifacts.length
         : (params.conversationId ? artifactDb.getByConversation(params.conversationId).length : 0)
       const hasExistingArtifacts = existingArtifactCount > 0
       const expectedArtifactMutation = isLikelyArtifactMutationRequest(latestUserText, hasExistingArtifacts)
       const expectedFileMutation = isLikelyFileMutationRequest(latestUserText)
+      // Get tools based on mode
+      const streamContext = {
+        channelId,
+        providerId: params.providerId,
+        model: modelId,
+        workspacePath: params.workspacePath,
+        conversationId: params.conversationId,  // Track which conversation this stream belongs to
+        latestUserText,
+        expectedArtifactMutation,
+        allowAllSession,
+        resetActivityTimeout, // Allow blocking tools like wait_for_agent to keep stream alive
+        spawnedAgentIds: new Set<string>(),  // Track spawned agent IDs for orphan detection
+        awaitedAgentIds: new Set<string>(),  // Track awaited agent IDs for orphan detection
+      }
+      const tools = getBuiltInTools(mode, streamContext, toolTracker, sendArtifact, sendSpawnAgent, sendUpdateArtifact, sendModeSwitch, sendTodos, getTodos)
+
       const requestComplexity = classifyExecutionRequestComplexity({
         latestUserText,
         expectedArtifactMutation,

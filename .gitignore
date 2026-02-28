@@ -41,3 +41,6 @@ screenshot/
 
 # Codex local config
 .codex/
+
+# Local temp output
+.tmp/
