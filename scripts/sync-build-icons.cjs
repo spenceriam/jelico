@@ -1,9 +1,16 @@
 const fs = require('fs')
 const os = require('os')
 const path = require('path')
-const sharp = require('sharp')
 const pngToIcoModule = require('png-to-ico')
 const pngToIco = pngToIcoModule.default || pngToIcoModule
+let sharp = null
+let sharpLoadError = null
+
+try {
+  sharp = require('sharp')
+} catch (error) {
+  sharpLoadError = error
+}
 
 const ROOT = process.cwd()
 const SOURCE_PNG = path.join(ROOT, 'src/assets/branding/jelico-icon.png')
@@ -38,6 +45,25 @@ async function syncIcons() {
 
   // Canonical packaging PNG for macOS and shared build metadata.
   await fs.promises.copyFile(SOURCE_PNG, BUILD_ICON_PNG)
+
+  if (!sharp) {
+    const linuxIconPaths = LINUX_SIZES.map((size) => path.join(LINUX_ICONS_DIR, `${size}x${size}.png`))
+    const linuxExistsFlags = await Promise.all(linuxIconPaths.map((iconPath) => fileExists(iconPath)))
+    const hasAllLinuxIcons = linuxExistsFlags.every(Boolean)
+    const hasIco = await fileExists(BUILD_ICON_ICO)
+
+    if (!hasAllLinuxIcons || !hasIco) {
+      const cause = sharpLoadError ? `\nCaused by: ${sharpLoadError.message || String(sharpLoadError)}` : ''
+      throw new Error(
+        'sharp runtime is unavailable and required build icons are missing.\n' +
+        'Install sharp for this runtime (or regenerate icons once on a compatible runtime), then retry.' +
+        cause
+      )
+    }
+
+    console.warn('[sync-icons] sharp runtime unavailable - reusing existing build/icon.ico and build/icons/*.png')
+    return
+  }
 
   // Linux icon set (PNG sizes).
   await Promise.all(

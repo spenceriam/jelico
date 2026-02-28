@@ -238,6 +238,10 @@ export function Message({
     agents,
     isStreaming,
   })
+  const toolResultsMap = new Map((toolResults || []).map((result) => [result.toolCallId, result]))
+  const hasVisibleToolSegments = !!segments?.some((segment) => segment.type === 'tool')
+  const hasVisibleToolCalls = !!toolCalls?.some((toolCall) => !isHiddenToolCall(toolCall, toolResultsMap.get(toolCall.id)))
+  const shouldStretchAssistantContent = hasVisibleToolSegments || hasVisibleToolCalls
 
   const handleCopy = async () => {
     try {
@@ -536,7 +540,7 @@ export function Message({
       </div>
       <AIAvatar />
 
-      <div className="max-w-[80%]">
+      <div className={`${shouldStretchAssistantContent ? 'w-full ' : ''}max-w-[80%]`}>
         <div className="prose prose-invert prose-sm max-w-none">
           {/* Interleaved segments during streaming */}
           {segments && segments.length > 0 ? (
@@ -589,6 +593,7 @@ export function Message({
           {isAssistant && !isStreaming && (
               <MessageActions
               content={normalizedContent}
+              segments={segments}
               toolCalls={toolCalls}
               toolResults={toolResults}
               usage={isLastAssistantMessage ? message.usage : undefined}

@@ -150,7 +150,7 @@ export function CanvasPanel() {
     }
   }, [activeConversationId, selectedArtifact?.conversationId, conversationArtifacts.length, selectArtifact])
 
-  // Load revisions when artifact changes
+  // Load revisions when selected artifact identity/content changes
   useEffect(() => {
     if (!selectedArtifact) {
       revisionsRequestRef.current += 1
@@ -173,7 +173,7 @@ export function CanvasPanel() {
           setRevisions([])
         }
       })
-  }, [selectedArtifact?.id, selectedArtifact?.baseArtifactId, getBaseArtifactId, getRevisions])
+  }, [selectedArtifact?.id, selectedArtifact?.baseArtifactId, selectedArtifact?.updatedAt, getBaseArtifactId, getRevisions])
 
   useEffect(() => {
     if (!selectedRevisionId) return

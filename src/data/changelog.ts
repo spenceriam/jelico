@@ -21,6 +21,25 @@ export interface ChangelogEntry {
 
 export const changelog: ChangelogEntry[] = [
   {
+    version: '0.33.4',
+    date: '2026-02-28',
+    changes: {
+      fixed: [
+        'Assistant kickoff text now appears before tool execution for complex artifact/file turns, with cleaner dedupe of repeated kickoff/plan text in buffered outputs (Fixes #90)',
+        'Streaming text/tool interleaving now preserves readable spacing across tool boundaries, preventing merged progress text like sentence joins after tool events (Fixes #90)',
+        'Message copy output now preserves real interleaved text/tool order from saved segments, instead of flattening tool history out of sequence (Fixes #90)',
+        'Chat input now remains editable in centered/new-chat flows even when no provider is selected, preserving drafts and reducing stuck-composer states (Fixes #91)',
+        'Active conversation deletion now immediately clears stream/conversation state and returns focus to a clean composer state, preventing transient interaction lockups (Fixes #91)',
+        'Global mouse/focus safety handlers now release drag/resize interaction locks when focus is lost, reducing stuck UI edge cases during rapid navigation',
+        'HTML artifact validation now ignores script/style body content when checking tag balance, reducing false truncation errors from JavaScript operators or embedded markup-like strings',
+      ],
+      changed: [
+        'Task-aware kickoff phrasing now varies by request complexity with less repetitive boilerplate and fuller upfront plan previews for normal-sized todo lists',
+        'Canvas revision reload now also keys off selected artifact update timestamps so revision history refreshes reliably after artifact changes',
+      ],
+    },
+  },
+  {
     version: '0.33.3',
     date: '2026-02-25',
     changes: {

@@ -1,11 +1,13 @@
 import { useState } from 'react'
 import { Copy, Check, RefreshCw } from 'lucide-react'
-import type { MessageUsage, ToolCall, ToolResult } from '../../stores/chat'
+import type { MessageUsage, ToolCall, ToolResult, StreamingSegment } from '../../stores/chat'
 import { modes } from '../../lib/modes'
 import { formatElapsedTime } from '../../utils/format'
+import { isHiddenToolCall } from './ToolCallDisplay'
 
 interface MessageActionsProps {
   content: string
+  segments?: StreamingSegment[]
   toolCalls?: ToolCall[]
   toolResults?: ToolResult[]
   usage?: MessageUsage
@@ -14,20 +16,68 @@ interface MessageActionsProps {
 }
 
 /**
- * Format tool calls and results for copying
+ * Format a tool call and result for copy/export output
  */
-function formatToolCallsForCopy(toolCalls?: ToolCall[], toolResults?: ToolResult[]): string {
-  if (!toolCalls || toolCalls.length === 0) return ''
+function formatToolCallEntryForCopy(toolCall: ToolCall, toolResult?: ToolResult): string {
+  let output = `---\n[${toolCall.name}]\n`
+  output += `Arguments: ${JSON.stringify(toolCall.args, null, 2)}\n`
 
+  if (toolResult) {
+    const resultStr = typeof toolResult.result === 'object'
+      ? JSON.stringify(toolResult.result, null, 2)
+      : String(toolResult.result)
+    output += `Result: ${resultStr}\n`
+  }
+
+  return output
+}
+
+/**
+ * Build copy output preserving interleaved segment order when available.
+ * Falls back to legacy "content + Tool Calls section" format for older messages.
+ */
+function buildCopyOutput(
+  content: string,
+  segments?: StreamingSegment[],
+  toolCalls?: ToolCall[],
+  toolResults?: ToolResult[]
+): string {
   const resultsMap = new Map(toolResults?.map(r => [r.toolCallId, r]) || [])
+  const toolCallsById = new Map(toolCalls?.map(tc => [tc.id, tc]) || [])
 
-  let output = '\n\n---\nTool Calls:\n'
+  if (segments && segments.length > 0) {
+    const blocks: string[] = []
 
-  for (const tc of toolCalls) {
-    output += `\n[${tc.name}]\n`
-    output += `Arguments: ${JSON.stringify(tc.args, null, 2)}\n`
+    for (const segment of segments) {
+      if (segment.type === 'text') {
+        if (segment.content) {
+          blocks.push(segment.content)
+        }
+        continue
+      }
 
-    const result = resultsMap.get(tc.id)
+      const toolCall = toolCallsById.get(segment.toolCallId)
+      const toolResult = resultsMap.get(segment.toolCallId)
+      if (!toolCall || isHiddenToolCall(toolCall, toolResult)) {
+        continue
+      }
+      blocks.push(formatToolCallEntryForCopy(toolCall, toolResult))
+    }
+
+    const interleavedOutput = blocks.join('\n\n').trim()
+    if (interleavedOutput) return interleavedOutput
+  }
+
+  // Legacy fallback for messages without saved segments
+  if (!toolCalls || toolCalls.length === 0) return content
+
+  let output = `${content}\n\n---\nTool Calls:\n`
+
+  for (const toolCall of toolCalls) {
+    output += `\n[${toolCall.name}]\n`
+    output += `Arguments: ${JSON.stringify(toolCall.args, null, 2)}\n`
+
+    const result = resultsMap.get(toolCall.id)
     if (result) {
       const resultStr = typeof result.result === 'object'
         ? JSON.stringify(result.result, null, 2)
@@ -39,17 +89,15 @@ function formatToolCallsForCopy(toolCalls?: ToolCall[], toolResults?: ToolResult
   return output
 }
 
-export function MessageActions({ content, toolCalls, toolResults, usage, onRegenerate, isRegenerating }: MessageActionsProps) {
+export function MessageActions({ content, segments, toolCalls, toolResults, usage, onRegenerate, isRegenerating }: MessageActionsProps) {
   const [copied, setCopied] = useState(false)
   const modeLabel = usage?.mode ? modes[usage.mode]?.name ?? usage.mode : null
   const modelLabel = usage?.model || null
 
   const handleCopy = async () => {
     try {
-      // Include tool calls in the copy if present
-      const toolCallsText = formatToolCallsForCopy(toolCalls, toolResults)
-      const fullContent = content + toolCallsText
-      await navigator.clipboard.writeText(fullContent)
+      const output = buildCopyOutput(content, segments, toolCalls, toolResults)
+      await navigator.clipboard.writeText(output)
       setCopied(true)
       setTimeout(() => setCopied(false), 2000)
     } catch (err) {

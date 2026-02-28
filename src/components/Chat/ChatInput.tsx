@@ -110,6 +110,7 @@ export function ChatInput({ disabled, isStreaming, centered }: ChatInputProps) {
     activeConversationId,
   } = useChatStore()
   const { activeProviderId, activeModel } = useProviderStore()
+  const lockInput = Boolean(disabled && !centered)
 
   const resizeTextarea = useCallback((content: string) => {
     const textarea = textareaRef.current
@@ -129,14 +130,14 @@ export function ChatInput({ disabled, isStreaming, centered }: ChatInputProps) {
   }, [centered])
 
   const focusTextarea = useCallback(() => {
-    if (disabled) return
+    if (lockInput) return
     const textarea = textareaRef.current
     if (!textarea) return
 
     if (document.activeElement !== textarea) {
       textarea.focus()
     }
-  }, [disabled])
+  }, [lockInput])
 
   // Restore draft when switching conversations (including new-chat view)
   useEffect(() => {
@@ -217,36 +218,62 @@ export function ChatInput({ disabled, isStreaming, centered }: ChatInputProps) {
     e.preventDefault()
     setIsDragging(false)
     handleFileSelect(e.dataTransfer.files)
-  }, [handleFileSelect])
+    requestAnimationFrame(() => focusTextarea())
+  }, [focusTextarea, handleFileSelect])
+
+  const persistDraft = useCallback((nextValue: string) => {
+    const draftKey = getDraftKey(activeConversationId)
+    if (nextValue) {
+      chatDraftsByConversation.set(draftKey, nextValue)
+    } else {
+      chatDraftsByConversation.delete(draftKey)
+    }
+    resizeTextarea(nextValue)
+  }, [activeConversationId, resizeTextarea])
 
   // Handle paste with content detection
   const handlePaste = useCallback((e: React.ClipboardEvent) => {
-    // Check for files first
+    if (lockInput) return
+
+    // Welcome/new-chat view prioritizes reliability over custom paste behavior.
+    // Let the browser handle paste natively so users can always paste and edit.
+    if (centered) {
+      requestAnimationFrame(() => focusTextarea())
+      return
+    }
+
+    // Prefer textual clipboard payloads over file payloads.
+    // Some clipboard sources include both, and text should win for prompt authoring.
+    const pastedText = e.clipboardData.getData('text/plain') || e.clipboardData.getData('text')
+    if (pastedText) {
+      const lineCount = pastedText.split('\n').length
+
+      // Keep large paste-as-attachment behavior in active chat view only.
+      if (!centered && lineCount > PASTE_COLLAPSE_THRESHOLD) {
+        e.preventDefault()
+        const newAttachment: Attachment = {
+          id: generateId(),
+          type: 'pasted',
+          name: `Pasted ~${lineCount} lines`,
+          content: pastedText,
+          lineCount,
+          isExpanded: false,
+        }
+        setAttachments(prev => [...prev, newAttachment])
+      }
+
+      requestAnimationFrame(() => focusTextarea())
+      return
+    }
+
+    // If no text payload exists, treat clipboard files as attachments.
     const files = e.clipboardData.files
     if (files.length > 0) {
       e.preventDefault()
       handleFileSelect(files)
-      return
+      requestAnimationFrame(() => focusTextarea())
     }
-
-    // Check for large text paste
-    const pastedText = e.clipboardData.getData('text')
-    const lineCount = pastedText.split('\n').length
-
-    if (lineCount > PASTE_COLLAPSE_THRESHOLD) {
-      e.preventDefault()
-      const newAttachment: Attachment = {
-        id: generateId(),
-        type: 'pasted',
-        name: `Pasted ~${lineCount} lines`,
-        content: pastedText,
-        lineCount,
-        isExpanded: false,
-      }
-      setAttachments(prev => [...prev, newAttachment])
-    }
-    // Otherwise let default paste behavior happen
-  }, [handleFileSelect])
+  }, [centered, focusTextarea, handleFileSelect, lockInput])
 
   // Remove attachment
   const removeAttachment = useCallback((id: string) => {
@@ -375,15 +402,14 @@ export function ChatInput({ disabled, isStreaming, centered }: ChatInputProps) {
         messageAttachments.length > 0 ? messageAttachments : undefined
       )
       setInput('')
-      chatDraftsByConversation.delete(getDraftKey(activeConversationId))
       setAttachments([])
-      resizeTextarea('')
+      persistDraft('')
       return true
     } catch (error) {
       console.error('[ChatInput] Failed to send message:', error)
       return false
     }
-  }, [input, attachments, activeProviderId, activeModel, sendMessage, activeConversationId, resizeTextarea])
+  }, [input, attachments, activeProviderId, activeModel, sendMessage, persistDraft])
 
   const handleKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
     if (
@@ -409,13 +435,7 @@ export function ChatInput({ disabled, isStreaming, centered }: ChatInputProps) {
   const handleInput = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
     const nextValue = e.target.value
     setInput(nextValue)
-    const draftKey = getDraftKey(activeConversationId)
-    if (nextValue) {
-      chatDraftsByConversation.set(draftKey, nextValue)
-    } else {
-      chatDraftsByConversation.delete(draftKey)
-    }
-    resizeTextarea(nextValue)
+    persistDraft(nextValue)
   }
 
   const handleStop = () => {
@@ -605,12 +625,12 @@ export function ChatInput({ disabled, isStreaming, centered }: ChatInputProps) {
             isDragging
               ? 'Drop files here...'
               : disabled
-              ? 'Select a provider to start...'
+              ? 'Draft message... (select a provider to send)'
               : isStreaming
               ? 'Message will be queued...'
               : 'Message Jelico...'
           }
-          disabled={disabled}
+          disabled={lockInput}
           autoFocus
           rows={centered ? 4 : 1}
           className={`flex-1 bg-transparent text-sm text-text-primary placeholder:text-text-muted outline-none resize-none disabled:cursor-not-allowed focus:outline-none focus:ring-0 border-none leading-6 p-3 pb-0 select-text ${
@@ -626,7 +646,7 @@ export function ChatInput({ disabled, isStreaming, centered }: ChatInputProps) {
           {/* Left side - Attachments */}
           <button
             onClick={openFilePicker}
-            disabled={disabled}
+            disabled={lockInput}
             className="p-[0.45em] text-text-muted hover:text-text-secondary disabled:opacity-50 disabled:cursor-not-allowed transition-colors rounded-lg hover:bg-bg-hover"
             title="Attach files"
           >

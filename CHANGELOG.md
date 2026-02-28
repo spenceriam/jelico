@@ -2,6 +2,18 @@
 
 All notable changes to Jelico are documented in this file.
 
+## [0.33.4] - 2026-02-28
+
+### Changed
+- **Smarter First Response** — The assistant now gives a clearer, more task-aware opening message before running actions, so larger asks feel planned without sounding repetitive.
+- **Plan Visibility** — Upfront plan previews now show more of the actual step list for normal-sized tasks, so you see the intended workflow earlier.
+
+### Fixed
+- **Streaming Readability** — Progress text no longer gets jammed together around tool activity, improving turn-by-turn readability while the assistant is working.
+- **Response Ordering in Copy/History** — Copied assistant output now preserves the real text/tool order from the turn instead of flattening actions out of sequence.
+- **Composer Reliability** — The message box remains usable in more edge cases (including new-chat/provider-not-selected flows and post-delete transitions), with draft behavior preserved.
+- **Artifact Validation Stability** — HTML artifact validation now avoids false "truncated/unclosed tag" failures caused by script content that looks like HTML tokens.
+
 ## [0.33.3] - 2026-02-25
 
 ### Fixed

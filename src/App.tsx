@@ -340,6 +340,26 @@ export default function App() {
     }
   }, [])
 
+  // Safety net: always release interaction guards when focus/mouse state is lost.
+  // This prevents stuck overlays/cursors from blocking input after edge-case flows
+  // (conversation deletion, sandbox transfer, window focus changes, etc.).
+  useEffect(() => {
+    const releaseInteractionLocks = () => {
+      finishResize()
+      stopWindowDrag()
+    }
+
+    window.addEventListener('blur', releaseInteractionLocks)
+    window.addEventListener('mouseup', releaseInteractionLocks, true)
+    window.addEventListener('mouseleave', releaseInteractionLocks)
+
+    return () => {
+      window.removeEventListener('blur', releaseInteractionLocks)
+      window.removeEventListener('mouseup', releaseInteractionLocks, true)
+      window.removeEventListener('mouseleave', releaseInteractionLocks)
+    }
+  }, [finishResize, stopWindowDrag])
+
   // Handle onboarding completion - save profile to soul system
   const handleOnboardingComplete = useCallback(async (profile: OnboardingProfile) => {
     try {
