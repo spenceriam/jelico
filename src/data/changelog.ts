@@ -21,6 +21,18 @@ export interface ChangelogEntry {
 
 export const changelog: ChangelogEntry[] = [
   {
+    version: '0.33.6',
+    date: '2026-02-28',
+    changes: {
+      fixed: [
+        'Assistant progress text now streams in chronological order with tool activity on normal turns, preventing delayed text blocks from appearing out of sequence under completed tool calls (Hotfix for streaming order regression)',
+      ],
+      changed: [
+        'Completion-sensitive text buffering is now limited to validation-repair retries, preserving live response flow for regular artifact/file turns',
+      ],
+    },
+  },
+  {
     version: '0.33.5',
     date: '2026-02-28',
     changes: {

@@ -3777,10 +3777,9 @@ If you find yourself frequently hitting limits, suggest breaking the task into m
         const attemptSystemPrompt = pendingCompletionRepairDirective
           ? `${systemPrompt}\n\n${pendingCompletionRepairDirective}`
           : systemPrompt
-        const shouldBufferCompletionSensitiveText =
-          expectedArtifactMutation ||
-          expectedFileMutation ||
-          !!pendingCompletionRepairDirective
+        // Preserve chronological UI ordering: stream assistant text live on normal turns.
+        // Only buffer during validation-repair retries so failed-attempt text isn't emitted.
+        const shouldBufferCompletionSensitiveText = !!pendingCompletionRepairDirective
 
         // Track step count for warning injection
         let stepCount = 0
