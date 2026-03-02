@@ -21,6 +21,19 @@ export interface ChangelogEntry {
 
 export const changelog: ChangelogEntry[] = [
   {
+    version: '0.33.7',
+    date: '2026-03-02',
+    changes: {
+      fixed: [
+        'Streaming completion-repair now avoids starting a second visible attempt in the same turn after output has already streamed, preventing restart-style duplicate responses (Fixes #106)',
+        'Mutation expectation inference now treats pasted transcript/log blocks as context and avoids false-positive edit expectations on review-only requests (Fixes #106)',
+      ],
+      changed: [
+        'Removed standalone local build:arm64 script; ARM64 packaging remains part of GitHub Actions release builds',
+      ],
+    },
+  },
+  {
     version: '0.33.6',
     date: '2026-02-28',
     changes: {

@@ -73,7 +73,7 @@ The Soul/Memory system should make Jelico increasingly personalized - it learns 
 ## Project overview
 Jelico is an AI Productivity Desktop built with Electron, React, TypeScript, and Vite. It provides a frictionless AI assistant experience with multi-provider support (Anthropic, OpenAI, Google), workspace management, conversation persistence, and a soul/memory system that learns user patterns and preferences over time.
 
-**Current Version:** 0.33.6
+**Current Version:** 0.33.7
 
 **License:** GNU General Public License v3.0 (GPL-3.0-or-later)
 - See LICENSE file in project root
@@ -675,6 +675,7 @@ todo_write({ tasks: [
 - **Phase 1-7 Complete**: Core functionality, UI, artifacts, memory, soul system
 - **Phase 8 Complete**: Onboarding flow, backup/restore, versioning
 - **Current Focus**: Testing, polish, user feedback integration, and response finalization reliability
+- **Latest Patch (0.33.7)**: Streaming duplicate-restart prevention for transcript-heavy review prompts and completion-repair retries
 
 ## Code style
 - TypeScript strict mode enabled

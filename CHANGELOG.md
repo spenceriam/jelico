@@ -2,6 +2,15 @@
 
 All notable changes to Jelico are documented in this file.
 
+## [0.33.7] - 2026-03-02
+
+### Fixed
+- **Single-Turn Streaming Stability** — Assistant responses no longer restart mid-turn and append a second attempt in the same message.
+- **Review Prompt Classification** — Long pasted transcripts are now treated as analysis context so review-only requests are not misclassified as edit requests.
+
+### Changed
+- **Local Build Scripts** — Removed the standalone local `build:arm64` script. ARM64 release artifacts remain part of GitHub Actions builds.
+
 ## [0.33.6] - 2026-02-28
 
 ### Fixed
