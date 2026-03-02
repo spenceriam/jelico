@@ -87,6 +87,8 @@ Jelico is an AI Productivity Desktop built with Electron, React, TypeScript, and
 - **WORKFLOW**: Make changes → Test → Get user approval → Then (and only then) commit → Push
 - **Branch management**: Only commit to the correct branch
 - **Code quality**: Ensure all changes work and are properly tested before seeking approval
+- **Bug issue hygiene**: For bug fixes, create/update an issue titled `bug: <concise description>` (no version number in title), include version details in the issue body, and ensure the issue has the `bug` label
+- **PR title hygiene**: For bug-fix PRs, do not include version numbers in the PR title; keep the title focused on the bug behavior
 
 ## Version Bumping Protocol
 

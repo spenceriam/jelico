@@ -2,6 +2,17 @@
 
 All notable changes to Jelico are documented in this file.
 
+## [0.33.8] - 2026-03-02
+
+### Highlights
+- Tool actions that ended mid-stream are now labeled as interrupted instead of incorrectly showing as user-canceled.
+- Restarting interrupted turns now reliably resumes from the last request, including when you type quick follow-ups like "Resume".
+
+### Fixed
+- **Tool Cancellation Accuracy** — Incomplete tool calls at stream end now carry explicit interruption metadata so the UI no longer mislabels them as user cancellations.
+- **Interrupted Turn Recovery** — Interrupted turns now keep resumable checkpoints and can deterministically restart from the prior request state.
+- **Stream Finish Diagnostics** — Assistant usage metadata now includes provider finish reason details to improve debugging of partial tool runs.
+
 ## [0.33.7] - 2026-03-02
 
 ### Fixed

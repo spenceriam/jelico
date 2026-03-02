@@ -303,6 +303,7 @@ interface MessageUsageData {
   durationMs?: number
   mode?: 'auto' | 'explore' | 'execute' | 'plan' | 'review'
   model?: string
+  finishReason?: string
 }
 
 interface StreamParams {

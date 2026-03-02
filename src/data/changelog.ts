@@ -21,6 +21,17 @@ export interface ChangelogEntry {
 
 export const changelog: ChangelogEntry[] = [
   {
+    version: '0.33.8',
+    date: '2026-03-02',
+    changes: {
+      fixed: [
+        'Interrupted tool calls at stream end now record explicit non-user cancellation causes, preventing false "canceled by user" labeling in tool history (Fixes #109)',
+        'Interrupted turns now preserve resumable checkpoints and support deterministic restart from the last request, including direct "resume/restart/continue" follow-up prompts (Fixes #109)',
+        'Assistant usage metadata now stores provider finishReason to improve diagnostics for partial/incomplete tool runs (Fixes #109)',
+      ],
+    },
+  },
+  {
     version: '0.33.7',
     date: '2026-03-02',
     changes: {
