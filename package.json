@@ -10,7 +10,6 @@
     "dev:stable": "npm run bundle && electron .",
     "build": "npm run sync-icons && tsc && vite build && electron-builder",
     "build:x64": "npm run sync-icons && tsc && vite build && electron-builder --x64",
-    "build:arm64": "npm run sync-icons && tsc && vite build && electron-builder --arm64",
     "build:mac": "npm run sync-icons && tsc && vite build && electron-builder --mac",
     "build:mac:x64": "npm run sync-icons && tsc && vite build && electron-builder --mac --x64",
     "build:mac:arm64": "npm run sync-icons && tsc && vite build && electron-builder --mac --arm64",

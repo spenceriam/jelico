@@ -345,6 +345,9 @@ const ARTIFACT_NEW_INTENT_REGEX = /\b(new|another|separate|different|copy|varian
 const FILE_PATH_INTENT_REGEX = /\b(path|folder|directory|workspace|repo|save (?:it )?to|write (?:it )?to)\b/i
 const EXPLANATION_ONLY_REGEX = /\b(explain|why|how|what|review|analysis|analy[sz]e|opinion|thoughts)\b/i
 const IMPERATIVE_REQUEST_REGEX = /\b(can you|could you|please|go ahead|i want you to|let's|try to)\b/i
+const READ_ONLY_INTENT_REGEX = /\b(review|analysis|analy[sz]e|inspect|audit|summari[sz]e|look over|read through|investigate|diagnose)\b/i
+const EXPLICIT_MUTATION_INTENT_REGEX = /\b(write|save|create|build|generate|scaffold|edit|modify|update|rewrite|rework|refactor|add|remove|delete|rename|fix|patch|implement)\b/i
+const NO_MUTATION_CUE_REGEX = /\b(no changes?|without changes?|read-?only|analysis mode only|do not (?:make|apply)?\s*changes?|don't (?:make|apply)?\s*changes?)\b/i
 const ARTIFACT_COMPLETION_CLAIM_REGEX = /\b(created?|built|generated|updated?|modified|revised|redrawn|recreated|rewrote|fixed|changed|completed|done)\b[\s\S]{0,100}\b(artifact|canvas|html|svg|diagram|game|ui|component|page)\b/i
 const FILE_COMPLETION_CLAIM_REGEX = /\b(created?|updated?|edited?|modified|rewrote|wrote|fixed|changed|saved)\b[\s\S]{0,100}\b(file|files|code|script|module|config|readme|json|yaml|toml|ts|tsx|js|jsx|md)\b/i
 const MAX_COMPLETION_VALIDATION_REPAIRS = 1
@@ -393,6 +396,49 @@ function getLatestUserMessageText(messages: any[]): string {
   return ''
 }
 
+const INTENT_TEXT_TRANSCRIPT_MARKERS: RegExp[] = [
+  /^\s*---\s*$/m,
+  /^\s*\[(execute_command|spawn_agent|read_file|write_file|list_directory|search_files|create_artifact|update_artifact|todo_write|todo_read|todo_check|tool[-_ ]?call)\]/im,
+  /^\s*Arguments:\s*\{/im,
+  /^\s*Result:\s*\{/im,
+  /^\s*stdout:\s*/im,
+  /^\s*stderr:\s*/im,
+]
+
+function extractMutationIntentText(text: string): string {
+  if (!text.trim()) return ''
+
+  let working = text.replace(/```[\s\S]*?```/g, '\n')
+  let cutIndex = working.length
+
+  for (const marker of INTENT_TEXT_TRANSCRIPT_MARKERS) {
+    marker.lastIndex = 0
+    const match = marker.exec(working)
+    if (match && match.index < cutIndex) {
+      cutIndex = match.index
+    }
+  }
+
+  if (cutIndex < working.length) {
+    working = working.slice(0, cutIndex)
+  }
+
+  const normalized = normalizeMessageSnippet(working)
+  if (normalized.length < 24) {
+    return text
+  }
+
+  return working
+}
+
+function isReadOnlyAnalysisIntent(text: string): boolean {
+  const normalized = normalizeMessageSnippet(text)
+  if (!normalized) return false
+  if (NO_MUTATION_CUE_REGEX.test(normalized)) return true
+  if (!READ_ONLY_INTENT_REGEX.test(normalized)) return false
+  return !EXPLICIT_MUTATION_INTENT_REGEX.test(normalized)
+}
+
 function isLikelyActionRequest(text: string): boolean {
   const trimmed = text.trim()
   if (!trimmed) return false
@@ -414,32 +460,38 @@ function hasMutationOrCreationVerb(text: string): boolean {
 }
 
 function isLikelyArtifactMutationRequest(text: string, hasExistingArtifacts: boolean): boolean {
-  if (!isLikelyActionRequest(text)) return false
-  if (!hasMutationOrCreationVerb(text)) return false
-  if (ARTIFACT_TARGET_REGEX.test(text)) return true
-  if (hasExistingArtifacts && ACTION_REFERENCE_REGEX.test(text)) return true
+  const intentText = extractMutationIntentText(text)
+  if (!isLikelyActionRequest(intentText)) return false
+  if (isReadOnlyAnalysisIntent(intentText)) return false
+  if (!hasMutationOrCreationVerb(intentText)) return false
+  if (ARTIFACT_TARGET_REGEX.test(intentText)) return true
+  if (hasExistingArtifacts && ACTION_REFERENCE_REGEX.test(intentText)) return true
   return false
 }
 
 function isLikelyFileMutationRequest(text: string): boolean {
-  if (!isLikelyActionRequest(text)) return false
-  if (!hasMutationOrCreationVerb(text)) return false
-  if (FILE_TARGET_REGEX.test(text)) return true
-  if (/[./\\][\w.-]+\.[a-z0-9]+/i.test(text)) return true
+  const intentText = extractMutationIntentText(text)
+  if (!isLikelyActionRequest(intentText)) return false
+  if (isReadOnlyAnalysisIntent(intentText)) return false
+  if (!hasMutationOrCreationVerb(intentText)) return false
+  if (FILE_TARGET_REGEX.test(intentText)) return true
+  if (/[./\\][\w.-]+\.[a-z0-9]+/i.test(intentText)) return true
   return false
 }
 
 function hasExplicitArtifactUpdateIntent(text: string): boolean {
-  if (!text.trim()) return false
-  if (!ARTIFACT_UPDATE_INTENT_REGEX.test(text)) return false
-  return ARTIFACT_TARGET_REGEX.test(text) || ACTION_REFERENCE_REGEX.test(text)
+  const intentText = extractMutationIntentText(text)
+  if (!intentText.trim()) return false
+  if (!ARTIFACT_UPDATE_INTENT_REGEX.test(intentText)) return false
+  return ARTIFACT_TARGET_REGEX.test(intentText) || ACTION_REFERENCE_REGEX.test(intentText)
 }
 
 function hasExplicitNewArtifactIntent(text: string): boolean {
-  if (!text.trim()) return false
-  if (!CREATION_VERB_REGEX.test(text) && !ARTIFACT_NEW_INTENT_REGEX.test(text)) return false
-  if (ARTIFACT_NEW_INTENT_REGEX.test(text)) return true
-  return /\b(new|another|separate|different)\b/i.test(text)
+  const intentText = extractMutationIntentText(text)
+  if (!intentText.trim()) return false
+  if (!CREATION_VERB_REGEX.test(intentText) && !ARTIFACT_NEW_INTENT_REGEX.test(intentText)) return false
+  if (ARTIFACT_NEW_INTENT_REGEX.test(intentText)) return true
+  return /\b(new|another|separate|different)\b/i.test(intentText)
 }
 
 function inferArtifactTypeFromPathAndContent(path: string, content: string): 'code' | 'document' | 'html' | 'svg' | 'mermaid' {
@@ -3114,10 +3166,11 @@ Note: If recommended option, list it first with "(Recommended)" suffix.`,
         }
 
         const latestUserText = streamContext.latestUserText || ''
+        const mutationIntentText = extractMutationIntentText(latestUserText)
         const explicitFileRequest =
           isLikelyFileMutationRequest(latestUserText) ||
-          FILE_PATH_INTENT_REGEX.test(latestUserText) ||
-          /[./\\][\w.-]+\.[a-z0-9]+/i.test(latestUserText)
+          FILE_PATH_INTENT_REGEX.test(mutationIntentText) ||
+          /[./\\][\w.-]+\.[a-z0-9]+/i.test(mutationIntentText)
         const contentLooksArtifactLike =
           /<!doctype html|<html[\s>]|<svg[\s>]/i.test(content) ||
           /(^|\n)\s*(flowchart|graph|sequenceDiagram|classDiagram|stateDiagram|erDiagram|gantt|mindmap|pie)\b/.test(content)
@@ -4555,16 +4608,26 @@ If you find yourself frequently hitting limits, suggest breaking the task into m
                 console.warn('[AI] Completion validation failed:', turnValidation.issues)
               }
 
+              const retryWouldDuplicateVisibleOutput =
+                hasVisibleAssistantOutput ||
+                kickoffSentInThisTurn ||
+                toolTracker.size > 0
+
               if (
                 completionValidationRepairAttempts < MAX_COMPLETION_VALIDATION_REPAIRS &&
-                attempt < MAX_RETRIES
+                attempt < MAX_RETRIES &&
+                !retryWouldDuplicateVisibleOutput
               ) {
                 completionValidationRepairAttempts += 1
                 pendingCompletionRepairDirective = resolveValidationRepairDirective(turnValidation)
                 continue
               }
 
-              throw new Error('I could not verify that the requested artifact/file updates were applied. Please retry.')
+              if (retryWouldDuplicateVisibleOutput) {
+                console.warn('[AI] Skipping completion validation retry because output is already visible in this turn:', turnValidation.issues)
+              } else {
+                throw new Error('I could not verify that the requested artifact/file updates were applied. Please retry.')
+              }
             }
           }
 
