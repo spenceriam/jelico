@@ -716,9 +716,35 @@ todo_write({ tasks: [
 - Changes how something looks or behaves
 - Improves performance or reliability
 
+### PR Description Format (Required)
+
+All pull requests must use this exact section structure:
+
+```markdown
+## Root Cause
+- What failed and why.
+
+## Fix
+- How the root cause was addressed.
+
+## Changes
+- Concrete file/behavior changes included in the PR.
+
+## Issue
+Fixes #<issue-number>
+```
+
+Rules:
+- No emojis.
+- Keep language factual and concise.
+- Do not include extra sections like "Validation" or "Release Readiness" unless explicitly requested.
+
 **Format for CHANGELOG.md:**
 ```markdown
 ## [X.Y.Z] - YYYY-MM-DD
+
+### Highlights
+- One to three bullets with the most important user-visible outcomes.
 
 ### New
 - **Feature Name** — Plain English description of what it does and why users care.
@@ -736,6 +762,13 @@ todo_write({ tasks: [
 - Avoid technical jargon (no "async functions," "race conditions," etc.)
 - Keep it to one sentence per bullet
 - Add new versions at the TOP of the file
+
+### GitHub Release Notes Format (Required)
+
+For every tagged release, release notes must begin with a **Highlights** section:
+- Include 2-4 bullets summarizing key fixes/features users should care about first.
+- Reference related issue numbers in those bullets when applicable.
+- Keep wording consistent with the changelog entry for that version.
 
 ### Example
 
