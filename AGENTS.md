@@ -73,7 +73,7 @@ The Soul/Memory system should make Jelico increasingly personalized - it learns 
 ## Project overview
 Jelico is an AI Productivity Desktop built with Electron, React, TypeScript, and Vite. It provides a frictionless AI assistant experience with multi-provider support (Anthropic, OpenAI, Google), workspace management, conversation persistence, and a soul/memory system that learns user patterns and preferences over time.
 
-**Current Version:** 0.33.6
+**Current Version:** 0.33.7
 
 **License:** GNU General Public License v3.0 (GPL-3.0-or-later)
 - See LICENSE file in project root
@@ -675,6 +675,7 @@ todo_write({ tasks: [
 - **Phase 1-7 Complete**: Core functionality, UI, artifacts, memory, soul system
 - **Phase 8 Complete**: Onboarding flow, backup/restore, versioning
 - **Current Focus**: Testing, polish, user feedback integration, and response finalization reliability
+- **Latest Patch (0.33.7)**: Streaming duplicate-restart prevention for transcript-heavy review prompts and completion-repair retries
 
 ## Code style
 - TypeScript strict mode enabled
@@ -715,9 +716,35 @@ todo_write({ tasks: [
 - Changes how something looks or behaves
 - Improves performance or reliability
 
+### PR Description Format (Required)
+
+All pull requests must use this exact section structure:
+
+```markdown
+## Root Cause
+- What failed and why.
+
+## Fix
+- How the root cause was addressed.
+
+## Changes
+- Concrete file/behavior changes included in the PR.
+
+## Issue
+Fixes #<issue-number>
+```
+
+Rules:
+- No emojis.
+- Keep language factual and concise.
+- Do not include extra sections like "Validation" or "Release Readiness" unless explicitly requested.
+
 **Format for CHANGELOG.md:**
 ```markdown
 ## [X.Y.Z] - YYYY-MM-DD
+
+### Highlights
+- One to three bullets with the most important user-visible outcomes.
 
 ### New
 - **Feature Name** — Plain English description of what it does and why users care.
@@ -735,6 +762,13 @@ todo_write({ tasks: [
 - Avoid technical jargon (no "async functions," "race conditions," etc.)
 - Keep it to one sentence per bullet
 - Add new versions at the TOP of the file
+
+### GitHub Release Notes Format (Required)
+
+For every tagged release, release notes must begin with a **Highlights** section:
+- Include 2-4 bullets summarizing key fixes/features users should care about first.
+- Reference related issue numbers in those bullets when applicable.
+- Keep wording consistent with the changelog entry for that version.
 
 ### Example
 
