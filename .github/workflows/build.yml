@@ -2,8 +2,6 @@ name: Build and Release
 
 on:
   push:
-    tags:
-      - 'v*'
     branches:
       - main
   workflow_dispatch:
@@ -18,7 +16,73 @@ env:
   NODE_VERSION: '20'
 
 jobs:
+  determine-release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    outputs:
+      should_release: ${{ steps.release_gate.outputs.should_release }}
+      version: ${{ steps.release_gate.outputs.version }}
+      reason: ${{ steps.release_gate.outputs.reason }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Determine if release should run
+        id: release_gate
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          MANUAL_RELEASE: ${{ github.event.inputs.release || 'false' }}
+          BEFORE_SHA: ${{ github.event.before }}
+          CURRENT_SHA: ${{ github.sha }}
+        run: |
+          package_version=$(node -p "require('./package.json').version")
+          release_tag="v${package_version}"
+          echo "version=${release_tag}" >> "$GITHUB_OUTPUT"
+
+          tag_exists=false
+          if git ls-remote --exit-code --tags origin "refs/tags/${release_tag}" >/dev/null 2>&1; then
+            tag_exists=true
+          fi
+
+          version_bumped=false
+          if [[ "$EVENT_NAME" == "push" ]]; then
+            if [[ "$BEFORE_SHA" == "0000000000000000000000000000000000000000" ]]; then
+              version_bumped=true
+            elif git diff --name-only "$BEFORE_SHA" "$CURRENT_SHA" -- package.json | grep -q "^package.json$"; then
+              version_bumped=true
+            fi
+          fi
+
+          should_release=false
+          reason="Release skipped."
+          if [[ "$EVENT_NAME" == "workflow_dispatch" && "$MANUAL_RELEASE" == "true" ]]; then
+            if [[ "$tag_exists" == "false" ]]; then
+              should_release=true
+              reason="Manual release requested and release tag does not exist."
+            else
+              reason="Manual release requested, but release tag already exists."
+            fi
+          elif [[ "$EVENT_NAME" == "push" ]]; then
+            if [[ "$version_bumped" == "true" && "$tag_exists" == "false" ]]; then
+              should_release=true
+              reason="Main push includes package.json version bump and release tag is new."
+            elif [[ "$version_bumped" == "false" ]]; then
+              reason="Main push did not change package.json version."
+            else
+              reason="Release tag already exists for package version."
+            fi
+          fi
+
+          echo "should_release=${should_release}" >> "$GITHUB_OUTPUT"
+          echo "reason=${reason}" >> "$GITHUB_OUTPUT"
+          echo "$reason"
+
   build-linux:
+    needs: determine-release
+    if: ${{ needs.determine-release.outputs.should_release == 'true' }}
     permissions:
       contents: read
     runs-on: ubuntu-latest
@@ -52,6 +116,8 @@ jobs:
           if-no-files-found: warn
 
   build-windows:
+    needs: determine-release
+    if: ${{ needs.determine-release.outputs.should_release == 'true' }}
     permissions:
       contents: read
     runs-on: windows-latest
@@ -84,6 +150,8 @@ jobs:
           if-no-files-found: warn
 
   build-macos:
+    needs: determine-release
+    if: ${{ needs.determine-release.outputs.should_release == 'true' }}
     permissions:
       contents: read
     runs-on: macos-latest
@@ -122,9 +190,9 @@ jobs:
           if-no-files-found: warn
 
   release:
-    needs: [build-linux, build-windows, build-macos]
+    needs: [determine-release, build-linux, build-windows, build-macos]
     runs-on: ubuntu-latest
-    if: startsWith(github.ref, 'refs/tags/v') || (github.event_name == 'push' && github.ref == 'refs/heads/main') || (github.event_name == 'workflow_dispatch' && github.event.inputs.release == 'true')
+    if: ${{ needs.determine-release.outputs.should_release == 'true' }}
     env:
       MACOS_ARM_ARCH_LABEL: Apple Silicon (M-series)
     permissions:
@@ -142,28 +210,6 @@ jobs:
       - name: Display structure of downloaded files
         run: ls -R artifacts
 
-      - name: Resolve release tag
-        id: version
-        run: |
-          if [[ "${{ github.ref }}" == refs/tags/* ]]; then
-            release_tag="${GITHUB_REF#refs/tags/}"
-          else
-            package_version=$(node -p "require('./package.json').version")
-            release_tag="v${package_version}"
-          fi
-          echo "version=${release_tag}" >> $GITHUB_OUTPUT
-
-      - name: Check if release tag already exists
-        id: tag_check
-        if: ${{ !startsWith(github.ref, 'refs/tags/v') }}
-        run: |
-          if git ls-remote --exit-code --tags origin "refs/tags/${{ steps.version.outputs.version }}" >/dev/null 2>&1; then
-            echo "exists=true" >> $GITHUB_OUTPUT
-            echo "Tag ${{ steps.version.outputs.version }} already exists. Skipping draft release creation."
-          else
-            echo "exists=false" >> $GITHUB_OUTPUT
-          fi
-
       - name: Validate release note architecture labels
         run: |
           release_body=$(sed -n '/^[[:space:]]*body: |$/,$p' .github/workflows/build.yml)
@@ -173,11 +219,10 @@ jobs:
           fi
 
       - name: Create Release
-        if: ${{ startsWith(github.ref, 'refs/tags/v') || steps.tag_check.outputs.exists != 'true' }}
         uses: softprops/action-gh-release@v1
         with:
-          tag_name: ${{ steps.version.outputs.version }}
-          name: Jelico ${{ steps.version.outputs.version }}
+          tag_name: ${{ needs.determine-release.outputs.version }}
+          name: Jelico ${{ needs.determine-release.outputs.version }}
           draft: true
           prerelease: false
           files: |
@@ -189,7 +234,7 @@ jobs:
             artifacts/**/*.deb
             artifacts/**/*.rpm
           body: |
-            ## Jelico ${{ steps.version.outputs.version }}
+            ## Jelico ${{ needs.determine-release.outputs.version }}
 
             ### Downloads
 
