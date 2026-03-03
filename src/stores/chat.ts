@@ -57,6 +57,7 @@ export interface ToolResult {
 }
 
 const INTERNAL_WEB_GATE_RESULT_TYPES = new Set(['deferred_to_subagents', 'direct_limit_reached'])
+const GIT_BRANCH_SWITCH_COMMAND_PATTERN = /\bgit(?:\s+-c\s+\S+)*\s+(?:checkout|switch)\b/i
 
 function isInternalWebGateResultPayload(payload: unknown): boolean {
   if (!payload || typeof payload !== 'object') return false
@@ -65,6 +66,19 @@ function isInternalWebGateResultPayload(payload: unknown): boolean {
   const results = obj.results as Record<string, unknown> | undefined
   const resultType = typeof results?.type === 'string' ? results.type : ''
   return INTERNAL_WEB_GATE_RESULT_TYPES.has(resultType)
+}
+
+function shouldRefreshWorkspaceGitAfterCommand(toolCall: ToolCall | undefined, result: unknown): boolean {
+  if (!toolCall || toolCall.name !== 'execute_command') return false
+  if (!result || typeof result !== 'object') return false
+
+  const resultObj = result as Record<string, unknown>
+  if (resultObj.success !== true) return false
+
+  const command = toolCall.args?.command
+  if (typeof command !== 'string') return false
+
+  return GIT_BRANCH_SWITCH_COMMAND_PATTERN.test(command)
 }
 
 // Streaming segment - tracks content in the order it arrives
@@ -1329,12 +1343,18 @@ export const useChatStore = create<ChatStore>((set, get) => ({
     window.jelico.ai.onToolResults(channelId, (toolResults) => {
       console.log('[Chat Store] Received tool results:', toolResults)
       const now = Date.now()
+      let shouldRefreshWorkspaceGit = false
 
       updateConversationStreamState((current) => {
         const hiddenToolCallIds = new Set<string>()
         for (const result of toolResults) {
           const matchingToolCall = current.streamingToolCalls.find(tc => tc.id === result.toolCallId)
           if (!matchingToolCall) continue
+
+          if (shouldRefreshWorkspaceGitAfterCommand(matchingToolCall, result.result)) {
+            shouldRefreshWorkspaceGit = true
+          }
+
           const isInternalWebGateCall =
             (matchingToolCall.name === 'web_search' || matchingToolCall.name === 'web_fetch') &&
             isInternalWebGateResultPayload(result.result)
@@ -1386,6 +1406,17 @@ export const useChatStore = create<ChatStore>((set, get) => ({
           toolInputProgress: null,
         }
       })
+
+      if (shouldRefreshWorkspaceGit) {
+        const conversationWorkspaceId = get().conversations.find((conversation) => conversation.id === targetConversationId)?.workspaceId
+        const fallbackWorkspaceId = useWorkspaceStore.getState().activeWorkspaceId
+        const workspaceIdToRefresh = conversationWorkspaceId || fallbackWorkspaceId
+        if (workspaceIdToRefresh) {
+          void useWorkspaceStore.getState().refreshGit(workspaceIdToRefresh).catch((error) => {
+            console.error('Failed to refresh workspace git state after branch switch command:', error)
+          })
+        }
+      }
     })
 
     // Handle tool call updates - updates status and args for existing tool calls

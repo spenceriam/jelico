@@ -21,6 +21,15 @@ export interface ChangelogEntry {
 
 export const changelog: ChangelogEntry[] = [
   {
+    version: '0.33.10',
+    date: '2026-03-03',
+    changes: {
+      fixed: [
+        'Active workspace branch indicator now refreshes live after successful in-chat git branch switches (`git checkout` / `git switch`) executed through the command tool (Fixes #81)',
+      ],
+    },
+  },
+  {
     version: '0.33.9',
     date: '2026-03-03',
     changes: {
