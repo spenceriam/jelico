@@ -628,7 +628,7 @@ export function ChatInput({ disabled, isStreaming, centered }: ChatInputProps) {
           }
           autoFocus
           rows={centered ? 4 : 2}
-          className={`flex-1 bg-transparent text-sm text-text-primary placeholder:text-text-muted outline-none resize-none focus:outline-none focus:ring-0 border-none leading-6 px-3 pt-3 pb-2 scroll-py-3 select-text ${
+          className={`flex-1 bg-transparent text-sm text-text-primary placeholder:text-text-muted outline-none resize-none focus:outline-none focus:ring-0 border-none leading-6 px-3 pt-3 pb-0 scroll-pt-3 select-text ${
             centered ? 'min-h-[96px] max-h-[200px]' : 'min-h-[64px] max-h-[150px]'
           }`}
         />
