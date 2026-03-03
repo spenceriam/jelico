@@ -13,6 +13,7 @@ All notable changes to Jelico are documented in this file.
 - **Issue and PR Consistency** — Added repository templates so bug and feature requests include the right labels and required context fields by default.
 - **GitHub Quality Gates** — Added CI checks that enforce PR section format, required `Fixes #<issue-number>` linkage, and emoji-free PR and commit text.
 - **Issue Text Enforcement** — Added issue-style checks that flag emoji use in issue titles/bodies and provide correction guidance.
+- **Resume Shortcut Precision** — Resume/restart/continue shortcuts now trigger only on exact command input, preventing accidental matches on longer phrases.
 
 ### Changed
 - **Adaptive Assistant Behavior** — Jelico now stays general-purpose by default and applies engineer-depth only when a task clearly requires engineering work.

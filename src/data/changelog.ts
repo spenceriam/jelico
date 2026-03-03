@@ -34,6 +34,7 @@ export const changelog: ChangelogEntry[] = [
         'Added repository issue and PR templates to standardize bug/feature metadata, labels, and required root-cause/fix structure',
         'Added CI checks to enforce PR section format, required issue linkage, and an emoji-free policy for PR text and commit messages',
         'Added CI checks to flag issue titles/bodies that contain emojis and comment with correction guidance',
+        'Resume shortcut detection now requires exact commands (`resume`, `restart`, or `continue`) to avoid unintended triggers on longer phrases',
       ],
     },
   },

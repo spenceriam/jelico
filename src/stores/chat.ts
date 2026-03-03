@@ -491,7 +491,7 @@ function getLatestUserMessage(messages: Message[]): Message | null {
 
 function isResumeShortcut(content: string): boolean {
   const normalized = content.trim().toLowerCase()
-  return /^(resume|restart|continue)\b/.test(normalized)
+  return /^(resume|restart|continue)$/.test(normalized)
 }
 
 function hasIncompleteToolEvidence(messages: Message[]): boolean {
