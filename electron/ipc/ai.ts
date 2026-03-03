@@ -66,6 +66,8 @@ startOrphanCleanup()
 
 // Store active streams for cancellation
 const activeStreams = new Map<string, AbortController>()
+// Track effective mode per active stream so runtime mode changes can affect tool policy.
+const streamRuntimeModes = new Map<string, AgentMode>()
 
 // Track pending clarification requests (requestId -> resolver)
 interface PendingClarification {
@@ -1238,6 +1240,7 @@ function getBuiltInTools(
     latestUserText?: string
     expectedArtifactMutation?: boolean
     allowAllSession?: boolean
+    getRuntimeMode?: () => AgentMode
     resetActivityTimeout?: () => void  // Allows blocking tools to keep stream alive
     spawnedAgentIds: Set<string>  // Track spawned agent IDs for orphan detection
     awaitedAgentIds: Set<string>  // Track awaited agent IDs for orphan detection
@@ -1250,9 +1253,10 @@ function getBuiltInTools(
   sendTodos?: (todos: TodoTask[]) => void,
   getTodos?: () => TodoTask[]
 ) {
+  const getRuntimeMode = () => streamContext.getRuntimeMode?.() ?? mode
   const canWrite = mode !== 'explore'
   const canExecute = mode === 'auto' || mode === 'execute' || mode === 'review'
-  const bypassPermissionsForMode = mode === 'execute'
+  const shouldBypassPermissionsForMode = () => getRuntimeMode() === 'execute'
   // Web research is delegated through sub-agents in all modes.
   const canSpawnAgents = true
   // Main AI keeps direct web tools as an internal fallback after helper-agent research.
@@ -1495,7 +1499,8 @@ function getBuiltInTools(
     return null
   }
   const tools: Record<string, any> = {}
-  const shouldSkipClarificationPrompts = mode === 'execute' || streamContext.allowAllSession === true
+  const shouldSkipClarificationPrompts = () =>
+    shouldBypassPermissionsForMode() || streamContext.allowAllSession === true
 
   const requestUserClarification = async (subject: string, questions: Array<{
     header: string
@@ -2320,7 +2325,7 @@ For type="html": after creating it, self-test with artifact_test before claiming
       const lookedFileCentric =
         isLikelyFileMutationRequest(latestUserText) &&
         !isLikelyArtifactMutationRequest(latestUserText, true)
-      if (!shouldSkipClarificationPrompts && lookedFileCentric) {
+      if (!shouldSkipClarificationPrompts() && lookedFileCentric) {
         const clarification = await requestUserClarification('Output Target', [
           {
             header: 'Output',
@@ -2371,7 +2376,7 @@ For type="html": after creating it, self-test with artifact_test before claiming
             console.log(
               `[AI] create_artifact matched existing artifact "${title}" (${existingArtifactId}); explicit revision intent detected`
             )
-          } else if (isAmbiguousIntent && !shouldSkipClarificationPrompts) {
+          } else if (isAmbiguousIntent && !shouldSkipClarificationPrompts()) {
             const clarification = await requestUserClarification('Artifact Revision', [
               {
                 header: 'Revision',
@@ -3179,7 +3184,7 @@ Note: If recommended option, list it first with "(Recommended)" suffix.`,
         const requestLooksArtifactLike = isLikelyArtifactMutationRequest(latestUserText, true)
 
         if (
-          !shouldSkipClarificationPrompts &&
+          !shouldSkipClarificationPrompts() &&
           !explicitFileRequest &&
           (requestLooksArtifactLike || contentLooksArtifactLike)
         ) {
@@ -3271,7 +3276,7 @@ Note: If recommended option, list it first with "(Recommended)" suffix.`,
             console.log(`[AI] Sandbox mode: Writing to ${actualPath} (relative: ${sandboxRelativePath})`)
           }
 
-          if (!bypassPermissionsForMode) {
+          if (!shouldBypassPermissionsForMode()) {
             // Check permission before writing (use permission path for consistent "remember" behavior)
             const permCheck = await checkPermission('write_file', { path: permissionPath, content }, streamContext.workspacePath)
             if (!permCheck.allowed && permCheck.reason === 'needs_approval') {
@@ -3332,7 +3337,7 @@ Note: If recommended option, list it first with "(Recommended)" suffix.`,
           }
         }
         try {
-          if (!bypassPermissionsForMode) {
+          if (!shouldBypassPermissionsForMode()) {
             // Check permission - classifies command as safe/destructive/unknown
             const permCheck = await checkPermission('execute_command', { command }, streamContext.workspacePath)
 
@@ -3432,7 +3437,7 @@ Note: If recommended option, list it first with "(Recommended)" suffix.`,
           : streamContext.workspacePath
 
         // Check permission
-        if (!bypassPermissionsForMode) {
+        if (!shouldBypassPermissionsForMode()) {
           const result = await requestPermission({
             toolName: 'execute_script',
             action: 'Execute Node.js script in sandbox',
@@ -3605,6 +3610,7 @@ export function registerAIHandlers() {
       // Create provider instance
       const provider = getProviderInstance(providerConfig, apiKey || '')
       const mode: AgentMode = params.mode || 'auto'
+      streamRuntimeModes.set(channelId, mode)
 
       // Build OS/environment context for terminal commands
       const osType = process.platform === 'win32' ? 'Windows' : process.platform === 'darwin' ? 'macOS' : 'Linux'
@@ -3790,6 +3796,7 @@ If you find yourself frequently hitting limits, suggest breaking the task into m
         latestUserText,
         expectedArtifactMutation,
         allowAllSession,
+        getRuntimeMode: () => streamRuntimeModes.get(channelId) || mode,
         resetActivityTimeout, // Allow blocking tools like wait_for_agent to keep stream alive
         spawnedAgentIds: new Set<string>(),  // Track spawned agent IDs for orphan detection
         awaitedAgentIds: new Set<string>(),  // Track awaited agent IDs for orphan detection
@@ -4710,6 +4717,7 @@ If you find yourself frequently hitting limits, suggest breaking the task into m
       clearTimeout(activityTimeoutId)
       clearTimeout(maxTimeoutId)
       activeStreams.delete(channelId)
+      streamRuntimeModes.delete(channelId)
 
       // Safety: ensure no background sub-agents keep running after parent stream ends.
       // Keep callback active until after cancel so renderer receives terminal status updates.
@@ -4732,6 +4740,14 @@ If you find yourself frequently hitting limits, suggest breaking the task into m
     }
   })
 
+  // Update active stream mode from renderer-side user mode changes.
+  ipcMain.on('ai:updateStreamMode', (_, channelId: string, mode: AgentMode) => {
+    if (!channelId || typeof channelId !== 'string') return
+    if (!mode || typeof mode !== 'string') return
+    if (!activeStreams.has(channelId)) return
+    streamRuntimeModes.set(channelId, mode)
+  })
+
   // Stop streaming
   ipcMain.on('ai:stop', (_, channelId: string) => {
     console.log(`[AI] Stop requested for stream ${channelId}`)
@@ -4741,6 +4757,7 @@ If you find yourself frequently hitting limits, suggest breaking the task into m
       controller.abort()
       activeStreams.delete(channelId)
     }
+    streamRuntimeModes.delete(channelId)
 
     // Cancel running sub-agents immediately when user stops
     const cancelled = cancelAgentsForStream(channelId)

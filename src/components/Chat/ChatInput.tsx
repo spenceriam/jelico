@@ -110,7 +110,6 @@ export function ChatInput({ disabled, isStreaming, centered }: ChatInputProps) {
     activeConversationId,
   } = useChatStore()
   const { activeProviderId, activeModel } = useProviderStore()
-  const lockInput = Boolean(disabled && !centered)
 
   const resizeTextarea = useCallback((content: string) => {
     const textarea = textareaRef.current
@@ -119,7 +118,7 @@ export function ChatInput({ disabled, isStreaming, centered }: ChatInputProps) {
     textarea.style.height = 'auto'
     // Chat view (not centered): compact 1-line style, grows as needed
     // Welcome screen (centered): taller 4-line style
-    const minHeight = centered ? 96 : 24
+    const minHeight = centered ? 96 : 36
     const maxHeight = centered ? 200 : 150
     if (!content) {
       textarea.style.height = `${minHeight}px`
@@ -130,14 +129,13 @@ export function ChatInput({ disabled, isStreaming, centered }: ChatInputProps) {
   }, [centered])
 
   const focusTextarea = useCallback(() => {
-    if (lockInput) return
     const textarea = textareaRef.current
     if (!textarea) return
 
     if (document.activeElement !== textarea) {
       textarea.focus()
     }
-  }, [lockInput])
+  }, [])
 
   // Restore draft when switching conversations (including new-chat view)
   useEffect(() => {
@@ -233,8 +231,6 @@ export function ChatInput({ disabled, isStreaming, centered }: ChatInputProps) {
 
   // Handle paste with content detection
   const handlePaste = useCallback((e: React.ClipboardEvent) => {
-    if (lockInput) return
-
     // Welcome/new-chat view prioritizes reliability over custom paste behavior.
     // Let the browser handle paste natively so users can always paste and edit.
     if (centered) {
@@ -273,7 +269,7 @@ export function ChatInput({ disabled, isStreaming, centered }: ChatInputProps) {
       handleFileSelect(files)
       requestAnimationFrame(() => focusTextarea())
     }
-  }, [centered, focusTextarea, handleFileSelect, lockInput])
+  }, [centered, focusTextarea, handleFileSelect])
 
   // Remove attachment
   const removeAttachment = useCallback((id: string) => {
@@ -630,11 +626,10 @@ export function ChatInput({ disabled, isStreaming, centered }: ChatInputProps) {
               ? 'Message will be queued...'
               : 'Message Jelico...'
           }
-          disabled={lockInput}
           autoFocus
           rows={centered ? 4 : 1}
-          className={`flex-1 bg-transparent text-sm text-text-primary placeholder:text-text-muted outline-none resize-none disabled:cursor-not-allowed focus:outline-none focus:ring-0 border-none leading-6 p-3 pb-0 select-text ${
-            centered ? 'min-h-[96px] max-h-[200px]' : 'min-h-[24px] max-h-[150px]'
+          className={`flex-1 bg-transparent text-sm text-text-primary placeholder:text-text-muted outline-none resize-none focus:outline-none focus:ring-0 border-none leading-6 px-3 pt-3 pb-1 scroll-py-3 select-text ${
+            centered ? 'min-h-[96px] max-h-[200px]' : 'min-h-[36px] max-h-[150px]'
           }`}
         />
 
@@ -646,8 +641,7 @@ export function ChatInput({ disabled, isStreaming, centered }: ChatInputProps) {
           {/* Left side - Attachments */}
           <button
             onClick={openFilePicker}
-            disabled={lockInput}
-            className="p-[0.45em] text-text-muted hover:text-text-secondary disabled:opacity-50 disabled:cursor-not-allowed transition-colors rounded-lg hover:bg-bg-hover"
+            className="p-[0.45em] text-text-muted hover:text-text-secondary transition-colors rounded-lg hover:bg-bg-hover"
             title="Attach files"
           >
             <Paperclip className="w-[1.15em] h-[1.15em]" />

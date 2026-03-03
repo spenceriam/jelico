@@ -2139,6 +2139,19 @@ export const useChatStore = create<ChatStore>((set, get) => ({
     if (mode === currentMode) return
     if (!isModeTransitionAllowed(currentMode, mode)) return
     set({ mode })
+
+    const activeConversationId = get().activeConversationId
+    if (!activeConversationId) return
+
+    const streamChannelId = streamChannelByConversation.get(activeConversationId)
+    const streamState = get().conversationStreams[activeConversationId]
+    if (!streamChannelId || !streamState?.isStreaming) return
+
+    try {
+      window.jelico.ai.updateStreamMode(streamChannelId, mode)
+    } catch (error) {
+      console.warn('[Chat Store] Failed to update active stream mode:', error)
+    }
   },
 
   setModeTransitioning: (transitioning) => set({ modeTransitioning: transitioning }),

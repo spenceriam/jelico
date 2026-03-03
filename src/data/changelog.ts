@@ -21,6 +21,21 @@ export interface ChangelogEntry {
 
 export const changelog: ChangelogEntry[] = [
   {
+    version: '0.34.0',
+    date: '2026-03-03',
+    changes: {
+      changed: [
+        'Added active-stream mode synchronization (`ai:updateStreamMode`) so renderer mode changes are applied by backend tool policy without waiting for the next turn',
+      ],
+      fixed: [
+        'Switching to Full Execute during an active response now updates that stream\'s permission behavior immediately, preventing continued approval prompts after mode change (Fixes #82)',
+        'Prompt composer no longer enters intermittent locked states in active chats; typing/attachments remain available while send gating still respects provider/model readiness (Fixes #116)',
+        'Prompt textarea now preserves a consistent top inset while scrolling long drafts via adjusted composer sizing and scroll padding (Fixes #95)',
+        'Context usage display and compaction checks now rely on the highest reliable per-conversation token signal, and context initialization preserves prior token history to avoid apparent resets during branch updates (Fixes #111)',
+      ],
+    },
+  },
+  {
     version: '0.33.10',
     date: '2026-03-03',
     changes: {
