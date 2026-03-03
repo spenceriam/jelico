@@ -2,6 +2,14 @@
 
 All notable changes to Jelico are documented in this file.
 
+## [0.33.10] - 2026-03-03
+
+### Highlights
+- Branch changes made during an active chat now reflect immediately in the header branch badge after successful `git checkout` or `git switch` commands.
+
+### Fixed
+- **Live Branch Display During Chat** — When Jelico runs a successful branch switch command in an active chat, the workspace branch label now updates right away instead of showing stale branch context until restart.
+
 ## [0.33.9] - 2026-03-03
 
 ### Highlights
