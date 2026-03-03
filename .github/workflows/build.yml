@@ -4,6 +4,8 @@ on:
   push:
     tags:
       - 'v*'
+    branches:
+      - main
   workflow_dispatch:
     inputs:
       release:
@@ -122,7 +124,7 @@ jobs:
   release:
     needs: [build-linux, build-windows, build-macos]
     runs-on: ubuntu-latest
-    if: startsWith(github.ref, 'refs/tags/v') || (github.event_name == 'workflow_dispatch' && github.event.inputs.release == 'true')
+    if: startsWith(github.ref, 'refs/tags/v') || (github.event_name == 'push' && github.ref == 'refs/heads/main') || (github.event_name == 'workflow_dispatch' && github.event.inputs.release == 'true')
     env:
       MACOS_ARM_ARCH_LABEL: Apple Silicon (M-series)
     permissions:
@@ -140,13 +142,26 @@ jobs:
       - name: Display structure of downloaded files
         run: ls -R artifacts
 
-      - name: Get version from tag
+      - name: Resolve release tag
         id: version
         run: |
           if [[ "${{ github.ref }}" == refs/tags/* ]]; then
-            echo "version=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+            release_tag="${GITHUB_REF#refs/tags/}"
           else
-            echo "version=manual-$(date +%Y%m%d-%H%M%S)" >> $GITHUB_OUTPUT
+            package_version=$(node -p "require('./package.json').version")
+            release_tag="v${package_version}"
+          fi
+          echo "version=${release_tag}" >> $GITHUB_OUTPUT
+
+      - name: Check if release tag already exists
+        id: tag_check
+        if: ${{ !startsWith(github.ref, 'refs/tags/v') }}
+        run: |
+          if git ls-remote --exit-code --tags origin "refs/tags/${{ steps.version.outputs.version }}" >/dev/null 2>&1; then
+            echo "exists=true" >> $GITHUB_OUTPUT
+            echo "Tag ${{ steps.version.outputs.version }} already exists. Skipping draft release creation."
+          else
+            echo "exists=false" >> $GITHUB_OUTPUT
           fi
 
       - name: Validate release note architecture labels
@@ -158,6 +173,7 @@ jobs:
           fi
 
       - name: Create Release
+        if: ${{ startsWith(github.ref, 'refs/tags/v') || steps.tag_check.outputs.exists != 'true' }}
         uses: softprops/action-gh-release@v1
         with:
           tag_name: ${{ steps.version.outputs.version }}
