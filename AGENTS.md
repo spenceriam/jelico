@@ -91,6 +91,8 @@ Jelico is an AI Productivity Desktop built with Electron, React, TypeScript, and
 - **Feature issue hygiene**: For feature work, create/update an issue titled `feature: <concise description>` and ensure the issue has the `enhancement` label
 - **PR title hygiene**: For bug-fix PRs, do not include version numbers in the PR title; keep the title focused on the bug behavior
 - **Template compliance**: When creating issues/PRs via AI, follow `.github/ISSUE_TEMPLATE/*` and `.github/PULL_REQUEST_TEMPLATE.md` exactly
+- **Draft PR gate check**: After creating or editing a draft PR, check GitHub Action `PR Format Check / validate-pr-body (pull_request)` and confirm it passes
+- **Draft PR corrective flow**: If `validate-pr-body` fails, inspect the run logs, correct the PR title/body/issue linkage and commit-message policy issues, then re-check until the action passes before requesting review
 - **GitHub tone hygiene**: Do not use emojis in GitHub-facing artifacts (issue titles/bodies, PR titles/bodies, commit messages, release notes)
 
 ## Version Bumping Protocol
