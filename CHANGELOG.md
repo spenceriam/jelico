@@ -17,6 +17,7 @@ All notable changes to Jelico are documented in this file.
 
 ### Changed
 - **Live Stream Mode Sync** — Mode changes in the UI now sync to the active backend stream so runtime tool policy reflects your current mode without waiting for a new turn.
+- **Conversation Scope Refinement** — During context-window testing, conversation-linking scope was refined so sandbox chats stay per-conversation and worktree chats stay isolated, while non-worktree workspace chats remain project-linked.
 
 ## [0.33.10] - 2026-03-03
 

@@ -26,6 +26,7 @@ export const changelog: ChangelogEntry[] = [
     changes: {
       changed: [
         'Added active-stream mode synchronization (`ai:updateStreamMode`) so renderer mode changes are applied by backend tool policy without waiting for the next turn',
+        'Refined project sibling-conversation context scoping discovered during context-window validation: sandbox chats are now isolated per conversation and worktree chats remain isolated from main-workspace conversation buckets',
       ],
       fixed: [
         'Switching to Full Execute during an active response now updates that stream\'s permission behavior immediately, preventing continued approval prompts after mode change (Fixes #82)',

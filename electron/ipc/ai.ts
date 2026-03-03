@@ -988,12 +988,18 @@ ${text}
 }
 
 function getConversationProjectKey(
+  conversationId: string,
   workspaceId: string | null,
   workspaceById: Map<string, any>
 ): string {
-  if (!workspaceId) return 'sandbox'
+  if (!workspaceId) return `sandbox:${conversationId}`
   const workspace = workspaceById.get(workspaceId)
   if (!workspace) return `workspace:${workspaceId}`
+  const isWorktree = workspace.is_worktree === 1
+  if (isWorktree) {
+    // Worktrees are intentionally isolated: group only by exact workspace.
+    return `worktree:${workspace.id || workspaceId}`
+  }
   return workspace.project_path || workspace.path || `workspace:${workspaceId}`
 }
 
@@ -1008,12 +1014,20 @@ function buildProjectConversationContext(conversationId?: string): string {
   const currentWorkspace = currentConversation.workspace_id
     ? workspaceById.get(currentConversation.workspace_id)
     : null
-  const currentProjectKey = getConversationProjectKey(currentConversation.workspace_id, workspaceById)
+  const currentProjectKey = getConversationProjectKey(
+    currentConversation.id,
+    currentConversation.workspace_id,
+    workspaceById
+  )
 
   const siblingConversations = conversationDb.list()
     .filter((conversation) => {
       if (conversation.id === conversationId) return false
-      return getConversationProjectKey(conversation.workspace_id, workspaceById) === currentProjectKey
+      return getConversationProjectKey(
+        conversation.id,
+        conversation.workspace_id,
+        workspaceById
+      ) === currentProjectKey
     })
     .sort((a, b) => b.updated_at - a.updated_at)
 
