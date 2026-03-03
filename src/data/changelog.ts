@@ -21,6 +21,23 @@ export interface ChangelogEntry {
 
 export const changelog: ChangelogEntry[] = [
   {
+    version: '0.33.9',
+    date: '2026-03-03',
+    changes: {
+      changed: [
+        'Core persona guidance is now role-adaptive by default, applying engineer-level rigor only when the task is engineering-heavy',
+        'Auto mode now explicitly balances general assistant behavior with engineering depth based on task type',
+        'GitHub workflow guidance now loads contextually for issue/PR/changelog/release requests, improving consistency in repository operations',
+        'Assistant markdown rendering now uses improved list and divider spacing for long completion summaries',
+      ],
+      fixed: [
+        'Added repository issue and PR templates to standardize bug/feature metadata, labels, and required root-cause/fix structure',
+        'Added CI checks to enforce PR section format, required issue linkage, and an emoji-free policy for PR text and commit messages',
+        'Added CI checks to flag issue titles/bodies that contain emojis and comment with correction guidance',
+      ],
+    },
+  },
+  {
     version: '0.33.8',
     date: '2026-03-02',
     changes: {

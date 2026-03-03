@@ -1,0 +1,67 @@
+name: PR Format Check
+
+on:
+  pull_request:
+    types: [opened, edited, synchronize, reopened]
+
+jobs:
+  validate-pr-body:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Validate PR template sections and style
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const containsEmoji = (text) => /\p{Extended_Pictographic}/u.test(text || '');
+            const pr = context.payload.pull_request;
+            const title = pr?.title || '';
+            const body = context.payload.pull_request?.body || '';
+            const requiredSections = [
+              '## Summary',
+              '## Root Cause',
+              '## Fix',
+              '## Changes',
+              '## Issue',
+            ];
+
+            if (containsEmoji(title)) {
+              core.setFailed('PR title must not contain emojis.');
+              return;
+            }
+
+            if (containsEmoji(body)) {
+              core.setFailed('PR body must not contain emojis.');
+              return;
+            }
+
+            const missing = requiredSections.filter((section) => !body.includes(section));
+            if (missing.length > 0) {
+              core.setFailed(
+                `Missing required PR section(s): ${missing.join(', ')}. ` +
+                'Use .github/PULL_REQUEST_TEMPLATE.md.'
+              );
+              return;
+            }
+
+            const issuePattern = /\bFixes\s+#\d+\b/i;
+            if (!issuePattern.test(body)) {
+              core.setFailed('Missing required issue linkage: `Fixes #<issue-number>` in the `## Issue` section.');
+              return;
+            }
+
+            const commits = await github.paginate(github.rest.pulls.listCommits, {
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              pull_number: pr.number,
+              per_page: 100,
+            });
+
+            const emojiCommit = commits.find((commit) => containsEmoji(commit?.commit?.message || ''));
+            if (emojiCommit) {
+              core.setFailed(
+                `Commit message must not contain emojis. Offending commit: ${emojiCommit.sha.slice(0, 7)}`
+              );
+              return;
+            }
+
+            core.info('PR description format and emoji policy are valid.');

@@ -109,6 +109,7 @@ export const modes: Record<AgentMode, ModeDefinition> = {
 - Research needed: Gather information before responding
 - Changes required: Explain what you'll do, then execute
 - Complex project: Break it down into steps
+- Adapt your stance to the task: be a general assistant by default, and switch to engineer-level depth only when the task is clearly engineering-focused.
 
 Be efficient. Take action when appropriate. Ask for clarification only when truly needed.`,
   },

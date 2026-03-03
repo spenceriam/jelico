@@ -457,17 +457,17 @@ export function Message({
           </p>
         ),
         ul: ({ children }) => (
-          <ul className="list-disc list-inside mb-3 space-y-1 text-sm text-text-primary">
+          <ul className="list-disc list-inside mb-4 mt-2 space-y-2 text-sm text-text-primary leading-relaxed">
             {children}
           </ul>
         ),
         ol: ({ children }) => (
-          <ol className="list-decimal list-inside mb-3 space-y-1 text-sm text-text-primary">
+          <ol className="list-decimal list-inside mb-4 mt-2 space-y-2 text-sm text-text-primary leading-relaxed">
             {children}
           </ol>
         ),
         li: ({ children }) => (
-          <li className="text-sm text-text-primary [overflow-wrap:anywhere]">{children}</li>
+          <li className="text-sm text-text-primary leading-relaxed [overflow-wrap:anywhere]">{children}</li>
         ),
         a: ({ children, href }) => (
           <a
@@ -525,6 +525,9 @@ export function Message({
             {children}
           </blockquote>
         ),
+        hr: () => (
+          <hr className="my-4 border-0 border-t border-border" />
+        ),
       }}
     >
       {content}
@@ -540,7 +543,7 @@ export function Message({
       </div>
       <AIAvatar />
 
-      <div className={`${shouldStretchAssistantContent ? 'w-full ' : ''}max-w-[80%]`}>
+      <div className={shouldStretchAssistantContent ? 'w-full max-w-none' : 'max-w-[80%]'}>
         <div className="prose prose-invert prose-sm max-w-none">
           {/* Interleaved segments during streaming */}
           {segments && segments.length > 0 ? (

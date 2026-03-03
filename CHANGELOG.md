@@ -2,6 +2,23 @@
 
 All notable changes to Jelico are documented in this file.
 
+## [0.33.9] - 2026-03-03
+
+### Highlights
+- Jelico now defaults to a multi-faceted assistant style and only shifts into full engineering rigor when the task is engineering-heavy.
+- GitHub issue/PR workflows are now standardized with templates and automated checks for structure, linkage, and emoji-free text.
+- Long completion summaries are more readable with improved list spacing and divider layout.
+
+### Fixed
+- **Issue and PR Consistency** — Added repository templates so bug and feature requests include the right labels and required context fields by default.
+- **GitHub Quality Gates** — Added CI checks that enforce PR section format, required `Fixes #<issue-number>` linkage, and emoji-free PR and commit text.
+- **Issue Text Enforcement** — Added issue-style checks that flag emoji use in issue titles/bodies and provide correction guidance.
+
+### Changed
+- **Adaptive Assistant Behavior** — Jelico now stays general-purpose by default and applies engineer-depth only when a task clearly requires engineering work.
+- **GitHub Context Guidance** — GitHub workflow instructions now load automatically on issue/PR/release-style requests to reduce formatting drift.
+- **Summary Readability** — Assistant markdown list and divider spacing now renders with better visual separation in dense completion summaries.
+
 ## [0.33.8] - 2026-03-02
 
 ### Highlights

@@ -1,0 +1,85 @@
+name: Bug Report
+description: Report a defect or regression.
+title: "bug: "
+labels:
+  - bug
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Use this template for defects/regressions.
+        Keep the title as `bug: <concise description>` and put version details in the body.
+        Keep issue text emoji-free.
+
+  - type: input
+    id: version
+    attributes:
+      label: Affected Version
+      description: Example: 0.33.7
+      placeholder: 0.33.7
+    validations:
+      required: true
+
+  - type: textarea
+    id: summary
+    attributes:
+      label: Summary
+      description: What is broken and who is impacted?
+      placeholder: Briefly describe the issue and user impact.
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: Reproduction Steps
+      description: Provide exact deterministic steps.
+      placeholder: |
+        1. ...
+        2. ...
+        3. ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected Behavior
+      placeholder: What should have happened?
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual Behavior
+      placeholder: What happened instead?
+    validations:
+      required: true
+
+  - type: textarea
+    id: root-cause
+    attributes:
+      label: Root Cause Hypothesis
+      description: Technical hypothesis to accelerate triage.
+      placeholder: Suspected failure point and why.
+    validations:
+      required: false
+
+  - type: textarea
+    id: fix-direction
+    attributes:
+      label: Proposed Fix Direction
+      placeholder: Candidate implementation approach.
+    validations:
+      required: false
+
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Acceptance Criteria
+      placeholder: |
+        - [ ] ...
+        - [ ] ...
+    validations:
+      required: true

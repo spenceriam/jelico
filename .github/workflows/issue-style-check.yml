@@ -1,0 +1,39 @@
+name: Issue Style Check
+
+on:
+  issues:
+    types: [opened, edited]
+
+jobs:
+  validate-issue-style:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Validate issue emoji policy
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const containsEmoji = (text) => /\p{Extended_Pictographic}/u.test(text || '');
+            const issue = context.payload.issue;
+            const title = issue?.title || '';
+            const body = issue?.body || '';
+
+            const titleHasEmoji = containsEmoji(title);
+            const bodyHasEmoji = containsEmoji(body);
+
+            if (!titleHasEmoji && !bodyHasEmoji) {
+              core.info('Issue title/body are emoji-free.');
+              return;
+            }
+
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: issue.number,
+              body: [
+                'This repository requires emoji-free GitHub text.',
+                '- Remove emojis from issue title and body.',
+                '- Keep language factual and concise.'
+              ].join('\n'),
+            });
+
+            core.setFailed('Issue title/body must not contain emojis.');
