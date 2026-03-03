@@ -198,23 +198,32 @@ export const useContextStore = create<ContextState>((set, get) => ({
   initConversationContext: async (conversationId, providerId, modelId) => {
     const modelContextSize = await resolveModelContextSize(providerId, modelId)
 
-    set((state) => ({
-      conversationContexts: {
-        ...state.conversationContexts,
-        [conversationId]: {
-          providerId,
-          modelId,
-          modelContextSize,
-          currentTokenCount: 0,
-          peakTokenCountSinceCompaction: 0,
-          totalCompactions: 0,
-          lastCompactionAt: null,
-          lastCompactionBeforeTokens: null,
-          lastCompactionAfterTokens: null,
-          compactionSummary: null,
+    set((state) => {
+      const existing = state.conversationContexts[conversationId]
+      const preservedTokenCount = existing?.currentTokenCount ?? 0
+      const preservedPeakTokenCount = Math.max(
+        existing?.peakTokenCountSinceCompaction ?? 0,
+        preservedTokenCount
+      )
+
+      return {
+        conversationContexts: {
+          ...state.conversationContexts,
+          [conversationId]: {
+            providerId,
+            modelId,
+            modelContextSize,
+            currentTokenCount: preservedTokenCount,
+            peakTokenCountSinceCompaction: preservedPeakTokenCount,
+            totalCompactions: existing?.totalCompactions ?? 0,
+            lastCompactionAt: existing?.lastCompactionAt ?? null,
+            lastCompactionBeforeTokens: existing?.lastCompactionBeforeTokens ?? null,
+            lastCompactionAfterTokens: existing?.lastCompactionAfterTokens ?? null,
+            compactionSummary: existing?.compactionSummary ?? null,
+          },
         },
-      },
-    }))
+      }
+    })
   },
 
   switchConversationModel: async (conversationId, providerId, modelId) => {
@@ -291,8 +300,13 @@ export const useContextStore = create<ContextState>((set, get) => ({
       }
     }
 
+    // Use the highest reliable signal to avoid apparent drops from partial usage reports.
+    const effectiveTokenCount = Math.max(
+      context.currentTokenCount,
+      context.peakTokenCountSinceCompaction
+    )
     const percentage = context.modelContextSize > 0
-      ? context.currentTokenCount / context.modelContextSize
+      ? effectiveTokenCount / context.modelContextSize
       : 0
 
     // Determine status
@@ -305,14 +319,14 @@ export const useContextStore = create<ContextState>((set, get) => ({
       status = 'warning'
     }
 
-    const peakTokenCount = Math.max(context.peakTokenCountSinceCompaction, context.currentTokenCount)
+    const peakTokenCount = Math.max(context.peakTokenCountSinceCompaction, effectiveTokenCount)
     const peakPercentage = context.modelContextSize > 0
       ? peakTokenCount / context.modelContextSize
       : 0
 
     return {
       percentage,
-      tokenCount: context.currentTokenCount,
+      tokenCount: effectiveTokenCount,
       maxTokens: context.modelContextSize,
       peakTokenCount,
       peakPercentage,

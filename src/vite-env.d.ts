@@ -106,6 +106,7 @@ interface Window {
       onReasoning: (channelId: string, callback: (data: ReasoningEvent) => void) => void
       onReasoningStart: (channelId: string, callback: () => void) => void
       onReasoningEnd: (channelId: string, callback: () => void) => void
+      updateStreamMode: (channelId: string, mode: 'auto' | 'explore' | 'execute' | 'plan' | 'review') => void
       stopStream: (channelId: string) => void
       removeListeners: (channelId: string) => void
       generateTitle: (params: GenerateTitleParams) => Promise<GenerateTitleResult>

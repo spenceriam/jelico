@@ -329,6 +329,9 @@ contextBridge.exposeInMainWorld('jelico', {
       const handler = () => callback()
       ipcRenderer.on(`ai:reasoningEnd:${channelId}`, handler)
     },
+    updateStreamMode: (channelId: string, mode: 'auto' | 'explore' | 'execute' | 'plan' | 'review') => {
+      ipcRenderer.send('ai:updateStreamMode', channelId, mode)
+    },
     stopStream: (channelId: string) => {
       ipcRenderer.send('ai:stop', channelId)
     },

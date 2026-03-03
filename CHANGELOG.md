@@ -2,6 +2,23 @@
 
 All notable changes to Jelico are documented in this file.
 
+## [0.34.0] - 2026-03-03
+
+### Highlights
+- Switching to Full Execute during an active response now takes effect immediately for that in-progress turn.
+- The prompt box now stays editable in active chats and keeps visible top padding while you edit long, scrolling drafts.
+- Context usage no longer appears to reset after branch-switch actions in chat.
+
+### Fixed
+- **Mid-Response Full Execute** — Changing from Auto to Full Execute during a running response now immediately stops per-action approval prompts for that stream.
+- **Prompt Box Lockups** — The prompt composer no longer intermittently blocks typing in active chats, so drafts remain editable while responses stream.
+- **Prompt Scroll Padding** — Long prompt text now retains a clear top inset while scrolling, improving readability and editing comfort.
+- **Context Meter Stability** — Context tracking now keeps the highest reliable token signal, preventing branch-related visual drops in context-window percentage.
+
+### Changed
+- **Live Stream Mode Sync** — Mode changes in the UI now sync to the active backend stream so runtime tool policy reflects your current mode without waiting for a new turn.
+- **Conversation Scope Refinement** — During context-window testing, conversation-linking scope was refined so sandbox chats stay per-conversation and worktree chats stay isolated, while non-worktree workspace chats remain project-linked.
+
 ## [0.33.10] - 2026-03-03
 
 ### Highlights
