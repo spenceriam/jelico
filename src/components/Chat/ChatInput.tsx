@@ -118,7 +118,7 @@ export function ChatInput({ disabled, isStreaming, centered }: ChatInputProps) {
     textarea.style.height = 'auto'
     // Chat view (not centered): compact 1-line style, grows as needed
     // Welcome screen (centered): taller 4-line style
-    const minHeight = centered ? 96 : 36
+    const minHeight = centered ? 96 : 64
     const maxHeight = centered ? 200 : 150
     if (!content) {
       textarea.style.height = `${minHeight}px`
@@ -627,9 +627,9 @@ export function ChatInput({ disabled, isStreaming, centered }: ChatInputProps) {
               : 'Message Jelico...'
           }
           autoFocus
-          rows={centered ? 4 : 1}
-          className={`flex-1 bg-transparent text-sm text-text-primary placeholder:text-text-muted outline-none resize-none focus:outline-none focus:ring-0 border-none leading-6 px-3 pt-3 pb-1 scroll-py-3 select-text ${
-            centered ? 'min-h-[96px] max-h-[200px]' : 'min-h-[36px] max-h-[150px]'
+          rows={centered ? 4 : 2}
+          className={`flex-1 bg-transparent text-sm text-text-primary placeholder:text-text-muted outline-none resize-none focus:outline-none focus:ring-0 border-none leading-6 px-3 pt-3 pb-2 scroll-py-3 select-text ${
+            centered ? 'min-h-[96px] max-h-[200px]' : 'min-h-[64px] max-h-[150px]'
           }`}
         />
 
