@@ -73,7 +73,7 @@ The Soul/Memory system should make Jelico increasingly personalized - it learns 
 ## Project overview
 Jelico is an AI Productivity Desktop built with Electron, React, TypeScript, and Vite. It provides a frictionless AI assistant experience with multi-provider support (Anthropic, OpenAI, Google), workspace management, conversation persistence, and a soul/memory system that learns user patterns and preferences over time.
 
-**Current Version:** 0.33.7
+**Current Version:** 0.33.9
 
 **License:** GNU General Public License v3.0 (GPL-3.0-or-later)
 - See LICENSE file in project root
@@ -87,6 +87,11 @@ Jelico is an AI Productivity Desktop built with Electron, React, TypeScript, and
 - **WORKFLOW**: Make changes → Test → Get user approval → Then (and only then) commit → Push
 - **Branch management**: Only commit to the correct branch
 - **Code quality**: Ensure all changes work and are properly tested before seeking approval
+- **Bug issue hygiene**: For bug fixes, create/update an issue titled `bug: <concise description>` (no version number in title), include version details in the issue body, and ensure the issue has the `bug` label
+- **Feature issue hygiene**: For feature work, create/update an issue titled `feature: <concise description>` and ensure the issue has the `enhancement` label
+- **PR title hygiene**: For bug-fix PRs, do not include version numbers in the PR title; keep the title focused on the bug behavior
+- **Template compliance**: When creating issues/PRs via AI, follow `.github/ISSUE_TEMPLATE/*` and `.github/PULL_REQUEST_TEMPLATE.md` exactly
+- **GitHub tone hygiene**: Do not use emojis in GitHub-facing artifacts (issue titles/bodies, PR titles/bodies, commit messages, release notes)
 
 ## Version Bumping Protocol
 
@@ -721,6 +726,9 @@ todo_write({ tasks: [
 All pull requests must use this exact section structure:
 
 ```markdown
+## Summary
+- Brief statement of what the issue was and its user impact.
+
 ## Root Cause
 - What failed and why.
 

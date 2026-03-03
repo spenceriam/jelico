@@ -830,6 +830,8 @@ const KNOWLEDGE_MATCHERS: KnowledgeMatch[] = [
   { keywords: /\b(artifact|canvas|html|svg|mermaid|diagram|chart|flowchart|document)\b/i, category: 'capabilities', name: 'artifacts' },
   // Sub-agent queries
   { keywords: /\b(sub-?agent|spawn|parallel|delegate|worker|orchestrat)/i, category: 'capabilities', name: 'sub-agents' },
+  // GitHub issue/PR/release workflow
+  { keywords: /\b(github|gh\b|issue|issues|pull request|pr\b|draft pr|release notes?|tag\b|changelog|bug|feature request|enhancement)\b/i, category: 'capabilities', name: 'github-workflow' },
   // Security review
   { keywords: /\b(security|vulnerabilit|owasp|injection|xss|csrf)\b/i, category: 'agents', name: 'security-review' },
   // PR review

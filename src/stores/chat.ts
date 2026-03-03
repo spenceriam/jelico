@@ -19,6 +19,7 @@ export interface MessageUsage {
   durationMs?: number
   mode?: AgentMode
   model?: string
+  finishReason?: string
 }
 
 export interface MessageAttachment {
@@ -479,6 +480,36 @@ function getLatestUnansweredUserMessage(messages: Message[]): Message | null {
   return null
 }
 
+function getLatestUserMessage(messages: Message[]): Message | null {
+  for (let i = messages.length - 1; i >= 0; i -= 1) {
+    if (messages[i].role === 'user') {
+      return messages[i]
+    }
+  }
+  return null
+}
+
+function isResumeShortcut(content: string): boolean {
+  const normalized = content.trim().toLowerCase()
+  return /^(resume|restart|continue)$/.test(normalized)
+}
+
+function hasIncompleteToolEvidence(messages: Message[]): boolean {
+  for (let i = messages.length - 1; i >= 0; i -= 1) {
+    const message = messages[i]
+    if (message.role !== 'assistant') continue
+    const toolResults = message.toolResults || []
+    return toolResults.some((toolResult) => {
+      if (!toolResult?.result || typeof toolResult.result !== 'object') return false
+      const payload = toolResult.result as Record<string, unknown>
+      if (payload.cancellationReason === 'stream_end_incomplete') return true
+      const error = String(payload.error || '').toLowerCase()
+      return error.includes('before returning a final result')
+    })
+  }
+  return false
+}
+
 function getRestoredTokenCount(messages: Message[]): number {
   if (messages.length === 0) return 0
 
@@ -797,8 +828,11 @@ export const useChatStore = create<ChatStore>((set, get) => ({
       const activeStreamState = get().conversationStreams[id]
       const pendingCheckpoint = getPendingStreamCheckpoint(id)
       const unansweredUser = getLatestUnansweredUserMessage(loadedMessages)
+      const hasIncompleteEvidence = hasIncompleteToolEvidence(loadedMessages)
+      const fallbackUser = (pendingCheckpoint && hasIncompleteEvidence) ? getLatestUserMessage(loadedMessages) : null
+      const resumableUser = unansweredUser || fallbackUser
 
-      if (pendingCheckpoint && !streamChannelByConversation.has(id) && !activeStreamState?.isStreaming && unansweredUser) {
+      if (pendingCheckpoint && !streamChannelByConversation.has(id) && !activeStreamState?.isStreaming && resumableUser) {
         set((state) => {
           if (state.interruptedConversations[id]) return {}
           return {
@@ -818,7 +852,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
         })
 
         // Remove stale checkpoints when there is nothing to resume.
-        if (pendingCheckpoint && !unansweredUser) {
+        if (pendingCheckpoint && !resumableUser) {
           clearPendingStreamCheckpoint(id)
         }
       }
@@ -882,6 +916,17 @@ export const useChatStore = create<ChatStore>((set, get) => ({
     // If this conversation is already streaming or compacting, queue the message (unless regenerating)
     if (((activeStreamState?.isStreaming ?? false) || compactingActiveConversation) && !_isRegenerate) {
       get().queueMessage(content, providerId, model, attachments, requestedConversationId)
+      return
+    }
+
+    if (
+      !_isRegenerate &&
+      requestedConversationId &&
+      !attachments?.length &&
+      get().interruptedConversations[requestedConversationId] &&
+      isResumeShortcut(content)
+    ) {
+      await get().resumeInterruptedConversation(requestedConversationId)
       return
     }
 
@@ -1510,7 +1555,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
       if (activeChannel === channelId) {
         streamChannelByConversation.delete(targetConversationId)
       }
-      clearPendingStreamCheckpoint(targetConversationId)
+      const pendingCheckpoint = getPendingStreamCheckpoint(targetConversationId)
       useClarificationStore.getState().clearForConversation(targetConversationId)
 
       const streamSnapshot = get().conversationStreams[targetConversationId] || createEmptyConversationStreamState()
@@ -1535,12 +1580,24 @@ export const useChatStore = create<ChatStore>((set, get) => ({
           result: {
             success: false,
             canceled: true,
+            cancellationReason: 'stream_end_incomplete',
             error: 'Tool ended before returning a final result.',
           },
           error: 'Tool ended before returning a final result.',
         }))
 
       const normalizedToolResults = [...streamingToolResults, ...inferredToolResults]
+      const hasIncompleteToolCalls = inferredToolResults.length > 0
+      const interruptedCheckpoint = pendingCheckpoint || {
+        providerId,
+        model,
+        startedAt: streamSnapshot.streamingStartTime ?? streamStartedAt,
+      }
+      if (hasIncompleteToolCalls) {
+        setPendingStreamCheckpoint(targetConversationId, interruptedCheckpoint)
+      } else {
+        clearPendingStreamCheckpoint(targetConversationId)
+      }
       // Calculate actual generation time (first chunk to last chunk)
       // This excludes tool execution time and gives accurate tok/s
       const generationMs = (firstChunkTime && lastChunkTime)
@@ -1564,13 +1621,20 @@ export const useChatStore = create<ChatStore>((set, get) => ({
             durationMs: totalDurationMs,
             mode: completedMode,
             model,
+            finishReason: stats.finishReason,
           }
         }
 
         const hasToolActivity = normalizedToolCalls.length > 0 || normalizedToolResults.length > 0
-        const assistantContent = fullContent && fullContent.trim().length > 0
+        const baseAssistantContent = fullContent && fullContent.trim().length > 0
           ? fullContent
           : (hasToolActivity ? 'Completed requested tool actions.' : 'No response text was returned.')
+        const interruptionNote = hasIncompleteToolCalls
+          ? '\n\n[Some tool actions did not finish before the response ended. Use Restart to continue from the last request.]'
+          : ''
+        const assistantContent = interruptionNote && !baseAssistantContent.includes('did not finish before the response ended')
+          ? `${baseAssistantContent}${interruptionNote}`
+          : baseAssistantContent
         const assistantCreatedAt = streamSnapshot.streamingStartTime ?? streamStartedAt
 
         // Save assistant message with tool calls/results
@@ -1612,11 +1676,22 @@ export const useChatStore = create<ChatStore>((set, get) => ({
             : state.messages
 
           const { [targetConversationId]: _removed, ...restStreams } = state.conversationStreams
-          const { [targetConversationId]: _removedInterrupted, ...restInterrupted } = state.interruptedConversations
+          const nextInterruptedConversations = hasIncompleteToolCalls
+            ? {
+              ...state.interruptedConversations,
+              [targetConversationId]: {
+                ...interruptedCheckpoint,
+                detectedAt: Date.now(),
+              },
+            }
+            : (() => {
+              const { [targetConversationId]: _removedInterrupted, ...restInterrupted } = state.interruptedConversations
+              return restInterrupted
+            })()
           const updates: Partial<ChatStore> = {
             messages: nextMessages,
             conversationStreams: restStreams,
-            interruptedConversations: restInterrupted,
+            interruptedConversations: nextInterruptedConversations,
           }
 
           if (state.activeConversationId === targetConversationId) {
@@ -1632,6 +1707,17 @@ export const useChatStore = create<ChatStore>((set, get) => ({
         console.error('[Chat Store] Error in onStreamEnd:', error)
         // Still need to end streaming state even on error
         clearConversationStreamState()
+        if (hasIncompleteToolCalls) {
+          set((state) => ({
+            interruptedConversations: {
+              ...state.interruptedConversations,
+              [targetConversationId]: {
+                ...interruptedCheckpoint,
+                detectedAt: Date.now(),
+              },
+            },
+          }))
+        }
         set({ error: `Failed to save message: ${error}` })
       }
 
@@ -1885,6 +1971,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
         result: {
           success: false,
           canceled: true,
+          cancellationReason: 'user_stop',
           error: 'Canceled: stream stopped by user',
         },
         error: 'Canceled: stream stopped by user',
@@ -2128,9 +2215,16 @@ export const useChatStore = create<ChatStore>((set, get) => ({
       if (!conversation) return
 
       const pendingCheckpoint = getPendingStreamCheckpoint(targetConversationId)
-      const unansweredUser = getLatestUnansweredUserMessage(conversation.messages || [])
+      const interruptedState = get().interruptedConversations[targetConversationId]
+      const conversationMessages = conversation.messages || []
+      const unansweredUser = getLatestUnansweredUserMessage(conversationMessages)
+      const hasIncompleteEvidence = hasIncompleteToolEvidence(conversationMessages)
+      const fallbackUser = ((pendingCheckpoint || interruptedState) && hasIncompleteEvidence)
+        ? getLatestUserMessage(conversationMessages)
+        : null
+      const resumeUser = unansweredUser || fallbackUser
 
-      if (!unansweredUser) {
+      if (!resumeUser) {
         clearPendingStreamCheckpoint(targetConversationId)
         set((state) => {
           const { [targetConversationId]: _removed, ...rest } = state.interruptedConversations
@@ -2139,8 +2233,25 @@ export const useChatStore = create<ChatStore>((set, get) => ({
         return
       }
 
-      const providerId = pendingCheckpoint?.providerId || conversation.providerId
-      const model = pendingCheckpoint?.model || conversation.model
+      const providerId = pendingCheckpoint?.providerId || interruptedState?.providerId || conversation.providerId
+      const model = pendingCheckpoint?.model || interruptedState?.model || conversation.model
+
+      if (!unansweredUser && interruptedState) {
+        const trailingMessage = conversationMessages[conversationMessages.length - 1]
+        if (trailingMessage?.role === 'assistant') {
+          try {
+            await window.jelico.conversations.deleteMessage(trailingMessage.id)
+          } catch (error) {
+            console.error('[Chat Store] Failed to delete interrupted assistant message from DB:', error)
+          }
+
+          set((state) => {
+            if (state.activeConversationId !== targetConversationId) return {}
+            const filteredMessages = state.messages.filter((message) => message.id !== trailingMessage.id)
+            return { messages: filteredMessages }
+          })
+        }
+      }
 
       set((state) => {
         const { [targetConversationId]: _removed, ...rest } = state.interruptedConversations
@@ -2148,10 +2259,10 @@ export const useChatStore = create<ChatStore>((set, get) => ({
       })
 
       await (get().sendMessage as any)(
-        unansweredUser.content,
+        resumeUser.content,
         providerId,
         model,
-        unansweredUser.attachments,
+        resumeUser.attachments,
         true,
         targetConversationId
       )

@@ -238,12 +238,55 @@ function formatSubAgentToolStatus(
   }
 }
 
-function isCanceledResultPayload(result: unknown): boolean {
-  if (!result || typeof result !== 'object') return false
+type ToolCancellationReason =
+  | 'user_stop'
+  | 'stream_end_incomplete'
+  | 'timeout'
+  | 'provider_abort'
+  | 'unknown'
+  | null
+
+function getToolCancellationReason(result: unknown): ToolCancellationReason {
+  if (!result || typeof result !== 'object') return null
   const payload = result as Record<string, unknown>
-  if (payload.canceled === true || payload.cancelled === true) return true
-  const error = String(payload.error || '')
-  return error.toLowerCase().includes('canceled: stream stopped by user')
+  const explicitReason = typeof payload.cancellationReason === 'string'
+    ? payload.cancellationReason
+    : null
+  if (explicitReason === 'user_stop' || explicitReason === 'stream_end_incomplete' || explicitReason === 'timeout' || explicitReason === 'provider_abort') {
+    return explicitReason
+  }
+
+  const canceled = payload.canceled === true || payload.cancelled === true
+  const error = String(payload.error || '').toLowerCase()
+  if (!canceled && !error) return null
+  if (error.includes('stream stopped by user')) return 'user_stop'
+  if (error.includes('before returning a final result')) return 'stream_end_incomplete'
+  if (error.includes('timed out') || error.includes('timeout')) return 'timeout'
+  if (error.includes('provider aborted') || error.includes('abort')) return 'provider_abort'
+  if (canceled) return 'unknown'
+  return null
+}
+
+function isCanceledResultPayload(result: unknown): boolean {
+  return getToolCancellationReason(result) !== null
+}
+
+function getCanceledResultLabel(result: unknown): string {
+  const reason = getToolCancellationReason(result)
+  switch (reason) {
+    case 'user_stop':
+      return 'Canceled by user'
+    case 'stream_end_incomplete':
+      return 'Interrupted before tool finished'
+    case 'timeout':
+      return 'Interrupted due to timeout'
+    case 'provider_abort':
+      return 'Interrupted by provider'
+    case 'unknown':
+      return 'Canceled'
+    default:
+      return 'Canceled'
+  }
 }
 
 function getSpawnedAgentId(result: unknown): string | null {
@@ -325,7 +368,7 @@ function formatToolResult(result: unknown): { content: string; isError: boolean 
     if (obj.success === false) {
       if (isCanceledResultPayload(obj)) {
         return {
-          content: 'Canceled by user',
+          content: getCanceledResultLabel(obj),
           isError: false,
         }
       }
