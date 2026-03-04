@@ -294,6 +294,7 @@ export function ClarificationPanel() {
 
   return (
     <div
+      data-window-toggle="ignore"
       className="fixed inset-y-0 right-0 z-[45] flex items-center justify-center bg-bg-void/80 backdrop-blur-sm p-4"
       style={{ left: sidebarCollapsed ? 0 : '16rem' }}
     >
