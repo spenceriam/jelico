@@ -37,14 +37,20 @@ jobs:
           MANUAL_RELEASE: ${{ github.event.inputs.release || 'false' }}
           BEFORE_SHA: ${{ github.event.before }}
           CURRENT_SHA: ${{ github.sha }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
         run: |
           package_version=$(node -p "require('./package.json').version")
           release_tag="v${package_version}"
           echo "version=${release_tag}" >> "$GITHUB_OUTPUT"
 
-          tag_exists=false
-          if git ls-remote --exit-code --tags origin "refs/tags/${release_tag}" >/dev/null 2>&1; then
-            tag_exists=true
+          release_exists=false
+          release_status=$(curl -s -o /tmp/release.json -w "%{http_code}" \
+            -H "Authorization: Bearer ${GITHUB_TOKEN}" \
+            -H "Accept: application/vnd.github+json" \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/releases/tags/${release_tag}")
+          if [[ "$release_status" == "200" ]]; then
+            release_exists=true
           fi
 
           version_bumped=false
@@ -59,20 +65,20 @@ jobs:
           should_release=false
           reason="Release skipped."
           if [[ "$EVENT_NAME" == "workflow_dispatch" && "$MANUAL_RELEASE" == "true" ]]; then
-            if [[ "$tag_exists" == "false" ]]; then
+            if [[ "$release_exists" == "false" ]]; then
               should_release=true
-              reason="Manual release requested and release tag does not exist."
+              reason="Manual release requested and no release exists for package version."
             else
-              reason="Manual release requested, but release tag already exists."
+              reason="Manual release requested, but release already exists for package version."
             fi
           elif [[ "$EVENT_NAME" == "push" ]]; then
-            if [[ "$version_bumped" == "true" && "$tag_exists" == "false" ]]; then
+            if [[ "$version_bumped" == "true" && "$release_exists" == "false" ]]; then
               should_release=true
-              reason="Main push includes package.json version bump and release tag is new."
+              reason="Main push includes package.json version bump and no release exists for package version."
             elif [[ "$version_bumped" == "false" ]]; then
               reason="Main push did not change package.json version."
             else
-              reason="Release tag already exists for package version."
+              reason="Release already exists for package version."
             fi
           fi
 
