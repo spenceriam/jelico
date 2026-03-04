@@ -103,19 +103,27 @@ appImage:
 
 deb:
   depends:
-    - gconf2
-    - gconf-service
+    - libgtk-3-0
     - libnotify4
-    - libappindicator1
-    - libxtst6
     - libnss3
+    - libxss1
+    - libxtst6
+    - libatspi2.0-0
+    - libsecret-1-0
+    - libasound2 | libasound2t64
+    - libappindicator3-1 | libayatana-appindicator3-1
+    - xdg-utils
 
 rpm:
   depends:
+    - gtk3
     - libnotify
-    - libappindicator
-    - libXtst
     - nss
+    - libXScrnSaver
+    - libXtst
+    - at-spi2-atk
+    - libsecret
+    - alsa-lib
 
 # Auto-updater configuration (for future use)
 publish:
