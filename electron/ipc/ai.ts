@@ -338,6 +338,20 @@ function buildDeterministicTurnWrapUp(params: {
 }
 
 const MUTATION_VERB_REGEX = /\b(update|modify|edit|change|fix|improve|revise|rewrite|rework|redraw|recreate|adjust|tweak|add|remove|replace)\b/i
+const GITHUB_ISSUE_OR_PR_URL_REGEX = /https?:\/\/github\.com\/[^/\s]+\/[^/\s]+\/(issues|pull)\/\d+/i
+const GITHUB_ISSUE_REFERENCE_REGEX = /\b(?:issue|issues|pr|pull request)\s*#\d+\b/i
+
+function shouldRouteGithubIssueLookupViaMain(task: string): boolean {
+  const normalized = task.toLowerCase()
+  const hasGithub = normalized.includes('github')
+  if (!hasGithub) return false
+
+  const hasDirectIssueOrPrUrl = GITHUB_ISSUE_OR_PR_URL_REGEX.test(task)
+  const hasIssueReference = GITHUB_ISSUE_REFERENCE_REGEX.test(normalized)
+  const hasLookupIntent = /\b(look\s*up|open|inspect|review|analy[sz]e|investigate|triage|read|root cause|debug)\b/.test(normalized)
+
+  return hasDirectIssueOrPrUrl || (hasIssueReference && hasLookupIntent)
+}
 const CREATION_VERB_REGEX = /\b(create|make|build|generate|scaffold)\b/i
 const ARTIFACT_TARGET_REGEX = /\b(artifact|canvas|html|svg|diagram|mermaid|game|ui|screen|page|component|prototype)\b/i
 const FILE_TARGET_REGEX = /\b(file|files|source|script|module|config|readme|package\.json|tsconfig|json|yaml|yml|toml|md|markdown)\b/i
@@ -1749,6 +1763,10 @@ Returns validation result and updates the task status if valid.`,
 - Prefer verifier sub-agents for additional validation work (parallel + summarized results).
 - Main AI direct web_search/web_fetch is internal fallback only. Prefer helper-agent retries and verification.
 
+## GitHub Lookup Rule
+- Do NOT delegate direct GitHub issue/PR URL lookups to a web-research sub-agent.
+- For repository issue/PR inspection, use \`execute_command\` with GitHub CLI (\`gh issue view\` / \`gh pr view\`) so results are deterministic.
+
 CRITICAL: You MUST call wait_for_agent before finishing your response.`,
       parameters: z.object({
         name: z.string().optional().describe('DEPRECATED - do not provide. Names are auto-generated.'),
@@ -1765,6 +1783,14 @@ CRITICAL: You MUST call wait_for_agent before finishing your response.`,
           return {
             success: false,
             error: 'Missing required parameter: task. You MUST provide a task description when calling spawn_agent.',
+          }
+        }
+
+        if (shouldRouteGithubIssueLookupViaMain(task)) {
+          return {
+            success: false,
+            error: 'Use execute_command with GitHub CLI for direct GitHub issue/PR lookups instead of spawning a web-research sub-agent.',
+            suggestion: 'Run gh issue view <number> or gh pr view <number> from the repository workspace and proceed from that deterministic output.',
           }
         }
 
