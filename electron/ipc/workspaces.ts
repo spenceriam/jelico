@@ -33,6 +33,14 @@ function toConfig(row: any): WorkspaceConfig {
   }
 }
 
+function workspacePathExists(workspacePath: string): boolean {
+  try {
+    return fs.existsSync(workspacePath) && fs.statSync(workspacePath).isDirectory()
+  } catch {
+    return false
+  }
+}
+
 function resolveGitPath(baseDir: string, value: string): string {
   return path.isAbsolute(value) ? value : path.resolve(baseDir, value)
 }
@@ -120,6 +128,7 @@ async function discoverAndUpsertWorktrees(workspaces: WorkspaceDbRow[]): Promise
 
       if (existing) {
         workspaceDb.update(existing.id, {
+          name: !isMainWorktree ? path.basename(worktreePath) : existing.name,
           isGit: true,
           isWorktree: !isMainWorktree,
           projectPath: normalizedRoot,
@@ -218,6 +227,15 @@ async function removeWorktree(repoPath: string, worktreePath: string): Promise<b
 export function registerWorkspaceHandlers() {
   // List all workspaces
   ipcMain.handle('workspaces:list', async () => {
+    const allWorkspaces = workspaceDb.list()
+    const staleWorktreeIds = allWorkspaces
+      .filter((workspace) => (workspace.is_worktree || 0) === 1 && !workspacePathExists(workspace.path))
+      .map((workspace) => workspace.id)
+
+    for (const id of staleWorktreeIds) {
+      workspaceDb.delete(id)
+    }
+
     const workspaces = workspaceDb.list()
 
     // Keep git metadata synchronized in case records were imported/stale.
@@ -227,8 +245,10 @@ export function registerWorkspaceHandlers() {
       const nextIsWorktree = gitInfo.isWorktree ? 1 : 0
       const nextProjectPath = gitInfo.projectPath || null
       const nextBranch = gitInfo.branch || null
+      const expectedName = nextIsWorktree === 1 ? path.basename(workspace.path) : workspace.name
 
       if (
+        workspace.name === expectedName &&
         workspace.is_git === nextIsGit &&
         (workspace.is_worktree || 0) === nextIsWorktree &&
         (workspace.project_path || null) === nextProjectPath &&
@@ -238,6 +258,7 @@ export function registerWorkspaceHandlers() {
       }
 
       return workspaceDb.update(workspace.id, {
+        name: expectedName,
         isGit: gitInfo.isGit,
         isWorktree: gitInfo.isWorktree,
         projectPath: gitInfo.projectPath,
@@ -409,7 +430,7 @@ export function registerWorkspaceHandlers() {
     // Create a new workspace for the worktree
     const gitInfo = await isGitRepository(worktreePath)
     const newWorkspace = workspaceDb.create({
-      name: `${workspace.name} (${branch})`,
+      name: path.basename(worktreePath),
       path: worktreePath,
       isGit: gitInfo.isGit,
       isWorktree: gitInfo.isWorktree,
@@ -433,7 +454,10 @@ export function registerWorkspaceHandlers() {
     }
 
     // Remove the workspace entry if it exists
-    const worktreeWorkspace = workspaceDb.getByPath(worktreePath)
+    const normalizedTargetPath = path.resolve(worktreePath)
+    const worktreeWorkspace = workspaceDb
+      .list()
+      .find((entry) => path.resolve(entry.path) === normalizedTargetPath)
     if (worktreeWorkspace) {
       workspaceDb.delete(worktreeWorkspace.id)
     }
