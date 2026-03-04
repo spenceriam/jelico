@@ -207,12 +207,15 @@ export default function App() {
   const handleAppMouseDown = useCallback((event: React.MouseEvent<HTMLDivElement>) => {
     if (event.button !== 0) return
     if (event.detail > 1) return
+
+    // Always clear any stale drag session before deciding if this target
+    // should start a new one. This prevents "stuck" interaction guards from
+    // surviving clicks on interactive controls like the chat composer.
+    stopWindowDrag()
     if (isResizing) return
 
     const target = event.target as HTMLElement | null
     if (isInteractiveTarget(target)) return
-
-    stopWindowDrag()
 
     const onMouseMove = (moveEvent: MouseEvent) => {
       const dragSession = windowDragRef.current

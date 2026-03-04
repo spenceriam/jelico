@@ -21,6 +21,16 @@ export interface ChangelogEntry {
 
 export const changelog: ChangelogEntry[] = [
   {
+    version: '0.34.1',
+    date: '2026-03-03',
+    changes: {
+      fixed: [
+        'Window-drag interaction guards now clear stale sessions before mousedown handling and ignore composer/clarification/permission surfaces, preventing intermittent prompt focus loss after modal interactions (Fixes #116)',
+        'Prompt textarea now uses a taller active-chat minimum height and stronger top inset so long dictated or pasted drafts do not appear flush against the top border while scrolling (Fixes #95)',
+      ],
+    },
+  },
+  {
     version: '0.34.0',
     date: '2026-03-03',
     changes: {

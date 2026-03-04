@@ -68,7 +68,10 @@ export function PermissionDialog() {
     : null
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-bg-void/80 backdrop-blur-sm">
+    <div
+      data-window-toggle="ignore"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-bg-void/80 backdrop-blur-sm"
+    >
       <div className="bg-bg-surface border border-border rounded-xl shadow-xl max-w-lg w-full mx-4 overflow-hidden">
         {/* Header */}
         <div className="px-6 py-4 border-b border-border flex items-center gap-3">

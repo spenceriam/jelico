@@ -118,7 +118,7 @@ export function ChatInput({ disabled, isStreaming, centered }: ChatInputProps) {
     textarea.style.height = 'auto'
     // Chat view (not centered): compact 1-line style, grows as needed
     // Welcome screen (centered): taller 4-line style
-    const minHeight = centered ? 96 : 64
+    const minHeight = centered ? 96 : 72
     const maxHeight = centered ? 200 : 150
     if (!content) {
       textarea.style.height = `${minHeight}px`
@@ -478,7 +478,7 @@ export function ChatInput({ disabled, isStreaming, centered }: ChatInputProps) {
   }, [handleSubmit])
 
   return (
-    <div className="space-y-0">
+    <div className="space-y-0" data-window-toggle="ignore">
       {/* Hidden file input */}
       <input
         ref={fileInputRef}
@@ -628,8 +628,8 @@ export function ChatInput({ disabled, isStreaming, centered }: ChatInputProps) {
           }
           autoFocus
           rows={centered ? 4 : 2}
-          className={`flex-1 bg-transparent text-sm text-text-primary placeholder:text-text-muted outline-none resize-none focus:outline-none focus:ring-0 border-none leading-6 px-3 pt-3 pb-0 scroll-pt-3 select-text ${
-            centered ? 'min-h-[96px] max-h-[200px]' : 'min-h-[64px] max-h-[150px]'
+          className={`flex-1 bg-transparent text-sm text-text-primary placeholder:text-text-muted outline-none resize-none focus:outline-none focus:ring-0 border-none leading-6 px-3 pt-4 pb-0 scroll-pt-4 overflow-y-auto select-text ${
+            centered ? 'min-h-[96px] max-h-[200px]' : 'min-h-[72px] max-h-[150px]'
           }`}
         />
 

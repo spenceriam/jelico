@@ -2,6 +2,16 @@
 
 All notable changes to Jelico are documented in this file.
 
+## [0.34.1] - 2026-03-03
+
+### Highlights
+- Prompt input no longer intermittently loses focus after clarification or permission UI flows.
+- Long dictated or pasted drafts now maintain a clearer top inset in the prompt box while scrolling.
+
+### Fixed
+- **Prompt Focus Reliability** — The app now clears stale window-drag interaction state before new clicks and excludes composer and modal surfaces from drag handling, so the prompt remains clickable and editable.
+- **Prompt Top Padding** — Active chat composer spacing was adjusted to preserve visible top breathing room for multi-line dictation and long scrolling drafts.
+
 ## [0.34.0] - 2026-03-03
 
 ### Highlights
