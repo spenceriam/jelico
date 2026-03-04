@@ -1,5 +1,29 @@
 import { create } from 'zustand'
 
+const AVAILABLE_DISMISS_KEY = 'jelico:update:dismissed-available-version'
+const APPLY_DISMISS_KEY = 'jelico:update:dismissed-apply-version'
+
+function readStoredValue(key: string): string | null {
+  try {
+    const value = localStorage.getItem(key)
+    return value && value.trim().length > 0 ? value : null
+  } catch {
+    return null
+  }
+}
+
+function writeStoredValue(key: string, value: string | null) {
+  try {
+    if (value) {
+      localStorage.setItem(key, value)
+    } else {
+      localStorage.removeItem(key)
+    }
+  } catch {
+    // Ignore persistence failures.
+  }
+}
+
 interface UpdatesState {
   info: UpdateInfo | null
   currentVersion: string | null
@@ -8,10 +32,16 @@ interface UpdatesState {
   downloadProgress: UpdateDownloadProgress | null
   lastChecked: number | null
   lastDownloadedTo: string | null
+  downloadedVersion: string | null
+  dismissedAvailableVersion: string | null
+  dismissedApplyVersion: string | null
   error: string | null
   loadCurrentVersion: () => Promise<string | null>
-  checkForUpdates: (options?: { force?: boolean }) => Promise<UpdateInfo | null>
+  checkForUpdates: (options?: { force?: boolean; silent?: boolean }) => Promise<UpdateInfo | null>
   downloadUpdate: () => Promise<UpdateDownloadResult | null>
+  applyDownloadedUpdate: () => Promise<UpdateApplyResult | null>
+  dismissAvailablePrompt: (version?: string | null) => void
+  dismissApplyPrompt: (version?: string | null) => void
   startListening: () => () => void
 }
 
@@ -23,6 +53,9 @@ export const useUpdateStore = create<UpdatesState>((set, get) => ({
   downloadProgress: null,
   lastChecked: null,
   lastDownloadedTo: null,
+  downloadedVersion: null,
+  dismissedAvailableVersion: readStoredValue(AVAILABLE_DISMISS_KEY),
+  dismissedApplyVersion: readStoredValue(APPLY_DISMISS_KEY),
   error: null,
 
   loadCurrentVersion: async () => {
@@ -38,6 +71,7 @@ export const useUpdateStore = create<UpdatesState>((set, get) => ({
   checkForUpdates: async (options) => {
     const { isChecking, lastChecked, info } = get()
     const force = options?.force === true
+    const silent = options?.silent === true
 
     if (isChecking) return info
 
@@ -45,7 +79,10 @@ export const useUpdateStore = create<UpdatesState>((set, get) => ({
       return info
     }
 
-    set({ isChecking: true, error: null })
+    set({
+      isChecking: true,
+      ...(silent ? {} : { error: null }),
+    })
     try {
       const info = await window.jelico.updates.check()
       set({
@@ -56,9 +93,10 @@ export const useUpdateStore = create<UpdatesState>((set, get) => ({
       })
       return info
     } catch (error) {
+      const resolvedError = error instanceof Error ? error.message : 'Update check failed.'
       set({
         isChecking: false,
-        error: error instanceof Error ? error.message : 'Update check failed.',
+        ...(silent ? {} : { error: resolvedError }),
         lastChecked: Date.now(),
       })
       return null
@@ -72,9 +110,17 @@ export const useUpdateStore = create<UpdatesState>((set, get) => ({
       if (result?.error) {
         set({ error: result.error })
       } else if (result?.savedTo) {
-        set({ lastDownloadedTo: result.savedTo })
+        const latestVersion = get().info?.latestVersion || null
+        writeStoredValue(APPLY_DISMISS_KEY, null)
+        set({
+          lastDownloadedTo: result.savedTo,
+          downloadedVersion: latestVersion,
+          dismissedApplyVersion: null,
+          dismissedAvailableVersion: latestVersion,
+        })
+        writeStoredValue(AVAILABLE_DISMISS_KEY, latestVersion)
       }
-      set({ isDownloading: false })
+      set({ isDownloading: false, downloadProgress: null })
       return result
     } catch (error) {
       set({
@@ -83,6 +129,45 @@ export const useUpdateStore = create<UpdatesState>((set, get) => ({
       })
       return null
     }
+  },
+
+  applyDownloadedUpdate: async () => {
+    const { lastDownloadedTo } = get()
+    if (!lastDownloadedTo) {
+      set({ error: 'No downloaded update file is available yet.' })
+      return null
+    }
+
+    set({ error: null })
+    try {
+      const result = await window.jelico.updates.applyDownloaded(lastDownloadedTo)
+      if (!result.success) {
+        set({ error: result.error || 'Failed to launch the downloaded update.' })
+        return result
+      }
+
+      const dismissedVersion = get().downloadedVersion || get().info?.latestVersion || null
+      set({ dismissedApplyVersion: dismissedVersion })
+      writeStoredValue(APPLY_DISMISS_KEY, dismissedVersion)
+      return result
+    } catch (error) {
+      set({
+        error: error instanceof Error ? error.message : 'Failed to launch the downloaded update.',
+      })
+      return null
+    }
+  },
+
+  dismissAvailablePrompt: (version) => {
+    const resolvedVersion = version ?? get().info?.latestVersion ?? null
+    set({ dismissedAvailableVersion: resolvedVersion })
+    writeStoredValue(AVAILABLE_DISMISS_KEY, resolvedVersion)
+  },
+
+  dismissApplyPrompt: (version) => {
+    const resolvedVersion = version ?? get().downloadedVersion ?? get().info?.latestVersion ?? null
+    set({ dismissedApplyVersion: resolvedVersion })
+    writeStoredValue(APPLY_DISMISS_KEY, resolvedVersion)
   },
 
   startListening: () => {

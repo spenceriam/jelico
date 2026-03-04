@@ -5,6 +5,7 @@ import { useProviderStore } from '../../stores/providers'
 import { useUIStore } from '../../stores/ui'
 import { useContextStore } from '../../stores/context'
 import { useWorkspaceStore } from '../../stores/workspaces'
+import { useArtifactStore } from '../../stores/artifacts'
 import { useClarificationStore, type ClarificationRequest } from '../../stores/clarification'
 import { MessageList } from './MessageList'
 import { ChatInput } from './ChatInput'
@@ -46,6 +47,7 @@ export function ChatArea() {
   } = useChatStore()
   const { activeProviderId, activeModel } = useProviderStore()
   const { isProcessing, processingMessage, chatFontPt } = useUIStore()
+  const { canvasOpen } = useArtifactStore()
   const { isConversationCompacting } = useContextStore()
   const { setActiveRequest } = useClarificationStore()
   const scrollContainerRef = useRef<HTMLDivElement>(null)
@@ -311,6 +313,8 @@ export function ChatArea() {
                     return args.path ? `Explored ${getShortPath(String(args.path))}` : 'Directory explored'
                   case 'search_files':
                     return 'Search complete'
+                  case 'search_content':
+                    return 'Content search complete'
                   case 'execute_command':
                     return 'Command complete'
                   case 'web_search':
@@ -368,6 +372,8 @@ export function ChatArea() {
                   return args.path ? `Exploring ${getShortPath(String(args.path))}` : 'Exploring directory...'
                 case 'search_files':
                   return args.pattern ? `Searching for "${args.pattern}"` : 'Searching files...'
+                case 'search_content':
+                  return args.pattern ? `Searching content for "${String(args.pattern).slice(0, 32)}"` : 'Searching file contents...'
                 case 'execute_command': {
                   const cmd = String(args.command || '')
                   const shortCmd = cmd.length > 30 ? cmd.slice(0, 30) + '...' : cmd
@@ -460,6 +466,8 @@ export function ChatArea() {
                   }...`
                 case 'write_file':
                   return 'Writing file...'
+                case 'search_content':
+                  return 'Searching file contents...'
                 case 'execute_command':
                   return 'Running command...'
                 default:
@@ -503,6 +511,16 @@ export function ChatArea() {
   // Show new chat UI when no conversation selected OR empty conversation
   const showNewChatUI = !activeConversationId || (messages.length === 0 && !isStreaming)
   const chatFontScale = chatFontPt / 10.5
+  const chatContainerClass = canvasOpen
+    ? 'max-w-3xl mx-auto py-6 px-4'
+    : 'w-full py-6 px-4 md:px-8 lg:px-12 xl:px-[100px]'
+  const footerContainerClass = canvasOpen
+    ? 'max-w-3xl mx-auto px-4'
+    : 'w-full px-4 md:px-8 lg:px-12 xl:px-[100px]'
+  const welcomeContainerClass = canvasOpen
+    ? 'w-full max-w-3xl mx-auto px-4'
+    : 'w-full px-4 md:px-8 lg:px-12 xl:px-[100px]'
+  const welcomeContentWidthClass = canvasOpen ? 'max-w-xl mx-auto' : 'max-w-3xl mx-auto'
 
   const visibleSystemNotifications = useMemo(() => {
     if (!activeConversationId) return []
@@ -519,12 +537,14 @@ export function ChatArea() {
         style={{ '--chat-font-scale': chatFontScale, '--app-font-scale': 1 } as Record<string, string | number>}
         data-window-toggle="ignore"
       >
-        <div className="flex-1 flex items-center justify-center p-6">
-          <div className="w-full max-w-xl">
-            <NewChatView
-              disabled={!activeProviderId || !activeModel}
-              isStreaming={isStreaming}
-            />
+        <div className="flex-1 flex items-center justify-center py-6">
+          <div className={welcomeContainerClass}>
+            <div className={welcomeContentWidthClass}>
+              <NewChatView
+                disabled={!activeProviderId || !activeModel}
+                isStreaming={isStreaming}
+              />
+            </div>
           </div>
         </div>
       </div>
@@ -542,7 +562,7 @@ export function ChatArea() {
       <div className="flex-1 min-h-0 relative">
         <div ref={scrollContainerRef} className="h-full overflow-y-auto select-text">
           <div
-            className="max-w-3xl mx-auto py-6 px-4"
+            className={chatContainerClass}
             style={{ paddingBottom: messagesBottomPadding }}
           >
             <MessageList
@@ -619,7 +639,7 @@ export function ChatArea() {
 
         {/* Todo panel pinned to bottom of chat viewport */}
         <div className="absolute inset-x-0 bottom-0 pointer-events-none">
-          <div className="max-w-3xl mx-auto px-4 pointer-events-auto">
+          <div className={`${footerContainerClass} pointer-events-auto`}>
             <TodoPanel
               onHeightChange={(height) => {
                 setTodoPanelHeight((prev) => (prev === height ? prev : height))
@@ -631,7 +651,7 @@ export function ChatArea() {
 
       {/* Input area */}
       <div className="border-t border-border bg-bg-surface">
-        <div className="max-w-3xl mx-auto px-4 pt-0 pb-0">
+        <div className={`${footerContainerClass} pt-0 pb-0`}>
           {/* Mode selector rail flush to top separator */}
           <div className="-mx-4 px-4 py-0">
             <ModeSelector flatTop />
@@ -1234,7 +1254,7 @@ function NewChatView({ disabled, isStreaming }: NewChatViewProps) {
         {canShowWorktreeCheckbox && (
           <label
             className="flex items-center gap-2 px-3 py-1.5 text-sm rounded-lg border border-border text-text-secondary hover:text-text-primary hover:bg-bg-surface transition-colors cursor-pointer select-none"
-            title="Auto-create a Git worktree for this new chat (workspace only)"
+            title="Worktrunk isolation: auto-create an isolated worktree and branch for this new chat"
           >
             <input
               type="checkbox"
@@ -1255,7 +1275,7 @@ function NewChatView({ disabled, isStreaming }: NewChatViewProps) {
             >
               ✓
             </span>
-            <span>Work Tree</span>
+            <span>Worktrunk</span>
           </label>
         )}
         <ModelSelector compact />

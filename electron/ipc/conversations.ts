@@ -9,6 +9,7 @@ function toConversationApi(row: any) {
     workspaceId: row.workspace_id,
     model: row.model,
     providerId: row.provider_id,
+    archivedAt: row.archived_at,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
     messages: row.messages?.map(toMessageApi),
@@ -34,6 +35,12 @@ export function registerConversationHandlers() {
   // List all conversations
   ipcMain.handle('conversations:list', async () => {
     const conversations = conversationDb.list()
+    return conversations.map(toConversationApi)
+  })
+
+  // List archived conversations
+  ipcMain.handle('conversations:listArchived', async () => {
+    const conversations = conversationDb.listArchived()
     return conversations.map(toConversationApi)
   })
 
@@ -145,5 +152,19 @@ export function registerConversationHandlers() {
   // Delete a conversation
   ipcMain.handle('conversations:delete', async (_, id: string) => {
     conversationDb.delete(id)
+  })
+
+  // Archive a conversation (keeps messages/artifacts for later restore)
+  ipcMain.handle('conversations:archive', async (_, id: string) => {
+    conversationDb.archive(id)
+    const conversation = conversationDb.get(id)
+    return conversation ? toConversationApi(conversation) : null
+  })
+
+  // Restore an archived conversation
+  ipcMain.handle('conversations:restore', async (_, id: string) => {
+    conversationDb.restore(id)
+    const conversation = conversationDb.get(id)
+    return conversation ? toConversationApi(conversation) : null
   })
 }

@@ -23,6 +23,7 @@ contextBridge.exposeInMainWorld('jelico', {
   },
   conversations: {
     list: () => ipcRenderer.invoke('conversations:list'),
+    listArchived: () => ipcRenderer.invoke('conversations:listArchived'),
     get: (id: string) => ipcRenderer.invoke('conversations:get', id),
     create: (conversation: any) => ipcRenderer.invoke('conversations:create', conversation),
     addMessage: (convId: string, message: any) => ipcRenderer.invoke('conversations:addMessage', convId, message),
@@ -36,6 +37,8 @@ contextBridge.exposeInMainWorld('jelico', {
     transferToWorkspace: (id: string, workspaceId: string | null) =>
       ipcRenderer.invoke('conversations:transferToWorkspace', id, workspaceId),
     getArtifactCount: (id: string) => ipcRenderer.invoke('conversations:getArtifactCount', id),
+    archive: (id: string) => ipcRenderer.invoke('conversations:archive', id),
+    restore: (id: string) => ipcRenderer.invoke('conversations:restore', id),
     delete: (id: string) => ipcRenderer.invoke('conversations:delete', id),
   },
   workspaces: {
@@ -218,6 +221,7 @@ contextBridge.exposeInMainWorld('jelico', {
     getCurrentVersion: () => ipcRenderer.invoke('updates:currentVersion'),
     check: () => ipcRenderer.invoke('updates:check'),
     download: () => ipcRenderer.invoke('updates:download'),
+    applyDownloaded: (filePath: string) => ipcRenderer.invoke('updates:applyDownloaded', filePath),
     openRelease: (url: string) => ipcRenderer.invoke('updates:openRelease', url),
     onDownloadProgress: (callback: (progress: any) => void) => {
       const handler = (_: any, progress: any) => callback(progress)
@@ -230,6 +234,8 @@ contextBridge.exposeInMainWorld('jelico', {
     startDrag: (mouseScreenX: number, mouseScreenY: number) => ipcRenderer.invoke('window:startDrag', mouseScreenX, mouseScreenY),
     updateDrag: (mouseScreenX: number, mouseScreenY: number) => ipcRenderer.invoke('window:updateDrag', mouseScreenX, mouseScreenY),
     endDrag: () => ipcRenderer.invoke('window:endDrag'),
+    captureArea: (rect: { x: number; y: number; width: number; height: number }) =>
+      ipcRenderer.invoke('window:captureArea', rect),
   },
   ai: {
     stream: (params: any) => {
@@ -285,7 +291,22 @@ contextBridge.exposeInMainWorld('jelico', {
       const handler = (_: any, update: any) => callback(update)
       ipcRenderer.on(`ai:updateArtifact:${channelId}`, handler)
     },
-    onTodos: (channelId: string, callback: (todos: Array<{ id: string; text: string; status: 'pending' | 'in_progress' | 'done' }>) => void) => {
+    onTodos: (channelId: string, callback: (todos: Array<{
+      id: string
+      text: string
+      status: 'pending' | 'in_progress' | 'done' | 'failed' | 'cancelled' | 'blocked'
+      owner?: string | null
+      dependencies?: string[]
+      blocked_reason?: string | null
+      history?: Array<{
+        status: 'pending' | 'in_progress' | 'done' | 'failed' | 'cancelled' | 'blocked'
+        at: number
+        actor?: string
+        note?: string
+      }>
+      created_at?: number
+      updated_at?: number
+    }>) => void) => {
       const handler = (_: any, todos: any[]) => callback(todos)
       ipcRenderer.on(`ai:todos:${channelId}`, handler)
     },

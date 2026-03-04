@@ -34,6 +34,9 @@ import {
 import { lookupModelsDevOutputLimit, refreshModelCatalog } from './modelCatalog'
 import { getConversationSandboxPath } from './sandbox'
 import { normalizeToolSchemas, createToolCallRepair } from '../lib/tooling'
+import { getModeCapabilities, assertCapabilityMatrix } from '../lib/modeCapabilities'
+import { searchFileContents } from '../lib/contentSearch'
+import type { AgentMode } from '../lib/modes'
 
 // Configuration
 const ORPHAN_CHECK_INTERVAL_MS = 60 * 1000 // Check for orphans every minute
@@ -348,6 +351,10 @@ export interface SubAgentQuestion {
 export interface ProgressUpdate {
   message: string
   phase?: string // e.g., "research", "building", "testing"
+  taskId?: string
+  taskStatus?: 'pending' | 'in_progress' | 'done' | 'failed' | 'cancelled' | 'blocked'
+  blockedReason?: string
+  owner?: string
   timestamp: number
 }
 
@@ -993,10 +1000,11 @@ function getSubAgentTools(
   },
   webRuntime?: WebProviderRuntime
 ) {
-  // Read-only modes: explore, plan, security-review
-  const readOnlyModes = ['explore', 'plan', 'security-review']
-  const canWrite = !readOnlyModes.includes(mode)
-  const canExecute = mode === 'auto' || mode === 'execute' || mode === 'review' || mode === 'pr-review'
+  assertCapabilityMatrix()
+  const normalizedMode: AgentMode = (mode as AgentMode) || 'auto'
+  const modeCapabilities = getModeCapabilities(normalizedMode)
+  const canWrite = modeCapabilities.subAgent.canWriteFiles
+  const canExecute = modeCapabilities.subAgent.canExecuteCommands
 
   const tools: Record<string, any> = {}
 
@@ -1084,6 +1092,52 @@ function getSubAgentTools(
         const resolvedDir = await resolveScopedPath(directory)
         const files = await glob(pattern, { cwd: resolvedDir })
         return { success: true, files }
+      } catch (error: any) {
+        return { success: false, error: error.message }
+      }
+    },
+  })
+
+  tools.search_content = tool({
+    description: 'Search file contents by regex and return file/line/snippet matches.',
+    parameters: z.object({
+      pattern: z.string().describe('Regex pattern to search in file contents'),
+      directory: z.string().optional().describe('Directory scope (defaults to current workspace/sandbox root)'),
+      includeGlobs: z.array(z.string()).optional().describe('Optional include globs'),
+      excludeGlobs: z.array(z.string()).optional().describe('Optional exclude globs'),
+      caseSensitive: z.boolean().optional().describe('Enable case-sensitive matching'),
+      multiline: z.boolean().optional().describe('Enable multiline dot-all mode'),
+      maxResults: z.number().optional().describe('Maximum number of matches to return'),
+      contextLines: z.number().optional().describe('Snippet context lines around each match'),
+    }),
+    execute: async ({
+      pattern,
+      directory = '.',
+      includeGlobs,
+      excludeGlobs,
+      caseSensitive,
+      multiline,
+      maxResults,
+      contextLines,
+    }) => {
+      try {
+        const resolvedDir = await resolveScopedPath(directory || '.')
+        const results = await searchFileContents({
+          rootDir: resolvedDir,
+          pattern,
+          includeGlobs,
+          excludeGlobs,
+          caseSensitive,
+          multiline,
+          maxResults,
+          contextLines,
+        })
+        return {
+          success: true,
+          matches: results.matches,
+          scannedFiles: results.scannedFiles,
+          truncated: results.truncated,
+        }
       } catch (error: any) {
         return { success: false, error: error.message }
       }
@@ -1299,12 +1353,15 @@ function getSubAgentTools(
   // Report progress tool - optional status updates, NOT a primary work tool
   if (agentContext) {
     tools.report_progress = tool({
-      description: `Optional: send a brief status update to the user. Only call AFTER you have already used a work tool (web_search, read_file, etc.). Never call this as your first action.`,
+      description: `Optional: send a brief status update to the user. Only call AFTER you have already used a work tool (web_search, search_content, read_file, etc.). Never call this as your first action.`,
       parameters: z.object({
         message: z.string().describe('Brief status message'),
         phase: z.string().optional().describe('Work phase (e.g., "research", "analysis", "finishing")'),
+        taskId: z.string().optional().describe('Optional shared task ID to update'),
+        taskStatus: z.enum(['pending', 'in_progress', 'done', 'failed', 'cancelled', 'blocked']).optional().describe('Optional shared task status update'),
+        blockedReason: z.string().optional().describe('Optional reason when task is blocked'),
       }),
-      execute: async ({ message, phase }) => {
+      execute: async ({ message, phase, taskId, taskStatus, blockedReason }) => {
         const agent = activeAgents.get(agentContext.agentId)
         if (!agent) {
           return { success: false, error: 'Agent not found' }
@@ -1321,7 +1378,7 @@ function getSubAgentTools(
           agent.lastActivityAt = Date.now()
           console.log(`[SubAgents] ${agent.displayName} called report_progress with NO prior work - redirecting`)
           return {
-            error: 'BLOCKED: You must use a work tool (web_search, read_file, search_files, web_fetch, list_directory) BEFORE reporting progress. Call one of those tools now.',
+            error: 'BLOCKED: You must use a work tool (web_search, search_content, read_file, search_files, web_fetch, list_directory) BEFORE reporting progress. Call one of those tools now.',
           }
         }
 
@@ -1329,6 +1386,10 @@ function getSubAgentTools(
         const update: ProgressUpdate = {
           message,
           phase,
+          taskId,
+          taskStatus,
+          blockedReason,
+          owner: `agent:${agentContext.agentId}`,
           timestamp: Date.now(),
         }
 
@@ -1665,7 +1726,7 @@ async function runSubAgent(agentId: string): Promise<void> {
 
       // Research work tools (web search, file reading) - count as valid work done
       const hasResearchWork = agent.toolCalls.some(tc =>
-        ['web_search', 'web_fetch', 'read_file', 'list_directory', 'search_files'].includes(tc.name)
+        ['web_search', 'web_fetch', 'read_file', 'list_directory', 'search_files', 'search_content'].includes(tc.name)
       )
       const webSearchCalls = agent.toolCalls.filter(tc => tc.name === 'web_search')
       const webFetchCalls = agent.toolCalls.filter(tc => tc.name === 'web_fetch')
@@ -1756,7 +1817,7 @@ async function runSubAgent(agentId: string): Promise<void> {
       // Agent may research via filesystem (read_file, list_directory, search_files) instead of web.
       // If it did filesystem research AND produced quality output, that's a valid strategy — not shallow.
       const hasFilesystemResearch = agent.toolCalls.some(tc =>
-        ['read_file', 'list_directory', 'search_files'].includes(tc.name)
+        ['read_file', 'list_directory', 'search_files', 'search_content'].includes(tc.name)
       )
       const isPrematureShallowWebResearch =
         taskIsResearch &&
@@ -1911,6 +1972,7 @@ Do not stop after a single weak/no-result pass. Continue now.`
 
 Call one of these tools NOW:
 - web_search (for web research)
+- search_content (to find relevant snippets)
 - read_file (for code/file analysis)
 - web_fetch (for URL content)
 - search_files (to find files)
@@ -2076,6 +2138,9 @@ function buildSubAgentSystemPrompt(
   workspacePath?: string,
   siblingContext?: string
 ): string {
+  const normalizedMode: AgentMode = (mode as AgentMode) || 'auto'
+  const subAgentCaps = getModeCapabilities(normalizedMode).subAgent
+
   let prompt = `You are ${name}, a research sub-agent.
 
 ## YOUR TASK
@@ -2084,11 +2149,11 @@ ${task}
 ## IMMEDIATE FIRST ACTION
 Start by calling a work tool RIGHT NOW. Do NOT call report_progress first.
 - For web research: call \`web_search\` with your query
-- For code analysis: call \`read_file\` or \`search_files\`
+- For code analysis: call \`search_content\`, \`read_file\`, or \`search_files\`
 - For URL content: call \`web_fetch\`
 
 ## WORKFLOW
-1. Call work tools (web_search, read_file, web_fetch, search_files, list_directory)
+1. Call work tools (web_search, read_file, search_content, web_fetch, search_files, list_directory)
 2. Do at least 2 search passes for web research (broad then focused)
 3. Write a detailed text summary of your findings (100+ words)
 
@@ -2096,6 +2161,7 @@ Start by calling a work tool RIGHT NOW. Do NOT call report_progress first.
 - The main AI ONLY sees your text output, not your tool results
 - You MUST write a text summary after using tools or you have FAILED
 - Do NOT create artifacts — the main AI handles that
+- If the main AI gives you shared task IDs, you may call \`report_progress\` with \`taskId\` and \`taskStatus\`
 - If the task references a direct GitHub issue/PR URL, avoid generic web_search/web_fetch and prefer \`execute_command\` with \`gh issue view\` / \`gh pr view\` when that tool is available
 - If stuck, try a different approach before giving up
 - Work efficiently — you have ~5 minutes
@@ -2121,9 +2187,17 @@ Your results will be combined with theirs by the main AI. Focus on your specific
     prompt += `\n## Workspace Context\nWorking in: ${workspacePath}\n`
   }
 
+  if (subAgentCaps.canWriteFiles || subAgentCaps.canExecuteCommands) {
+    const writeText = subAgentCaps.canWriteFiles ? 'write files' : 'not write files'
+    const executeText = subAgentCaps.canExecuteCommands ? 'run mutating commands' : 'not run mutating commands'
+    prompt += `\n## Capability Contract\nIn this mode you may ${writeText} and may ${executeText}.`
+  } else {
+    prompt += `\n## Capability Contract\nIn this mode, sub-agents are strictly read-only: do not write files and do not run mutating commands.`
+  }
+
   // Load specialized agent prompts based on mode
   // These prompts include detailed instructions, read-only enforcement, and output formats
-  switch (mode) {
+  switch (normalizedMode) {
     case 'explore': {
       const explorePrompt = loadAgentPrompt('explore')
       if (explorePrompt) {
@@ -2161,7 +2235,7 @@ Your results will be combined with theirs by the main AI. Focus on your specific
       break
     }
     case 'execute':
-      prompt += '\n## Mode: EXECUTE\nProvide implementation details and code. You can make changes to files and run commands.'
+      prompt += '\n## Mode: EXECUTE\nProvide implementation details and code-level recommendations while staying within your tool permissions.'
       break
     case 'review':
       prompt += '\n## Mode: REVIEW\nReview and critique code, suggest improvements. Be constructive and specific.'

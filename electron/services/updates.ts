@@ -1,4 +1,4 @@
-import { app, dialog, type BrowserWindow } from 'electron'
+import { app, dialog, shell, type BrowserWindow } from 'electron'
 import https from 'https'
 import path from 'path'
 import { createWriteStream, promises as fs, readFileSync } from 'fs'
@@ -33,6 +33,12 @@ export interface UpdateDownloadProgress {
 export interface UpdateDownloadResult {
   canceled?: boolean
   savedTo?: string
+  error?: string
+}
+
+export interface UpdateApplyResult {
+  success: boolean
+  launchedPath?: string
   error?: string
 }
 
@@ -282,4 +288,39 @@ export async function downloadLatestUpdate(
     }
     return { error: error instanceof Error ? error.message : 'Download failed.' }
   }
+}
+
+export async function applyDownloadedUpdate(filePath: string): Promise<UpdateApplyResult> {
+  if (!filePath) {
+    return { success: false, error: 'No downloaded update file is available.' }
+  }
+
+  let fileStats: Awaited<ReturnType<typeof fs.stat>>
+  try {
+    fileStats = await fs.stat(filePath)
+  } catch {
+    return { success: false, error: 'Downloaded update file no longer exists.' }
+  }
+
+  if (!fileStats.isFile()) {
+    return { success: false, error: 'Downloaded update target is not a file.' }
+  }
+
+  // Best-effort Linux helper: AppImage often needs executable bit to launch.
+  if (process.platform === 'linux' && filePath.toLowerCase().endsWith('.appimage')) {
+    try {
+      if ((fileStats.mode & 0o111) === 0) {
+        await fs.chmod(filePath, fileStats.mode | 0o755)
+      }
+    } catch {
+      // Continue anyway; openPath may still succeed depending on permissions.
+    }
+  }
+
+  const openError = await shell.openPath(filePath)
+  if (openError) {
+    return { success: false, error: openError }
+  }
+
+  return { success: true, launchedPath: filePath }
 }

@@ -8,13 +8,14 @@ Jelico is a local-first AI desktop assistant. A native app where you chat with A
 
 **Core Baseline Features (what users actually do):**
 
-1. **Chat** - User sends a message → AI streams a response. Multi-turn conversations persisted to local database. Switch between conversations in the sidebar.
+1. **Chat** - User sends a message → AI streams a response. Multi-turn conversations persisted to local database. Switch between conversations in the sidebar with archive/restore support.
 
 2. **Tool Calling** - AI executes tools during responses:
    - `read_file` - Read any file content
    - `write_file` - Create/update files
    - `list_directory` - Explore folder structure
    - `search_files` - Find files by pattern
+   - `search_content` - Regex content search with file/line/snippet results
    - `execute_command` - Run terminal commands
    - `create_artifact` / `update_artifact` - Create visual outputs
    - `todo_write` / `todo_read` / `todo_check` - Task tracking for multi-step work
@@ -26,6 +27,7 @@ Jelico is a local-first AI desktop assistant. A native app where you chat with A
    - HTML (sandboxed preview)
    - SVG (rendered visually)
    - Mermaid diagrams (flowcharts, sequences, etc.)
+   - Canvas screenshot capture to clipboard + chat attachment (`Screenshot-xxxx.png`)
    - Artifacts persist per-conversation and survive reload
 
 4. **Memory System** - Facts and context stored across scopes:
@@ -45,6 +47,7 @@ Jelico is a local-first AI desktop assistant. A native app where you chat with A
    - Select a folder as active workspace
    - AI knows the workspace path for file operations
    - Git branch awareness
+   - Worktrunk-style isolation: optional auto-worktree creation for new chats in shared Git workspaces
    - Sandbox mode for no-workspace experimentation
 
 7. **Multi-Provider** - Use any AI provider:
@@ -73,7 +76,7 @@ The Soul/Memory system should make Jelico increasingly personalized - it learns 
 ## Project overview
 Jelico is an AI Productivity Desktop built with Electron, React, TypeScript, and Vite. It provides a frictionless AI assistant experience with multi-provider support (Anthropic, OpenAI, Google), workspace management, conversation persistence, and a soul/memory system that learns user patterns and preferences over time.
 
-**Current Version:** 0.34.1
+**Current Version:** 0.35.0
 
 **License:** GNU General Public License v3.0 (GPL-3.0-or-later)
 - See LICENSE file in project root
@@ -375,7 +378,7 @@ Sub-agents are tied to specific conversations:
 
 ### Sub-Agent Tools
 Sub-agents automatically get a subset of tools based on mode:
-- `read_file`, `list_directory`, `search_files` (always)
+- `read_file`, `list_directory`, `search_files`, `search_content` (always)
 - `web_search`, `web_fetch` (always)
 - `create_artifact` (always) - creates artifacts that stream to Canvas
 - `write_file`, `execute_command` (if mode allows)
@@ -682,8 +685,8 @@ todo_write({ tasks: [
 
 - **Phase 1-7 Complete**: Core functionality, UI, artifacts, memory, soul system
 - **Phase 8 Complete**: Onboarding flow, backup/restore, versioning
-- **Current Focus**: Testing, polish, user feedback integration, and response finalization reliability
-- **Latest Patch (0.34.1)**: Prompt focus/typing reliability hardening after clarification and improved top inset for long composer drafts
+- **Current Focus**: Testing, polish, user feedback integration, and release hardening across tool UX and workspace flows
+- **Latest Release (0.35.0)**: Enhancement sweep covering archive/restore conversation workflow, update availability/apply toast flow, default-browser link handling, artifact screenshot capture, tool-call consolidation, widened single-pane chat layout, content search tooling, capability-profile routing, and shared task-graph coordination
 
 ## Code style
 - TypeScript strict mode enabled

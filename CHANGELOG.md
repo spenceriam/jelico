@@ -2,6 +2,32 @@
 
 All notable changes to Jelico are documented in this file.
 
+## [0.35.0] - 2026-03-04
+
+### Highlights
+- You can now archive chats instead of deleting them, then restore them later from an Archived section grouped by project or Sandbox.
+- Update handling is now proactive: Jelico checks in the background and shows a bottom-right banner to download or apply updates when ready.
+- Chat and tool readability improved with consolidated repeated tool actions, wider single-pane chat layout, and cleaner spacing between assistant text blocks.
+
+### New
+- **Content Search Tool** — Jelico can now search file contents directly with regex and return file, line, and snippet matches so it can target reads faster.
+- **Capability Profiles** — Provider/model-specific behavior profiles now tune retry, reminder, and delegation behavior for different model strengths.
+- **Docs Guide Prompt Routing** — Self-help questions about Jelico now trigger a dedicated docs-guide context path instead of loading full capability docs on every turn.
+- **Task Graph Upgrades** — Task tracking now supports owner, dependencies, blocked reason, and history so multi-agent coordination is more reliable.
+- **Artifact Screenshot Capture** — The canvas now has a screenshot action that copies to clipboard and auto-attaches `Screenshot-xxxx.png` into chat.
+
+### Fixed
+- **Link Opening Behavior** — Clicking links in chat now opens your default system browser instead of an in-app window, preserving web auth sessions.
+- **Tool Call Noise** — Consecutive repeated tool calls are now grouped into a single expandable action, including artifact testing chains.
+- **Single-Pane Chat Width** — Chat now uses wider desktop space when the canvas is closed, reducing empty margins.
+- **Message Spacing** — Assistant response blocks now have clearer vertical separation in dense multi-block turns.
+- **Worktree Cleanup Reliability** — Deleting worktree-backed workspaces now removes the underlying worktree and clears stale active workspace references.
+
+### Changed
+- **Conversation Deletion Flow** — Delete now archives by default, with explicit restore and permanent-delete controls in the sidebar.
+- **Update Flow UX** — Update checks now run at startup and periodically, with toast-style prompts for Download/Apply/Later and release-note access.
+- **Worktrunk New-Chat Flow** — Worktree isolation preferences now persist and new-chat wording is clearer for non-Git users.
+
 ## [0.34.2] - 2026-03-04
 
 ### Highlights

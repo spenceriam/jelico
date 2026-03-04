@@ -6,7 +6,6 @@ import { useWorkspaceStore } from './workspaces'
 import { useAgentStore } from './agents'
 import { useSkillStore } from './skills'
 import { useContextStore, estimateTokens } from './context'
-import { useSandboxStore } from './sandbox'
 import { useTodoStore } from './todos'
 import { useClarificationStore } from './clarification'
 import { notifyUserEvent } from '../lib/notifications'
@@ -94,6 +93,7 @@ interface Conversation {
   model: string
   providerId: string
   mode?: AgentMode
+  archivedAt?: number | null
   createdAt: number
   updatedAt: number
   messages?: Message[]
@@ -325,7 +325,7 @@ function buildWorktreeGuidanceMessage(input: {
       ? 'Worktree tip: '
       : ''
 
-  return `${contextText}you are in the main workspace "${input.workspaceName}" (not a worktree). ${relatedText}Use "Work Tree" for new chats when you want full filesystem + branch isolation.`
+  return `${contextText}you are in the main workspace "${input.workspaceName}" (not a worktree). ${relatedText}Use Worktrunk (new chat isolation) when you want full filesystem + branch isolation.`
 }
 
 function getTrailingTokenOverlap(value: string, token: string): number {
@@ -788,13 +788,13 @@ export const useChatStore = create<ChatStore>((set, get) => ({
             const remainingCount = sortedExisting.length - previewConversations.length
 
             shouldCreateWorktree = window.confirm(
-              'This workspace already has existing conversations.\n\n' +
-              'Existing conversations in this workspace:\n' +
+              'This project already has existing chats.\n\n' +
+              'Current chats in this project:\n' +
               `${previewConversations.join('\n')}` +
               (remainingCount > 0 ? `\n...and ${remainingCount} more` : '') +
               '\n\n' +
-              'Select OK to create a Work Tree for this new chat.\n' +
-              'Select Cancel to continue working in this workspace.'
+              'Select OK to use Worktrunk isolation (new worktree + branch) for this chat.\n' +
+              'Select Cancel to keep working in the shared workspace.'
             )
           }
 
@@ -2176,7 +2176,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
   deleteConversation: async (id) => {
     const wasActiveConversation = get().activeConversationId === id
 
-    // Optimistically clear active conversation state before slower delete work so
+    // Optimistically clear active conversation state before archive work so
     // the composer immediately returns to a clean, editable new-chat state.
     if (wasActiveConversation) {
       set((state) => {
@@ -2206,20 +2206,10 @@ export const useChatStore = create<ChatStore>((set, get) => ({
       }
       clearPendingStreamCheckpoint(id)
       worktreeGuidanceByConversation.delete(id)
-      useTodoStore.getState().deleteConversationTodos(id)
       useClarificationStore.getState().clearForConversation(id)
 
-      // Delete artifacts for this conversation
-      await useArtifactStore.getState().clearConversationArtifacts(id)
-
-      // Clear sandbox files for this conversation (ignore errors - sandbox may not exist)
-      try {
-        await useSandboxStore.getState().clearSandbox(id)
-      } catch {
-        // Sandbox may not exist for this conversation - that's OK
-      }
-
-      await window.jelico.conversations.delete(id)
+      // Archive instead of permanent delete so users can restore later.
+      await window.jelico.conversations.archive(id)
       const conversations = await window.jelico.conversations.list()
 
       if (wasActiveConversation) {

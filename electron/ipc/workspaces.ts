@@ -45,6 +45,25 @@ function resolveGitPath(baseDir: string, value: string): string {
   return path.isAbsolute(value) ? value : path.resolve(baseDir, value)
 }
 
+async function resolveWorktreeRemovalRepoPath(worktreePath: string, projectPath?: string | null): Promise<string> {
+  if (projectPath && workspacePathExists(projectPath)) {
+    return projectPath
+  }
+
+  try {
+    const { stdout } = await execAsync('git rev-parse --git-common-dir', { cwd: worktreePath })
+    const resolvedCommonDir = resolveGitPath(worktreePath, stdout.trim())
+    const repoRoot = path.dirname(resolvedCommonDir)
+    if (workspacePathExists(repoRoot)) {
+      return repoRoot
+    }
+  } catch {
+    // Fall back to the worktree path below.
+  }
+
+  return worktreePath
+}
+
 async function isGitRepository(
   dirPath: string
 ): Promise<{ isGit: boolean; isWorktree?: boolean; projectPath?: string; branch?: string }> {
@@ -357,7 +376,22 @@ export function registerWorkspaceHandlers() {
   })
 
   // Delete workspace
-  ipcMain.handle('workspaces:delete', (_, id: string) => {
+  ipcMain.handle('workspaces:delete', async (_, id: string) => {
+    const workspace = workspaceDb.get(id)
+    if (!workspace) return
+
+    const isWorktree = (workspace.is_worktree || 0) === 1
+    const isGit = workspace.is_git === 1
+
+    // If this record represents a git worktree, remove the real worktree first.
+    if (isWorktree && isGit && workspacePathExists(workspace.path)) {
+      const repoPath = await resolveWorktreeRemovalRepoPath(workspace.path, workspace.project_path)
+      const removed = await removeWorktree(repoPath, workspace.path)
+      if (!removed) {
+        throw new Error('Failed to remove git worktree. Resolve local changes and try again.')
+      }
+    }
+
     workspaceDb.delete(id)
   })
 

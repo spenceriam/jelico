@@ -2,7 +2,14 @@ import { useState } from 'react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { Copy, Check, FileText, Image, File, RotateCcw, Loader2 } from 'lucide-react'
-import { ToolCallDisplay, SingleToolCallDisplay, buildProcessingToneByToolCallId, isHiddenToolCall } from './ToolCallDisplay'
+import {
+  ToolCallDisplay,
+  SingleToolCallDisplay,
+  ConsolidatedToolCallGroup,
+  buildProcessingToneByToolCallId,
+  buildToolRenderEntries,
+  isHiddenToolCall,
+} from './ToolCallDisplay'
 import { MessageActions } from './MessageActions'
 import { MermaidInline } from '../Canvas/MermaidViewer'
 import { useAgentStore } from '../../stores/agents'
@@ -238,6 +245,7 @@ export function Message({
     agents,
     isStreaming,
   })
+  const toolCallsMap = new Map((toolCalls || []).map((toolCall) => [toolCall.id, toolCall]))
   const toolResultsMap = new Map((toolResults || []).map((result) => [result.toolCallId, result]))
   const hasVisibleToolSegments = !!segments?.some((segment) => segment.type === 'tool')
   const hasVisibleToolCalls = !!toolCalls?.some((toolCall) => !isHiddenToolCall(toolCall, toolResultsMap.get(toolCall.id)))
@@ -534,6 +542,54 @@ export function Message({
     </ReactMarkdown>
   )
 
+  type InterleavedRenderBlock =
+    | { type: 'text'; key: string; content: string }
+    | { type: 'tools'; key: string; toolEntries: ReturnType<typeof buildToolRenderEntries> }
+
+  const interleavedBlocks: InterleavedRenderBlock[] = (() => {
+    if (!segments || segments.length === 0) return []
+
+    const blocks: InterleavedRenderBlock[] = []
+    let segmentIndex = 0
+    while (segmentIndex < segments.length) {
+      const segment = segments[segmentIndex]
+      if (segment.type === 'text') {
+        blocks.push({
+          type: 'text',
+          key: `text-${segmentIndex}`,
+          content: segment.content || (isStreaming ? '▊' : ''),
+        })
+        segmentIndex += 1
+        continue
+      }
+
+      const runStart = segmentIndex
+      const visibleToolCallsInRun: ToolCall[] = []
+      while (segmentIndex < segments.length && segments[segmentIndex].type === 'tool') {
+        const currentSegment = segments[segmentIndex]
+        if (currentSegment.type !== 'tool') break
+        const toolCall = toolCallsMap.get(currentSegment.toolCallId)
+        const toolResult = toolResultsMap.get(currentSegment.toolCallId)
+
+        if (toolCall && !isHiddenToolCall(toolCall, toolResult)) {
+          visibleToolCallsInRun.push(toolCall)
+        }
+
+        segmentIndex += 1
+      }
+
+      if (visibleToolCallsInRun.length > 0) {
+        blocks.push({
+          type: 'tools',
+          key: `tools-${runStart}`,
+          toolEntries: buildToolRenderEntries(visibleToolCallsInRun),
+        })
+      }
+    }
+
+    return blocks
+  })()
+
   // Assistant messages
   return (
     <div className="flex gap-4 group relative">
@@ -548,33 +604,48 @@ export function Message({
           {/* Interleaved segments during streaming */}
           {segments && segments.length > 0 ? (
             <>
-              {segments.map((segment, idx) => {
-                const segmentSpacingClass = idx > 0 ? 'mt-4' : undefined
-                if (segment.type === 'text') {
+              {interleavedBlocks.map((block, blockIndex) => {
+                if (block.type === 'text') {
+                  const textSpacingClass = blockIndex > 0 ? 'mt-[10px]' : undefined
                   return (
-                    <div key={`text-${idx}`} className={segmentSpacingClass}>
-                      {renderMarkdown(segment.content || (isStreaming ? '▊' : ''))}
-                    </div>
-                  )
-                } else {
-                  // Tool segment - find the tool call and result
-                  const toolCall = toolCalls?.find(tc => tc.id === segment.toolCallId)
-                  const toolResult = toolResults?.find(tr => tr.toolCallId === segment.toolCallId)
-
-                  // Skip hidden tools (plumbing + internal deferred web gate events)
-                  if (!toolCall || isHiddenToolCall(toolCall, toolResult)) return null
-
-                  return (
-                    <div key={`tool-${segment.toolCallId}`} className={segmentSpacingClass}>
-                      <SingleToolCallDisplay
-                        toolCall={toolCall}
-                        toolResult={toolResult}
-                        isStreaming={isStreaming}
-                        processingTone={processingToneByToolCallId.get(segment.toolCallId)}
-                      />
+                    <div key={block.key} className={textSpacingClass}>
+                      {renderMarkdown(block.content)}
                     </div>
                   )
                 }
+
+                const toolSpacingClass = blockIndex > 0 ? 'mt-4' : undefined
+                const blockClassName = toolSpacingClass ? `${toolSpacingClass} space-y-3` : 'space-y-3'
+
+                return (
+                  <div key={block.key} className={blockClassName}>
+                    {block.toolEntries.map((entry, entryIndex) => {
+                      if (entry.type === 'single') {
+                        const { toolCall } = entry
+                        return (
+                          <SingleToolCallDisplay
+                            key={toolCall.id || `tool-${block.key}-${entryIndex}`}
+                            toolCall={toolCall}
+                            toolResult={toolResultsMap.get(toolCall.id)}
+                            isStreaming={isStreaming}
+                            processingTone={processingToneByToolCallId.get(toolCall.id)}
+                          />
+                        )
+                      }
+
+                      return (
+                        <ConsolidatedToolCallGroup
+                          key={`group-${entry.toolName}-${block.key}-${entryIndex}`}
+                          toolName={entry.toolName}
+                          toolCalls={entry.toolCalls}
+                          resultsMap={toolResultsMap}
+                          isStreaming={isStreaming}
+                          processingToneByToolCallId={processingToneByToolCallId}
+                        />
+                      )
+                    })}
+                  </div>
+                )
               })}
             </>
           ) : (

@@ -25,6 +25,15 @@ interface OpenRouterModel {
   name: string
 }
 
+function normalizeCapabilityProfiles(value: unknown): Record<string, unknown> | null {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null
+  return value as Record<string, unknown>
+}
+
+function stringifyCapabilityProfiles(value: Record<string, unknown> | null): string {
+  return JSON.stringify(value || null)
+}
+
 export function Settings({ onClose }: SettingsProps) {
   const { providers, deleteProvider, testConnection, updateProvider, setActiveModel, setActiveSelection, activeProviderId } = useProviderStore()
   const { openProviderSetup, settingsTab } = useUIStore()
@@ -54,6 +63,8 @@ export function Settings({ onClose }: SettingsProps) {
 
   // API key state within provider edit form
   const [editApiKeyValue, setEditApiKeyValue] = useState('')
+  const [editCapabilityProfilesValue, setEditCapabilityProfilesValue] = useState('')
+  const [capabilityProfilesError, setCapabilityProfilesError] = useState<string | null>(null)
   const [showCurrentKey, setShowCurrentKey] = useState(false)
   const [currentApiKey, setCurrentApiKey] = useState<string | null>(null)
   const [loadingCurrentApiKey, setLoadingCurrentApiKey] = useState(false)
@@ -134,6 +145,9 @@ export function Settings({ onClose }: SettingsProps) {
     setEditBaseUrlValue(provider.baseUrl || '')
     setEditModelValue(provider.defaultModel)
     setEditApiKeyValue('')
+    const currentProfiles = normalizeCapabilityProfiles(provider.capabilityProfiles)
+    setEditCapabilityProfilesValue(currentProfiles ? JSON.stringify(currentProfiles, null, 2) : '')
+    setCapabilityProfilesError(null)
     setShowCurrentKey(false)
     setCurrentApiKey(null)
     setInvalidStoredApiKey(false)
@@ -189,11 +203,30 @@ export function Settings({ onClose }: SettingsProps) {
     const trimmedModel = editModelValue.trim()
     const normalizedCurrentBaseUrl = (currentProvider.baseUrl || '').trim()
     const resolvedName = trimmedName || currentProvider.name || 'Provider'
+    const currentCapabilityProfiles = normalizeCapabilityProfiles(currentProvider.capabilityProfiles)
+    const trimmedCapabilityProfiles = editCapabilityProfilesValue.trim()
+    let parsedCapabilityProfiles: Record<string, unknown> | null = null
+
+    if (trimmedCapabilityProfiles) {
+      try {
+        const parsed = JSON.parse(trimmedCapabilityProfiles)
+        if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+          setCapabilityProfilesError('Capability profiles must be a JSON object keyed by model id or pattern.')
+          return
+        }
+        parsedCapabilityProfiles = parsed as Record<string, unknown>
+      } catch {
+        setCapabilityProfilesError('Capability profiles must be valid JSON.')
+        return
+      }
+    }
+    setCapabilityProfilesError(null)
 
     const providerChanged =
       resolvedName !== currentProvider.name ||
       trimmedBaseUrl !== normalizedCurrentBaseUrl ||
-      trimmedModel !== currentProvider.defaultModel
+      trimmedModel !== currentProvider.defaultModel ||
+      stringifyCapabilityProfiles(currentCapabilityProfiles) !== stringifyCapabilityProfiles(parsedCapabilityProfiles)
 
     const keyChanged = !!editApiKeyValue.trim()
 
@@ -202,6 +235,7 @@ export function Settings({ onClose }: SettingsProps) {
         name: resolvedName,
         baseUrl: trimmedBaseUrl,
         defaultModel: trimmedModel,
+        capabilityProfiles: parsedCapabilityProfiles,
       })
     }
 
@@ -219,6 +253,8 @@ export function Settings({ onClose }: SettingsProps) {
     setEditBaseUrlValue('')
     setEditModelValue('')
     setEditApiKeyValue('')
+    setEditCapabilityProfilesValue('')
+    setCapabilityProfilesError(null)
     setShowCurrentKey(false)
     setCurrentApiKey(null)
     setLoadingCurrentApiKey(false)
@@ -232,11 +268,27 @@ export function Settings({ onClose }: SettingsProps) {
     const trimmedModel = editModelValue.trim()
     const normalizedCurrentBaseUrl = (provider.baseUrl || '').trim()
     const resolvedName = trimmedName || provider.name || 'Provider'
+    const currentCapabilityProfiles = normalizeCapabilityProfiles(provider.capabilityProfiles)
+
+    let parsedCapabilityProfiles: Record<string, unknown> | null = null
+    const trimmedCapabilityProfiles = editCapabilityProfilesValue.trim()
+    if (trimmedCapabilityProfiles) {
+      try {
+        const parsed = JSON.parse(trimmedCapabilityProfiles)
+        if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+          return true
+        }
+        parsedCapabilityProfiles = parsed as Record<string, unknown>
+      } catch {
+        return true
+      }
+    }
 
     return (
       resolvedName !== provider.name ||
       trimmedBaseUrl !== normalizedCurrentBaseUrl ||
       trimmedModel !== provider.defaultModel ||
+      stringifyCapabilityProfiles(currentCapabilityProfiles) !== stringifyCapabilityProfiles(parsedCapabilityProfiles) ||
       !!editApiKeyValue.trim()
     )
   }
@@ -302,6 +354,8 @@ export function Settings({ onClose }: SettingsProps) {
     setEditBaseUrlValue('')
     setEditModelValue('')
     setEditApiKeyValue('')
+    setEditCapabilityProfilesValue('')
+    setCapabilityProfilesError(null)
     setShowCurrentKey(false)
     setCurrentApiKey(null)
     setLoadingCurrentApiKey(false)
@@ -631,6 +685,41 @@ export function Settings({ onClose }: SettingsProps) {
                               placeholder="Enter model ID..."
                             />
                           )}
+
+                          <div className="mt-3">
+                            <label className="block text-sm font-medium text-text-secondary mb-2">
+                              Capability Profiles <span className="text-text-muted font-normal">(optional JSON map)</span>
+                            </label>
+                            <textarea
+                              value={editCapabilityProfilesValue}
+                              onChange={(e) => {
+                                setEditCapabilityProfilesValue(e.target.value)
+                                if (capabilityProfilesError) {
+                                  setCapabilityProfilesError(null)
+                                }
+                              }}
+                              className="w-full min-h-[110px] px-3 py-2 text-sm bg-bg-deep border border-border rounded focus:outline-none focus:border-accent text-text-primary font-mono resize-y"
+                              placeholder={`{
+  "*": {
+    "toolUseGuidance": "normal",
+    "reminderAggressiveness": "normal"
+  },
+  "gpt-4o-mini": {
+    "maxRetries": 3,
+    "delegationStyle": "parallel-first"
+  }
+}`}
+                            />
+                            {capabilityProfilesError ? (
+                              <p className="mt-1 text-xs text-error">{capabilityProfilesError}</p>
+                            ) : (
+                              <p className="mt-1 text-xs text-text-muted">
+                                Keys can be exact model IDs, substrings, or `*`. Values can include
+                                `toolUseGuidance`, `reminderAggressiveness`, `maxRetries`,
+                                `retryBaseDelayMs`, and `delegationStyle`.
+                              </p>
+                            )}
+                          </div>
 
                           <div className="mt-3">
                             <label className="block text-sm font-medium text-text-secondary mb-2">

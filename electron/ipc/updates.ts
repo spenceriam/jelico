@@ -1,5 +1,5 @@
 import { app, ipcMain, BrowserWindow, shell } from 'electron'
-import { checkForUpdates, downloadLatestUpdate } from '../services/updates'
+import { applyDownloadedUpdate, checkForUpdates, downloadLatestUpdate } from '../services/updates'
 
 export function registerUpdateHandlers() {
   ipcMain.handle('updates:currentVersion', async () => {
@@ -22,5 +22,9 @@ export function registerUpdateHandlers() {
       await shell.openExternal(url)
     }
     return true
+  })
+
+  ipcMain.handle('updates:applyDownloaded', async (_event, filePath: string) => {
+    return applyDownloadedUpdate(filePath)
   })
 }

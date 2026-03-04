@@ -1,5 +1,5 @@
 import { useEffect, useCallback, useState, useRef } from 'react'
-import { PanelLeftClose, PanelLeftOpen } from 'lucide-react'
+import { ArrowUpRight, Download, PanelLeftClose, PanelLeftOpen, X } from 'lucide-react'
 import { useProviderStore } from './stores/providers'
 import { useChatStore } from './stores/chat'
 import { useUIStore } from './stores/ui'
@@ -77,7 +77,22 @@ export default function App() {
   const { loadWorkspaces } = useWorkspaceStore()
   const { clearOncePermissions, loadPermissions } = usePermissionStore()
   const { loadFromStorage: loadTheme } = useThemeStore()
-  const { startListening, loadCurrentVersion } = useUpdateStore()
+  const {
+    info: updateInfo,
+    isDownloading: isUpdateDownloading,
+    downloadProgress: updateDownloadProgress,
+    lastDownloadedTo,
+    downloadedVersion,
+    dismissedAvailableVersion,
+    dismissedApplyVersion,
+    startListening,
+    loadCurrentVersion,
+    checkForUpdates,
+    downloadUpdate,
+    applyDownloadedUpdate,
+    dismissAvailablePrompt,
+    dismissApplyPrompt,
+  } = useUpdateStore()
   const commandPalette = useCommandPalette()
   const getMaxCanvasWidth = useCallback(() => {
     // Account for sidebar width (w-64 = 256px) when calculating available space
@@ -107,8 +122,8 @@ export default function App() {
   useEffect(() => {
     loadProviders()
     loadConversations()
-    loadWorkspaces()
     initWorkspaceStore() // Restore active workspace from localStorage
+    loadWorkspaces()
 
     // Clear "allow once" permissions from previous session
     clearOncePermissions()
@@ -183,8 +198,25 @@ export default function App() {
   useEffect(() => {
     const stopListening = startListening()
     loadCurrentVersion()
-    return () => stopListening()
-  }, [])
+
+    const startupTimer = window.setTimeout(() => {
+      checkForUpdates({ force: true, silent: true }).catch((error) => {
+        console.warn('Background startup update check failed:', error)
+      })
+    }, 2500)
+
+    const backgroundInterval = window.setInterval(() => {
+      checkForUpdates({ force: true, silent: true }).catch((error) => {
+        console.warn('Background update check failed:', error)
+      })
+    }, 6 * 60 * 60 * 1000)
+
+    return () => {
+      stopListening()
+      window.clearTimeout(startupTimer)
+      window.clearInterval(backgroundInterval)
+    }
+  }, [checkForUpdates, loadCurrentVersion, startListening])
 
   const stopWindowDrag = useCallback(() => {
     const dragSession = windowDragRef.current
@@ -402,8 +434,38 @@ export default function App() {
 
   // Hide header when in new chat view (no conversation or empty conversation)
   const showNewChatUI = !activeConversationId || (messages.length === 0 && !isStreaming)
+  const latestAvailableVersion = updateInfo?.isUpdateAvailable ? updateInfo.latestVersion : null
+  const hasDownloadedCurrentUpdate = Boolean(
+    latestAvailableVersion &&
+    downloadedVersion &&
+    downloadedVersion === latestAvailableVersion &&
+    lastDownloadedTo
+  )
+  const showApplyBanner = Boolean(
+    hasDownloadedCurrentUpdate &&
+    downloadedVersion &&
+    dismissedApplyVersion !== downloadedVersion
+  )
+  const showAvailableBanner = Boolean(
+    latestAvailableVersion &&
+    !hasDownloadedCurrentUpdate &&
+    dismissedAvailableVersion !== latestAvailableVersion
+  )
 
-    return (
+  const handleOpenReleaseNotes = async () => {
+    if (!updateInfo?.releaseUrl) return
+    try {
+      await window.jelico.updates.openRelease(updateInfo.releaseUrl)
+    } catch (error) {
+      console.error('Failed to open release notes:', error)
+    }
+  }
+
+  const handleApplyNow = async () => {
+    await applyDownloadedUpdate()
+  }
+
+  return (
     <div
       className="h-screen flex bg-bg-void text-text-primary overflow-hidden relative select-none app-font-scale"
       onDoubleClick={handleAppDoubleClick}
@@ -509,6 +571,111 @@ export default function App() {
 
       {/* Permission dialog */}
       <PermissionDialog />
+
+      {(showApplyBanner || showAvailableBanner) && (
+        <div className="fixed bottom-4 right-4 z-[70] w-[min(90vw,420px)]" data-window-toggle="ignore">
+          <div className="rounded-xl border border-border bg-bg-elevated shadow-2xl p-4 space-y-3">
+            {showApplyBanner ? (
+              <>
+                <div>
+                  <div className="text-sm font-medium text-text-primary">
+                    Update {downloadedVersion || latestAvailableVersion} is ready
+                  </div>
+                  <div className="text-xs text-text-muted mt-1 break-all">
+                    Downloaded to: {lastDownloadedTo}
+                  </div>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    onClick={handleApplyNow}
+                    className="flex items-center gap-2 px-3 py-2 rounded-lg bg-accent text-black hover:bg-accent-bright transition-colors"
+                  >
+                    <Download className="w-4 h-4" />
+                    Apply now
+                  </button>
+                  <button
+                    onClick={() => dismissApplyPrompt(downloadedVersion || latestAvailableVersion || null)}
+                    className="px-3 py-2 rounded-lg border border-border text-text-secondary hover:text-text-primary hover:border-border-strong transition-colors"
+                  >
+                    Later
+                  </button>
+                  {updateInfo?.releaseUrl && (
+                    <button
+                      onClick={handleOpenReleaseNotes}
+                      className="flex items-center gap-2 px-3 py-2 rounded-lg border border-border text-text-secondary hover:text-text-primary hover:border-border-strong transition-colors"
+                    >
+                      <ArrowUpRight className="w-4 h-4" />
+                      Release notes
+                    </button>
+                  )}
+                </div>
+              </>
+            ) : (
+              <>
+                <div className="flex items-start justify-between gap-2">
+                  <div>
+                    <div className="text-sm font-medium text-text-primary">
+                      Jelico {latestAvailableVersion} is available
+                    </div>
+                    <div className="text-xs text-text-muted mt-1">
+                      Download and install when you&apos;re ready.
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => dismissAvailablePrompt(latestAvailableVersion)}
+                    className="p-1.5 rounded-md text-text-muted hover:text-text-primary hover:bg-bg-hover transition-colors"
+                    title="Dismiss for now"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                </div>
+
+                {isUpdateDownloading && (
+                  <div className="space-y-1">
+                    <div className="h-2 bg-bg-deep rounded-full overflow-hidden border border-border">
+                      <div
+                        className="h-full bg-accent transition-all"
+                        style={{ width: `${updateDownloadProgress?.percent ?? 0}%` }}
+                      />
+                    </div>
+                    <div className="text-xs text-text-muted">
+                      {updateDownloadProgress?.percent !== null && updateDownloadProgress?.percent !== undefined
+                        ? `Downloading... ${updateDownloadProgress.percent}%`
+                        : 'Downloading...'}
+                    </div>
+                  </div>
+                )}
+
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    onClick={() => downloadUpdate()}
+                    disabled={isUpdateDownloading}
+                    className="flex items-center gap-2 px-3 py-2 rounded-lg bg-accent text-black hover:bg-accent-bright transition-colors disabled:opacity-50"
+                  >
+                    <Download className="w-4 h-4" />
+                    {isUpdateDownloading ? 'Downloading...' : 'Download update'}
+                  </button>
+                  {updateInfo?.releaseUrl && (
+                    <button
+                      onClick={handleOpenReleaseNotes}
+                      className="flex items-center gap-2 px-3 py-2 rounded-lg border border-border text-text-secondary hover:text-text-primary hover:border-border-strong transition-colors"
+                    >
+                      <ArrowUpRight className="w-4 h-4" />
+                      Release notes
+                    </button>
+                  )}
+                  <button
+                    onClick={() => dismissAvailablePrompt(latestAvailableVersion)}
+                    className="px-3 py-2 rounded-lg border border-border text-text-secondary hover:text-text-primary hover:border-border-strong transition-colors"
+                  >
+                    Later
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   )
 }

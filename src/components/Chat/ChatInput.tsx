@@ -1,5 +1,5 @@
 import { useState, useRef, useCallback, KeyboardEvent, useMemo, DragEvent, useEffect } from 'react'
-import { Send, Square, Clock, Paperclip, X, FileText, Image, File, ChevronUp, ChevronDown } from 'lucide-react'
+import { Send, Square, Clock, Paperclip, X, FileText, Image, File as FileIcon, ChevronUp, ChevronDown } from 'lucide-react'
 import { useChatStore, type MessageAttachment } from '../../stores/chat'
 import { useProviderStore } from '../../stores/providers'
 // Speech-to-text disabled - WASM crashes on Windows ARM64
@@ -77,6 +77,16 @@ function normalizeFileMimeType(file: File): string {
 
   if (raw) return raw
   return 'application/octet-stream'
+}
+
+function base64ToFile(base64Data: string, name: string, mimeType: string): File {
+  const binary = atob(base64Data)
+  const bytes = new Uint8Array(binary.length)
+  for (let i = 0; i < binary.length; i += 1) {
+    bytes[i] = binary.charCodeAt(i)
+  }
+  const blob = new Blob([bytes], { type: mimeType })
+  return new window.File([blob], name, { type: mimeType })
 }
 
 interface ChatInputProps {
@@ -172,16 +182,46 @@ export function ChatInput({ disabled, isStreaming, centered }: ChatInputProps) {
   // Generate unique ID for attachments
   const generateId = () => `att-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
 
+  // Accept externally generated attachments (for example, artifact screenshots).
+  useEffect(() => {
+    const onAddAttachment = (event: Event) => {
+      const customEvent = event as CustomEvent<{ name?: string; mimeType?: string; data?: string }>
+      const name = customEvent.detail?.name
+      const mimeType = customEvent.detail?.mimeType
+      const data = customEvent.detail?.data
+      if (!name || !mimeType || !data) return
+
+      try {
+        const file = base64ToFile(data, name, mimeType)
+        setAttachments((prev) => [
+          ...prev,
+          {
+            id: generateId(),
+            type: 'file',
+            name,
+            file,
+          },
+        ])
+        requestAnimationFrame(() => focusTextarea())
+      } catch (error) {
+        console.error('[ChatInput] Failed to import external attachment:', error)
+      }
+    }
+
+    window.addEventListener('jelico:add-chat-attachment', onAddAttachment as EventListener)
+    return () => window.removeEventListener('jelico:add-chat-attachment', onAddAttachment as EventListener)
+  }, [focusTextarea])
+
   // Get file type icon
   const getFileIcon = (file: File | undefined, type: string) => {
     if (type === 'pasted') return FileText
-    if (!file) return File
+    if (!file) return FileIcon
 
     const normalizedMimeType = normalizeFileMimeType(file)
     if (normalizedMimeType.startsWith('image/')) return Image
     if (SUPPORTED_FILE_TYPES.text.includes(normalizedMimeType) || normalizedMimeType.startsWith('text/')) return FileText
 
-    return File
+    return FileIcon
   }
 
   // Handle file selection

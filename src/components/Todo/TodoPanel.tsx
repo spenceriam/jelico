@@ -17,6 +17,8 @@ function getStatusDisplay(status: TodoStatus): { icon: string; className: string
       return { icon: '○', className: 'text-text-muted' }
     case 'in_progress':
       return { icon: '◉', className: 'text-accent animate-pulse' }
+    case 'blocked':
+      return { icon: '⚠', className: 'text-yellow-400' }
     case 'done':
       return { icon: '✓', className: 'text-success' }
     case 'failed':
@@ -33,6 +35,7 @@ function TodoRow({ item, compact = false }: { item: TodoItem; compact?: boolean 
   const isDone = item.status === 'done'
   const isFailed = item.status === 'failed'
   const isInProgress = item.status === 'in_progress'
+  const isBlocked = item.status === 'blocked'
 
   return (
     <div className={`flex items-center gap-2 ${compact ? 'py-0.5' : 'py-1'}`}>
@@ -47,6 +50,8 @@ function TodoRow({ item, compact = false }: { item: TodoItem; compact?: boolean 
             ? 'text-text-secondary'
             : isFailed
             ? 'text-error/80'
+            : isBlocked
+            ? 'text-yellow-400'
             : isInProgress
             ? 'text-text-primary font-medium'
             : 'text-text-secondary'

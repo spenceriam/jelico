@@ -6,7 +6,9 @@ import { createGoogleGenerativeAI } from '@ai-sdk/google'
 import { z } from 'zod'
 import { providerDb, conversationDb, messageDb, workspaceDb, artifactDb } from '../services/database'
 import { keychainService } from '../services/keychain'
-import { getModeSystemPrompt, buildSystemPrompt, type AgentMode, getCachedPrompt } from '../lib/modes'
+import { buildSystemPrompt, buildLeanSystemPrompt, type AgentMode, getCachedPrompt } from '../lib/modes'
+import { getModeCapabilities, canSubAgentMutate, assertCapabilityMatrix } from '../lib/modeCapabilities'
+import { searchFileContents } from '../lib/contentSearch'
 import { formatSoulForContext } from '../services/soul'
 import {
   checkPermission,
@@ -60,6 +62,7 @@ import {
 } from '../services/webAdapter'
 import { scanWorkspaceSpecs, formatSpecContext } from '../services/specScanner'
 import { lookupModelsDevOutputLimit, refreshModelCatalog } from '../services/modelCatalog'
+import { resolveModelCapabilityProfile, buildModelCapabilityProfilePrompt } from '../services/modelCapabilityProfiles'
 
 // Start orphan cleanup on module load
 startOrphanCleanup()
@@ -93,9 +96,9 @@ const ACTIVITY_TIMEOUT_MS = 0 // No activity timeout (0 = disabled)
 // Max tool input size (10MB) - prevents memory exhaustion from malformed streams
 const MAX_TOOL_INPUT_SIZE = 10 * 1024 * 1024
 
-// Max retries for transient errors
-const MAX_RETRIES = 2
-const RETRY_DELAY_MS = 1000
+// Default retry policy (can be overridden by model capability profile)
+const DEFAULT_MAX_RETRIES = 2
+const DEFAULT_RETRY_DELAY_MS = 1000
 
 // Internal/plumbing tools that should not influence end-of-turn wrap-up detection.
 // These are either represented by dedicated UI panels or invisible orchestration steps.
@@ -116,6 +119,7 @@ const USER_FACING_TOOL_LABELS: Record<string, string> = {
   write_file: 'file updates',
   list_directory: 'directory listing',
   search_files: 'file search',
+  search_content: 'content search',
   execute_command: 'terminal commands',
   web_search: 'web research',
   web_fetch: 'web page fetches',
@@ -414,7 +418,7 @@ function getLatestUserMessageText(messages: any[]): string {
 
 const INTENT_TEXT_TRANSCRIPT_MARKERS: RegExp[] = [
   /^\s*---\s*$/m,
-  /^\s*\[(execute_command|spawn_agent|read_file|write_file|list_directory|search_files|create_artifact|update_artifact|todo_write|todo_read|todo_check|tool[-_ ]?call)\]/im,
+  /^\s*\[(execute_command|spawn_agent|read_file|write_file|list_directory|search_files|search_content|create_artifact|update_artifact|todo_write|todo_read|todo_check|tool[-_ ]?call)\]/im,
   /^\s*Arguments:\s*\{/im,
   /^\s*Result:\s*\{/im,
   /^\s*stdout:\s*/im,
@@ -841,7 +845,11 @@ interface KnowledgeMatch {
   section?: string  // Optional: only include a specific section (by header)
 }
 
+const DOCS_GUIDE_QUERY_REGEX = /\b(how (does|do)\s+jelico|what is jelico|how to use jelico|setup commands?|start (the )?(dev|development) server|feature overview|capabilities|memory system|soul system|workspace mode|sandbox mode|tool calling)\b/i
+
 const KNOWLEDGE_MATCHERS: KnowledgeMatch[] = [
+  // Self-help / docs guide path
+  { keywords: DOCS_GUIDE_QUERY_REGEX, category: 'capabilities', name: 'docs-guide' },
   // Artifact-related queries
   { keywords: /\b(artifact|canvas|html|svg|mermaid|diagram|chart|flowchart|document)\b/i, category: 'capabilities', name: 'artifacts' },
   // Sub-agent queries
@@ -859,6 +867,15 @@ const KNOWLEDGE_MATCHERS: KnowledgeMatch[] = [
   // Tools
   { keywords: /\b(read_file|write_file|execute_command|execute_script|web_search|tool)\b/i, category: 'capabilities', name: 'tools' },
 ]
+
+function isDocsGuideTurn(messages: Array<{ role: string; content: string }>): boolean {
+  const latestUserMessage = messages
+    .filter((message) => message.role === 'user')
+    .slice(-1)[0]
+
+  if (!latestUserMessage?.content) return false
+  return DOCS_GUIDE_QUERY_REGEX.test(latestUserMessage.content)
+}
 
 /**
  * Get relevant knowledge context based on the user's message.
@@ -1253,7 +1270,16 @@ interface ToolExecution {
 interface TodoTask {
   id: string
   text: string
-  status: 'pending' | 'in_progress' | 'done'
+  status: 'pending' | 'in_progress' | 'done' | 'failed' | 'cancelled' | 'blocked'
+  owner?: string | null
+  dependencies?: string[]
+  blockedReason?: string | null
+  history?: Array<{
+    status: 'pending' | 'in_progress' | 'done' | 'failed' | 'cancelled' | 'blocked'
+    at: number
+    actor?: string
+    note?: string
+  }>
 }
 
 // Define built-in tools
@@ -1281,9 +1307,11 @@ function getBuiltInTools(
   sendTodos?: (todos: TodoTask[]) => void,
   getTodos?: () => TodoTask[]
 ) {
+  assertCapabilityMatrix()
   const getRuntimeMode = () => streamContext.getRuntimeMode?.() ?? mode
-  const canWrite = mode !== 'explore'
-  const canExecute = mode === 'auto' || mode === 'execute' || mode === 'review'
+  const modeCapabilities = getModeCapabilities(mode)
+  const canWrite = modeCapabilities.main.canWriteFiles
+  const canExecute = modeCapabilities.main.canExecuteCommands
   const shouldBypassPermissionsForMode = () => getRuntimeMode() === 'execute'
   // Web research is delegated through sub-agents in all modes.
   const canSpawnAgents = true
@@ -1387,19 +1415,19 @@ function getBuiltInTools(
       // Only retry failed agents if they actually attempted some work
       const hasAnyResearchCalls = toolCalls.some((tc) =>
         tc.name === 'web_search' || tc.name === 'web_fetch' ||
-        tc.name === 'read_file' || tc.name === 'search_files' ||
+        tc.name === 'read_file' || tc.name === 'search_files' || tc.name === 'search_content' ||
         tc.name === 'list_directory'
       )
       if (!hasAnyResearchCalls) {
         return { retry: false, reason: 'agent_failed_without_research_work' }
       }
-      // If agent did filesystem research (read_file, list_directory, search_files) but
+      // If agent did filesystem research (read_file, list_directory, search_files/search_content) but
       // no web calls, a retry agent will likely do the same thing. Don't amplify.
       const hasWebCalls = toolCalls.some((tc) =>
         tc.name === 'web_search' || tc.name === 'web_fetch'
       )
       const hasFilesystemCalls = toolCalls.some((tc) =>
-        tc.name === 'read_file' || tc.name === 'search_files' || tc.name === 'list_directory'
+        tc.name === 'read_file' || tc.name === 'search_files' || tc.name === 'search_content' || tc.name === 'list_directory'
       )
       if (hasFilesystemCalls && !hasWebCalls) {
         return { retry: false, reason: 'agent_used_filesystem_not_web_no_retry' }
@@ -1414,7 +1442,7 @@ function getBuiltInTools(
     // that's a valid research strategy — don't retry just because there were no web calls.
     if (webCalls.length === 0) {
       const hasFilesystemWork = toolCalls.some((tc) =>
-        tc.name === 'read_file' || tc.name === 'search_files' || tc.name === 'list_directory'
+        tc.name === 'read_file' || tc.name === 'search_files' || tc.name === 'search_content' || tc.name === 'list_directory'
       )
       const hasOutput = result.result && result.result.trim().length > 50
       if (hasFilesystemWork && hasOutput) {
@@ -1643,25 +1671,59 @@ Keep tasks clear and concise. The user sees this as a progress tracker.`,
       tasks: z.array(z.object({
         id: z.string().describe('Unique task ID (e.g., "1", "2", "3")'),
         text: z.string().describe('Clear, concise task description'),
-        status: z.enum(['pending', 'in_progress', 'done']).describe('Current status'),
+        status: z.enum(['pending', 'in_progress', 'done', 'failed', 'cancelled', 'blocked']).describe('Current status'),
+        owner: z.string().optional().describe('Owner identifier (e.g., "main", "agent:abc123")'),
+        dependencies: z.array(z.string()).optional().describe('Task IDs that must be done before this task can start'),
+        blockedReason: z.string().optional().describe('Why the task is blocked'),
+        history: z.array(z.object({
+          status: z.enum(['pending', 'in_progress', 'done', 'failed', 'cancelled', 'blocked']),
+          at: z.number(),
+          actor: z.string().optional(),
+          note: z.string().optional(),
+        })).optional(),
       })).describe('The complete task list'),
     }),
     execute: async ({ tasks }) => {
       console.log('[AI] todo_write received:', JSON.stringify(tasks, null, 2))
       if (sendTodos) {
+        const existingById = new Map((getTodos ? getTodos() : []).map((task) => [task.id, task]))
+        const now = Date.now()
         // Normalize tasks - some models might use different field names
         const normalizedTasks = tasks.map((t: any, idx: number) => ({
           id: t.id || String(idx + 1),
           text: t.text || t.description || t.title || t.name || t.content || 'Task',
-          status: t.status || 'pending',
-        }))
+          status: (t.status || 'pending') as TodoTask['status'],
+          owner: t.owner || null,
+          dependencies: Array.isArray(t.dependencies) ? t.dependencies.map((dep: unknown) => String(dep)) : [],
+          blockedReason: t.blockedReason || null,
+          history: Array.isArray(t.history) ? t.history : [],
+        })).map((task) => {
+          const previous = existingById.get(task.id)
+          const history = Array.isArray(task.history)
+            ? [...task.history]
+            : Array.isArray(previous?.history)
+              ? [...previous.history]
+              : []
+          if (previous && previous.status !== task.status) {
+            history.push({
+              status: task.status,
+              at: now,
+              actor: task.owner || 'main',
+            })
+          }
+          return {
+            ...task,
+            history,
+          }
+        })
         console.log('[AI] todo_write normalized:', JSON.stringify(normalizedTasks, null, 2))
         sendTodos(normalizedTasks)
       }
       const completed = tasks.filter(t => t.status === 'done').length
+      const blocked = tasks.filter(t => t.status === 'blocked').length
       return {
         success: true,
-        message: `Task list updated: ${completed}/${tasks.length} completed`,
+        message: `Task graph updated: ${completed}/${tasks.length} done${blocked > 0 ? `, ${blocked} blocked` : ''}`,
         tasks,
       }
     },
@@ -1676,17 +1738,29 @@ Returns the current state of all tasks.`,
       if (tasks.length === 0) {
         return {
           success: true,
-          message: 'No tasks defined yet. Use todo_write to create a task list.',
+          message: 'No tasks defined yet. Use todo_write to create a task graph.',
           tasks: [],
         }
       }
       const completed = tasks.filter(t => t.status === 'done').length
+      const blocked = tasks.filter(t => t.status === 'blocked').length
       const inProgress = tasks.find(t => t.status === 'in_progress')
+      const unresolvedDependencies = tasks
+        .filter((task) => (task.dependencies || []).length > 0)
+        .map((task) => ({
+          taskId: task.id,
+          unresolved: (task.dependencies || []).filter((depId) => {
+            const dep = tasks.find((candidate) => candidate.id === depId)
+            return !dep || dep.status !== 'done'
+          }),
+        }))
+        .filter((entry) => entry.unresolved.length > 0)
       return {
         success: true,
         tasks,
-        progress: `${completed}/${tasks.length} completed`,
+        progress: `${completed}/${tasks.length} completed${blocked > 0 ? `, ${blocked} blocked` : ''}`,
         currentTask: inProgress ? inProgress.text : null,
+        unresolvedDependencies,
       }
     },
   })
@@ -1716,9 +1790,58 @@ Returns validation result and updates the task status if valid.`,
         }
       }
 
+      const unresolvedDependencies = (task.dependencies || []).filter((depId) => {
+        const dep = tasks.find((candidate) => candidate.id === depId)
+        return !dep || dep.status !== 'done'
+      })
+      if (unresolvedDependencies.length > 0) {
+        const reason = `Waiting on dependencies: ${unresolvedDependencies.join(', ')}`
+        const updatedTasks = tasks.map((candidate) =>
+          candidate.id === taskId
+            ? {
+                ...candidate,
+                status: 'blocked' as const,
+                blockedReason: reason,
+                history: [
+                  ...(candidate.history || []),
+                  {
+                    status: 'blocked' as const,
+                    at: Date.now(),
+                    actor: 'main',
+                    note: reason,
+                  },
+                ],
+              }
+            : candidate
+        )
+        if (sendTodos) {
+          sendTodos(updatedTasks)
+        }
+        return {
+          success: false,
+          error: `Task "${taskId}" is blocked. ${reason}.`,
+          blockedBy: unresolvedDependencies,
+        }
+      }
+
       // Auto-update status to in_progress
       const updatedTasks = tasks.map(t =>
-        t.id === taskId ? { ...t, status: 'in_progress' as const } : t
+        t.id === taskId
+          ? {
+              ...t,
+              status: 'in_progress' as const,
+              owner: t.owner || 'main',
+              blockedReason: null,
+              history: [
+                ...(t.history || []),
+                {
+                  status: 'in_progress' as const,
+                  at: Date.now(),
+                  actor: t.owner || 'main',
+                },
+              ],
+            }
+          : t
       )
       if (sendTodos) {
         sendTodos(updatedTasks)
@@ -1727,7 +1850,7 @@ Returns validation result and updates the task status if valid.`,
       return {
         success: true,
         message: `Now working on: ${task.text}`,
-        task: { ...task, status: 'in_progress' },
+        task: { ...task, status: 'in_progress', owner: task.owner || 'main', blockedReason: null },
       }
     },
   })
@@ -1737,7 +1860,7 @@ Returns validation result and updates the task status if valid.`,
     tools.spawn_agent = tool({
       description: `Spawn a research sub-agent to gather information in parallel.
 
-## What Sub-Agents Do (RESEARCH ONLY)
+## What Sub-Agents Do (READ-ONLY RESEARCH IN EVERY MODE)
 - Read files and summarize contents
 - Search codebases for patterns
 - Fetch and analyze web content
@@ -2957,6 +3080,57 @@ Notes:
     },
   })
 
+  tools.search_content = tool({
+    description: 'Search file contents with a regex pattern and return structured matches (file, line, column, snippet). Use this before read_file for targeted context gathering.',
+    parameters: z.object({
+      pattern: z.string().describe('Regex pattern to search for in file contents'),
+      directory: z.string().optional().describe('Directory scope (defaults to current workspace or sandbox root)'),
+      includeGlobs: z.array(z.string()).optional().describe('Optional include globs (default: ["**/*"])'),
+      excludeGlobs: z.array(z.string()).optional().describe('Optional exclude globs'),
+      caseSensitive: z.boolean().optional().describe('Enable case-sensitive matching'),
+      multiline: z.boolean().optional().describe('Enable dot-all multiline regex mode'),
+      maxResults: z.number().optional().describe('Maximum number of matches to return (default: 200)'),
+      contextLines: z.number().optional().describe('Snippet context lines around each match (default: 1)'),
+    }),
+    execute: async ({
+      pattern,
+      directory = '.',
+      includeGlobs,
+      excludeGlobs,
+      caseSensitive,
+      multiline,
+      maxResults,
+      contextLines,
+    }) => {
+      try {
+        const resolved = await resolvePath(directory || '.')
+        const results = await searchFileContents({
+          rootDir: resolved.resolvedPath,
+          pattern,
+          includeGlobs,
+          excludeGlobs,
+          caseSensitive,
+          multiline,
+          maxResults,
+          contextLines,
+        })
+
+        return {
+          success: true,
+          matches: results.matches,
+          scannedFiles: results.scannedFiles,
+          truncated: results.truncated,
+          resolvedDirectory: resolved.inSandbox
+            ? `[Sandbox] ${resolved.sandboxRelativePath}`
+            : resolved.resolvedPath,
+          sandbox: resolved.inSandbox,
+        }
+      } catch (error: any) {
+        return { success: false, error: error.message }
+      }
+    },
+  })
+
   // Direct web tools are available only as internal fallback validation.
   // Main AI should delegate normal web research to sub-agents.
   if (enableDirectWebTools) {
@@ -3592,6 +3766,47 @@ export function registerAIHandlers() {
       }, STREAM_TIMEOUT_MS)
     }
 
+    // Todo state management - tracks tasks for this stream
+    let currentTodos: TodoTask[] = []
+    const sendTodos = (todos: TodoTask[]) => {
+      currentTodos = todos
+      event.sender.send(`ai:todos:${channelId}`, todos)
+    }
+    const getTodos = () => currentTodos
+
+    const applySubAgentTaskUpdate = (latestUpdate?: {
+      taskId?: string
+      taskStatus?: TodoTask['status']
+      blockedReason?: string
+      owner?: string
+    }) => {
+      if (!latestUpdate?.taskId || !latestUpdate.taskStatus) return
+      const existing = currentTodos.find((task) => task.id === latestUpdate.taskId)
+      if (!existing) return
+
+      const now = Date.now()
+      const updatedTodos = currentTodos.map((task) => (
+        task.id === latestUpdate.taskId
+          ? {
+              ...task,
+              status: latestUpdate.taskStatus as TodoTask['status'],
+              owner: latestUpdate.owner || task.owner || null,
+              blockedReason: latestUpdate.blockedReason ?? task.blockedReason ?? null,
+              history: [
+                ...(task.history || []),
+                {
+                  status: latestUpdate.taskStatus as TodoTask['status'],
+                  at: now,
+                  actor: latestUpdate.owner || `agent:${agentId}`,
+                  note: latestUpdate.blockedReason,
+                },
+              ],
+            }
+          : task
+      ))
+      sendTodos(updatedTodos)
+    }
+
     // Set up progress callback to forward agent updates to frontend
     setGlobalProgressCallback((agentId, agent) => {
       // Only forward if this agent belongs to this stream
@@ -3600,6 +3815,8 @@ export function registerAIHandlers() {
         const latestUpdate = agent.progressUpdates?.length > 0
           ? agent.progressUpdates[agent.progressUpdates.length - 1]
           : undefined
+
+        applySubAgentTaskUpdate(latestUpdate)
 
         console.log(`[AI] Forwarding agent progress: ${agent.displayName || agent.name} status=${agent.status}${latestUpdate ? ` [${latestUpdate.phase || 'update'}] ${latestUpdate.message}` : ''}`)
         event.sender.send(`ai:agentProgress:${channelId}`, {
@@ -3614,6 +3831,10 @@ export function registerAIHandlers() {
           latestUpdate: latestUpdate ? {
             message: latestUpdate.message,
             phase: latestUpdate.phase,
+            taskId: latestUpdate.taskId,
+            taskStatus: latestUpdate.taskStatus,
+            blockedReason: latestUpdate.blockedReason,
+            owner: latestUpdate.owner,
             timestamp: latestUpdate.timestamp,
           } : undefined,
         })
@@ -3671,14 +3892,27 @@ export function registerAIHandlers() {
       // Get soul learnings (the core differentiator!)
       const soulLearnings = formatSoulForContext()
       const projectConversationContext = buildProjectConversationContext(params.conversationId)
-
-      // Build the complete system prompt with persona, soul, memory, capabilities
-      let systemPrompt = buildSystemPrompt(mode, {
-        soulLearnings: soulLearnings || undefined,
-        workspaceContext,
-        includeSubAgents: true,
-        includeArtifacts: true,
+      const docsGuideTurn = isDocsGuideTurn(params.messages)
+      const useLeanPromptDefault = process.env.JELICO_FULL_PROMPT !== '1'
+      const providerProfileOverrides = ((providerConfig as any).capability_profiles || null) as Record<string, any> | null
+      const modelCapabilityProfile = resolveModelCapabilityProfile({
+        providerType: providerConfig.type,
+        modelId,
+        providerOverrides: providerProfileOverrides || undefined,
       })
+
+      // Lean base prompt by default; full prompt is available via env toggle for debugging/comparison.
+      let systemPrompt = useLeanPromptDefault
+        ? buildLeanSystemPrompt(mode, {
+            soulLearnings: soulLearnings || undefined,
+            workspaceContext,
+          })
+        : buildSystemPrompt(mode, {
+            soulLearnings: soulLearnings || undefined,
+            workspaceContext,
+            includeSubAgents: true,
+            includeArtifacts: true,
+          })
 
       // Add OS context after the main prompt
       systemPrompt += `\n\n${osContext}`
@@ -3711,6 +3945,13 @@ ${artifactList}
 When the user asks to modify, update, fix, or improve an existing artifact, use the \`update_artifact\` tool with the artifact's ID instead of creating a new one.`
       }
 
+      if (docsGuideTurn) {
+        const docsGuide = getCachedPrompt('capabilities', 'docs-guide')
+        if (docsGuide) {
+          systemPrompt += `\n\n## Docs Guide Helper\n${docsGuide}`
+        }
+      }
+
       // Scan workspace for spec/planning documents and inject context
       if (params.workspacePath) {
         try {
@@ -3728,7 +3969,13 @@ When the user asks to modify, update, fix, or improve an existing artifact, use 
       const contextualKnowledge = getContextualKnowledge(params.messages)
       if (contextualKnowledge) {
         systemPrompt += contextualKnowledge
+      } else {
+        systemPrompt += `\n\n## Context Injection Fallback
+No targeted docs matched this turn.
+If uncertainty remains, rely on tool descriptions and ask one concise clarifying question before high-impact actions.`
       }
+
+      systemPrompt += `\n\n${buildModelCapabilityProfilePrompt(modelCapabilityProfile)}`
 
       // Add tool step limit awareness
       systemPrompt += `\n\n## Tool Step Limits
@@ -3757,18 +4004,6 @@ If you find yourself frequently hitting limits, suggest breaking the task into m
       const sendModeSwitch = (fromMode: AgentMode, toMode: AgentMode, reason: string) => {
         event.sender.send(`ai:modeSwitch:${channelId}`, { fromMode, toMode, reason })
       }
-
-      // Todo state management - tracks tasks for this stream
-      let currentTodos: TodoTask[] = []
-
-      // Send todos to UI
-      const sendTodos = (todos: TodoTask[]) => {
-        currentTodos = todos
-        event.sender.send(`ai:todos:${channelId}`, todos)
-      }
-
-      // Get current todos (for todo_read and todo_check)
-      const getTodos = () => currentTodos
 
       // Build messages (without system prompt - we pass it separately to streamText)
       const messages = params.messages.map((m: any) => {
@@ -3864,16 +4099,23 @@ If you find yourself frequently hitting limits, suggest breaking the task into m
         console.log('[AI] Model:', modelId)
         console.log('[AI] Mode:', mode)
         console.log('[AI] Provider type:', providerConfig.type)
+        console.log('[AI] Capability profile:', modelCapabilityProfile)
         console.log('[AI] Max output tokens:', streamMaxTokens ?? '(provider default)')
         console.log('[AI] Tool count:', Object.keys(tools).length)
         console.log('[AI] Tool names:', Object.keys(tools))
         console.log('[AI] System prompt length:', systemPrompt.length)
         console.log('[AI] Message count:', messages.length)
       }
-      for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+      const maxRetries = Number.isFinite(modelCapabilityProfile.maxRetries)
+        ? modelCapabilityProfile.maxRetries
+        : DEFAULT_MAX_RETRIES
+      const retryDelayMs = Number.isFinite(modelCapabilityProfile.retryBaseDelayMs)
+        ? modelCapabilityProfile.retryBaseDelayMs
+        : DEFAULT_RETRY_DELAY_MS
+      for (let attempt = 0; attempt <= maxRetries; attempt++) {
         if (attempt > 0) {
-          console.log(`[AI] Retry attempt ${attempt}/${MAX_RETRIES}`)
-          await sleep(RETRY_DELAY_MS * attempt) // Exponential backoff
+          console.log(`[AI] Retry attempt ${attempt}/${maxRetries}`)
+          await sleep(retryDelayMs * attempt) // Exponential backoff
         }
 
         const attemptSystemPrompt = pendingCompletionRepairDirective
@@ -4664,7 +4906,7 @@ If you find yourself frequently hitting limits, suggest breaking the task into m
 
               if (
                 completionValidationRepairAttempts < MAX_COMPLETION_VALIDATION_REPAIRS &&
-                attempt < MAX_RETRIES &&
+                attempt < maxRetries &&
                 !retryWouldDuplicateVisibleOutput
               ) {
                 completionValidationRepairAttempts += 1
@@ -4707,6 +4949,16 @@ If you find yourself frequently hitting limits, suggest breaking the task into m
               },
               finishReason,
             })
+            console.log('[AI] Profile telemetry:', {
+              profile: modelCapabilityProfile.profileId,
+              source: modelCapabilityProfile.source,
+              model: modelId,
+              mode,
+              finishReason,
+              toolCalls: toolTracker.size,
+              promptTokens,
+              completionTokens,
+            })
           }
 
           // Success - exit retry loop
@@ -4728,7 +4980,7 @@ If you find yourself frequently hitting limits, suggest breaking the task into m
             break
           }
 
-          if (isRetryableError(error) && attempt < MAX_RETRIES) {
+          if (isRetryableError(error) && attempt < maxRetries) {
             console.warn(`[AI] Retryable error on attempt ${attempt + 1}:`, error.message)
             continue
           }

@@ -15,10 +15,11 @@ import {
   FolderUp,
   GitFork,
   Box,
+  RotateCcw,
 } from 'lucide-react'
 import { useChatStore } from '../../stores/chat'
 import { useUIStore } from '../../stores/ui'
-import { useWorkspaceStore } from '../../stores/workspaces'
+import { useWorkspaceStore, type Workspace } from '../../stores/workspaces'
 import { useArtifactStore, type ArtifactType } from '../../stores/artifacts'
 import { useUpdateStore } from '../../stores/updates'
 import { TransferDialog } from '../Conversations/TransferDialog'
@@ -92,8 +93,84 @@ function getPathBasename(value: string): string {
   return parts[parts.length - 1] || value
 }
 
+function buildProjectGroups(
+  allConversations: ChatConversation[],
+  workspaceById: Map<string, Workspace>
+): ProjectGroup[] {
+  const workspaceGroupsByProject = new Map<string, ProjectGroup>()
+
+  for (const conversation of allConversations) {
+    if (!conversation.workspaceId) continue
+    const workspace = workspaceById.get(conversation.workspaceId)
+    if (!workspace) continue
+
+    const projectPath = workspace.projectPath || workspace.path
+    const projectKey = projectPath || `workspace-${workspace.id}`
+    const existingGroup = workspaceGroupsByProject.get(projectKey)
+
+    if (!existingGroup) {
+      workspaceGroupsByProject.set(projectKey, {
+        id: `project-${projectKey}`,
+        label: projectPath ? getPathBasename(projectPath) : workspace.name,
+        path: projectPath || workspace.path,
+        workspaceIds: [workspace.id],
+        preferredWorkspaceId: workspace.isWorktree ? null : workspace.id,
+        isSandbox: false,
+        isGit: workspace.isGit,
+        isWorktree: workspace.isWorktree === true,
+        conversations: [conversation],
+      })
+      continue
+    }
+
+    if (!existingGroup.workspaceIds.includes(workspace.id)) {
+      existingGroup.workspaceIds.push(workspace.id)
+    }
+    if (!existingGroup.preferredWorkspaceId && !workspace.isWorktree) {
+      existingGroup.preferredWorkspaceId = workspace.id
+    }
+
+    existingGroup.isGit = existingGroup.isGit || workspace.isGit
+    existingGroup.isWorktree = existingGroup.isWorktree || workspace.isWorktree === true
+    existingGroup.conversations.push(conversation)
+  }
+
+  const workspaceGroups = Array.from(workspaceGroupsByProject.values()).map((group) => ({
+    ...group,
+    conversations: [...group.conversations].sort((a, b) => b.updatedAt - a.updatedAt),
+  }))
+
+  workspaceGroups.sort((a, b) => getProjectLatestUpdate(b) - getProjectLatestUpdate(a))
+
+  const sandboxConversations = allConversations.filter((conversation) => !conversation.workspaceId)
+  if (sandboxConversations.length === 0) {
+    return workspaceGroups
+  }
+
+  return [
+    ...workspaceGroups,
+    {
+      id: 'sandbox',
+      label: 'Sandbox',
+      workspaceIds: [],
+      preferredWorkspaceId: null,
+      isSandbox: true,
+      isGit: false,
+      isWorktree: false,
+      conversations: sandboxConversations,
+    },
+  ]
+}
+
 export function Sidebar() {
-  const { conversations, activeConversationId, setActiveConversation, deleteConversation, conversationStreams } = useChatStore()
+  const {
+    conversations,
+    activeConversationId,
+    setActiveConversation,
+    deleteConversation,
+    loadConversations,
+    conversationStreams,
+  } = useChatStore()
   const { sidebarCollapsed, openSettings } = useUIStore()
   const { workspaces, activeWorkspaceId, setActiveWorkspace } = useWorkspaceStore()
   const { artifacts, selectArtifact, openCanvas } = useArtifactStore()
@@ -116,6 +193,8 @@ export function Sidebar() {
   })
   // Track which conversations have their artifact trees expanded
   const [expandedConversations, setExpandedConversations] = useState<Set<string>>(new Set())
+  const [archivedConversations, setArchivedConversations] = useState<ChatConversation[]>([])
+  const [expandedArchivedProjects, setExpandedArchivedProjects] = useState<Set<string>>(new Set())
   // Transfer dialog state
   const [transferDialogConv, setTransferDialogConv] = useState<{ id: string; title: string; workspaceId: string | null } | null>(null)
 
@@ -124,71 +203,32 @@ export function Sidebar() {
     [workspaces]
   )
 
-  const projectGroups = useMemo<ProjectGroup[]>(() => {
-    const workspaceGroupsByProject = new Map<string, ProjectGroup>()
+  const projectGroups = useMemo<ProjectGroup[]>(
+    () => buildProjectGroups(conversations, workspaceById),
+    [conversations, workspaceById]
+  )
 
-    for (const conversation of conversations) {
-      if (!conversation.workspaceId) continue
-      const workspace = workspaceById.get(conversation.workspaceId)
-      if (!workspace) continue
+  const archivedProjectGroups = useMemo<ProjectGroup[]>(
+    () => buildProjectGroups(archivedConversations, workspaceById),
+    [archivedConversations, workspaceById]
+  )
 
-      const projectPath = workspace.projectPath || workspace.path
-      const projectKey = projectPath || `workspace-${workspace.id}`
-      const existingGroup = workspaceGroupsByProject.get(projectKey)
-
-      if (!existingGroup) {
-        workspaceGroupsByProject.set(projectKey, {
-          id: `project-${projectKey}`,
-          label: projectPath ? getPathBasename(projectPath) : workspace.name,
-          path: projectPath || workspace.path,
-          workspaceIds: [workspace.id],
-          preferredWorkspaceId: workspace.isWorktree ? null : workspace.id,
-          isSandbox: false,
-          isGit: workspace.isGit,
-          isWorktree: workspace.isWorktree === true,
-          conversations: [conversation],
-        })
-        continue
-      }
-
-      if (!existingGroup.workspaceIds.includes(workspace.id)) {
-        existingGroup.workspaceIds.push(workspace.id)
-      }
-      if (!existingGroup.preferredWorkspaceId && !workspace.isWorktree) {
-        existingGroup.preferredWorkspaceId = workspace.id
-      }
-
-      existingGroup.isGit = existingGroup.isGit || workspace.isGit
-      existingGroup.isWorktree = existingGroup.isWorktree || workspace.isWorktree === true
-      existingGroup.conversations.push(conversation)
+  const refreshArchivedConversations = async () => {
+    try {
+      const archived = await window.jelico.conversations.listArchived()
+      setArchivedConversations(archived)
+    } catch (error) {
+      console.error('Failed to load archived conversations:', error)
     }
+  }
 
-    const workspaceGroups = Array.from(workspaceGroupsByProject.values()).map((group) => ({
-      ...group,
-      conversations: [...group.conversations].sort((a, b) => b.updatedAt - a.updatedAt),
-    }))
+  useEffect(() => {
+    void refreshArchivedConversations()
+  }, [])
 
-    workspaceGroups.sort((a, b) => getProjectLatestUpdate(b) - getProjectLatestUpdate(a))
-
-    const sandboxConversations = conversations.filter((conversation) => !conversation.workspaceId)
-    if (sandboxConversations.length === 0) {
-      return workspaceGroups
-    }
-
-    return [
-      ...workspaceGroups,
-      {
-        id: 'sandbox',
-        label: 'Sandbox',
-        workspaceIds: [],
-        preferredWorkspaceId: null,
-        isSandbox: true,
-        isGit: false,
-        isWorktree: false,
-        conversations: sandboxConversations,
-      },
-    ]
-  }, [conversations, workspaceById])
+  useEffect(() => {
+    void refreshArchivedConversations()
+  }, [conversations.length])
 
   // Auto-expand project groups the first time they appear, respecting persisted collapsed state
   useEffect(() => {
@@ -206,6 +246,22 @@ export function Sidebar() {
       return changed ? next : prev
     })
   }, [projectGroups, collapsedGroups])
+
+  useEffect(() => {
+    setExpandedArchivedProjects((prev) => {
+      const next = new Set(prev)
+      let changed = false
+
+      for (const group of archivedProjectGroups) {
+        if (!next.has(group.id)) {
+          next.add(group.id)
+          changed = true
+        }
+      }
+
+      return changed ? next : prev
+    })
+  }, [archivedProjectGroups])
 
   // Auto-expand artifact tree for active conversation
   useEffect(() => {
@@ -249,6 +305,18 @@ export function Sidebar() {
     })
   }
 
+  const toggleArchivedProject = (projectId: string) => {
+    setExpandedArchivedProjects((prev) => {
+      const next = new Set(prev)
+      if (next.has(projectId)) {
+        next.delete(projectId)
+      } else {
+        next.add(projectId)
+      }
+      return next
+    })
+  }
+
   // Toggle artifact tree for a conversation
   const toggleConversationArtifacts = (e: React.MouseEvent, convId: string) => {
     e.stopPropagation()
@@ -283,10 +351,48 @@ export function Sidebar() {
     setActiveConversation(null)
   }
 
-  const handleDeleteConversation = (e: React.MouseEvent, id: string) => {
+  const handleDeleteConversation = async (e: React.MouseEvent, id: string) => {
     e.stopPropagation()
-    if (confirm('Delete this conversation?')) {
-      deleteConversation(id)
+    if (confirm('Archive this conversation? You can restore it later from Archived.')) {
+      await deleteConversation(id)
+      await refreshArchivedConversations()
+    }
+  }
+
+  const handleRestoreConversation = async (e: React.MouseEvent, id: string) => {
+    e.stopPropagation()
+    try {
+      await window.jelico.conversations.restore(id)
+      await loadConversations()
+      await refreshArchivedConversations()
+    } catch (error) {
+      console.error('Failed to restore conversation:', error)
+    }
+  }
+
+  const handlePermanentDeleteConversation = async (e: React.MouseEvent, id: string) => {
+    e.stopPropagation()
+    if (!confirm('Permanently delete this archived conversation? This cannot be undone.')) {
+      return
+    }
+
+    try {
+      await useArtifactStore.getState().clearConversationArtifacts(id)
+      try {
+        await window.jelico.sandbox.clear(id)
+      } catch {
+        // Conversation may not have sandbox files.
+      }
+      try {
+        await window.jelico.todos.deleteByConversation(id)
+      } catch {
+        // Ignore missing todo persistence edge-cases.
+      }
+      await window.jelico.conversations.delete(id)
+      await loadConversations()
+      await refreshArchivedConversations()
+    } catch (error) {
+      console.error('Failed to permanently delete archived conversation:', error)
     }
   }
 
@@ -519,6 +625,72 @@ export function Sidebar() {
             </div>
           )
         })}
+
+        {archivedProjectGroups.length > 0 && (
+          <div className="mt-5 pt-3 border-t border-border/60">
+            <div className="text-xs text-text-muted uppercase tracking-wider px-2 mb-2">
+              Archived
+            </div>
+
+            {archivedProjectGroups.map((group) => {
+              const isExpanded = expandedArchivedProjects.has(group.id)
+              const GroupIcon = group.isSandbox ? Box : Folder
+
+              return (
+                <div key={`archived-${group.id}`} className="mb-2">
+                  <button
+                    onClick={() => toggleArchivedProject(group.id)}
+                    style={{ marginLeft: '-0.75rem' }}
+                    className="w-full flex items-center gap-2 pl-5 pr-2 py-1.5 rounded-l-none rounded-r-md text-left text-text-secondary hover:text-text-primary hover:bg-bg-hover transition-colors"
+                  >
+                    {isExpanded ? (
+                      <ChevronDown className="w-3 h-3 flex-shrink-0 text-text-muted" />
+                    ) : (
+                      <ChevronRight className="w-3 h-3 flex-shrink-0 text-text-muted" />
+                    )}
+                    <GroupIcon className="w-4 h-4 flex-shrink-0 text-text-muted" />
+                    <span className="text-sm truncate">
+                      {group.isSandbox ? group.label : `/${group.label}`}
+                    </span>
+                  </button>
+
+                  {isExpanded && (
+                    <div className="ml-5 mt-1 border-l border-border/50 pl-2">
+                      {group.conversations.map((conv) => (
+                        <div
+                          key={`archived-conv-${conv.id}`}
+                          title={formatCreatedDate(conv.createdAt)}
+                          style={{
+                            width: 'calc(100% + 0.75rem)',
+                            marginRight: '-0.75rem',
+                          }}
+                          className="group flex items-center gap-2 pl-2 pr-5 py-1.5 text-sm rounded-l-md rounded-r-none text-text-muted hover:text-text-primary hover:bg-bg-hover"
+                        >
+                          <div className="w-4 flex-shrink-0" />
+                          <span className="flex-1 min-w-0 break-words">{conv.title}</span>
+                          <button
+                            onClick={(e) => handleRestoreConversation(e, conv.id)}
+                            title="Restore conversation"
+                            className="opacity-0 group-hover:opacity-100 p-1 hover:bg-bg-hover rounded text-text-muted hover:text-accent flex-shrink-0"
+                          >
+                            <RotateCcw className="w-3 h-3" />
+                          </button>
+                          <button
+                            onClick={(e) => handlePermanentDeleteConversation(e, conv.id)}
+                            title="Permanently delete"
+                            className="opacity-0 group-hover:opacity-100 p-1 hover:bg-bg-hover rounded text-text-muted hover:text-error flex-shrink-0"
+                          >
+                            <Trash2 className="w-3 h-3" />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )
+            })}
+          </div>
+        )}
       </div>
 
       {/* Settings */}

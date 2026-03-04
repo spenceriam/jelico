@@ -7,6 +7,7 @@ interface ProviderConfig {
   baseUrl?: string
   defaultModel: string
   hiddenFromSelector?: boolean
+  capabilityProfiles?: Record<string, unknown> | null
   isDefault: boolean
   createdAt: number
   updatedAt: number
@@ -18,6 +19,7 @@ interface ProviderInput {
   baseUrl?: string
   defaultModel: string
   hiddenFromSelector?: boolean
+  capabilityProfiles?: Record<string, unknown> | null
   isDefault?: boolean
   apiKey?: string
 }

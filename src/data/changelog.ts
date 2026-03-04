@@ -21,6 +21,32 @@ export interface ChangelogEntry {
 
 export const changelog: ChangelogEntry[] = [
   {
+    version: '0.35.0',
+    date: '2026-03-04',
+    changes: {
+      added: [
+        'Added first-class `search_content` tool support for main AI and sub-agents with regex matching, file/line/snippet metadata, and prompt guidance for search-first context building (Fixes #98)',
+        'Added model capability profiles with provider/model override maps, runtime retry/delegation tuning, and profile-aware prompt injection/telemetry logging (Fixes #100)',
+        'Added progressive-disclosure prompt routing with lean default prompt mode and a dedicated docs-guide helper injection path for self-referential product questions (Fixes #99)',
+        'Added shared task-graph fields (`owner`, `dependencies`, `blocked_reason`, `history`) with blocked-state support and sub-agent progress propagation into todo updates (Fixes #97)',
+        'Added artifact canvas screenshot capture action that copies to clipboard and auto-attaches `Screenshot-xxxx.png` to the chat composer (Fixes #89)',
+      ],
+      changed: [
+        'Conversation deletion now archives by default with sidebar restore/permanent-delete flows grouped by workspace/sandbox context (Fixes #114)',
+        'Update UX now runs background checks, shows bottom-right availability/apply banners, supports release-note linking, and can launch downloaded installers directly from Settings/App prompts (Fixes #113)',
+        'Worktrunk/worktree ergonomics now persist the auto-isolation preference for new chats and use clearer non-technical copy around isolated-worktree creation prompts (Fixes #123)',
+      ],
+      fixed: [
+        'Sub-agent capability policy is now driven by a single mode capability matrix wired into tool exposure, prompt contract text, and spawn-agent permission destructiveness checks (Fixes #96)',
+        'Repeated consecutive tool calls now consolidate into grouped rows (including artifact test chains) to reduce chat-view noise while preserving per-call details in expandable groups (Fixes #107, Fixes #93)',
+        'Single-pane chat layout now expands with wider desktop padding when canvas is closed, reducing wasted horizontal space (Fixes #122)',
+        'Chat/message links now open in the system default browser instead of an in-app window, preserving authenticated web sessions (Fixes #124)',
+        'Assistant text blocks now preserve clearer vertical spacing between interleaved response segments to reduce cramped multi-block outputs (Fixes #126)',
+        'Workspace deletion now safely removes underlying git worktrees when applicable and clears stale active-workspace pointers to prevent dangling workspace state (Fixes #123)',
+      ],
+    },
+  },
+  {
     version: '0.34.2',
     date: '2026-03-04',
     changes: {
