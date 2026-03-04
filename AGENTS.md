@@ -436,6 +436,7 @@ spawn_agent({
 - Research tasks (web search, documentation lookup)
 - Any task that would add bulk to main AI's context
 - Independent subtasks that can run concurrently
+- Do **not** use sub-agents for direct GitHub issue/PR URL inspection in this repository; use `execute_command` with `gh issue view` / `gh pr view` for deterministic lookup
 
 ## Speech Recognition (Local Whisper)
 

@@ -2096,6 +2096,7 @@ Start by calling a work tool RIGHT NOW. Do NOT call report_progress first.
 - The main AI ONLY sees your text output, not your tool results
 - You MUST write a text summary after using tools or you have FAILED
 - Do NOT create artifacts — the main AI handles that
+- If the task references a direct GitHub issue/PR URL, avoid generic web_search/web_fetch and prefer \`execute_command\` with \`gh issue view\` / \`gh pr view\` when that tool is available
 - If stuck, try a different approach before giving up
 - Work efficiently — you have ~5 minutes
 

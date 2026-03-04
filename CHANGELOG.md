@@ -2,6 +2,22 @@
 
 All notable changes to Jelico are documented in this file.
 
+## [0.34.2] - 2026-03-04
+
+### Highlights
+- Multi-action responses now keep readable text blocks around tool activity instead of collapsing into a single dense paragraph.
+- Worktree cleanup is more reliable: deleted worktrees are removed from recent workspace lists and worktree labels stay consistent.
+- Linux update/install targeting is more reliable on modern Ubuntu and other distros through better package selection and dependency metadata.
+
+### Fixed
+- **Response Readability Around Actions** — Assistant text now preserves clearer block separation when multiple tool actions run in one turn, so progress updates are easier to follow.
+- **Worktree Workspace Cleanup** — Removed worktrees no longer linger in recent workspace lists, and worktree entries now use clearer path-based naming to avoid branch-label confusion.
+- **GitHub Issue Lookup Delegation** — Direct GitHub issue and PR lookups are now routed away from web-research sub-agents and toward deterministic GitHub CLI workflows.
+
+### Changed
+- **Linux Update Asset Selection** — Linux update recommendations now choose distro-appropriate package formats first (`.deb` for Debian/Ubuntu families and `.rpm` for Fedora/RHEL/SUSE families), with AppImage as fallback.
+- **Linux Package Dependencies** — Debian/RPM build dependency lists were refreshed to use modern runtime packages instead of deprecated ones that fail on newer Ubuntu installs.
+
 ## [0.34.1] - 2026-03-03
 
 ### Highlights

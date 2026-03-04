@@ -21,6 +21,21 @@ export interface ChangelogEntry {
 
 export const changelog: ChangelogEntry[] = [
   {
+    version: '0.34.2',
+    date: '2026-03-04',
+    changes: {
+      fixed: [
+        'Streaming message assembly now splits batched text preambles across tool boundaries and enforces readable paragraph separation after tool transitions, preventing consolidated wall-of-text responses during multi-action turns (Fixes #125)',
+        'Linux update asset recommendation now prefers distro-appropriate package formats (Debian/Ubuntu: .deb, Fedora/RHEL/SUSE: .rpm) with AppImage fallback, improving update/install success on Ubuntu (Fixes #101)',
+        'Workspace listing now prunes missing worktree paths, normalizes worktree naming to path-based labels, and uses resolved-path matching for worktree removal, preventing stale/confusing worktree entries (Fixes #88)',
+        'Direct GitHub issue/PR lookup tasks are now routed away from web-research sub-agent delegation and toward deterministic GitHub CLI workflows, reducing cross-repo lookup drift (Fixes #87)',
+      ],
+      changed: [
+        'Linux package dependency metadata was updated to modern Debian/RPM runtime requirements, replacing deprecated packages that fail on newer Ubuntu distributions',
+      ],
+    },
+  },
+  {
     version: '0.34.1',
     date: '2026-03-03',
     changes: {

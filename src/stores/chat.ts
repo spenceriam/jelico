@@ -418,6 +418,65 @@ function createInlineToolProtocolFilter() {
   return { consume, flush }
 }
 
+function splitBatchedToolPreambles(
+  text: string,
+  toolCount: number
+): { leadingText: string; preambles: string[] } | null {
+  if (toolCount < 2) return null
+
+  const normalized = text.replace(/\r\n/g, '\n').trimEnd()
+  if (!normalized) return null
+
+  const candidateGroups: string[][] = []
+  const splitByBlankLines = normalized
+    .split(/\n{2,}/)
+    .map((part) => part.trim())
+    .filter(Boolean)
+  if (splitByBlankLines.length > 1) {
+    candidateGroups.push(splitByBlankLines)
+  }
+
+  const splitByLines = normalized
+    .split(/\n+/)
+    .map((part) => part.trim())
+    .filter(Boolean)
+  if (splitByLines.length > 1) {
+    candidateGroups.push(splitByLines)
+  }
+
+  const splitByColonSentences = normalized
+    .split(/(?<=:)\s+(?=[A-Z])/)
+    .map((part) => part.trim())
+    .filter(Boolean)
+  if (splitByColonSentences.length > 1) {
+    candidateGroups.push(splitByColonSentences)
+  }
+
+  for (const candidates of candidateGroups) {
+    if (candidates.length < toolCount) continue
+
+    const trailingCandidates = candidates.slice(-toolCount)
+    const allLookLikePreambles = trailingCandidates.every(
+      (candidate) => candidate.length > 2 && /:\s*$/.test(candidate)
+    )
+
+    if (!allLookLikePreambles) continue
+
+    const preambles = trailingCandidates
+      .map((candidate) => candidate.replace(/:\s*$/, '').trim())
+      .filter(Boolean)
+
+    if (preambles.length !== toolCount) continue
+
+    return {
+      leadingText: candidates.slice(0, -toolCount).join('\n\n').trim(),
+      preambles,
+    }
+  }
+
+  return null
+}
+
 function readPendingStreamCheckpoints(): Record<string, PendingStreamCheckpoint> {
   try {
     if (typeof window === 'undefined' || !window.localStorage) {
@@ -1256,13 +1315,16 @@ export const useChatStore = create<ChatStore>((set, get) => ({
           }
           nextStreamingContent += chunk
         } else {
+          const chunkAfterToolBoundary = chunk.replace(/^\s+/, '')
+          if (!chunkAfterToolBoundary) {
+            return current
+          }
+
           // Create new text segment (first text, or text after a tool)
-          segments.push({ type: 'text', content: chunk })
-          const needsSeparator =
-            nextStreamingContent.length > 0 &&
-            !/[\s\n]$/.test(nextStreamingContent) &&
-            !/^\s/.test(chunk)
-          nextStreamingContent += needsSeparator ? `\n\n${chunk}` : chunk
+          segments.push({ type: 'text', content: chunkAfterToolBoundary })
+          nextStreamingContent += nextStreamingContent.length > 0
+            ? `\n\n${chunkAfterToolBoundary}`
+            : chunkAfterToolBoundary
         }
         fullContent = nextStreamingContent
 
@@ -1298,11 +1360,60 @@ export const useChatStore = create<ChatStore>((set, get) => ({
       console.log('[Chat Store] Received tool calls:', toolCalls)
       const now = Date.now()
       updateConversationStreamState((current) => {
-        // If a text segment ends with a colon, drop it to avoid "text:" before tool calls
         const segments = [...current.streamingSegments]
         const lastSegment = segments[segments.length - 1]
+        const statusQueueAdditions = toolCalls.map((tc) => ({
+          id: tc.id,
+          toolName: tc.name,
+          args: tc.args,
+          startedAt: now,
+        }))
+
         if (lastSegment?.type === 'text') {
           const trimmed = lastSegment.content.replace(/[ \t]+$/g, '')
+          const splitPreambles = splitBatchedToolPreambles(trimmed, toolCalls.length)
+
+          if (splitPreambles) {
+            segments.pop()
+
+            if (splitPreambles.leadingText) {
+              segments.push({
+                type: 'text',
+                content: splitPreambles.leadingText,
+              })
+            }
+
+            for (let i = 0; i < toolCalls.length; i += 1) {
+              const preamble = splitPreambles.preambles[i]
+              const toolCall = toolCalls[i]
+              if (preamble) {
+                segments.push({
+                  type: 'text',
+                  content: preamble,
+                })
+              }
+              segments.push({
+                type: 'tool',
+                toolCallId: toolCall.id,
+              })
+            }
+
+            const nextStreamingContent = flattenTextFromSegments(segments)
+            fullContent = nextStreamingContent
+
+            return {
+              ...current,
+              streamingToolCalls: [...current.streamingToolCalls, ...toolCalls],
+              streamingSegments: segments,
+              streamingContent: nextStreamingContent,
+              statusDisplayQueue: [
+                ...current.statusDisplayQueue,
+                ...statusQueueAdditions,
+              ],
+            }
+          }
+
+          // If a text segment ends with a colon, drop it to avoid "text:" before tool calls
           if (trimmed.endsWith(':')) {
             segments[segments.length - 1] = {
               type: 'text',
@@ -1328,12 +1439,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
           // Add to status display queue for graceful UX
           statusDisplayQueue: [
             ...current.statusDisplayQueue,
-            ...toolCalls.map(tc => ({
-              id: tc.id,
-              toolName: tc.name,
-              args: tc.args,
-              startedAt: now,
-            })),
+            ...statusQueueAdditions,
           ],
         }
       })

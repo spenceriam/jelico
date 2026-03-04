@@ -1,7 +1,7 @@
 import { app, dialog, type BrowserWindow } from 'electron'
 import https from 'https'
 import path from 'path'
-import { createWriteStream, promises as fs } from 'fs'
+import { createWriteStream, promises as fs, readFileSync } from 'fs'
 
 const OWNER = 'spenceriam'
 const REPO = 'jelico'
@@ -99,6 +99,25 @@ function pickAssetByExtension(
   return byExt[0] || null
 }
 
+function detectLinuxAssetPreferenceOrder(): string[] {
+  try {
+    const osRelease = readFileSync('/etc/os-release', 'utf-8').toLowerCase()
+    const normalized = osRelease.replace(/"/g, '')
+
+    if (/\bid(_like)?=.*(debian|ubuntu|mint|pop|elementary)\b/.test(normalized)) {
+      return ['.deb', '.AppImage', '.rpm']
+    }
+
+    if (/\bid(_like)?=.*(fedora|rhel|centos|rocky|alma|suse|opensuse)\b/.test(normalized)) {
+      return ['.rpm', '.AppImage', '.deb']
+    }
+  } catch {
+    // Fall back to a universal default below.
+  }
+
+  return ['.AppImage', '.deb', '.rpm']
+}
+
 function getRecommendedAsset(assets: UpdateAssetInfo[]): UpdateAssetInfo | null {
   const platform = process.platform
   const arch = process.arch
@@ -117,7 +136,8 @@ function getRecommendedAsset(assets: UpdateAssetInfo[]): UpdateAssetInfo | null 
     return pickAssetByExtension(assets, ['.exe', '.msi'], archHints)
   }
 
-  return pickAssetByExtension(assets, ['.AppImage', '.deb', '.rpm'], archHints)
+  const linuxExtensionPreference = detectLinuxAssetPreferenceOrder()
+  return pickAssetByExtension(assets, linuxExtensionPreference, archHints)
 }
 
 async function fetchLatestRelease(): Promise<GitHubRelease> {
