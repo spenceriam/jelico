@@ -29,16 +29,10 @@ function clampArchiveTitle(value: string): string {
 
 function getConversationDisplayTitle(conversation: ChatConversation): string {
   const rawTitle = conversation.title?.trim() || 'Untitled chat'
-  if (!rawTitle.endsWith('...')) return clampArchiveTitle(rawTitle)
-
-  const firstUserMessage = conversation.messages?.find((message) =>
-    message.role === 'user' && Boolean(message.content?.trim())
-  )
-  if (!firstUserMessage?.content) {
-    return clampArchiveTitle(rawTitle.replace(/\.\.\.$/, ''))
-  }
-
-  return clampArchiveTitle(firstUserMessage.content)
+  // Archived conversation list items do not hydrate full message history.
+  // If the title was previously truncated with an ellipsis, fall back to the
+  // trimmed title text we have rather than attempting to inspect messages.
+  return clampArchiveTitle(rawTitle.replace(/\.\.\.$/, ''))
 }
 
 function getPathBasename(value: string): string {

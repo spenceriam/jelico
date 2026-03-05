@@ -351,8 +351,8 @@ async function getDownloadedUpdatePath(): Promise<string | null> {
   return lastDownloadedUpdatePath
 }
 
-export async function applyDownloadedUpdate(filePath?: string): Promise<UpdateApplyResult> {
-  const resolvedPath = filePath || await getDownloadedUpdatePath()
+export async function applyDownloadedUpdate(): Promise<UpdateApplyResult> {
+  const resolvedPath = await getDownloadedUpdatePath()
   if (!resolvedPath) {
     return { success: false, error: 'No downloaded update file is available.' }
   }

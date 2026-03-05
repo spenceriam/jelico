@@ -35,6 +35,27 @@ function writeStoredValue(key: string, value: string | null) {
   }
 }
 
+function parseSemver(version: string): [number, number, number] {
+  const cleaned = version.trim().replace(/^v/i, '')
+  const main = cleaned.split('-')[0] || cleaned
+  const parts = main.split('.')
+  return [
+    Number(parts[0]) || 0,
+    Number(parts[1]) || 0,
+    Number(parts[2]) || 0,
+  ]
+}
+
+function compareSemver(a: string, b: string): number {
+  const [aMajor, aMinor, aPatch] = parseSemver(a)
+  const [bMajor, bMinor, bPatch] = parseSemver(b)
+
+  if (aMajor !== bMajor) return aMajor > bMajor ? 1 : -1
+  if (aMinor !== bMinor) return aMinor > bMinor ? 1 : -1
+  if (aPatch !== bPatch) return aPatch > bPatch ? 1 : -1
+  return 0
+}
+
 function shouldClearDownloadedStateAfterVersionAdvance(
   currentVersion: string | null | undefined,
   downloadedVersion: string | null | undefined,
@@ -48,7 +69,7 @@ function shouldClearDownloadedStateAfterVersionAdvance(
     return true
   }
 
-  return downloadedVersion !== currentVersion
+  return compareSemver(currentVersion, downloadedVersion) > 0
 }
 
 interface UpdatesState {

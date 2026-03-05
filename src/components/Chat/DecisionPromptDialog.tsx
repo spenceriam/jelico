@@ -23,6 +23,8 @@ export function DecisionPromptDialog() {
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === 'Escape') {
         event.preventDefault()
+        event.stopPropagation()
+        event.stopImmediatePropagation()
         cancel()
       }
     }
@@ -85,4 +87,3 @@ export function DecisionPromptDialog() {
     </div>
   )
 }
-

@@ -293,3 +293,35 @@ test('checkForUpdates clears downloaded state after the downloaded version is in
   assert.equal(localStorage.getItem(DOWNLOADED_PATH_KEY), null)
   assert.equal(localStorage.getItem(APPLY_DISMISS_KEY), null)
 })
+
+test('checkForUpdates keeps downloaded state when a transient response says no update is available', async () => {
+  useUpdateStore.setState({
+    downloadedVersion: '0.36.0',
+    lastDownloadedTo: 'C:/tmp/Jelico-0.36.0.exe',
+    dismissedApplyVersion: '0.36.0',
+  })
+  localStorage.setItem(DOWNLOADED_VERSION_KEY, '0.36.0')
+  localStorage.setItem(DOWNLOADED_PATH_KEY, 'C:/tmp/Jelico-0.36.0.exe')
+  localStorage.setItem(APPLY_DISMISS_KEY, '0.36.0')
+
+  setGlobalWindow({
+    check: async () => ({
+      currentVersion: '0.35.0',
+      latestVersion: '0.35.0',
+      isUpdateAvailable: false,
+      releaseUrl: 'https://example.com/release',
+      publishedAt: '2026-03-04T00:00:00.000Z',
+      assets: [],
+      recommendedAsset: null,
+    }),
+  })
+
+  const result = await useUpdateStore.getState().checkForUpdates({ force: true })
+  assert.ok(result)
+  assert.equal(useUpdateStore.getState().downloadedVersion, '0.36.0')
+  assert.equal(useUpdateStore.getState().lastDownloadedTo, 'C:/tmp/Jelico-0.36.0.exe')
+  assert.equal(useUpdateStore.getState().dismissedApplyVersion, '0.36.0')
+  assert.equal(localStorage.getItem(DOWNLOADED_VERSION_KEY), '0.36.0')
+  assert.equal(localStorage.getItem(DOWNLOADED_PATH_KEY), 'C:/tmp/Jelico-0.36.0.exe')
+  assert.equal(localStorage.getItem(APPLY_DISMISS_KEY), '0.36.0')
+})
