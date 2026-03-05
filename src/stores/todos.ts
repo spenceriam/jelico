@@ -368,9 +368,9 @@ export const useTodoStore = create<TodoState>((set, get) => ({
   },
 
   getActiveTasks: () => {
-    // Tasks that are still actionable (not done, failed, or cancelled)
+    // Tasks that are currently actionable without additional dependency resolution.
     return get().todos.filter(
-      t => t.status === 'pending' || t.status === 'in_progress' || t.status === 'blocked'
+      t => t.status === 'pending' || t.status === 'in_progress'
     )
   },
 }))

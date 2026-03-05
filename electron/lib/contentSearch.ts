@@ -111,7 +111,7 @@ async function searchWithRipgrep(options: {
       '--no-messages',
       '--max-filesize',
       String(options.maxFileBytes),
-      '--max-count',
+      '--max-total-count',
       String(options.maxResults),
     ]
 

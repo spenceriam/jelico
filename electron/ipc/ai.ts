@@ -848,8 +848,6 @@ interface KnowledgeMatch {
 const DOCS_GUIDE_QUERY_REGEX = /\b(how (does|do)\s+jelico|what is jelico|how to use jelico|setup commands?|start (the )?(dev|development) server|feature overview|capabilities|memory system|soul system|workspace mode|sandbox mode|tool calling)\b/i
 
 const KNOWLEDGE_MATCHERS: KnowledgeMatch[] = [
-  // Self-help / docs guide path
-  { keywords: DOCS_GUIDE_QUERY_REGEX, category: 'capabilities', name: 'docs-guide' },
   // Artifact-related queries
   { keywords: /\b(artifact|canvas|html|svg|mermaid|diagram|chart|flowchart|document)\b/i, category: 'capabilities', name: 'artifacts' },
   // Sub-agent queries
@@ -884,6 +882,16 @@ function getContextualKnowledge(messages: Array<{ role: string; content: string 
 
   const matchedKnowledge: string[] = []
   const alreadyLoaded = new Set<string>()
+
+  // Handle docs-guide explicitly so it only has one injection path.
+  if (DOCS_GUIDE_QUERY_REGEX.test(recentUserMessages)) {
+    const docsGuideKey = 'capabilities/docs-guide'
+    const docsGuideContent = getCachedPrompt('capabilities', 'docs-guide')
+    if (docsGuideContent) {
+      matchedKnowledge.push(docsGuideContent)
+      alreadyLoaded.add(docsGuideKey)
+    }
+  }
 
   for (const matcher of KNOWLEDGE_MATCHERS) {
     if (matcher.keywords.test(recentUserMessages)) {

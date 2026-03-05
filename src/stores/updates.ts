@@ -146,10 +146,10 @@ export const useUpdateStore = create<UpdatesState>((set, get) => ({
         dismissedApplyVersion,
         launchedApplyVersion,
       } = get()
-      const shouldClearDownloadedState = Boolean(
-        downloadedVersion &&
-        version &&
-        compareSemver(version, downloadedVersion) >= 0
+      const shouldClearDownloadedState = shouldClearDownloadedStateAfterVersionAdvance(
+        version,
+        downloadedVersion,
+        false
       )
       const shouldRestoreDismissedApplyPrompt = shouldRestoreApplyPromptAfterStartup(
         version,
