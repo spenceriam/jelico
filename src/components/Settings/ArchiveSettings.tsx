@@ -16,20 +16,29 @@ interface ArchiveGroup {
   conversations: ChatConversation[]
 }
 
+const MAX_ARCHIVE_TITLE_LENGTH = 240
+
+function clampArchiveTitle(value: string): string {
+  const normalized = value.replace(/\s+/g, ' ').trim()
+  if (normalized.length <= MAX_ARCHIVE_TITLE_LENGTH) {
+    return normalized
+  }
+
+  return normalized.slice(0, MAX_ARCHIVE_TITLE_LENGTH).trim()
+}
+
 function getConversationDisplayTitle(conversation: ChatConversation): string {
   const rawTitle = conversation.title?.trim() || 'Untitled chat'
-  if (!rawTitle.endsWith('...')) return rawTitle
+  if (!rawTitle.endsWith('...')) return clampArchiveTitle(rawTitle)
 
   const firstUserMessage = conversation.messages?.find((message) =>
     message.role === 'user' && Boolean(message.content?.trim())
   )
   if (!firstUserMessage?.content) {
-    return rawTitle.replace(/\.\.\.$/, '')
+    return clampArchiveTitle(rawTitle.replace(/\.\.\.$/, ''))
   }
 
-  return firstUserMessage.content
-    .replace(/\s+/g, ' ')
-    .trim()
+  return clampArchiveTitle(firstUserMessage.content)
 }
 
 function getPathBasename(value: string): string {

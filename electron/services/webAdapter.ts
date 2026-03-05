@@ -591,15 +591,13 @@ function isOpenAIWebSearchUnsupported(
   const rawType = (runtime.rawProviderType || '').toLowerCase()
   const isCompatibleProvider = rawType !== '' && rawType !== 'openai'
 
-  if (statusCode === 404 && isCompatibleProvider) {
-    return true
-  }
-
   const mentionsMissingEndpoint =
-    normalized.includes('not found') ||
     normalized.includes('/responses') ||
     normalized.includes('unknown endpoint') ||
-    normalized.includes('no route')
+    normalized.includes('no route') ||
+    normalized.includes('route not found') ||
+    normalized.includes('endpoint not found') ||
+    normalized.includes('path not found')
 
   const mentionsWebToolUnsupported =
     normalized.includes('web_search') ||
@@ -607,6 +605,10 @@ function isOpenAIWebSearchUnsupported(
     normalized.includes('unsupported tool') ||
     normalized.includes('tool is not supported') ||
     normalized.includes('does not support tools')
+
+  if (statusCode === 404 && isCompatibleProvider && (mentionsMissingEndpoint || mentionsWebToolUnsupported)) {
+    return true
+  }
 
   // For OpenAI-compatible providers, treat these as unsupported capability.
   if (isCompatibleProvider && (mentionsMissingEndpoint || mentionsWebToolUnsupported)) {
