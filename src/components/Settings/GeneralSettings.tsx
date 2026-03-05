@@ -48,13 +48,18 @@ export function GeneralSettings() {
     downloadProgress,
     lastDownloadedTo,
     downloadedVersion,
+    dismissedApplyVersion,
     error,
     checkForUpdates,
     downloadUpdate,
     applyDownloadedUpdate,
     dismissApplyPrompt,
   } = useUpdateStore()
-  const canApplyDownloadedUpdate = Boolean(lastDownloadedTo && downloadedVersion)
+  const canApplyDownloadedUpdate = Boolean(
+    lastDownloadedTo &&
+    downloadedVersion &&
+    dismissedApplyVersion !== downloadedVersion
+  )
   const versionStatus = (() => {
     if (!info) return null
 

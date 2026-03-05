@@ -40,12 +40,15 @@ function shouldClearDownloadedStateAfterVersionAdvance(
   downloadedVersion: string | null | undefined,
   isUpdateAvailable: boolean
 ): boolean {
-  return Boolean(
-    downloadedVersion &&
-    currentVersion &&
-    !isUpdateAvailable &&
-    downloadedVersion !== currentVersion
-  )
+  if (!downloadedVersion || !currentVersion || isUpdateAvailable) {
+    return false
+  }
+
+  if (downloadedVersion === currentVersion) {
+    return true
+  }
+
+  return downloadedVersion !== currentVersion
 }
 
 interface UpdatesState {
@@ -200,16 +203,21 @@ export const useUpdateStore = create<UpdatesState>((set, get) => ({
         set({
           error: resolvedError,
           ...(shouldClearDownloadedState
-            ? { lastDownloadedTo: null, downloadedVersion: null }
+            ? { lastDownloadedTo: null, downloadedVersion: null, dismissedApplyVersion: null }
             : {}),
         })
         if (shouldClearDownloadedState) {
           writeStoredValue(DOWNLOADED_PATH_KEY, null)
           writeStoredValue(DOWNLOADED_VERSION_KEY, null)
+          writeStoredValue(APPLY_DISMISS_KEY, null)
         }
 
         return result
       }
+      const launchedVersion = get().downloadedVersion ?? get().info?.latestVersion ?? null
+      set({
+        dismissedApplyVersion: launchedVersion,
+      })
       return result
     } catch (error) {
       set({

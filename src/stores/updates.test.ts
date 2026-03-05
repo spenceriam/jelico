@@ -147,7 +147,7 @@ test('applyDownloadedUpdate returns error when no downloaded path exists', async
   assert.match(useUpdateStore.getState().error || '', /No downloaded update file is available yet/i)
 })
 
-test('applyDownloadedUpdate keeps downloaded state when launch succeeds', async () => {
+test('applyDownloadedUpdate suppresses apply prompt for the session after launch succeeds', async () => {
   useUpdateStore.setState({
     lastDownloadedTo: 'C:/tmp/Jelico-0.36.0.exe',
     downloadedVersion: '0.36.0',
@@ -177,6 +177,8 @@ test('applyDownloadedUpdate keeps downloaded state when launch succeeds', async 
   })
   assert.equal(useUpdateStore.getState().downloadedVersion, '0.36.0')
   assert.equal(useUpdateStore.getState().lastDownloadedTo, 'C:/tmp/Jelico-0.36.0.exe')
+  assert.equal(useUpdateStore.getState().dismissedApplyVersion, '0.36.0')
+  assert.equal(localStorage.getItem(APPLY_DISMISS_KEY), null)
 })
 
 test('applyDownloadedUpdate clears stale downloaded state when installer is missing', async () => {
@@ -242,6 +244,38 @@ test('checkForUpdates clears stale downloaded state after version advances', asy
     check: async () => ({
       currentVersion: '0.37.0',
       latestVersion: '0.37.0',
+      isUpdateAvailable: false,
+      releaseUrl: 'https://example.com/release',
+      publishedAt: '2026-03-04T00:00:00.000Z',
+      assets: [],
+      recommendedAsset: null,
+    }),
+  })
+
+  const result = await useUpdateStore.getState().checkForUpdates({ force: true })
+  assert.ok(result)
+  assert.equal(useUpdateStore.getState().downloadedVersion, null)
+  assert.equal(useUpdateStore.getState().lastDownloadedTo, null)
+  assert.equal(useUpdateStore.getState().dismissedApplyVersion, null)
+  assert.equal(localStorage.getItem(DOWNLOADED_VERSION_KEY), null)
+  assert.equal(localStorage.getItem(DOWNLOADED_PATH_KEY), null)
+  assert.equal(localStorage.getItem(APPLY_DISMISS_KEY), null)
+})
+
+test('checkForUpdates clears downloaded state after the downloaded version is installed', async () => {
+  useUpdateStore.setState({
+    downloadedVersion: '0.36.0',
+    lastDownloadedTo: 'C:/tmp/Jelico-0.36.0.exe',
+    dismissedApplyVersion: '0.36.0',
+  })
+  localStorage.setItem(DOWNLOADED_VERSION_KEY, '0.36.0')
+  localStorage.setItem(DOWNLOADED_PATH_KEY, 'C:/tmp/Jelico-0.36.0.exe')
+  localStorage.setItem(APPLY_DISMISS_KEY, '0.36.0')
+
+  setGlobalWindow({
+    check: async () => ({
+      currentVersion: '0.36.0',
+      latestVersion: '0.36.0',
       isUpdateAvailable: false,
       releaseUrl: 'https://example.com/release',
       publishedAt: '2026-03-04T00:00:00.000Z',
