@@ -140,7 +140,7 @@ export const useUpdateStore = create<UpdatesState>((set, get) => ({
 
     set({ error: null })
     try {
-      const result = await window.jelico.updates.applyDownloaded(lastDownloadedTo)
+      const result = await window.jelico.updates.applyDownloaded()
       if (!result.success) {
         set({ error: result.error || 'Failed to launch the downloaded update.' })
         return result

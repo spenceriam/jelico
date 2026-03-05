@@ -72,7 +72,7 @@ interface Window {
       getCurrentVersion: () => Promise<string>
       check: () => Promise<UpdateInfo>
       download: () => Promise<UpdateDownloadResult>
-      applyDownloaded: (filePath: string) => Promise<UpdateApplyResult>
+      applyDownloaded: () => Promise<UpdateApplyResult>
       openRelease: (url: string) => Promise<boolean>
       onDownloadProgress: (callback: (progress: UpdateDownloadProgress) => void) => () => void
     }

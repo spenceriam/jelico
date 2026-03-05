@@ -41,7 +41,7 @@ function setGlobalWindow(overrides: Partial<any> = {}) {
       recommendedAsset: null,
     }),
     download: async () => ({ savedTo: 'C:/tmp/Jelico-0.36.0.exe' }),
-    applyDownloaded: async (_filePath: string) => ({ success: true }),
+    applyDownloaded: async () => ({ success: true }),
     openRelease: async (_url: string) => true,
     onDownloadProgress: (_callback: (progress: any) => void) => () => {},
     ...overrides,
@@ -158,7 +158,7 @@ test('applyDownloadedUpdate persists apply-dismiss state when launch succeeds', 
   })
 
   setGlobalWindow({
-    applyDownloaded: async (_filePath: string) => ({
+    applyDownloaded: async () => ({
       success: true,
       launchedPath: 'C:/tmp/Jelico-0.36.0.exe',
     }),

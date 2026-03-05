@@ -18,8 +18,9 @@ test('metadata-first: reasoning models resolve from metadata (not name buckets)'
   assert.equal(profile.source, 'default')
   assert.equal(profile.profileId, 'metadata-reasoning-model')
   assert.equal(profile.toolUseGuidance, 'normal')
-  assert.equal(profile.reminderAggressiveness, 'normal')
-  assert.equal(profile.maxRetries, 2)
+  assert.equal(profile.reminderAggressiveness, 'high')
+  assert.equal(profile.maxRetries, 3)
+  assert.equal(profile.retryBaseDelayMs, 1200)
   assert.equal(profile.delegationStyle, 'balanced')
 })
 
@@ -35,10 +36,11 @@ test('metadata-first: non-tool-call models resolve from metadata', () => {
 
   assert.equal(profile.source, 'default')
   assert.equal(profile.profileId, 'metadata-no-tool-call')
-  assert.equal(profile.toolUseGuidance, 'normal')
-  assert.equal(profile.reminderAggressiveness, 'normal')
-  assert.equal(profile.maxRetries, 2)
-  assert.equal(profile.delegationStyle, 'balanced')
+  assert.equal(profile.toolUseGuidance, 'low')
+  assert.equal(profile.reminderAggressiveness, 'high')
+  assert.equal(profile.maxRetries, 1)
+  assert.equal(profile.retryBaseDelayMs, 700)
+  assert.equal(profile.delegationStyle, 'minimal')
 })
 
 test('fallback default remains neutral when metadata is unavailable', () => {

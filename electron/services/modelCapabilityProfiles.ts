@@ -73,6 +73,9 @@ function resolveDefaultProfile(
       return {
         profileId: 'metadata-reasoning-model',
         ...DEFAULT_PROFILE,
+        reminderAggressiveness: 'high',
+        maxRetries: 3,
+        retryBaseDelayMs: 1200,
       }
     }
 
@@ -80,6 +83,11 @@ function resolveDefaultProfile(
       return {
         profileId: 'metadata-no-tool-call',
         ...DEFAULT_PROFILE,
+        toolUseGuidance: 'low',
+        reminderAggressiveness: 'high',
+        maxRetries: 1,
+        retryBaseDelayMs: 700,
+        delegationStyle: 'minimal',
       }
     }
 

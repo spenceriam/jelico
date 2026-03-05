@@ -221,7 +221,7 @@ contextBridge.exposeInMainWorld('jelico', {
     getCurrentVersion: () => ipcRenderer.invoke('updates:currentVersion'),
     check: () => ipcRenderer.invoke('updates:check'),
     download: () => ipcRenderer.invoke('updates:download'),
-    applyDownloaded: (filePath: string) => ipcRenderer.invoke('updates:applyDownloaded', filePath),
+    applyDownloaded: () => ipcRenderer.invoke('updates:applyDownloaded'),
     openRelease: (url: string) => ipcRenderer.invoke('updates:openRelease', url),
     onDownloadProgress: (callback: (progress: any) => void) => {
       const handler = (_: any, progress: any) => callback(progress)

@@ -1611,7 +1611,7 @@ export const todoDb = {
     if (updates.dependencies !== undefined) todo.dependencies = Array.isArray(updates.dependencies) ? updates.dependencies : []
     if (updates.blocked_reason !== undefined) todo.blocked_reason = updates.blocked_reason
     if (updates.history !== undefined) todo.history = Array.isArray(updates.history) ? updates.history : []
-    if (updates.status !== undefined && updates.status !== previousStatus) {
+    if (updates.status !== undefined && updates.status !== previousStatus && updates.history === undefined) {
       todo.history = Array.isArray(todo.history) ? todo.history : []
       todo.history.push({
         status: updates.status,

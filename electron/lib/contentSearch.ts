@@ -128,7 +128,7 @@ async function searchWithRipgrep(options: {
       args.push('-g', normalized)
     }
 
-    args.push(options.pattern, '.')
+    args.push('--', options.pattern, '.')
 
     let buffer = ''
     const stderrParts: string[] = []

@@ -7,6 +7,7 @@ const OWNER = 'spenceriam'
 const REPO = 'jelico'
 const RELEASES_API_URL = `https://api.github.com/repos/${OWNER}/${REPO}/releases/latest`
 const USER_AGENT = 'Jelico'
+let lastDownloadedUpdatePath: string | null = null
 
 export interface UpdateAssetInfo {
   name: string
@@ -279,6 +280,7 @@ export async function downloadLatestUpdate(
 
   try {
     await downloadFile(updateInfo.recommendedAsset.url, result.filePath, onProgress)
+    lastDownloadedUpdatePath = result.filePath
     return { savedTo: result.filePath }
   } catch (error) {
     try {
@@ -290,14 +292,19 @@ export async function downloadLatestUpdate(
   }
 }
 
-export async function applyDownloadedUpdate(filePath: string): Promise<UpdateApplyResult> {
-  if (!filePath) {
+export function getDownloadedUpdatePath(): string | null {
+  return lastDownloadedUpdatePath
+}
+
+export async function applyDownloadedUpdate(filePath?: string): Promise<UpdateApplyResult> {
+  const resolvedPath = filePath || lastDownloadedUpdatePath
+  if (!resolvedPath) {
     return { success: false, error: 'No downloaded update file is available.' }
   }
 
   let fileStats: Awaited<ReturnType<typeof fs.stat>>
   try {
-    fileStats = await fs.stat(filePath)
+    fileStats = await fs.stat(resolvedPath)
   } catch {
     return { success: false, error: 'Downloaded update file no longer exists.' }
   }
@@ -307,20 +314,20 @@ export async function applyDownloadedUpdate(filePath: string): Promise<UpdateApp
   }
 
   // Best-effort Linux helper: AppImage often needs executable bit to launch.
-  if (process.platform === 'linux' && filePath.toLowerCase().endsWith('.appimage')) {
+  if (process.platform === 'linux' && resolvedPath.toLowerCase().endsWith('.appimage')) {
     try {
       if ((fileStats.mode & 0o111) === 0) {
-        await fs.chmod(filePath, fileStats.mode | 0o755)
+        await fs.chmod(resolvedPath, fileStats.mode | 0o755)
       }
     } catch {
       // Continue anyway; openPath may still succeed depending on permissions.
     }
   }
 
-  const openError = await shell.openPath(filePath)
+  const openError = await shell.openPath(resolvedPath)
   if (openError) {
     return { success: false, error: openError }
   }
 
-  return { success: true, launchedPath: filePath }
+  return { success: true, launchedPath: resolvedPath }
 }

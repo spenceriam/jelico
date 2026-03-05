@@ -24,7 +24,7 @@ export function registerUpdateHandlers() {
     return true
   })
 
-  ipcMain.handle('updates:applyDownloaded', async (_event, filePath: string) => {
-    return applyDownloadedUpdate(filePath)
+  ipcMain.handle('updates:applyDownloaded', async () => {
+    return applyDownloadedUpdate()
   })
 }
