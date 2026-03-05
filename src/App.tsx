@@ -87,6 +87,7 @@ export default function App() {
     downloadedVersion,
     dismissedAvailableVersion,
     dismissedApplyVersion,
+    error: updateError,
     startListening,
     loadCurrentVersion,
     checkForUpdates,
@@ -617,6 +618,11 @@ export default function App() {
                     </button>
                   )}
                 </div>
+                {updateError && (
+                  <div className="text-xs text-error bg-error/10 border border-error/30 rounded px-2 py-1">
+                    {updateError}
+                  </div>
+                )}
               </>
             ) : (
               <>
@@ -679,6 +685,11 @@ export default function App() {
                     Later
                   </button>
                 </div>
+                {updateError && (
+                  <div className="text-xs text-error bg-error/10 border border-error/30 rounded px-2 py-1">
+                    {updateError}
+                  </div>
+                )}
               </>
             )}
           </div>

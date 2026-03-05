@@ -124,7 +124,8 @@ export const useTodoStore = create<TodoState>((set, get) => ({
           existing.status !== todo.status ||
           (existing.owner || null) !== (todo.owner || null) ||
           JSON.stringify(existing.dependencies || []) !== JSON.stringify(todo.dependencies || []) ||
-          (existing.blockedReason || null) !== (todo.blockedReason || null)
+          (existing.blockedReason || null) !== (todo.blockedReason || null) ||
+          JSON.stringify(existing.history || []) !== JSON.stringify(todo.history || [])
         return {
           ...todo,
           createdAt: existing.createdAt,
