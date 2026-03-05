@@ -1709,7 +1709,6 @@ Keep tasks clear and concise. The user sees this as a progress tracker.`,
       })).describe('The complete task list'),
     }),
     execute: async ({ tasks }) => {
-      console.log('[AI] todo_write received:', JSON.stringify(tasks, null, 2))
       if (sendTodos) {
         const existingById = new Map((getTodos ? getTodos() : []).map((task) => [task.id, task]))
         const now = Date.now()
@@ -1742,7 +1741,6 @@ Keep tasks clear and concise. The user sees this as a progress tracker.`,
             history,
           }
         })
-        console.log('[AI] todo_write normalized:', JSON.stringify(normalizedTasks, null, 2))
         sendTodos(normalizedTasks)
       }
       const completed = tasks.filter(t => t.status === 'done').length

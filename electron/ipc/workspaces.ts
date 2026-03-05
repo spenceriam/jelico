@@ -2,10 +2,9 @@ import { ipcMain, dialog, BrowserWindow } from 'electron'
 import { workspaceDb, conversationDb } from '../services/database'
 import * as fs from 'fs'
 import * as path from 'path'
-import { exec, execFile } from 'child_process'
+import { execFile } from 'child_process'
 import { promisify } from 'util'
 
-const execAsync = promisify(exec)
 const execFileAsync = promisify(execFile)
 
 interface WorkspaceConfig {
@@ -72,16 +71,19 @@ async function isGitRepository(
   dirPath: string
 ): Promise<{ isGit: boolean; isWorktree?: boolean; projectPath?: string; branch?: string }> {
   try {
-    const { stdout: insideWorkTreeOut } = await execAsync('git rev-parse --is-inside-work-tree', { cwd: dirPath })
+    const { stdout: insideWorkTreeOut } = await execFileAsync('git', ['rev-parse', '--is-inside-work-tree'], {
+      cwd: dirPath,
+      windowsHide: true,
+    })
     if (insideWorkTreeOut.trim() !== 'true') {
       return { isGit: false, projectPath: dirPath }
     }
 
     const [{ stdout: branchOut }, { stdout: gitDirOut }, { stdout: gitCommonDirOut }, { stdout: topLevelOut }] = await Promise.all([
-      execAsync('git rev-parse --abbrev-ref HEAD', { cwd: dirPath }),
-      execAsync('git rev-parse --git-dir', { cwd: dirPath }),
-      execAsync('git rev-parse --git-common-dir', { cwd: dirPath }),
-      execAsync('git rev-parse --show-toplevel', { cwd: dirPath }),
+      execFileAsync('git', ['rev-parse', '--abbrev-ref', 'HEAD'], { cwd: dirPath, windowsHide: true }),
+      execFileAsync('git', ['rev-parse', '--git-dir'], { cwd: dirPath, windowsHide: true }),
+      execFileAsync('git', ['rev-parse', '--git-common-dir'], { cwd: dirPath, windowsHide: true }),
+      execFileAsync('git', ['rev-parse', '--show-toplevel'], { cwd: dirPath, windowsHide: true }),
     ])
 
     const resolvedGitDir = resolveGitPath(dirPath, gitDirOut.trim())
@@ -98,7 +100,10 @@ async function isGitRepository(
 // Git worktree helpers
 async function listWorktrees(repoPath: string): Promise<{ path: string; branch: string; isBare: boolean }[]> {
   try {
-    const { stdout } = await execAsync('git worktree list --porcelain', { cwd: repoPath })
+    const { stdout } = await execFileAsync('git', ['worktree', 'list', '--porcelain'], {
+      cwd: repoPath,
+      windowsHide: true,
+    })
     const worktrees: { path: string; branch: string; isBare: boolean }[] = []
     const lines = stdout.split('\n')
 
@@ -174,7 +179,10 @@ async function discoverAndUpsertWorktrees(workspaces: WorkspaceDbRow[]): Promise
 
 async function listBranches(repoPath: string): Promise<{ name: string; isRemote: boolean; isCurrent: boolean }[]> {
   try {
-    const { stdout } = await execAsync('git branch -a --format="%(HEAD) %(refname:short)"', { cwd: repoPath })
+    const { stdout } = await execFileAsync('git', ['branch', '-a', '--format=%(HEAD) %(refname:short)'], {
+      cwd: repoPath,
+      windowsHide: true,
+    })
     return stdout.split('\n').filter(Boolean).map(line => {
       const isCurrent = line.startsWith('*')
       const rawName = line.substring(2).trim()
