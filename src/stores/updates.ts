@@ -40,6 +40,7 @@ interface UpdatesState {
   currentVersion: string | null
   isChecking: boolean
   isDownloading: boolean
+  isApplying: boolean
   downloadProgress: UpdateDownloadProgress | null
   lastChecked: number | null
   lastDownloadedTo: string | null
@@ -61,6 +62,7 @@ export const useUpdateStore = create<UpdatesState>((set, get) => ({
   currentVersion: null,
   isChecking: false,
   isDownloading: false,
+  isApplying: false,
   downloadProgress: null,
   lastChecked: null,
   lastDownloadedTo: readStoredValue(DOWNLOADED_PATH_KEY),
@@ -146,13 +148,16 @@ export const useUpdateStore = create<UpdatesState>((set, get) => ({
   },
 
   applyDownloadedUpdate: async () => {
-    const { lastDownloadedTo } = get()
+    const { lastDownloadedTo, isApplying } = get()
+    if (isApplying) {
+      return null
+    }
     if (!lastDownloadedTo) {
       set({ error: 'No downloaded update file is available yet.' })
       return null
     }
 
-    set({ error: null })
+    set({ error: null, isApplying: true })
     try {
       const result = await window.jelico.updates.applyDownloaded()
       if (!result.success) {
@@ -188,6 +193,8 @@ export const useUpdateStore = create<UpdatesState>((set, get) => ({
         error: error instanceof Error ? error.message : 'Failed to launch the downloaded update.',
       })
       return null
+    } finally {
+      set({ isApplying: false })
     }
   },
 

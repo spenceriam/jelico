@@ -52,7 +52,10 @@ async function resolveWorktreeRemovalRepoPath(worktreePath: string, projectPath?
   }
 
   try {
-    const { stdout } = await execAsync('git rev-parse --git-common-dir', { cwd: worktreePath })
+    const { stdout } = await execFileAsync('git', ['rev-parse', '--git-common-dir'], {
+      cwd: worktreePath,
+      windowsHide: true,
+    })
     const resolvedCommonDir = resolveGitPath(worktreePath, stdout.trim())
     const repoRoot = path.dirname(resolvedCommonDir)
     if (workspacePathExists(repoRoot)) {

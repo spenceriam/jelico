@@ -101,7 +101,7 @@ async function searchWithRipgrep(options: {
   maxResults: number
   contextLines: number
   maxFileBytes: number
-}): Promise<{ matches: ContentSearchMatch[]; truncated: boolean } | null> {
+}): Promise<{ matches: ContentSearchMatch[]; truncated: boolean; scannedFiles: number } | null> {
   return new Promise((resolve) => {
     const args = [
       '--json',
@@ -132,6 +132,7 @@ async function searchWithRipgrep(options: {
 
     let buffer = ''
     const fileContext = new Map<string, Map<number, string>>()
+    const scannedPaths = new Set<string>()
     const rawMatches: Array<{ path: string; line: number; column: number }> = []
 
     const appendLineContext = (filePath: string, line: number, text: string) => {
@@ -161,6 +162,14 @@ async function searchWithRipgrep(options: {
       const type = parsed?.type
       const data = parsed?.data
       const filePath = data?.path?.text
+
+      if (type === 'begin') {
+        if (typeof filePath === 'string' && filePath.length > 0) {
+          scannedPaths.add(normalizeResultPath(filePath))
+        }
+        return
+      }
+
       const lineNumber = Number(data?.line_number || 0)
       const lineText = typeof data?.lines?.text === 'string' ? data.lines.text : ''
       if (!filePath || !lineNumber || !lineText) return
@@ -237,7 +246,7 @@ async function searchWithRipgrep(options: {
         return
       }
 
-      resolve({ matches, truncated })
+      resolve({ matches, truncated, scannedFiles: scannedPaths.size })
     })
   })
 }
@@ -346,7 +355,7 @@ export async function searchFileContents(options: ContentSearchOptions): Promise
     if (ripgrepResult) {
       return {
         matches: ripgrepResult.matches,
-        scannedFiles,
+        scannedFiles: ripgrepResult.scannedFiles > 0 ? ripgrepResult.scannedFiles : scannedFiles,
         truncated: ripgrepResult.truncated,
       }
     }

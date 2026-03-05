@@ -81,6 +81,7 @@ export default function App() {
   const {
     info: updateInfo,
     isDownloading: isUpdateDownloading,
+    isApplying: isUpdateApplying,
     downloadProgress: updateDownloadProgress,
     lastDownloadedTo,
     downloadedVersion,
@@ -464,6 +465,7 @@ export default function App() {
   }
 
   const handleApplyNow = async () => {
+    if (isUpdateApplying) return
     await applyDownloadedUpdate()
   }
 
@@ -593,10 +595,11 @@ export default function App() {
                 <div className="flex flex-wrap gap-2">
                   <button
                     onClick={handleApplyNow}
-                    className="flex items-center gap-2 px-3 py-2 rounded-lg bg-accent text-black hover:bg-accent-bright transition-colors"
+                    disabled={isUpdateApplying}
+                    className="flex items-center gap-2 px-3 py-2 rounded-lg bg-accent text-black hover:bg-accent-bright transition-colors disabled:opacity-50"
                   >
-                    <RefreshCw className="w-4 h-4" />
-                    Apply now
+                    <RefreshCw className={`w-4 h-4 ${isUpdateApplying ? 'animate-spin' : ''}`} />
+                    {isUpdateApplying ? 'Applying...' : 'Apply now'}
                   </button>
                   <button
                     onClick={() => dismissApplyPrompt(downloadedVersion || latestAvailableVersion || null)}
