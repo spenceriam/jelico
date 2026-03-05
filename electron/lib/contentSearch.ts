@@ -131,7 +131,6 @@ async function searchWithRipgrep(options: {
     args.push('--', options.pattern, '.')
 
     let buffer = ''
-    const stderrParts: string[] = []
     const fileContext = new Map<string, Map<number, string>>()
     const rawMatches: Array<{ path: string; line: number; column: number }> = []
 
@@ -198,10 +197,6 @@ async function searchWithRipgrep(options: {
       }
     })
 
-    child.stderr.on('data', (chunk: Buffer | string) => {
-      stderrParts.push(chunk.toString())
-    })
-
     child.on('error', () => {
       resolve(null)
     })
@@ -237,7 +232,7 @@ async function searchWithRipgrep(options: {
         }
       })
 
-      if (code === 2 && matches.length === 0 && stderrParts.join('').trim()) {
+      if (code === 2 && matches.length === 0) {
         resolve(null)
         return
       }

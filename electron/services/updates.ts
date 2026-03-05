@@ -46,6 +46,11 @@ async function persistDownloadedUpdatePath(filePath: string | null): Promise<voi
   }
 }
 
+async function clearDownloadedUpdatePathState(): Promise<void> {
+  lastDownloadedUpdatePath = null
+  await persistDownloadedUpdatePath(null)
+}
+
 let lastDownloadedUpdatePath: string | null = readPersistedDownloadedUpdatePath()
 
 export interface UpdateAssetInfo {
@@ -351,10 +356,12 @@ export async function applyDownloadedUpdate(filePath?: string): Promise<UpdateAp
   try {
     fileStats = await fs.stat(resolvedPath)
   } catch {
+    await clearDownloadedUpdatePathState()
     return { success: false, error: 'Downloaded update file no longer exists.' }
   }
 
   if (!fileStats.isFile()) {
+    await clearDownloadedUpdatePathState()
     return { success: false, error: 'Downloaded update target is not a file.' }
   }
 
@@ -374,7 +381,6 @@ export async function applyDownloadedUpdate(filePath?: string): Promise<UpdateAp
     return { success: false, error: openError }
   }
 
-  lastDownloadedUpdatePath = null
-  await persistDownloadedUpdatePath(null)
+  await clearDownloadedUpdatePathState()
   return { success: true, launchedPath: resolvedPath }
 }

@@ -2,10 +2,11 @@ import { ipcMain, dialog, BrowserWindow } from 'electron'
 import { workspaceDb, conversationDb } from '../services/database'
 import * as fs from 'fs'
 import * as path from 'path'
-import { exec } from 'child_process'
+import { exec, execFile } from 'child_process'
 import { promisify } from 'util'
 
 const execAsync = promisify(exec)
+const execFileAsync = promisify(execFile)
 
 interface WorkspaceConfig {
   id: string
@@ -205,6 +206,10 @@ async function getPreferredWorktreeBaseRef(repoPath: string): Promise<string | n
   return null
 }
 
+async function execGit(repoPath: string, args: string[]): Promise<void> {
+  await execFileAsync('git', args, { cwd: repoPath, windowsHide: true })
+}
+
 async function createWorktree(repoPath: string, branch: string, targetPath: string): Promise<boolean> {
   try {
     // Check if local or remote branch exists
@@ -214,17 +219,17 @@ async function createWorktree(repoPath: string, branch: string, targetPath: stri
 
     if (localBranchExists) {
       // Use existing local branch
-      await execAsync(`git worktree add "${targetPath}" "${branch}"`, { cwd: repoPath })
+      await execGit(repoPath, ['worktree', 'add', targetPath, branch])
     } else if (remoteBranchExists) {
       // Create local branch that tracks the remote branch.
-      await execAsync(`git worktree add -b "${branch}" "${targetPath}" "origin/${branch}"`, { cwd: repoPath })
+      await execGit(repoPath, ['worktree', 'add', '-b', branch, targetPath, `origin/${branch}`])
     } else {
       // Create a new branch from main/master when available; otherwise fallback to current HEAD.
       const preferredBaseRef = await getPreferredWorktreeBaseRef(repoPath)
       if (preferredBaseRef) {
-        await execAsync(`git worktree add -b "${branch}" "${targetPath}" "${preferredBaseRef}"`, { cwd: repoPath })
+        await execGit(repoPath, ['worktree', 'add', '-b', branch, targetPath, preferredBaseRef])
       } else {
-        await execAsync(`git worktree add -b "${branch}" "${targetPath}"`, { cwd: repoPath })
+        await execGit(repoPath, ['worktree', 'add', '-b', branch, targetPath])
       }
     }
     return true
@@ -236,7 +241,7 @@ async function createWorktree(repoPath: string, branch: string, targetPath: stri
 
 async function removeWorktree(repoPath: string, worktreePath: string): Promise<boolean> {
   try {
-    await execAsync(`git worktree remove "${worktreePath}" --force`, { cwd: repoPath })
+    await execGit(repoPath, ['worktree', 'remove', worktreePath, '--force'])
     return true
   } catch {
     return false

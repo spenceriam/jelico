@@ -436,20 +436,21 @@ export default function App() {
   // Hide header when in new chat view (no conversation or empty conversation)
   const showNewChatUI = !activeConversationId || (messages.length === 0 && !isStreaming)
   const latestAvailableVersion = updateInfo?.isUpdateAvailable ? updateInfo.latestVersion : null
-  const hasDownloadedCurrentUpdate = Boolean(
+  const hasDownloadedUpdate = Boolean(downloadedVersion && lastDownloadedTo)
+  const downloadedMatchesLatest = Boolean(
     latestAvailableVersion &&
     downloadedVersion &&
-    downloadedVersion === latestAvailableVersion &&
-    lastDownloadedTo
+    downloadedVersion === latestAvailableVersion
   )
   const showApplyBanner = Boolean(
-    hasDownloadedCurrentUpdate &&
+    hasDownloadedUpdate &&
+    (!latestAvailableVersion || downloadedMatchesLatest) &&
     downloadedVersion &&
     dismissedApplyVersion !== downloadedVersion
   )
   const showAvailableBanner = Boolean(
     latestAvailableVersion &&
-    !hasDownloadedCurrentUpdate &&
+    !downloadedMatchesLatest &&
     dismissedAvailableVersion !== latestAvailableVersion
   )
 
