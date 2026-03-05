@@ -48,6 +48,7 @@ async function persistDownloadedUpdatePath(filePath: string | null): Promise<voi
 
 async function clearDownloadedUpdatePathState(): Promise<void> {
   lastDownloadedUpdatePath = null
+  downloadedUpdatePathLoadPromise = null
   hasLoadedDownloadedUpdatePath = true
   await persistDownloadedUpdatePath(null)
 }
@@ -58,6 +59,7 @@ export async function clearDownloadedUpdateState(): Promise<void> {
 
 let lastDownloadedUpdatePath: string | null = null
 let hasLoadedDownloadedUpdatePath = false
+let downloadedUpdatePathLoadPromise: Promise<string | null> | null = null
 
 export interface UpdateAssetInfo {
   name: string
@@ -345,14 +347,22 @@ export async function downloadLatestUpdate(
 
 async function getDownloadedUpdatePath(): Promise<string | null> {
   if (lastDownloadedUpdatePath) return lastDownloadedUpdatePath
-  if (!hasLoadedDownloadedUpdatePath) {
-    hasLoadedDownloadedUpdatePath = true
-    const persisted = await readPersistedDownloadedUpdatePath()
-    if (persisted) {
-      lastDownloadedUpdatePath = persisted
-    }
+  if (hasLoadedDownloadedUpdatePath) return null
+
+  if (!downloadedUpdatePathLoadPromise) {
+    downloadedUpdatePathLoadPromise = (async () => {
+      const persisted = await readPersistedDownloadedUpdatePath()
+      if (persisted) {
+        lastDownloadedUpdatePath = persisted
+      }
+      hasLoadedDownloadedUpdatePath = true
+      return lastDownloadedUpdatePath
+    })().finally(() => {
+      downloadedUpdatePathLoadPromise = null
+    })
   }
-  return lastDownloadedUpdatePath
+
+  return downloadedUpdatePathLoadPromise
 }
 
 export async function applyDownloadedUpdate(): Promise<UpdateApplyResult> {

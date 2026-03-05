@@ -1,6 +1,19 @@
-import { useEffect } from 'react'
+import { useEffect, useRef } from 'react'
 import { AlertCircle, X } from 'lucide-react'
 import { useDecisionPromptStore, type DecisionPromptOption } from '../../stores/decisionPrompt'
+
+function getFocusableElements(container: HTMLElement | null): HTMLElement[] {
+  if (!container) return []
+
+  return Array.from(
+    container.querySelectorAll<HTMLElement>(
+      'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
+    )
+  ).filter((element) => {
+    const style = window.getComputedStyle(element)
+    return style.display !== 'none' && style.visibility !== 'hidden'
+  })
+}
 
 function getButtonClasses(option: DecisionPromptOption, isDefault: boolean): string {
   if (option.variant === 'danger') {
@@ -16,21 +29,87 @@ function getButtonClasses(option: DecisionPromptOption, isDefault: boolean): str
 
 export function DecisionPromptDialog() {
   const { activeRequest, choose, cancel } = useDecisionPromptStore()
+  const dialogRef = useRef<HTMLDivElement | null>(null)
+  const defaultActionRef = useRef<HTMLButtonElement | null>(null)
 
   useEffect(() => {
     if (!activeRequest) return
 
+    const focusDefaultAction = () => {
+      const dialog = dialogRef.current
+      const fallbackFocusTarget = defaultActionRef.current || getFocusableElements(dialog)[0] || dialog
+      fallbackFocusTarget?.focus()
+    }
+
+    const previouslyFocused =
+      document.activeElement instanceof HTMLElement ? document.activeElement : null
+
+    const rafId = window.requestAnimationFrame(() => {
+      focusDefaultAction()
+    })
+
     const handleKeyDown = (event: KeyboardEvent) => {
+      const dialog = dialogRef.current
+      if (!dialog) return
+
       if (event.key === 'Escape') {
         event.preventDefault()
         event.stopPropagation()
         event.stopImmediatePropagation()
         cancel()
+        return
+      }
+
+      const focusable = getFocusableElements(dialog)
+      const activeElement = document.activeElement instanceof HTMLElement ? document.activeElement : null
+      const focusInsideDialog = Boolean(activeElement && dialog.contains(activeElement))
+
+      if (event.key === 'Tab') {
+        event.preventDefault()
+        event.stopPropagation()
+        event.stopImmediatePropagation()
+
+        if (focusable.length === 0) {
+          dialog.focus()
+          return
+        }
+
+        const currentIndex = activeElement ? focusable.indexOf(activeElement) : -1
+        const direction = event.shiftKey ? -1 : 1
+        const nextIndex = currentIndex < 0
+          ? 0
+          : (currentIndex + direction + focusable.length) % focusable.length
+
+        focusable[nextIndex]?.focus()
+        return
+      }
+
+      if (!focusInsideDialog && (event.key === 'Enter' || event.key === ' ')) {
+        event.preventDefault()
+        event.stopPropagation()
+        event.stopImmediatePropagation()
+        focusDefaultAction()
       }
     }
 
-    window.addEventListener('keydown', handleKeyDown)
-    return () => window.removeEventListener('keydown', handleKeyDown)
+    const handleFocusIn = (event: FocusEvent) => {
+      const dialog = dialogRef.current
+      const target = event.target
+      if (!dialog || !(target instanceof Node)) return
+      if (!dialog.contains(target)) {
+        focusDefaultAction()
+      }
+    }
+
+    window.addEventListener('keydown', handleKeyDown, true)
+    document.addEventListener('focusin', handleFocusIn, true)
+
+    return () => {
+      window.cancelAnimationFrame(rafId)
+      window.removeEventListener('keydown', handleKeyDown, true)
+      document.removeEventListener('focusin', handleFocusIn, true)
+      previouslyFocused?.focus()
+    }
   }, [activeRequest, cancel])
 
   if (!activeRequest) return null
@@ -44,6 +123,11 @@ export function DecisionPromptDialog() {
       onClick={cancel}
     >
       <div
+        ref={dialogRef}
+        tabIndex={-1}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="decision-prompt-title"
         className="bg-bg-surface border border-border rounded-xl shadow-xl max-w-xl w-full mx-4 overflow-hidden"
         onClick={(event) => event.stopPropagation()}
       >
@@ -53,7 +137,9 @@ export function DecisionPromptDialog() {
               <AlertCircle className="w-5 h-5 text-accent" />
             </div>
             <div>
-              <h3 className="text-lg font-semibold text-text-primary">{activeRequest.title}</h3>
+              <h3 id="decision-prompt-title" className="text-lg font-semibold text-text-primary">
+                {activeRequest.title}
+              </h3>
               <p className="text-sm text-text-secondary mt-1">{activeRequest.message}</p>
             </div>
           </div>
@@ -76,6 +162,7 @@ export function DecisionPromptDialog() {
           {activeRequest.options.map((option) => (
             <button
               key={option.value}
+              ref={option.value === defaultValue ? defaultActionRef : null}
               onClick={() => choose(option.value)}
               className={getButtonClasses(option, option.value === defaultValue)}
             >
