@@ -3806,21 +3806,25 @@ export function registerAIHandlers() {
 
       const now = Date.now()
       const statusChanged = existing.status !== latestUpdate.taskStatus
+      const nextBlockedReason = latestUpdate.blockedReason !== undefined
+        ? latestUpdate.blockedReason
+        : (existing.blockedReason ?? null)
+      const blockedReasonChanged = Object.is(existing.blockedReason ?? null, nextBlockedReason) === false
       const updatedTodos = currentTodos.map((task) => (
         task.id === latestUpdate.taskId
           ? {
               ...task,
               status: latestUpdate.taskStatus as TodoTask['status'],
               owner: latestUpdate.owner || task.owner || null,
-              blockedReason: latestUpdate.blockedReason ?? task.blockedReason ?? null,
-              history: statusChanged
+              blockedReason: nextBlockedReason,
+              history: (statusChanged || blockedReasonChanged)
                 ? [
                     ...(task.history || []),
                     {
                       status: latestUpdate.taskStatus as TodoTask['status'],
                       at: now,
                       actor: latestUpdate.owner || `agent:${agentId}`,
-                      note: latestUpdate.blockedReason,
+                      note: nextBlockedReason,
                     },
                   ]
                 : (task.history || []),
@@ -3988,7 +3992,10 @@ When the user asks to modify, update, fix, or improve an existing artifact, use 
         systemPrompt += contextualKnowledge
       }
 
-      systemPrompt += `\n\n${buildModelCapabilityProfilePrompt(modelCapabilityProfile)}`
+      const modelCapabilityPrompt = buildModelCapabilityProfilePrompt(modelCapabilityProfile)
+      if (modelCapabilityPrompt) {
+        systemPrompt += `\n\n${modelCapabilityPrompt}`
+      }
 
       // Add tool step limit awareness
       systemPrompt += `\n\n## Tool Step Limits

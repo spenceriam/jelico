@@ -73,6 +73,7 @@ interface Window {
       check: () => Promise<UpdateInfo>
       download: () => Promise<UpdateDownloadResult>
       applyDownloaded: () => Promise<UpdateApplyResult>
+      clearDownloadedState: () => Promise<boolean>
       openRelease: (url: string) => Promise<boolean>
       onDownloadProgress: (callback: (progress: UpdateDownloadProgress) => void) => () => void
     }

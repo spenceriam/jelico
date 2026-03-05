@@ -73,6 +73,33 @@ function shouldClearDownloadedStateAfterVersionAdvance(
   return compareSemver(currentVersion, downloadedVersion) > 0
 }
 
+function shouldRestoreApplyPromptAfterStartup(
+  currentVersion: string | null | undefined,
+  downloadedVersion: string | null | undefined,
+  versionMarker: string | null | undefined
+): boolean {
+  return Boolean(
+    currentVersion &&
+    downloadedVersion &&
+    versionMarker &&
+    versionMarker === downloadedVersion &&
+    compareSemver(currentVersion, downloadedVersion) < 0
+  )
+}
+
+async function clearPersistedDownloadedState() {
+  writeStoredValue(DOWNLOADED_PATH_KEY, null)
+  writeStoredValue(DOWNLOADED_VERSION_KEY, null)
+  writeStoredValue(APPLY_DISMISS_KEY, null)
+  writeStoredValue(APPLY_LAUNCHED_KEY, null)
+
+  try {
+    await window.jelico.updates.clearDownloadedState()
+  } catch {
+    // Best-effort main-process cleanup; renderer state still controls banner visibility.
+  }
+}
+
 interface UpdatesState {
   info: UpdateInfo | null
   currentVersion: string | null
@@ -114,7 +141,52 @@ export const useUpdateStore = create<UpdatesState>((set, get) => ({
   loadCurrentVersion: async () => {
     try {
       const version = await window.jelico.updates.getCurrentVersion()
-      set({ currentVersion: version })
+      const {
+        downloadedVersion,
+        dismissedApplyVersion,
+        launchedApplyVersion,
+      } = get()
+      const shouldClearDownloadedState = Boolean(
+        downloadedVersion &&
+        version &&
+        compareSemver(version, downloadedVersion) >= 0
+      )
+      const shouldRestoreDismissedApplyPrompt = shouldRestoreApplyPromptAfterStartup(
+        version,
+        downloadedVersion,
+        dismissedApplyVersion
+      )
+      const shouldRestoreLaunchedApplyPrompt = shouldRestoreApplyPromptAfterStartup(
+        version,
+        downloadedVersion,
+        launchedApplyVersion
+      )
+
+      if (shouldClearDownloadedState) {
+        await clearPersistedDownloadedState()
+      } else {
+        if (shouldRestoreDismissedApplyPrompt) {
+          writeStoredValue(APPLY_DISMISS_KEY, null)
+        }
+        if (shouldRestoreLaunchedApplyPrompt) {
+          writeStoredValue(APPLY_LAUNCHED_KEY, null)
+        }
+      }
+
+      set({
+        currentVersion: version,
+        ...(shouldClearDownloadedState
+          ? {
+              lastDownloadedTo: null,
+              downloadedVersion: null,
+              dismissedApplyVersion: null,
+              launchedApplyVersion: null,
+            }
+          : {
+              ...(shouldRestoreDismissedApplyPrompt ? { dismissedApplyVersion: null } : {}),
+              ...(shouldRestoreLaunchedApplyPrompt ? { launchedApplyVersion: null } : {}),
+            }),
+      })
       return version
     } catch {
       return null
@@ -145,19 +217,18 @@ export const useUpdateStore = create<UpdatesState>((set, get) => ({
         downloadedVersion,
         info.isUpdateAvailable
       )
-      const shouldRestoreApplyPromptAfterRestart = Boolean(
-        launchedApplyVersion &&
-        downloadedVersion &&
-        launchedApplyVersion === downloadedVersion &&
-        compareSemver(info.currentVersion, downloadedVersion) < 0
+      const shouldRestoreLaunchedApplyPrompt = Boolean(
+        !silent &&
+        shouldRestoreApplyPromptAfterStartup(
+          info.currentVersion,
+          downloadedVersion,
+          launchedApplyVersion
+        )
       )
 
       if (shouldClearDownloadedState) {
-        writeStoredValue(DOWNLOADED_PATH_KEY, null)
-        writeStoredValue(DOWNLOADED_VERSION_KEY, null)
-        writeStoredValue(APPLY_DISMISS_KEY, null)
-        writeStoredValue(APPLY_LAUNCHED_KEY, null)
-      } else if (shouldRestoreApplyPromptAfterRestart) {
+        await clearPersistedDownloadedState()
+      } else if (shouldRestoreLaunchedApplyPrompt) {
         writeStoredValue(APPLY_LAUNCHED_KEY, null)
       }
 
@@ -174,7 +245,7 @@ export const useUpdateStore = create<UpdatesState>((set, get) => ({
               dismissedApplyVersion: null,
               launchedApplyVersion: null,
             }
-          : shouldRestoreApplyPromptAfterRestart
+          : shouldRestoreLaunchedApplyPrompt
             ? { launchedApplyVersion: null }
             : {}),
       })
@@ -246,10 +317,7 @@ export const useUpdateStore = create<UpdatesState>((set, get) => ({
             : {}),
         })
         if (shouldClearDownloadedState) {
-          writeStoredValue(DOWNLOADED_PATH_KEY, null)
-          writeStoredValue(DOWNLOADED_VERSION_KEY, null)
-          writeStoredValue(APPLY_DISMISS_KEY, null)
-          writeStoredValue(APPLY_LAUNCHED_KEY, null)
+          await clearPersistedDownloadedState()
         }
 
         return result

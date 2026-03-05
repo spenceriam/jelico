@@ -52,6 +52,10 @@ async function clearDownloadedUpdatePathState(): Promise<void> {
   await persistDownloadedUpdatePath(null)
 }
 
+export async function clearDownloadedUpdateState(): Promise<void> {
+  await clearDownloadedUpdatePathState()
+}
+
 let lastDownloadedUpdatePath: string | null = null
 let hasLoadedDownloadedUpdatePath = false
 

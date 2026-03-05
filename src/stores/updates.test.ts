@@ -45,6 +45,7 @@ function setGlobalWindow(overrides: Partial<any> = {}) {
     }),
     download: async () => ({ savedTo: 'C:/tmp/Jelico-0.36.0.exe' }),
     applyDownloaded: async () => ({ success: true }),
+    clearDownloadedState: async () => true,
     openRelease: async (_url: string) => true,
     onDownloadProgress: (_callback: (progress: any) => void) => () => {},
     ...overrides,
@@ -372,4 +373,50 @@ test('checkForUpdates restores apply prompt after restart when launched installe
   assert.equal(localStorage.getItem(DOWNLOADED_VERSION_KEY), '0.36.0')
   assert.equal(localStorage.getItem(DOWNLOADED_PATH_KEY), 'C:/tmp/Jelico-0.36.0.exe')
   assert.equal(localStorage.getItem(APPLY_LAUNCHED_KEY), null)
+})
+
+test('loadCurrentVersion restores apply prompt offline after a canceled installer launch', async () => {
+  useUpdateStore.setState({
+    downloadedVersion: '0.36.0',
+    lastDownloadedTo: 'C:/tmp/Jelico-0.36.0.exe',
+    launchedApplyVersion: '0.36.0',
+  })
+  localStorage.setItem(DOWNLOADED_VERSION_KEY, '0.36.0')
+  localStorage.setItem(DOWNLOADED_PATH_KEY, 'C:/tmp/Jelico-0.36.0.exe')
+  localStorage.setItem(APPLY_LAUNCHED_KEY, '0.36.0')
+
+  setGlobalWindow({
+    getCurrentVersion: async () => '0.35.0',
+  })
+
+  const version = await useUpdateStore.getState().loadCurrentVersion()
+
+  assert.equal(version, '0.35.0')
+  assert.equal(useUpdateStore.getState().launchedApplyVersion, null)
+  assert.equal(useUpdateStore.getState().downloadedVersion, '0.36.0')
+  assert.equal(localStorage.getItem(APPLY_LAUNCHED_KEY), null)
+  assert.equal(localStorage.getItem(DOWNLOADED_VERSION_KEY), '0.36.0')
+})
+
+test('loadCurrentVersion restores a snoozed apply banner on app restart', async () => {
+  useUpdateStore.setState({
+    downloadedVersion: '0.36.0',
+    lastDownloadedTo: 'C:/tmp/Jelico-0.36.0.exe',
+    dismissedApplyVersion: '0.36.0',
+  })
+  localStorage.setItem(DOWNLOADED_VERSION_KEY, '0.36.0')
+  localStorage.setItem(DOWNLOADED_PATH_KEY, 'C:/tmp/Jelico-0.36.0.exe')
+  localStorage.setItem(APPLY_DISMISS_KEY, '0.36.0')
+
+  setGlobalWindow({
+    getCurrentVersion: async () => '0.35.0',
+  })
+
+  const version = await useUpdateStore.getState().loadCurrentVersion()
+
+  assert.equal(version, '0.35.0')
+  assert.equal(useUpdateStore.getState().dismissedApplyVersion, null)
+  assert.equal(useUpdateStore.getState().downloadedVersion, '0.36.0')
+  assert.equal(localStorage.getItem(APPLY_DISMISS_KEY), null)
+  assert.equal(localStorage.getItem(DOWNLOADED_VERSION_KEY), '0.36.0')
 })

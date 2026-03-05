@@ -127,10 +127,24 @@ test('provider override wildcard is fallback-only and does not shadow specific p
   assert.equal(profile.reminderAggressiveness, 'high')
 })
 
-test('prompt formatter includes profile metadata for runtime diagnostics', () => {
+test('prompt formatter omits neutral default profiles', () => {
   const profile = resolveModelCapabilityProfile({
     providerType: 'openai',
     modelId: 'gpt-4o',
+  })
+  const prompt = buildModelCapabilityProfilePrompt(profile)
+
+  assert.equal(prompt, '')
+})
+
+test('prompt formatter includes profile metadata for non-default guidance', () => {
+  const profile = resolveModelCapabilityProfile({
+    providerType: 'openai',
+    modelId: 'reasoning-model',
+    modelsDevMetadata: {
+      reasoning: true,
+      toolCall: true,
+    },
   })
   const prompt = buildModelCapabilityProfilePrompt(profile)
 

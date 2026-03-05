@@ -151,7 +151,22 @@ export function resolveModelCapabilityProfile(params: {
   }
 }
 
+function isNeutralDefaultProfile(profile: ModelCapabilityProfile): boolean {
+  return (
+    profile.source === 'default' &&
+    profile.toolUseGuidance === DEFAULT_PROFILE.toolUseGuidance &&
+    profile.reminderAggressiveness === DEFAULT_PROFILE.reminderAggressiveness &&
+    profile.maxRetries === DEFAULT_PROFILE.maxRetries &&
+    profile.retryBaseDelayMs === DEFAULT_PROFILE.retryBaseDelayMs &&
+    profile.delegationStyle === DEFAULT_PROFILE.delegationStyle
+  )
+}
+
 export function buildModelCapabilityProfilePrompt(profile: ModelCapabilityProfile): string {
+  if (isNeutralDefaultProfile(profile)) {
+    return ''
+  }
+
   const delegationLine = profile.delegationStyle === 'parallel-first'
     ? 'Prefer helper-agent delegation early for broad research and fan-out tasks.'
     : profile.delegationStyle === 'minimal'

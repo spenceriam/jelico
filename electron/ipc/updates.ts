@@ -1,5 +1,5 @@
 import { app, ipcMain, BrowserWindow, shell } from 'electron'
-import { applyDownloadedUpdate, checkForUpdates, downloadLatestUpdate } from '../services/updates'
+import { applyDownloadedUpdate, checkForUpdates, clearDownloadedUpdateState, downloadLatestUpdate } from '../services/updates'
 
 export function registerUpdateHandlers() {
   ipcMain.handle('updates:currentVersion', async () => {
@@ -26,5 +26,10 @@ export function registerUpdateHandlers() {
 
   ipcMain.handle('updates:applyDownloaded', async () => {
     return applyDownloadedUpdate()
+  })
+
+  ipcMain.handle('updates:clearDownloadedState', async () => {
+    await clearDownloadedUpdateState()
+    return true
   })
 }
