@@ -182,6 +182,33 @@ test('applyDownloadedUpdate persists apply-dismiss state when launch succeeds', 
   assert.equal(localStorage.getItem(DOWNLOADED_PATH_KEY), null)
 })
 
+test('applyDownloadedUpdate clears stale downloaded state when installer is missing', async () => {
+  useUpdateStore.setState({
+    lastDownloadedTo: 'C:/tmp/Jelico-0.36.0.exe',
+    downloadedVersion: '0.36.0',
+  })
+  localStorage.setItem(DOWNLOADED_PATH_KEY, 'C:/tmp/Jelico-0.36.0.exe')
+  localStorage.setItem(DOWNLOADED_VERSION_KEY, '0.36.0')
+
+  setGlobalWindow({
+    applyDownloaded: async () => ({
+      success: false,
+      error: 'Downloaded update file no longer exists.',
+    }),
+  })
+
+  const result = await useUpdateStore.getState().applyDownloadedUpdate()
+
+  assert.deepEqual(result, {
+    success: false,
+    error: 'Downloaded update file no longer exists.',
+  })
+  assert.equal(useUpdateStore.getState().lastDownloadedTo, null)
+  assert.equal(useUpdateStore.getState().downloadedVersion, null)
+  assert.equal(localStorage.getItem(DOWNLOADED_PATH_KEY), null)
+  assert.equal(localStorage.getItem(DOWNLOADED_VERSION_KEY), null)
+})
+
 test('silent check failures do not override an existing visible error', async () => {
   useUpdateStore.setState({ error: 'existing error' })
 

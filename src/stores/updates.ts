@@ -5,6 +5,15 @@ const APPLY_DISMISS_KEY = 'jelico:update:dismissed-apply-version'
 const DOWNLOADED_VERSION_KEY = 'jelico:update:downloaded-version'
 const DOWNLOADED_PATH_KEY = 'jelico:update:downloaded-path'
 
+function shouldClearDownloadedStateOnApplyError(errorMessage: string | null | undefined): boolean {
+  const normalized = (errorMessage || '').toLowerCase()
+  return (
+    normalized.includes('no downloaded update file') ||
+    normalized.includes('no longer exists') ||
+    normalized.includes('not a file')
+  )
+}
+
 function readStoredValue(key: string): string | null {
   try {
     const value = localStorage.getItem(key)
@@ -147,7 +156,20 @@ export const useUpdateStore = create<UpdatesState>((set, get) => ({
     try {
       const result = await window.jelico.updates.applyDownloaded()
       if (!result.success) {
-        set({ error: result.error || 'Failed to launch the downloaded update.' })
+        const resolvedError = result.error || 'Failed to launch the downloaded update.'
+        const shouldClearDownloadedState = shouldClearDownloadedStateOnApplyError(resolvedError)
+
+        set({
+          error: resolvedError,
+          ...(shouldClearDownloadedState
+            ? { lastDownloadedTo: null, downloadedVersion: null }
+            : {}),
+        })
+        if (shouldClearDownloadedState) {
+          writeStoredValue(DOWNLOADED_PATH_KEY, null)
+          writeStoredValue(DOWNLOADED_VERSION_KEY, null)
+        }
+
         return result
       }
 

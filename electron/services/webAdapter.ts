@@ -493,8 +493,12 @@ async function applyUniversalSearchFallback(query: string, primary: WebSearchRes
 }
 
 async function localFetchText(url: string, selector?: string): Promise<WebFetchResult> {
+  const controller = new AbortController()
+  const timeoutId = setTimeout(() => controller.abort(), 20_000)
+
   try {
     const response = await fetch(url, {
+      signal: controller.signal,
       headers: {
         'User-Agent': 'Mozilla/5.0 (compatible; Jelico/1.0; +https://github.com/spenceriam/jelico)',
         'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
@@ -526,12 +530,18 @@ async function localFetchText(url: string, selector?: string): Promise<WebFetchR
       backend: 'local_fetch',
     }
   } catch (error: any) {
+    const message = error?.name === 'AbortError'
+      ? 'Fetch timed out after 20 seconds.'
+      : (error?.message || String(error))
+
     return {
       success: false,
       url,
       backend: 'local_fetch',
-      error: error?.message || String(error),
+      error: message,
     }
+  } finally {
+    clearTimeout(timeoutId)
   }
 }
 
