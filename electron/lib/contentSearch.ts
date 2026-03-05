@@ -323,7 +323,7 @@ export async function searchFileContents(options: ContentSearchOptions): Promise
     cwd: options.rootDir,
     ignore: excludeGlobs,
     nodir: true,
-    dot: false,
+    dot: true,
   })
   const scannedFiles = files.length
 

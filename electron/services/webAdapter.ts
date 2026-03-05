@@ -2,7 +2,7 @@ import { generateText } from 'ai'
 import { createAnthropic } from '@ai-sdk/anthropic'
 import { createOpenAI } from '@ai-sdk/openai'
 import { createGoogleGenerativeAI } from '@ai-sdk/google'
-import { existsSync } from 'node:fs'
+import { access } from 'node:fs/promises'
 
 export interface WebProviderRuntime {
   providerType: WebProviderType
@@ -283,7 +283,7 @@ function parseAgentBrowserSearchPayload(payload: unknown): { blocked: boolean; i
   }
 }
 
-function resolveAgentBrowserExecutablePath(): string | undefined {
+async function resolveAgentBrowserExecutablePath(): Promise<string | undefined> {
   const platformCandidates =
     process.platform === 'win32'
       ? [
@@ -307,7 +307,12 @@ function resolveAgentBrowserExecutablePath(): string | undefined {
           ]
 
   for (const candidate of platformCandidates) {
-    if (existsSync(candidate)) return candidate
+    try {
+      await access(candidate)
+      return candidate
+    } catch {
+      // try next candidate
+    }
   }
 
   return undefined
@@ -353,7 +358,7 @@ async function searchWithAgentBrowser(query: string): Promise<WebSearchResult> {
   }
 
   const browser = new runtime.BrowserManager()
-  const executablePath = resolveAgentBrowserExecutablePath()
+  const executablePath = await resolveAgentBrowserExecutablePath()
 
   const runCommand = (action: string, payload: Record<string, unknown> = {}): Promise<AgentBrowserResponse> =>
     runtime.executeCommand(
@@ -473,10 +478,12 @@ async function applyUniversalSearchFallback(query: string, primary: WebSearchRes
   }
 
   if (primary.type === 'unsupported') {
-    return {
-      ...fallback,
-      backend: `${primary.backend}+${fallback.backend}`,
-    }
+    return fallback.success
+      ? {
+          ...fallback,
+          backend: `${primary.backend}+${fallback.backend}`,
+        }
+      : primary
   }
 
   return primary

@@ -398,7 +398,8 @@ export function ArchiveSettings() {
                             </button>
                           ) : (
                             <button
-                              onClick={() => {
+                              onClick={(event) => {
+                                event.stopPropagation()
                                 void handleRestoreConversation(conversation.id)
                               }}
                               disabled={isWorking}
@@ -410,7 +411,8 @@ export function ArchiveSettings() {
                           )}
 
                           <button
-                            onClick={() => {
+                            onClick={(event) => {
+                              event.stopPropagation()
                               void handlePermanentDeleteConversation(conversation.id)
                             }}
                             disabled={isWorking}
