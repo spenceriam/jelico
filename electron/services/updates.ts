@@ -7,7 +7,46 @@ const OWNER = 'spenceriam'
 const REPO = 'jelico'
 const RELEASES_API_URL = `https://api.github.com/repos/${OWNER}/${REPO}/releases/latest`
 const USER_AGENT = 'Jelico'
-let lastDownloadedUpdatePath: string | null = null
+const LAST_DOWNLOADED_UPDATE_STATE_FILE = 'last-downloaded-update.json'
+
+function getLastDownloadedUpdateStatePath(): string | null {
+  try {
+    return path.join(app.getPath('userData'), LAST_DOWNLOADED_UPDATE_STATE_FILE)
+  } catch {
+    return null
+  }
+}
+
+function readPersistedDownloadedUpdatePath(): string | null {
+  const statePath = getLastDownloadedUpdateStatePath()
+  if (!statePath) return null
+
+  try {
+    const raw = readFileSync(statePath, 'utf-8')
+    const parsed = JSON.parse(raw) as { path?: unknown } | null
+    const savedPath = typeof parsed?.path === 'string' ? parsed.path.trim() : ''
+    return savedPath.length > 0 ? savedPath : null
+  } catch {
+    return null
+  }
+}
+
+async function persistDownloadedUpdatePath(filePath: string | null): Promise<void> {
+  const statePath = getLastDownloadedUpdateStatePath()
+  if (!statePath) return
+
+  try {
+    if (filePath) {
+      await fs.writeFile(statePath, JSON.stringify({ path: filePath }), 'utf-8')
+    } else {
+      await fs.unlink(statePath)
+    }
+  } catch {
+    // Ignore persistence failures; in-memory tracking still works for current session.
+  }
+}
+
+let lastDownloadedUpdatePath: string | null = readPersistedDownloadedUpdatePath()
 
 export interface UpdateAssetInfo {
   name: string
@@ -281,6 +320,7 @@ export async function downloadLatestUpdate(
   try {
     await downloadFile(updateInfo.recommendedAsset.url, result.filePath, onProgress)
     lastDownloadedUpdatePath = result.filePath
+    await persistDownloadedUpdatePath(result.filePath)
     return { savedTo: result.filePath }
   } catch (error) {
     try {
@@ -293,11 +333,16 @@ export async function downloadLatestUpdate(
 }
 
 export function getDownloadedUpdatePath(): string | null {
-  return lastDownloadedUpdatePath
+  if (lastDownloadedUpdatePath) return lastDownloadedUpdatePath
+  const persisted = readPersistedDownloadedUpdatePath()
+  if (persisted) {
+    lastDownloadedUpdatePath = persisted
+  }
+  return persisted
 }
 
 export async function applyDownloadedUpdate(filePath?: string): Promise<UpdateApplyResult> {
-  const resolvedPath = filePath || lastDownloadedUpdatePath
+  const resolvedPath = filePath || getDownloadedUpdatePath()
   if (!resolvedPath) {
     return { success: false, error: 'No downloaded update file is available.' }
   }
@@ -329,5 +374,7 @@ export async function applyDownloadedUpdate(filePath?: string): Promise<UpdateAp
     return { success: false, error: openError }
   }
 
+  lastDownloadedUpdatePath = null
+  await persistDownloadedUpdatePath(null)
   return { success: true, launchedPath: resolvedPath }
 }
