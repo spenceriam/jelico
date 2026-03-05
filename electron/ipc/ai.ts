@@ -3986,10 +3986,6 @@ When the user asks to modify, update, fix, or improve an existing artifact, use 
       const contextualKnowledge = getContextualKnowledge(params.messages)
       if (contextualKnowledge) {
         systemPrompt += contextualKnowledge
-      } else {
-        systemPrompt += `\n\n## Context Injection Fallback
-No targeted docs matched this turn.
-If uncertainty remains, rely on tool descriptions and ask one concise clarifying question before high-impact actions.`
       }
 
       systemPrompt += `\n\n${buildModelCapabilityProfilePrompt(modelCapabilityProfile)}`

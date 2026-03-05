@@ -137,7 +137,7 @@ async function searchWithRipgrep(options: {
 
     let buffer = ''
     const fileContext = new Map<string, Map<number, string>>()
-    const scannedPaths = new Set<string>()
+    let scannedFiles = 0
     const rawMatches: Array<{ path: string; line: number; column: number }> = []
 
     const appendLineContext = (filePath: string, line: number, text: string) => {
@@ -168,9 +168,10 @@ async function searchWithRipgrep(options: {
       const data = parsed?.data
       const filePath = data?.path?.text
 
-      if (type === 'begin') {
-        if (typeof filePath === 'string' && filePath.length > 0) {
-          scannedPaths.add(normalizeResultPath(filePath))
+      if (type === 'summary') {
+        const searches = Number(data?.stats?.searches || 0)
+        if (Number.isFinite(searches) && searches >= 0) {
+          scannedFiles = searches
         }
         return
       }
@@ -224,7 +225,7 @@ async function searchWithRipgrep(options: {
         return
       }
 
-      const truncated = rawMatches.length > options.maxResults
+      const truncated = rawMatches.length >= options.maxResults
       const selected = rawMatches.slice(0, options.maxResults)
       const matches = selected.map((entry) => {
         const byLine = fileContext.get(entry.path)
@@ -251,7 +252,7 @@ async function searchWithRipgrep(options: {
         return
       }
 
-      resolve({ matches, truncated, scannedFiles: scannedPaths.size })
+      resolve({ matches, truncated, scannedFiles })
     })
   })
 }

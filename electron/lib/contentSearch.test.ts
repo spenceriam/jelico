@@ -88,6 +88,23 @@ test('searchFileContents enforces maxResults and truncates deterministically', a
   })
 })
 
+test('searchFileContents reports all scanned files even when nothing matches', async () => {
+  await withTempDir(async (dir) => {
+    await fs.writeFile(path.join(dir, 'a.txt'), 'alpha', 'utf-8')
+    await fs.writeFile(path.join(dir, 'b.txt'), 'beta', 'utf-8')
+    await fs.writeFile(path.join(dir, 'c.txt'), 'gamma', 'utf-8')
+
+    const result = await searchFileContents({
+      rootDir: dir,
+      pattern: 'zzz',
+    })
+
+    assert.equal(result.matches.length, 0)
+    assert.equal(result.scannedFiles, 3)
+    assert.equal(result.truncated, false)
+  })
+})
+
 test('searchFileContents skips binary-looking files', async () => {
   await withTempDir(async (dir) => {
     const binaryPayload = Buffer.from([0x00, 0x10, 0x20, 0x30, 0x41, 0x42])
@@ -99,6 +116,6 @@ test('searchFileContents skips binary-looking files', async () => {
     })
 
     assert.equal(result.matches.length, 0)
-    assert.equal(result.scannedFiles, 0)
+    assert.equal(result.scannedFiles, 1)
   })
 })
