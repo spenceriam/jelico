@@ -1738,7 +1738,10 @@ Keep tasks clear and concise. The user sees this as a progress tracker.`,
             : Array.isArray(previous?.history)
               ? [...previous.history]
               : []
-          if (previous && previous.status !== task.status) {
+          const latestHistoryStatus = history.length > 0
+            ? history[history.length - 1]?.status
+            : null
+          if (previous && previous.status !== task.status && latestHistoryStatus !== task.status) {
             history.push({
               status: task.status,
               at: now,
@@ -1894,16 +1897,16 @@ Returns validation result and updates the task status if valid.`,
     tools.spawn_agent = tool({
       description: `Spawn a research sub-agent to gather information in parallel.
 
-## What Sub-Agents Do (READ-ONLY RESEARCH IN EVERY MODE)
+## What Sub-Agents Do
 - Read files and summarize contents
 - Search codebases for patterns
 - Fetch and analyze web content
 - Gather information from multiple sources
 
-## What Sub-Agents DON'T Do
-- Create artifacts (YOU do this directly with create_artifact)
-- Write files
-- Execute commands
+## Capability Contract by Mode
+- Read-only modes (\`plan\`, \`explore\`, \`security-review\`): research only (no file writes or mutating commands)
+- Mutable modes (\`auto\`, \`execute\`, \`review\`, \`pr-review\`): may write files and run commands when needed by the task
+- Sub-agents can create artifacts when explicitly asked to produce one
 
 ## When to Use
 - Reading 3+ files → spawn agents to read in parallel

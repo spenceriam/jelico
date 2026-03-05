@@ -174,14 +174,14 @@ export const useUpdateStore = create<UpdatesState>((set, get) => ({
       }
 
       const dismissedVersion = get().downloadedVersion || get().info?.latestVersion || null
+      writeStoredValue(APPLY_DISMISS_KEY, dismissedVersion)
+      writeStoredValue(DOWNLOADED_PATH_KEY, null)
+      writeStoredValue(DOWNLOADED_VERSION_KEY, null)
       set({
         dismissedApplyVersion: dismissedVersion,
         lastDownloadedTo: null,
         downloadedVersion: null,
       })
-      writeStoredValue(APPLY_DISMISS_KEY, dismissedVersion)
-      writeStoredValue(DOWNLOADED_PATH_KEY, null)
-      writeStoredValue(DOWNLOADED_VERSION_KEY, null)
       return result
     } catch (error) {
       set({
