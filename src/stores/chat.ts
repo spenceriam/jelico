@@ -360,6 +360,7 @@ function createInlineToolProtocolFilter() {
     if (!chunk) return ''
 
     let input = carry + chunk
+    // Token markers are ASCII-only, so lowercasing preserves index alignment with `input`.
     const searchableInput = input.toLowerCase()
     carry = ''
     let output = ''

@@ -52,7 +52,7 @@ function clampDelay(value: number | undefined, fallback: number): number {
 
 function resolveDefaultProfile(
   providerType: string,
-  modelId: string,
+  _modelId: string,
   metadata?: ModelsDevCapabilityMetadata | null
 ): Omit<ModelCapabilityProfile, 'source'> {
   const normalizedProvider = providerType.toLowerCase()

@@ -868,15 +868,6 @@ const KNOWLEDGE_MATCHERS: KnowledgeMatch[] = [
   { keywords: /\b(read_file|write_file|execute_command|execute_script|web_search|tool)\b/i, category: 'capabilities', name: 'tools' },
 ]
 
-function isDocsGuideTurn(messages: Array<{ role: string; content: string }>): boolean {
-  const latestUserMessage = messages
-    .filter((message) => message.role === 'user')
-    .slice(-1)[0]
-
-  if (!latestUserMessage?.content) return false
-  return DOCS_GUIDE_QUERY_REGEX.test(latestUserMessage.content)
-}
-
 /**
  * Get relevant knowledge context based on the user's message.
  * Returns additional system prompt content to inject.
@@ -3818,6 +3809,7 @@ export function registerAIHandlers() {
       if (!existing) return
 
       const now = Date.now()
+      const statusChanged = existing.status !== latestUpdate.taskStatus
       const updatedTodos = currentTodos.map((task) => (
         task.id === latestUpdate.taskId
           ? {
@@ -3825,15 +3817,17 @@ export function registerAIHandlers() {
               status: latestUpdate.taskStatus as TodoTask['status'],
               owner: latestUpdate.owner || task.owner || null,
               blockedReason: latestUpdate.blockedReason ?? task.blockedReason ?? null,
-              history: [
-                ...(task.history || []),
-                {
-                  status: latestUpdate.taskStatus as TodoTask['status'],
-                  at: now,
-                  actor: latestUpdate.owner || `agent:${agentId}`,
-                  note: latestUpdate.blockedReason,
-                },
-              ],
+              history: statusChanged
+                ? [
+                    ...(task.history || []),
+                    {
+                      status: latestUpdate.taskStatus as TodoTask['status'],
+                      at: now,
+                      actor: latestUpdate.owner || `agent:${agentId}`,
+                      note: latestUpdate.blockedReason,
+                    },
+                  ]
+                : (task.history || []),
             }
           : task
       ))
@@ -3925,7 +3919,6 @@ export function registerAIHandlers() {
       // Get soul learnings (the core differentiator!)
       const soulLearnings = formatSoulForContext()
       const projectConversationContext = buildProjectConversationContext(params.conversationId)
-      const docsGuideTurn = isDocsGuideTurn(params.messages)
       const useLeanPromptDefault = process.env.JELICO_FULL_PROMPT !== '1'
       const providerProfileOverrides = ((providerConfig as any).capability_profiles || null) as Record<string, any> | null
       const modelsDevMetadata = lookupModelsDevModelMetadata(providerConfig.type, modelId)
@@ -3978,13 +3971,6 @@ The following artifacts exist in this conversation. You can reference them by ti
 ${artifactList}
 
 When the user asks to modify, update, fix, or improve an existing artifact, use the \`update_artifact\` tool with the artifact's ID instead of creating a new one.`
-      }
-
-      if (docsGuideTurn) {
-        const docsGuide = getCachedPrompt('capabilities', 'docs-guide')
-        if (docsGuide) {
-          systemPrompt += `\n\n## Docs Guide Helper\n${docsGuide}`
-        }
       }
 
       // Scan workspace for spec/planning documents and inject context
