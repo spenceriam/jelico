@@ -35,6 +35,19 @@ function writeStoredValue(key: string, value: string | null) {
   }
 }
 
+function shouldClearDownloadedStateAfterVersionAdvance(
+  currentVersion: string | null | undefined,
+  downloadedVersion: string | null | undefined,
+  isUpdateAvailable: boolean
+): boolean {
+  return Boolean(
+    downloadedVersion &&
+    currentVersion &&
+    !isUpdateAvailable &&
+    downloadedVersion !== currentVersion
+  )
+}
+
 interface UpdatesState {
   info: UpdateInfo | null
   currentVersion: string | null
@@ -98,12 +111,32 @@ export const useUpdateStore = create<UpdatesState>((set, get) => ({
     })
     try {
       const info = await window.jelico.updates.check()
+      const downloadedVersion = get().downloadedVersion
+      const shouldClearDownloadedState = shouldClearDownloadedStateAfterVersionAdvance(
+        info.currentVersion,
+        downloadedVersion,
+        info.isUpdateAvailable
+      )
+
+      if (shouldClearDownloadedState) {
+        writeStoredValue(DOWNLOADED_PATH_KEY, null)
+        writeStoredValue(DOWNLOADED_VERSION_KEY, null)
+        writeStoredValue(APPLY_DISMISS_KEY, null)
+      }
+
       set({
         info,
         currentVersion: info.currentVersion,
         isChecking: false,
         lastChecked: Date.now(),
         error: null,
+        ...(shouldClearDownloadedState
+          ? {
+              lastDownloadedTo: null,
+              downloadedVersion: null,
+              dismissedApplyVersion: null,
+            }
+          : {}),
       })
       return info
     } catch (error) {
@@ -177,16 +210,6 @@ export const useUpdateStore = create<UpdatesState>((set, get) => ({
 
         return result
       }
-
-      const dismissedVersion = get().downloadedVersion || get().info?.latestVersion || null
-      writeStoredValue(APPLY_DISMISS_KEY, dismissedVersion)
-      writeStoredValue(DOWNLOADED_PATH_KEY, null)
-      writeStoredValue(DOWNLOADED_VERSION_KEY, null)
-      set({
-        dismissedApplyVersion: dismissedVersion,
-        lastDownloadedTo: null,
-        downloadedVersion: null,
-      })
       return result
     } catch (error) {
       set({

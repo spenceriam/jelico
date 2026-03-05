@@ -168,7 +168,7 @@ export function ArchiveSettings() {
 
   const [archivedConversations, setArchivedConversations] = useState<ChatConversation[]>([])
   const [loading, setLoading] = useState(true)
-  const [workingConversationId, setWorkingConversationId] = useState<string | null>(null)
+  const [workingConversationIds, setWorkingConversationIds] = useState<string[]>([])
   const [selectedConversationId, setSelectedConversationId] = useState<string | null>(null)
   const [actionError, setActionError] = useState<string | null>(null)
 
@@ -209,7 +209,7 @@ export function ArchiveSettings() {
   }, [archivedConversations, selectedConversationId])
 
   const handleRestoreConversation = async (id: string) => {
-    setWorkingConversationId(id)
+    setWorkingConversationIds((prev) => (prev.includes(id) ? prev : [...prev, id]))
     setActionError(null)
     try {
       await window.jelico.conversations.restore(id)
@@ -219,7 +219,7 @@ export function ArchiveSettings() {
       console.error('Failed to restore conversation:', error)
       setActionError('Restore failed. Please try again.')
     } finally {
-      setWorkingConversationId(null)
+      setWorkingConversationIds((prev) => prev.filter((value) => value !== id))
     }
   }
 
@@ -238,7 +238,7 @@ export function ArchiveSettings() {
       return
     }
 
-    setWorkingConversationId(id)
+    setWorkingConversationIds((prev) => (prev.includes(id) ? prev : [...prev, id]))
     setActionError(null)
     try {
       await clearConversationArtifacts(id)
@@ -259,7 +259,7 @@ export function ArchiveSettings() {
       console.error('Failed to permanently delete archived conversation:', error)
       setActionError('Delete failed. Please try again.')
     } finally {
-      setWorkingConversationId(null)
+      setWorkingConversationIds((prev) => prev.filter((value) => value !== id))
     }
   }
 
@@ -347,7 +347,7 @@ export function ArchiveSettings() {
 
                   <div className="space-y-2">
                     {group.conversations.map((conversation) => {
-                      const isWorking = workingConversationId === conversation.id
+                      const isWorking = workingConversationIds.includes(conversation.id)
                       const isSelected = selectedConversationId === conversation.id
                       const workspace = conversation.workspaceId ? workspaceById.get(conversation.workspaceId) : null
                       const createdAge = formatRelativeAge(conversation.createdAt)

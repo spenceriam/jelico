@@ -17,12 +17,12 @@ function getLastDownloadedUpdateStatePath(): string | null {
   }
 }
 
-function readPersistedDownloadedUpdatePath(): string | null {
+async function readPersistedDownloadedUpdatePath(): Promise<string | null> {
   const statePath = getLastDownloadedUpdateStatePath()
   if (!statePath) return null
 
   try {
-    const raw = readFileSync(statePath, 'utf-8')
+    const raw = await fs.readFile(statePath, 'utf-8')
     const parsed = JSON.parse(raw) as { path?: unknown } | null
     const savedPath = typeof parsed?.path === 'string' ? parsed.path.trim() : ''
     return savedPath.length > 0 ? savedPath : null
@@ -48,10 +48,12 @@ async function persistDownloadedUpdatePath(filePath: string | null): Promise<voi
 
 async function clearDownloadedUpdatePathState(): Promise<void> {
   lastDownloadedUpdatePath = null
+  hasLoadedDownloadedUpdatePath = true
   await persistDownloadedUpdatePath(null)
 }
 
-let lastDownloadedUpdatePath: string | null = readPersistedDownloadedUpdatePath()
+let lastDownloadedUpdatePath: string | null = null
+let hasLoadedDownloadedUpdatePath = false
 
 export interface UpdateAssetInfo {
   name: string
@@ -337,17 +339,20 @@ export async function downloadLatestUpdate(
   }
 }
 
-export function getDownloadedUpdatePath(): string | null {
+async function getDownloadedUpdatePath(): Promise<string | null> {
   if (lastDownloadedUpdatePath) return lastDownloadedUpdatePath
-  const persisted = readPersistedDownloadedUpdatePath()
-  if (persisted) {
-    lastDownloadedUpdatePath = persisted
+  if (!hasLoadedDownloadedUpdatePath) {
+    hasLoadedDownloadedUpdatePath = true
+    const persisted = await readPersistedDownloadedUpdatePath()
+    if (persisted) {
+      lastDownloadedUpdatePath = persisted
+    }
   }
-  return persisted
+  return lastDownloadedUpdatePath
 }
 
 export async function applyDownloadedUpdate(filePath?: string): Promise<UpdateApplyResult> {
-  const resolvedPath = filePath || getDownloadedUpdatePath()
+  const resolvedPath = filePath || await getDownloadedUpdatePath()
   if (!resolvedPath) {
     return { success: false, error: 'No downloaded update file is available.' }
   }
@@ -381,6 +386,5 @@ export async function applyDownloadedUpdate(filePath?: string): Promise<UpdateAp
     return { success: false, error: openError }
   }
 
-  await clearDownloadedUpdatePathState()
   return { success: true, launchedPath: resolvedPath }
 }

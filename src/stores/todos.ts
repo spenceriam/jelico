@@ -84,6 +84,20 @@ function rowToTodo(row: any): TodoItem {
   }
 }
 
+function normalizeDependencies(value: string[] | undefined): string {
+  return JSON.stringify([...(value || [])].sort())
+}
+
+function hasHistoryChanged(
+  existingHistory: TodoHistoryEntry[] | undefined,
+  nextHistory: TodoHistoryEntry[] | undefined
+): boolean {
+  const existingLength = existingHistory?.length ?? 0
+  const nextLength = nextHistory?.length ?? 0
+  if (existingLength !== nextLength) return true
+  return JSON.stringify(existingHistory || []) !== JSON.stringify(nextHistory || [])
+}
+
 export const useTodoStore = create<TodoState>((set, get) => ({
   todos: [],
   isVisible: false,
@@ -123,9 +137,9 @@ export const useTodoStore = create<TodoState>((set, get) => ({
           existing.text !== todo.text ||
           existing.status !== todo.status ||
           (existing.owner || null) !== (todo.owner || null) ||
-          JSON.stringify(existing.dependencies || []) !== JSON.stringify(todo.dependencies || []) ||
+          normalizeDependencies(existing.dependencies) !== normalizeDependencies(todo.dependencies) ||
           (existing.blockedReason || null) !== (todo.blockedReason || null) ||
-          JSON.stringify(existing.history || []) !== JSON.stringify(todo.history || [])
+          hasHistoryChanged(existing.history, todo.history)
         return {
           ...todo,
           createdAt: existing.createdAt,
