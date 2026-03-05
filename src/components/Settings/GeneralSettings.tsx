@@ -49,6 +49,7 @@ export function GeneralSettings() {
     lastDownloadedTo,
     downloadedVersion,
     dismissedApplyVersion,
+    launchedApplyVersion,
     error,
     checkForUpdates,
     downloadUpdate,
@@ -58,7 +59,8 @@ export function GeneralSettings() {
   const canApplyDownloadedUpdate = Boolean(
     lastDownloadedTo &&
     downloadedVersion &&
-    dismissedApplyVersion !== downloadedVersion
+    dismissedApplyVersion !== downloadedVersion &&
+    launchedApplyVersion !== downloadedVersion
   )
   const versionStatus = (() => {
     if (!info) return null

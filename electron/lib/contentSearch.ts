@@ -111,12 +111,17 @@ async function searchWithRipgrep(options: {
       '--no-messages',
       '--max-filesize',
       String(options.maxFileBytes),
+      '--max-count',
+      String(options.maxResults),
     ]
 
     if (!options.caseSensitive) args.push('-i')
     if (options.multiline) {
       args.push('--multiline')
       args.push('--multiline-dotall')
+    }
+    if (options.contextLines > 0) {
+      args.push('-C', String(options.contextLines))
     }
 
     for (const include of options.includeGlobs) {
@@ -355,7 +360,7 @@ export async function searchFileContents(options: ContentSearchOptions): Promise
     if (ripgrepResult) {
       return {
         matches: ripgrepResult.matches,
-        scannedFiles: ripgrepResult.scannedFiles > 0 ? ripgrepResult.scannedFiles : scannedFiles,
+        scannedFiles: ripgrepResult.scannedFiles,
         truncated: ripgrepResult.truncated,
       }
     }

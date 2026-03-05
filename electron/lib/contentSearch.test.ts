@@ -40,6 +40,8 @@ test('searchFileContents returns structured matches with path/line/column/snippe
     assert.equal(result.matches[0].line, 2)
     assert.equal(result.matches[0].column, 4)
     assert.match(result.matches[0].snippet, /TODO/)
+    assert.match(result.matches[0].snippet, /const alpha = 1/)
+    assert.match(result.matches[0].snippet, /export const beta = alpha \+ 1/)
   })
 })
 
@@ -97,7 +99,6 @@ test('searchFileContents skips binary-looking files', async () => {
     })
 
     assert.equal(result.matches.length, 0)
-    assert.equal(result.scannedFiles, 1)
+    assert.equal(result.scannedFiles, 0)
   })
 })
-

@@ -87,6 +87,7 @@ export default function App() {
     downloadedVersion,
     dismissedAvailableVersion,
     dismissedApplyVersion,
+    launchedApplyVersion,
     error: updateError,
     startListening,
     loadCurrentVersion,
@@ -448,7 +449,8 @@ export default function App() {
     hasDownloadedUpdate &&
     (!latestAvailableVersion || downloadedMatchesLatest) &&
     downloadedVersion &&
-    dismissedApplyVersion !== downloadedVersion
+    dismissedApplyVersion !== downloadedVersion &&
+    launchedApplyVersion !== downloadedVersion
   )
   const showAvailableBanner = Boolean(
     latestAvailableVersion &&

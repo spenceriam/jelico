@@ -2,6 +2,7 @@ import { create } from 'zustand'
 
 const AVAILABLE_DISMISS_KEY = 'jelico:update:dismissed-available-version'
 const APPLY_DISMISS_KEY = 'jelico:update:dismissed-apply-version'
+const APPLY_LAUNCHED_KEY = 'jelico:update:launched-apply-version'
 const DOWNLOADED_VERSION_KEY = 'jelico:update:downloaded-version'
 const DOWNLOADED_PATH_KEY = 'jelico:update:downloaded-path'
 
@@ -84,6 +85,7 @@ interface UpdatesState {
   downloadedVersion: string | null
   dismissedAvailableVersion: string | null
   dismissedApplyVersion: string | null
+  launchedApplyVersion: string | null
   error: string | null
   loadCurrentVersion: () => Promise<string | null>
   checkForUpdates: (options?: { force?: boolean; silent?: boolean }) => Promise<UpdateInfo | null>
@@ -106,6 +108,7 @@ export const useUpdateStore = create<UpdatesState>((set, get) => ({
   downloadedVersion: readStoredValue(DOWNLOADED_VERSION_KEY),
   dismissedAvailableVersion: readStoredValue(AVAILABLE_DISMISS_KEY),
   dismissedApplyVersion: readStoredValue(APPLY_DISMISS_KEY),
+  launchedApplyVersion: readStoredValue(APPLY_LAUNCHED_KEY),
   error: null,
 
   loadCurrentVersion: async () => {
@@ -136,16 +139,26 @@ export const useUpdateStore = create<UpdatesState>((set, get) => ({
     try {
       const info = await window.jelico.updates.check()
       const downloadedVersion = get().downloadedVersion
+      const launchedApplyVersion = get().launchedApplyVersion
       const shouldClearDownloadedState = shouldClearDownloadedStateAfterVersionAdvance(
         info.currentVersion,
         downloadedVersion,
         info.isUpdateAvailable
+      )
+      const shouldRestoreApplyPromptAfterRestart = Boolean(
+        launchedApplyVersion &&
+        downloadedVersion &&
+        launchedApplyVersion === downloadedVersion &&
+        compareSemver(info.currentVersion, downloadedVersion) < 0
       )
 
       if (shouldClearDownloadedState) {
         writeStoredValue(DOWNLOADED_PATH_KEY, null)
         writeStoredValue(DOWNLOADED_VERSION_KEY, null)
         writeStoredValue(APPLY_DISMISS_KEY, null)
+        writeStoredValue(APPLY_LAUNCHED_KEY, null)
+      } else if (shouldRestoreApplyPromptAfterRestart) {
+        writeStoredValue(APPLY_LAUNCHED_KEY, null)
       }
 
       set({
@@ -159,8 +172,11 @@ export const useUpdateStore = create<UpdatesState>((set, get) => ({
               lastDownloadedTo: null,
               downloadedVersion: null,
               dismissedApplyVersion: null,
+              launchedApplyVersion: null,
             }
-          : {}),
+          : shouldRestoreApplyPromptAfterRestart
+            ? { launchedApplyVersion: null }
+            : {}),
       })
       return info
     } catch (error) {
@@ -183,6 +199,7 @@ export const useUpdateStore = create<UpdatesState>((set, get) => ({
       } else if (result?.savedTo) {
         const latestVersion = get().info?.latestVersion || null
         writeStoredValue(APPLY_DISMISS_KEY, null)
+        writeStoredValue(APPLY_LAUNCHED_KEY, null)
         writeStoredValue(DOWNLOADED_PATH_KEY, result.savedTo)
         writeStoredValue(DOWNLOADED_VERSION_KEY, latestVersion)
         writeStoredValue(AVAILABLE_DISMISS_KEY, latestVersion)
@@ -190,6 +207,7 @@ export const useUpdateStore = create<UpdatesState>((set, get) => ({
           lastDownloadedTo: result.savedTo,
           downloadedVersion: latestVersion,
           dismissedApplyVersion: null,
+          launchedApplyVersion: null,
           dismissedAvailableVersion: latestVersion,
         })
       }
@@ -224,20 +242,22 @@ export const useUpdateStore = create<UpdatesState>((set, get) => ({
         set({
           error: resolvedError,
           ...(shouldClearDownloadedState
-            ? { lastDownloadedTo: null, downloadedVersion: null, dismissedApplyVersion: null }
+            ? { lastDownloadedTo: null, downloadedVersion: null, dismissedApplyVersion: null, launchedApplyVersion: null }
             : {}),
         })
         if (shouldClearDownloadedState) {
           writeStoredValue(DOWNLOADED_PATH_KEY, null)
           writeStoredValue(DOWNLOADED_VERSION_KEY, null)
           writeStoredValue(APPLY_DISMISS_KEY, null)
+          writeStoredValue(APPLY_LAUNCHED_KEY, null)
         }
 
         return result
       }
       const launchedVersion = get().downloadedVersion ?? get().info?.latestVersion ?? null
+      writeStoredValue(APPLY_LAUNCHED_KEY, launchedVersion)
       set({
-        dismissedApplyVersion: launchedVersion,
+        launchedApplyVersion: launchedVersion,
       })
       return result
     } catch (error) {

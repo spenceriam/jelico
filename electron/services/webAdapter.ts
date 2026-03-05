@@ -463,8 +463,7 @@ async function searchWithAgentBrowser(query: string): Promise<WebSearchResult> {
 }
 
 function shouldUseUniversalFallback(primary: WebSearchResult): boolean {
-  if (!primary.success) return true
-  return primary.type === 'unsupported'
+  return primary.success && primary.type === 'unsupported'
 }
 
 async function applyUniversalSearchFallback(query: string, primary: WebSearchResult): Promise<WebSearchResult> {
