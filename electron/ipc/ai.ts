@@ -1729,10 +1729,8 @@ Keep tasks clear and concise. The user sees this as a progress tracker.`,
             : Array.isArray(previous?.history)
               ? [...previous.history]
               : []
-          const latestHistoryStatus = history.length > 0
-            ? history[history.length - 1]?.status
-            : null
-          if (previous && previous.status !== task.status && latestHistoryStatus !== task.status) {
+          const historyAlreadyContainsStatus = history.some((entry) => entry?.status === task.status)
+          if (previous && previous.status !== task.status && !historyAlreadyContainsStatus) {
             history.push({
               status: task.status,
               at: now,

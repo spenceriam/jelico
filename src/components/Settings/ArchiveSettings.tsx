@@ -170,6 +170,7 @@ export function ArchiveSettings() {
   const [loading, setLoading] = useState(true)
   const [workingConversationId, setWorkingConversationId] = useState<string | null>(null)
   const [selectedConversationId, setSelectedConversationId] = useState<string | null>(null)
+  const [actionError, setActionError] = useState<string | null>(null)
 
   const workspaceById = useMemo(
     () => new Map(workspaces.map((workspace) => [workspace.id, workspace])),
@@ -183,11 +184,13 @@ export function ArchiveSettings() {
 
   const loadArchivedConversations = async () => {
     setLoading(true)
+    setActionError(null)
     try {
       const archived = await window.jelico.conversations.listArchived()
       setArchivedConversations(archived)
     } catch (error) {
       console.error('Failed to load archived conversations:', error)
+      setActionError('Unable to load archived chats. Please try again.')
     } finally {
       setLoading(false)
     }
@@ -207,12 +210,14 @@ export function ArchiveSettings() {
 
   const handleRestoreConversation = async (id: string) => {
     setWorkingConversationId(id)
+    setActionError(null)
     try {
       await window.jelico.conversations.restore(id)
       await loadConversations()
       await loadArchivedConversations()
     } catch (error) {
       console.error('Failed to restore conversation:', error)
+      setActionError('Restore failed. Please try again.')
     } finally {
       setWorkingConversationId(null)
     }
@@ -234,6 +239,7 @@ export function ArchiveSettings() {
     }
 
     setWorkingConversationId(id)
+    setActionError(null)
     try {
       await clearConversationArtifacts(id)
       try {
@@ -251,6 +257,7 @@ export function ArchiveSettings() {
       await loadArchivedConversations()
     } catch (error) {
       console.error('Failed to permanently delete archived conversation:', error)
+      setActionError('Delete failed. Please try again.')
     } finally {
       setWorkingConversationId(null)
     }
@@ -300,6 +307,12 @@ export function ArchiveSettings() {
 
       <section>
         <h3 className="text-lg font-medium text-text-primary mb-3">Archived Chats</h3>
+
+        {actionError && (
+          <div className="mb-3 text-sm text-error bg-error/10 border border-error/30 rounded px-3 py-2">
+            {actionError}
+          </div>
+        )}
 
         {loading ? (
           <div className="text-sm text-text-muted">Loading archived chats...</div>
