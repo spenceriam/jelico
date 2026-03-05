@@ -81,7 +81,10 @@ interface Window {
       startDrag: (mouseScreenX: number, mouseScreenY: number) => Promise<{ success: boolean; error?: string }>
       updateDrag: (mouseScreenX: number, mouseScreenY: number) => Promise<{ success: boolean; error?: string }>
       endDrag: () => Promise<{ success: boolean; error?: string }>
-      captureArea: (rect: { x: number; y: number; width: number; height: number }) => Promise<{
+      captureArea: (
+        rect: { x: number; y: number; width: number; height: number },
+        options?: { copyToClipboard?: boolean }
+      ) => Promise<{
         success: boolean
         name?: string
         mimeType?: string

@@ -234,8 +234,14 @@ contextBridge.exposeInMainWorld('jelico', {
     startDrag: (mouseScreenX: number, mouseScreenY: number) => ipcRenderer.invoke('window:startDrag', mouseScreenX, mouseScreenY),
     updateDrag: (mouseScreenX: number, mouseScreenY: number) => ipcRenderer.invoke('window:updateDrag', mouseScreenX, mouseScreenY),
     endDrag: () => ipcRenderer.invoke('window:endDrag'),
-    captureArea: (rect: { x: number; y: number; width: number; height: number }) =>
-      ipcRenderer.invoke('window:captureArea', rect),
+    captureArea: (
+      rect: { x: number; y: number; width: number; height: number },
+      options?: { copyToClipboard?: boolean }
+    ) =>
+      ipcRenderer.invoke('window:captureArea', {
+        ...rect,
+        copyToClipboard: options?.copyToClipboard === true,
+      }),
   },
   ai: {
     stream: (params: any) => {

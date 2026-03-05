@@ -228,6 +228,8 @@ export function CanvasPanel() {
         y: Math.round(rect.top),
         width: Math.round(rect.width),
         height: Math.round(rect.height),
+      }, {
+        copyToClipboard: false,
       })
 
       if (!result.success || !result.data || !result.name || !result.mimeType) {

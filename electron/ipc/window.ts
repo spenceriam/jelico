@@ -71,21 +71,23 @@ export function registerWindowHandlers() {
     return { success: true }
   })
 
-  ipcMain.handle('window:captureArea', async (event, rect: {
+  ipcMain.handle('window:captureArea', async (event, request: {
     x: number
     y: number
     width: number
     height: number
+    copyToClipboard?: boolean
   }) => {
     const win = BrowserWindow.fromWebContents(event.sender)
     if (!win) {
       return { success: false, error: 'No window' }
     }
 
-    const width = Math.max(1, Math.floor(rect.width || 0))
-    const height = Math.max(1, Math.floor(rect.height || 0))
-    const x = Math.max(0, Math.floor(rect.x || 0))
-    const y = Math.max(0, Math.floor(rect.y || 0))
+    const width = Math.max(1, Math.floor(request.width || 0))
+    const height = Math.max(1, Math.floor(request.height || 0))
+    const x = Math.max(0, Math.floor(request.x || 0))
+    const y = Math.max(0, Math.floor(request.y || 0))
+    const copyToClipboard = request.copyToClipboard === true
 
     if (width <= 0 || height <= 0) {
       return { success: false, error: 'Invalid capture area' }
@@ -97,7 +99,9 @@ export function registerWindowHandlers() {
         return { success: false, error: 'Capture returned empty image' }
       }
 
-      clipboard.writeImage(image)
+      if (copyToClipboard) {
+        clipboard.writeImage(image)
+      }
       const pngBuffer = image.toPNG()
       const randomSuffix = Math.random().toString(36).slice(2, 8)
       const fileName = `Screenshot-${randomSuffix}.png`
