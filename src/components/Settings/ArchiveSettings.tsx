@@ -3,6 +3,7 @@ import { Archive, Undo2, Trash2, AlertTriangle, Folder, Box, GitBranch, GitFork,
 import { useChatStore } from '../../stores/chat'
 import { useWorkspaceStore, type Workspace } from '../../stores/workspaces'
 import { useArtifactStore } from '../../stores/artifacts'
+import { useDecisionPromptStore } from '../../stores/decisionPrompt'
 
 type ChatConversation = ReturnType<typeof useChatStore.getState>['conversations'][number]
 
@@ -224,7 +225,17 @@ export function ArchiveSettings() {
   }
 
   const handlePermanentDeleteConversation = async (id: string) => {
-    if (!confirm('Permanently delete this archived conversation? This cannot be undone.')) {
+    const decision = await useDecisionPromptStore.getState().request({
+      title: 'Permanently Delete Chat',
+      message: 'Permanently delete this archived conversation? This cannot be undone.',
+      options: [
+        { label: 'Delete permanently', value: 'delete', variant: 'danger' },
+        { label: 'Cancel', value: 'cancel', variant: 'secondary' },
+      ],
+      defaultValue: 'cancel',
+      cancelValue: 'cancel',
+    })
+    if (decision.value !== 'delete') {
       return
     }
 

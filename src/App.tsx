@@ -1,5 +1,5 @@
 import { useEffect, useCallback, useState, useRef } from 'react'
-import { ArrowUpRight, Download, PanelLeftClose, PanelLeftOpen, X } from 'lucide-react'
+import { ArrowUpRight, Download, PanelLeftClose, PanelLeftOpen, RefreshCw, X } from 'lucide-react'
 import { useProviderStore } from './stores/providers'
 import { useChatStore } from './stores/chat'
 import { useUIStore } from './stores/ui'
@@ -594,7 +594,7 @@ export default function App() {
                     onClick={handleApplyNow}
                     className="flex items-center gap-2 px-3 py-2 rounded-lg bg-accent text-black hover:bg-accent-bright transition-colors"
                   >
-                    <Download className="w-4 h-4" />
+                    <RefreshCw className="w-4 h-4" />
                     Apply now
                   </button>
                   <button

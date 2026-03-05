@@ -58,33 +58,28 @@ export const useDecisionPromptStore = create<DecisionPromptState>((set, get) => 
   },
 
   choose: (value) => {
-    set((state) => {
-      const request = state.activeRequest
-      if (request) {
-        resolvePending({
-          value,
-          canceled: request.cancelValue === value,
-        })
-      }
-      return { activeRequest: null }
-    })
+    const request = get().activeRequest
+    set({ activeRequest: null })
+    if (request) {
+      resolvePending({
+        value,
+        canceled: request.cancelValue === value,
+      })
+    }
   },
 
   cancel: () => {
-    set((state) => {
-      const request = state.activeRequest
-      if (request) {
-        const fallbackValue = request.cancelValue
-          || request.defaultValue
-          || request.options[0]?.value
-          || ''
-        resolvePending({
-          value: fallbackValue,
-          canceled: true,
-        })
-      }
-      return { activeRequest: null }
-    })
+    const request = get().activeRequest
+    set({ activeRequest: null })
+    if (request) {
+      const fallbackValue = request.cancelValue
+        || request.defaultValue
+        || request.options[0]?.value
+        || ''
+      resolvePending({
+        value: fallbackValue,
+        canceled: true,
+      })
+    }
   },
 }))
-
