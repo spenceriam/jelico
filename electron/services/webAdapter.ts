@@ -344,6 +344,7 @@ function isMissingBrowserExecutableError(message: string): boolean {
 
 async function searchWithAgentBrowser(query: string): Promise<WebSearchResult> {
   let runtime: AgentBrowserRuntime
+  let browser: AgentBrowserBrowser | null = null
 
   try {
     runtime = await loadAgentBrowserRuntime()
@@ -357,22 +358,22 @@ async function searchWithAgentBrowser(query: string): Promise<WebSearchResult> {
     }
   }
 
-  const browser = new runtime.BrowserManager()
-  const executablePath = await resolveAgentBrowserExecutablePath()
-
-  const runCommand = (action: string, payload: Record<string, unknown> = {}): Promise<AgentBrowserResponse> =>
-    runtime.executeCommand(
-      {
-        id: nextAgentBrowserCommandId(),
-        action,
-        ...payload,
-      },
-      browser
-    )
-
   let sawBlockedPage = false
 
   try {
+    browser = new runtime.BrowserManager()
+    const executablePath = await resolveAgentBrowserExecutablePath()
+
+    const runCommand = (action: string, payload: Record<string, unknown> = {}): Promise<AgentBrowserResponse> =>
+      runtime.executeCommand(
+        {
+          id: nextAgentBrowserCommandId(),
+          action,
+          ...payload,
+        },
+        browser
+      )
+
     const launchResponse = await runCommand('launch', {
       headless: true,
       viewport: { width: 1360, height: 960 },
@@ -451,10 +452,12 @@ async function searchWithAgentBrowser(query: string): Promise<WebSearchResult> {
       error: error?.message || String(error),
     }
   } finally {
-    try {
-      await browser.close()
-    } catch {
-      // no-op: best effort cleanup
+    if (browser) {
+      try {
+        await browser.close()
+      } catch {
+        // no-op: best effort cleanup
+      }
     }
   }
 }

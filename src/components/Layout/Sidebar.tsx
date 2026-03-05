@@ -186,7 +186,7 @@ export function Sidebar() {
     conversations,
     activeConversationId,
     setActiveConversation,
-    deleteConversation,
+    archiveConversation,
     conversationStreams,
   } = useChatStore()
   const { sidebarCollapsed, openSettings } = useUIStore()
@@ -320,7 +320,7 @@ export function Sidebar() {
   const handleDeleteConversation = async (e: React.MouseEvent, id: string) => {
     e.stopPropagation()
     if (confirm('Archive this conversation? You can restore it later from Settings > Archive.')) {
-      await deleteConversation(id)
+      await archiveConversation(id)
     }
   }
 

@@ -90,6 +90,7 @@ export const useUpdateStore = create<UpdatesState>((set, get) => ({
         currentVersion: info.currentVersion,
         isChecking: false,
         lastChecked: Date.now(),
+        error: null,
       })
       return info
     } catch (error) {

@@ -199,7 +199,7 @@ interface ChatStore {
   processQueue: () => Promise<void>
   sendQueuedNow: (queueIndex: number) => Promise<boolean>
   stopStreaming: () => Promise<void>
-  deleteConversation: (id: string) => Promise<void>
+  archiveConversation: (id: string) => Promise<void>
   setMode: (mode: AgentMode) => void
   setModeTransitioning: (transitioning: boolean) => void
   handleModeSwitch: (fromMode: AgentMode, toMode: AgentMode, reason: string) => void
@@ -2203,7 +2203,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
     })
   },
 
-  deleteConversation: async (id) => {
+  archiveConversation: async (id) => {
     const wasActiveConversation = get().activeConversationId === id
 
     // Optimistically clear active conversation state before archive work so
@@ -2238,7 +2238,6 @@ export const useChatStore = create<ChatStore>((set, get) => ({
       worktreeGuidanceByConversation.delete(id)
       useClarificationStore.getState().clearForConversation(id)
 
-      // Archive instead of permanent delete so users can restore later.
       await window.jelico.conversations.archive(id)
       const conversations = await window.jelico.conversations.list()
 
