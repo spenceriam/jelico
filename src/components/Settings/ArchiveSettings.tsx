@@ -176,22 +176,7 @@ export function ArchiveSettings() {
     setLoading(true)
     try {
       const archived = await window.jelico.conversations.listArchived()
-      const withResolvedTitles = await Promise.all(
-        archived.map(async (conversation) => {
-          if (!conversation.title?.trim().endsWith('...')) return conversation
-          try {
-            const detailedConversation = await window.jelico.conversations.get(conversation.id)
-            if (!detailedConversation?.messages?.length) return conversation
-            return {
-              ...conversation,
-              messages: detailedConversation.messages,
-            }
-          } catch {
-            return conversation
-          }
-        })
-      )
-      setArchivedConversations(withResolvedTitles)
+      setArchivedConversations(archived)
     } catch (error) {
       console.error('Failed to load archived conversations:', error)
     } finally {

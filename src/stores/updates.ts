@@ -2,6 +2,8 @@ import { create } from 'zustand'
 
 const AVAILABLE_DISMISS_KEY = 'jelico:update:dismissed-available-version'
 const APPLY_DISMISS_KEY = 'jelico:update:dismissed-apply-version'
+const DOWNLOADED_VERSION_KEY = 'jelico:update:downloaded-version'
+const DOWNLOADED_PATH_KEY = 'jelico:update:downloaded-path'
 
 function readStoredValue(key: string): string | null {
   try {
@@ -52,8 +54,8 @@ export const useUpdateStore = create<UpdatesState>((set, get) => ({
   isDownloading: false,
   downloadProgress: null,
   lastChecked: null,
-  lastDownloadedTo: null,
-  downloadedVersion: null,
+  lastDownloadedTo: readStoredValue(DOWNLOADED_PATH_KEY),
+  downloadedVersion: readStoredValue(DOWNLOADED_VERSION_KEY),
   dismissedAvailableVersion: readStoredValue(AVAILABLE_DISMISS_KEY),
   dismissedApplyVersion: readStoredValue(APPLY_DISMISS_KEY),
   error: null,
@@ -113,6 +115,8 @@ export const useUpdateStore = create<UpdatesState>((set, get) => ({
       } else if (result?.savedTo) {
         const latestVersion = get().info?.latestVersion || null
         writeStoredValue(APPLY_DISMISS_KEY, null)
+        writeStoredValue(DOWNLOADED_PATH_KEY, result.savedTo)
+        writeStoredValue(DOWNLOADED_VERSION_KEY, latestVersion)
         set({
           lastDownloadedTo: result.savedTo,
           downloadedVersion: latestVersion,
@@ -148,8 +152,14 @@ export const useUpdateStore = create<UpdatesState>((set, get) => ({
       }
 
       const dismissedVersion = get().downloadedVersion || get().info?.latestVersion || null
-      set({ dismissedApplyVersion: dismissedVersion })
+      set({
+        dismissedApplyVersion: dismissedVersion,
+        lastDownloadedTo: null,
+        downloadedVersion: null,
+      })
       writeStoredValue(APPLY_DISMISS_KEY, dismissedVersion)
+      writeStoredValue(DOWNLOADED_PATH_KEY, null)
+      writeStoredValue(DOWNLOADED_VERSION_KEY, null)
       return result
     } catch (error) {
       set({

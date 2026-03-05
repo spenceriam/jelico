@@ -111,12 +111,17 @@ function pickOverride(
   if (overrides[modelId]) return overrides[modelId]
 
   const normalizedModel = modelId.toLowerCase()
+  let wildcardOverride: ModelCapabilityProfileOverride | null = null
+
   for (const [key, value] of Object.entries(overrides)) {
-    if (key === '*') return value
+    if (key === '*') {
+      wildcardOverride = value
+      continue
+    }
     if (normalizedModel.includes(key.toLowerCase())) return value
   }
 
-  return null
+  return wildcardOverride
 }
 
 export function resolveModelCapabilityProfile(params: {

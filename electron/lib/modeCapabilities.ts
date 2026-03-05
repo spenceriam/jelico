@@ -33,7 +33,7 @@ export const MODE_CAPABILITY_MATRIX: Record<AgentMode, ModeCapabilities> = {
   },
   review: {
     main: { canWriteFiles: true, canExecuteCommands: true },
-    subAgent: { canWriteFiles: false, canExecuteCommands: false },
+    subAgent: { canWriteFiles: true, canExecuteCommands: true },
   },
   'security-review': {
     main: { canWriteFiles: false, canExecuteCommands: false },
@@ -41,7 +41,7 @@ export const MODE_CAPABILITY_MATRIX: Record<AgentMode, ModeCapabilities> = {
   },
   'pr-review': {
     main: { canWriteFiles: false, canExecuteCommands: false },
-    subAgent: { canWriteFiles: false, canExecuteCommands: false },
+    subAgent: { canWriteFiles: true, canExecuteCommands: true },
   },
 }
 
@@ -75,4 +75,3 @@ export function assertCapabilityMatrix(): void {
     }
   }
 }
-

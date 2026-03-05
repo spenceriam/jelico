@@ -109,6 +109,24 @@ test('provider overrides apply for exact model ids and wildcard values', () => {
   assert.equal(profileWildcard.reminderAggressiveness, 'high')
 })
 
+test('provider override wildcard is fallback-only and does not shadow specific partial matches', () => {
+  const profile = resolveModelCapabilityProfile({
+    providerType: 'openai',
+    modelId: 'gpt-4.1',
+    providerOverrides: {
+      '*': {
+        reminderAggressiveness: 'low',
+      },
+      gpt: {
+        reminderAggressiveness: 'high',
+      },
+    },
+  })
+
+  assert.equal(profile.source, 'provider_override')
+  assert.equal(profile.reminderAggressiveness, 'high')
+})
+
 test('prompt formatter includes profile metadata for runtime diagnostics', () => {
   const profile = resolveModelCapabilityProfile({
     providerType: 'openai',

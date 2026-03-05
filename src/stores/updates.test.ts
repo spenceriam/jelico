@@ -4,6 +4,8 @@ import { useUpdateStore } from './updates'
 
 const AVAILABLE_DISMISS_KEY = 'jelico:update:dismissed-available-version'
 const APPLY_DISMISS_KEY = 'jelico:update:dismissed-apply-version'
+const DOWNLOADED_VERSION_KEY = 'jelico:update:downloaded-version'
+const DOWNLOADED_PATH_KEY = 'jelico:update:downloaded-path'
 
 interface LocalStorageLike {
   getItem: (key: string) => string | null
@@ -132,6 +134,8 @@ test('downloadUpdate marks downloaded version and persists dismissal keys correc
   assert.equal(state.downloadedVersion, '0.36.0')
   assert.equal(state.dismissedApplyVersion, null)
   assert.equal(state.dismissedAvailableVersion, '0.36.0')
+  assert.equal(localStorage.getItem(DOWNLOADED_PATH_KEY), 'C:/tmp/Jelico-0.36.0.exe')
+  assert.equal(localStorage.getItem(DOWNLOADED_VERSION_KEY), '0.36.0')
   assert.equal(localStorage.getItem(AVAILABLE_DISMISS_KEY), '0.36.0')
   assert.equal(localStorage.getItem(APPLY_DISMISS_KEY), null)
 })
@@ -171,7 +175,11 @@ test('applyDownloadedUpdate persists apply-dismiss state when launch succeeds', 
     launchedPath: 'C:/tmp/Jelico-0.36.0.exe',
   })
   assert.equal(useUpdateStore.getState().dismissedApplyVersion, '0.36.0')
+  assert.equal(useUpdateStore.getState().downloadedVersion, null)
+  assert.equal(useUpdateStore.getState().lastDownloadedTo, null)
   assert.equal(localStorage.getItem(APPLY_DISMISS_KEY), '0.36.0')
+  assert.equal(localStorage.getItem(DOWNLOADED_VERSION_KEY), null)
+  assert.equal(localStorage.getItem(DOWNLOADED_PATH_KEY), null)
 })
 
 test('silent check failures do not override an existing visible error', async () => {
@@ -186,4 +194,12 @@ test('silent check failures do not override an existing visible error', async ()
   const result = await useUpdateStore.getState().checkForUpdates({ force: true, silent: true })
   assert.equal(result, null)
   assert.equal(useUpdateStore.getState().error, 'existing error')
+})
+
+test('successful check clears stale errors even when silent', async () => {
+  useUpdateStore.setState({ error: 'stale error' })
+
+  const result = await useUpdateStore.getState().checkForUpdates({ force: true, silent: true })
+  assert.ok(result)
+  assert.equal(useUpdateStore.getState().error, null)
 })

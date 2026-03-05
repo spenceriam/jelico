@@ -13,13 +13,20 @@ test('capability matrix declares all required modes', () => {
   assert.deepEqual(modes, ['auto', 'execute', 'explore', 'plan', 'pr-review', 'review', 'security-review'])
 })
 
-test('sub-agents are read-only across all declared modes', () => {
+test('sub-agent mutation permissions match capability matrix policy', () => {
+  const expectedMutableModes = new Set(['review', 'pr-review'])
   const modes = Object.keys(MODE_CAPABILITY_MATRIX) as Array<keyof typeof MODE_CAPABILITY_MATRIX>
   for (const mode of modes) {
-    assert.equal(canSubAgentMutate(mode), false, `sub-agent should remain read-only in mode ${mode}`)
+    const shouldMutate = expectedMutableModes.has(mode)
+    assert.equal(
+      canSubAgentMutate(mode),
+      shouldMutate,
+      `unexpected sub-agent mutation policy for mode ${mode}`
+    )
+
     const caps = getModeCapabilities(mode)
-    assert.equal(caps.subAgent.canWriteFiles, false)
-    assert.equal(caps.subAgent.canExecuteCommands, false)
+    assert.equal(caps.subAgent.canWriteFiles, shouldMutate)
+    assert.equal(caps.subAgent.canExecuteCommands, shouldMutate)
   }
 })
 
@@ -28,4 +35,3 @@ test('unknown modes fall back to auto capabilities', () => {
   const autoCaps = getModeCapabilities('auto')
   assert.deepEqual(fallback, autoCaps)
 })
-
