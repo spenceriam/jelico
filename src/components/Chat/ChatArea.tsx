@@ -14,7 +14,7 @@ import { WorkspaceSelector } from '../Workspace/WorkspaceSelector'
 import { ModelSelector } from '../Model/ModelSelector'
 import { ShimmerText, BrailleLoader } from '../StatusIndicators'
 import { TodoPanel } from '../Todo/TodoPanel'
-import { JelicoLogo } from '../Brand/JelicoLogo'
+import welcomeBannerUrl from '../../assets/branding/jelico-banner.png'
 import { formatElapsedTime } from '../../utils/format'
 import { notifyUserEvent } from '../../lib/notifications'
 
@@ -513,13 +513,13 @@ export function ChatArea() {
   const chatFontScale = chatFontPt / 10.5
   const chatContainerClass = canvasOpen
     ? 'max-w-3xl mx-auto py-6 px-4'
-    : 'w-full py-6 px-4 md:px-8 lg:px-12 xl:px-[100px]'
+    : 'w-full py-6 px-[26px] md:px-[42px] lg:px-[58px] xl:px-[110px]'
   const footerContainerClass = canvasOpen
     ? 'max-w-3xl mx-auto px-4'
-    : 'w-full px-4 md:px-8 lg:px-12 xl:px-[100px]'
+    : 'w-full px-[26px] md:px-[42px] lg:px-[58px] xl:px-[110px]'
   const welcomeContainerClass = canvasOpen
     ? 'w-full max-w-3xl mx-auto px-4'
-    : 'w-full px-4 md:px-8 lg:px-12 xl:px-[100px]'
+    : 'w-full px-[26px] md:px-[42px] lg:px-[58px] xl:px-[110px]'
   const welcomeContentWidthClass = canvasOpen ? 'max-w-xl mx-auto' : 'max-w-3xl mx-auto'
 
   const visibleSystemNotifications = useMemo(() => {
@@ -1228,8 +1228,13 @@ function NewChatView({ disabled, isStreaming }: NewChatViewProps) {
 
   return (
     <div className="text-center animate-fade-in space-y-8">
-      {/* Logo matching onboarding style */}
-      <JelicoLogo className="welcome-logo mx-auto" />
+      {/* Welcome banner */}
+      <img
+        src={welcomeBannerUrl}
+        alt="Jelico"
+        draggable={false}
+        className="h-[5.25rem] w-auto mx-auto object-contain"
+      />
 
       {/* Dynamic greeting */}
       <div>

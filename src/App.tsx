@@ -11,6 +11,7 @@ import { useUpdateStore } from './stores/updates'
 import { Sidebar } from './components/Layout/Sidebar'
 import { Header } from './components/Layout/Header'
 import { ChatArea } from './components/Chat/ChatArea'
+import { DecisionPromptDialog } from './components/Chat/DecisionPromptDialog'
 import { CanvasPanel } from './components/Canvas'
 // AgentPanel removed - sub-agent status now shown inline with tool calls
 import { CommandPalette, useCommandPalette } from './components/CommandPalette/CommandPalette'
@@ -571,6 +572,9 @@ export default function App() {
 
       {/* Permission dialog */}
       <PermissionDialog />
+
+      {/* App-level decision prompt dialog */}
+      <DecisionPromptDialog />
 
       {(showApplyBanner || showAvailableBanner) && (
         <div className="fixed bottom-4 right-4 z-[70] w-[min(90vw,420px)]" data-window-toggle="ignore">

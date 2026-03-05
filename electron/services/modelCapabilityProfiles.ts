@@ -1,6 +1,11 @@
 export type GuidanceLevel = 'low' | 'normal' | 'high'
 export type DelegationStyle = 'minimal' | 'balanced' | 'parallel-first'
 
+export interface ModelsDevCapabilityMetadata {
+  reasoning?: boolean | null
+  toolCall?: boolean | null
+}
+
 export interface ModelCapabilityProfile {
   profileId: string
   toolUseGuidance: GuidanceLevel
@@ -45,31 +50,12 @@ function clampDelay(value: number | undefined, fallback: number): number {
   return normalized
 }
 
-function resolveDefaultProfile(providerType: string, modelId: string): Omit<ModelCapabilityProfile, 'source'> {
-  const normalizedModel = modelId.toLowerCase()
+function resolveDefaultProfile(
+  providerType: string,
+  modelId: string,
+  metadata?: ModelsDevCapabilityMetadata | null
+): Omit<ModelCapabilityProfile, 'source'> {
   const normalizedProvider = providerType.toLowerCase()
-
-  if (/mini|small|haiku|flash/.test(normalizedModel)) {
-    return {
-      profileId: 'small-model-assist',
-      toolUseGuidance: 'high',
-      reminderAggressiveness: 'high',
-      maxRetries: 3,
-      retryBaseDelayMs: 1200,
-      delegationStyle: 'parallel-first',
-    }
-  }
-
-  if (/reasoning|o1|o3|r1|deep/.test(normalizedModel)) {
-    return {
-      profileId: 'reasoning-model',
-      toolUseGuidance: 'low',
-      reminderAggressiveness: 'low',
-      maxRetries: 1,
-      retryBaseDelayMs: 900,
-      delegationStyle: 'minimal',
-    }
-  }
 
   if (normalizedProvider === 'ollama' || normalizedProvider === 'local') {
     return {
@@ -82,8 +68,29 @@ function resolveDefaultProfile(providerType: string, modelId: string): Omit<Mode
     }
   }
 
+  if (metadata) {
+    if (metadata.reasoning === true) {
+      return {
+        profileId: 'metadata-reasoning-model',
+        ...DEFAULT_PROFILE,
+      }
+    }
+
+    if (metadata.toolCall === false) {
+      return {
+        profileId: 'metadata-no-tool-call',
+        ...DEFAULT_PROFILE,
+      }
+    }
+
+    return {
+      profileId: 'metadata-standard-model',
+      ...DEFAULT_PROFILE,
+    }
+  }
+
   return {
-    profileId: 'balanced-default',
+    profileId: 'balanced-fallback',
     ...DEFAULT_PROFILE,
   }
 }
@@ -107,9 +114,10 @@ function pickOverride(
 export function resolveModelCapabilityProfile(params: {
   providerType: string
   modelId: string
+  modelsDevMetadata?: ModelsDevCapabilityMetadata | null
   providerOverrides?: ModelCapabilityProfileMap | null
 }): ModelCapabilityProfile {
-  const defaults = resolveDefaultProfile(params.providerType, params.modelId)
+  const defaults = resolveDefaultProfile(params.providerType, params.modelId, params.modelsDevMetadata)
   const override = pickOverride(params.modelId, params.providerOverrides)
 
   if (!override) {
@@ -143,8 +151,8 @@ export function buildModelCapabilityProfilePrompt(profile: ModelCapabilityProfil
 - Reminder aggressiveness: ${profile.reminderAggressiveness}
 - Retry policy: max ${profile.maxRetries} retries (base delay ${profile.retryBaseDelayMs}ms)
 - Delegation style: ${profile.delegationStyle}
+- Never emit pseudo tool syntax in assistant text (for example: [TOOL_CALL] ... [/TOOL_CALL]); use actual tool calls only.
 
 Follow this profile for reliability and consistency.
 ${delegationLine}`
 }
-

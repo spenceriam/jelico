@@ -29,6 +29,15 @@ interface ModelCatalogSnapshot {
   providers: Record<string, unknown>
 }
 
+export interface ModelsDevModelMetadata {
+  providerKey: string
+  modelKey: string
+  modelId: string
+  family?: string | null
+  reasoning: boolean | null
+  toolCall: boolean | null
+}
+
 function normalize(value: string): string {
   return value.trim().toLowerCase()
 }
@@ -101,6 +110,8 @@ let providerModelIndex = new Map<string, Map<string, number>>()
 let globalModelIndex = new Map<string, number>()
 let providerModelOutputIndex = new Map<string, Map<string, number>>()
 let globalModelOutputIndex = new Map<string, number>()
+let providerModelMetadataIndex = new Map<string, Map<string, ModelsDevModelMetadata>>()
+let globalModelMetadataIndex = new Map<string, ModelsDevModelMetadata>()
 let etag: string | null = null
 let lastCheckedAt = 0
 let lastUpdatedAt = 0
@@ -117,11 +128,25 @@ function indexModelId(target: Map<string, number>, id: string, contextLimit: num
   }
 }
 
+function indexModelMetadata(
+  target: Map<string, ModelsDevModelMetadata>,
+  id: string,
+  metadata: ModelsDevModelMetadata
+) {
+  const normalized = normalize(id)
+  if (!normalized) return
+  if (!target.has(normalized)) {
+    target.set(normalized, metadata)
+  }
+}
+
 function rebuildIndexes(providers: Record<string, unknown>) {
   providerModelIndex = new Map()
   globalModelIndex = new Map()
   providerModelOutputIndex = new Map()
   globalModelOutputIndex = new Map()
+  providerModelMetadataIndex = new Map()
+  globalModelMetadataIndex = new Map()
 
   for (const [providerKey, providerValue] of Object.entries(providers)) {
     if (!providerValue || typeof providerValue !== 'object') continue
@@ -132,6 +157,7 @@ function rebuildIndexes(providers: Record<string, unknown>) {
 
     const providerMap = new Map<string, number>()
     const providerOutputMap = new Map<string, number>()
+    const providerMetadataMap = new Map<string, ModelsDevModelMetadata>()
 
     for (const [modelKey, modelValue] of Object.entries(models as Record<string, unknown>)) {
       if (!modelValue || typeof modelValue !== 'object') continue
@@ -139,11 +165,19 @@ function rebuildIndexes(providers: Record<string, unknown>) {
       const modelRecord = modelValue as Record<string, unknown>
       const contextLimit = extractContextLimit(modelRecord)
       const outputLimit = extractOutputLimit(modelRecord)
-      if (!contextLimit && !outputLimit) continue
 
       const ids = new Set<string>()
       ids.add(modelKey)
       if (typeof modelRecord.id === 'string') ids.add(modelRecord.id)
+
+      const metadata: ModelsDevModelMetadata = {
+        providerKey: normalize(providerKey),
+        modelKey,
+        modelId: typeof modelRecord.id === 'string' ? modelRecord.id : modelKey,
+        family: typeof modelRecord.family === 'string' ? modelRecord.family : null,
+        reasoning: typeof modelRecord.reasoning === 'boolean' ? modelRecord.reasoning : null,
+        toolCall: typeof modelRecord.tool_call === 'boolean' ? modelRecord.tool_call : null,
+      }
 
       for (const id of ids) {
         if (contextLimit) {
@@ -156,6 +190,9 @@ function rebuildIndexes(providers: Record<string, unknown>) {
           indexModelId(globalModelOutputIndex, id, outputLimit)
         }
 
+        indexModelMetadata(providerMetadataMap, id, metadata)
+        indexModelMetadata(globalModelMetadataIndex, id, metadata)
+
         const shortId = shortModelId(id)
         if (shortId && shortId !== normalize(id)) {
           if (contextLimit) {
@@ -166,12 +203,16 @@ function rebuildIndexes(providers: Record<string, unknown>) {
             indexModelId(providerOutputMap, shortId, outputLimit)
             indexModelId(globalModelOutputIndex, shortId, outputLimit)
           }
+
+          indexModelMetadata(providerMetadataMap, shortId, metadata)
+          indexModelMetadata(globalModelMetadataIndex, shortId, metadata)
         }
       }
     }
 
     providerModelIndex.set(normalize(providerKey), providerMap)
     providerModelOutputIndex.set(normalize(providerKey), providerOutputMap)
+    providerModelMetadataIndex.set(normalize(providerKey), providerMetadataMap)
   }
 }
 
@@ -290,6 +331,16 @@ function lookupInProviderOutputIndex(providerKey: string, modelId: string): numb
   return providerMap.get(normalizedModelId) ?? providerMap.get(shortId) ?? null
 }
 
+function lookupInProviderMetadataIndex(providerKey: string, modelId: string): ModelsDevModelMetadata | null {
+  const providerMap = providerModelMetadataIndex.get(normalize(providerKey))
+  if (!providerMap) return null
+
+  const normalizedModelId = normalize(modelId)
+  const shortId = shortModelId(modelId)
+
+  return providerMap.get(normalizedModelId) ?? providerMap.get(shortId) ?? null
+}
+
 export function lookupModelsDevContextLimit(providerType: string, modelId: string): number | null {
   if (!inMemoryProviders || !modelId) return null
 
@@ -316,6 +367,22 @@ export function lookupModelsDevOutputLimit(providerType: string, modelId: string
   return globalModelOutputIndex.get(normalizedModelId) ?? globalModelOutputIndex.get(shortId) ?? null
 }
 
+export function lookupModelsDevModelMetadata(
+  providerType: string,
+  modelId: string
+): ModelsDevModelMetadata | null {
+  if (!inMemoryProviders || !modelId) return null
+
+  for (const providerKey of getProviderCandidates(providerType)) {
+    const fromProvider = lookupInProviderMetadataIndex(providerKey, modelId)
+    if (fromProvider) return fromProvider
+  }
+
+  const normalizedModelId = normalize(modelId)
+  const shortId = shortModelId(modelId)
+  return globalModelMetadataIndex.get(normalizedModelId) ?? globalModelMetadataIndex.get(shortId) ?? null
+}
+
 export function initializeModelCatalog() {
   if (initialized) return
   initialized = true
@@ -336,6 +403,7 @@ export function getModelCatalogStatus() {
     providersIndexed: providerModelIndex.size,
     modelsIndexed: globalModelIndex.size,
     outputModelsIndexed: globalModelOutputIndex.size,
+    metadataModelsIndexed: globalModelMetadataIndex.size,
     lastCheckedAt,
     lastUpdatedAt,
   }

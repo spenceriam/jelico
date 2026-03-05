@@ -138,7 +138,7 @@ export function ModelSelector({ compact = false }: ModelSelectorProps) {
       <button
         onClick={() => setDropdownOpen((open) => !open)}
         className={`flex items-center gap-[0.4em] ${
-          compact ? 'px-[0.7em] py-[0.35em] text-xs' : 'px-[0.9em] py-[0.45em] text-sm'
+          compact ? 'px-[0.85em] py-[0.45em] text-sm' : 'px-[0.9em] py-[0.45em] text-sm'
         } leading-tight text-text-secondary hover:text-text-primary bg-bg-elevated rounded-lg transition-colors`}
       >
         <span className="flex-1 min-w-0 whitespace-normal break-all text-left leading-tight">

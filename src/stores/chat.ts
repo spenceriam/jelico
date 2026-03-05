@@ -8,6 +8,7 @@ import { useSkillStore } from './skills'
 import { useContextStore, estimateTokens } from './context'
 import { useTodoStore } from './todos'
 import { useClarificationStore } from './clarification'
+import { useDecisionPromptStore } from './decisionPrompt'
 import { notifyUserEvent } from '../lib/notifications'
 
 export interface MessageUsage {
@@ -215,9 +216,16 @@ interface ChatStore {
 const streamChannelByConversation = new Map<string, string>()
 let modeTransitionTimeoutId: ReturnType<typeof setTimeout> | null = null
 const PENDING_STREAMS_STORAGE_KEY = 'jelico.pending_streams.v1'
-const INLINE_TOOL_CALL_BEGIN_TOKEN = '<|tool_call_begin|>'
-const INLINE_TOOL_CALL_ARGUMENT_BEGIN_TOKEN = '<|tool_call_argument_begin|>'
-const INLINE_TOOL_CALL_END_TOKEN = '<|tool_call_end|>'
+const INLINE_TOOL_PROTOCOL_START_TOKENS = [
+  '<|tool_call_begin|>',
+  '<|tool_call_argument_begin|>',
+  '[tool_call]',
+  '[tool_call',
+]
+const INLINE_TOOL_PROTOCOL_END_TOKENS = [
+  '<|tool_call_end|>',
+  '[/tool_call]',
+]
 const WORKTREE_MENTION_REGEX = /\b(work[\s-]?tree|git[\s-]?work[\s-]?tree|git tree)\b/i
 const WORKTREE_MENTION_COOLDOWN_MS = 5 * 60 * 1000
 const worktreeGuidanceByConversation = new Map<string, { planningShown: boolean; lastMentionAt: number }>()
@@ -287,7 +295,7 @@ function getSuggestedWorktreeBranchName(initialMessageHint?: string, workspaceNa
   const slug = toBranchSlug(firstLine) || toBranchSlug(workspaceName || '') || 'new-chat'
   const timestamp = new Date()
     .toISOString()
-    .replace(/[-:TZ.]/g, '')
+    .replace(/-|:|T|Z|\./g, '')
     .slice(0, 14)
 
   return `worktree/${branchType}/${slug}-${timestamp}`
@@ -343,7 +351,8 @@ function getMaxTrailingTokenOverlap(value: string, tokens: string[]): number {
 }
 
 function createInlineToolProtocolFilter() {
-  const startTokens = [INLINE_TOOL_CALL_BEGIN_TOKEN, INLINE_TOOL_CALL_ARGUMENT_BEGIN_TOKEN]
+  const startTokens = INLINE_TOOL_PROTOCOL_START_TOKENS
+  const endTokens = INLINE_TOOL_PROTOCOL_END_TOKENS
   let carry = ''
   let inProtocol = false
 
@@ -351,21 +360,31 @@ function createInlineToolProtocolFilter() {
     if (!chunk) return ''
 
     let input = carry + chunk
+    const searchableInput = input.toLowerCase()
     carry = ''
     let output = ''
     let cursor = 0
 
     while (cursor < input.length) {
       if (inProtocol) {
-        const endIndex = input.indexOf(INLINE_TOOL_CALL_END_TOKEN, cursor)
-        if (endIndex === -1) {
+        let nextEndIndex = -1
+        let matchedEndToken = ''
+        for (const token of endTokens) {
+          const idx = searchableInput.indexOf(token, cursor)
+          if (idx !== -1 && (nextEndIndex === -1 || idx < nextEndIndex)) {
+            nextEndIndex = idx
+            matchedEndToken = token
+          }
+        }
+
+        if (nextEndIndex === -1) {
           const remaining = input.slice(cursor)
-          const overlap = getTrailingTokenOverlap(remaining, INLINE_TOOL_CALL_END_TOKEN)
+          const overlap = getMaxTrailingTokenOverlap(remaining.toLowerCase(), endTokens)
           carry = overlap > 0 ? remaining.slice(-overlap) : ''
           return output
         }
 
-        cursor = endIndex + INLINE_TOOL_CALL_END_TOKEN.length
+        cursor = nextEndIndex + matchedEndToken.length
         inProtocol = false
         continue
       }
@@ -373,7 +392,7 @@ function createInlineToolProtocolFilter() {
       let nextStartIndex = -1
       let matchedStartToken = ''
       for (const token of startTokens) {
-        const idx = input.indexOf(token, cursor)
+        const idx = searchableInput.indexOf(token, cursor)
         if (idx !== -1 && (nextStartIndex === -1 || idx < nextStartIndex)) {
           nextStartIndex = idx
           matchedStartToken = token
@@ -382,7 +401,7 @@ function createInlineToolProtocolFilter() {
 
       if (nextStartIndex === -1) {
         const remaining = input.slice(cursor)
-        const overlap = getMaxTrailingTokenOverlap(remaining, startTokens)
+        const overlap = getMaxTrailingTokenOverlap(remaining.toLowerCase(), startTokens)
         if (overlap > 0) {
           output += remaining.slice(0, -overlap)
           carry = remaining.slice(-overlap)
@@ -411,7 +430,8 @@ function createInlineToolProtocolFilter() {
     carry = ''
 
     if (!tail) return ''
-    if (tail.includes('<|tool_call')) return ''
+    const normalizedTail = tail.toLowerCase()
+    if (normalizedTail.includes('<|tool_call') || normalizedTail.includes('[tool_call')) return ''
     return tail
   }
 
@@ -787,15 +807,25 @@ export const useChatStore = create<ChatStore>((set, get) => ({
               .map((conversation, index) => `${index + 1}. ${conversation.title || 'Untitled chat'}`)
             const remainingCount = sortedExisting.length - previewConversations.length
 
-            shouldCreateWorktree = window.confirm(
-              'This project already has existing chats.\n\n' +
-              'Current chats in this project:\n' +
-              `${previewConversations.join('\n')}` +
-              (remainingCount > 0 ? `\n...and ${remainingCount} more` : '') +
-              '\n\n' +
-              'Select OK to use Worktrunk isolation (new worktree + branch) for this chat.\n' +
-              'Select Cancel to keep working in the shared workspace.'
-            )
+            const dialogResult = await useDecisionPromptStore.getState().request({
+              title: 'Worktrunk Isolation',
+              message: 'This workspace already has existing chats.',
+              detail:
+                'You can keep this new chat in the shared workspace, or isolate it in its own Worktrunk branch.\n\n' +
+                'Existing chats in this workspace:\n' +
+                `${previewConversations.join('\n')}` +
+                (remainingCount > 0 ? `\n...and ${remainingCount} more` : '') +
+                '\n\n' +
+                'Choose "Isolate Worktrunk" to create a new isolated worktree + branch for this chat.\n' +
+                'Choose "Stay in workspace" to continue in the shared workspace.',
+              options: [
+                { label: 'Isolate Worktrunk', value: 'isolate', variant: 'primary' },
+                { label: 'Stay in workspace', value: 'shared', variant: 'secondary' },
+              ],
+              defaultValue: 'isolate',
+              cancelValue: 'shared',
+            })
+            shouldCreateWorktree = dialogResult.value === 'isolate'
           }
 
           if (shouldCreateWorktree && targetWorkspaceId) {

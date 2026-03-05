@@ -5,36 +5,78 @@ import {
   resolveModelCapabilityProfile,
 } from './modelCapabilityProfiles'
 
-test('small models resolve to higher guidance and retry defaults', () => {
+test('metadata-first: reasoning models resolve from metadata (not name buckets)', () => {
   const profile = resolveModelCapabilityProfile({
     providerType: 'openai',
-    modelId: 'gpt-4o-mini',
+    modelId: 'any-new-model-name',
+    modelsDevMetadata: {
+      reasoning: true,
+      toolCall: true,
+    },
   })
 
   assert.equal(profile.source, 'default')
+  assert.equal(profile.profileId, 'metadata-reasoning-model')
+  assert.equal(profile.toolUseGuidance, 'normal')
+  assert.equal(profile.reminderAggressiveness, 'normal')
+  assert.equal(profile.maxRetries, 2)
+  assert.equal(profile.delegationStyle, 'balanced')
+})
+
+test('metadata-first: non-tool-call models resolve from metadata', () => {
+  const profile = resolveModelCapabilityProfile({
+    providerType: 'openai',
+    modelId: 'text-only-model',
+    modelsDevMetadata: {
+      reasoning: false,
+      toolCall: false,
+    },
+  })
+
+  assert.equal(profile.source, 'default')
+  assert.equal(profile.profileId, 'metadata-no-tool-call')
+  assert.equal(profile.toolUseGuidance, 'normal')
+  assert.equal(profile.reminderAggressiveness, 'normal')
+  assert.equal(profile.maxRetries, 2)
+  assert.equal(profile.delegationStyle, 'balanced')
+})
+
+test('fallback default remains neutral when metadata is unavailable', () => {
+  const profile = resolveModelCapabilityProfile({
+    providerType: 'openrouter',
+    modelId: 'minimax-m2.5-highspeed',
+  })
+
+  assert.equal(profile.source, 'default')
+  assert.equal(profile.profileId, 'balanced-fallback')
+  assert.equal(profile.toolUseGuidance, 'normal')
+  assert.equal(profile.reminderAggressiveness, 'normal')
+  assert.equal(profile.maxRetries, 2)
+  assert.equal(profile.delegationStyle, 'balanced')
+})
+
+test('local providers still receive local defaults', () => {
+  const profile = resolveModelCapabilityProfile({
+    providerType: 'ollama',
+    modelId: 'llama3',
+  })
+
+  assert.equal(profile.source, 'default')
+  assert.equal(profile.profileId, 'local-model')
   assert.equal(profile.toolUseGuidance, 'high')
   assert.equal(profile.reminderAggressiveness, 'high')
   assert.equal(profile.maxRetries, 3)
   assert.equal(profile.delegationStyle, 'parallel-first')
 })
 
-test('reasoning models resolve to conservative retry/delegation defaults', () => {
-  const profile = resolveModelCapabilityProfile({
-    providerType: 'openai',
-    modelId: 'o3',
-  })
-
-  assert.equal(profile.source, 'default')
-  assert.equal(profile.toolUseGuidance, 'low')
-  assert.equal(profile.reminderAggressiveness, 'low')
-  assert.equal(profile.maxRetries, 1)
-  assert.equal(profile.delegationStyle, 'minimal')
-})
-
 test('provider overrides apply for exact model ids and wildcard values', () => {
   const profileExact = resolveModelCapabilityProfile({
     providerType: 'openai',
     modelId: 'gpt-4o-mini',
+    modelsDevMetadata: {
+      reasoning: true,
+      toolCall: true,
+    },
     providerOverrides: {
       'gpt-4o-mini': {
         maxRetries: 6,
@@ -50,6 +92,10 @@ test('provider overrides apply for exact model ids and wildcard values', () => {
   const profileWildcard = resolveModelCapabilityProfile({
     providerType: 'openai',
     modelId: 'gpt-4.1',
+    modelsDevMetadata: {
+      reasoning: true,
+      toolCall: true,
+    },
     providerOverrides: {
       '*': {
         reminderAggressiveness: 'high',
@@ -72,4 +118,3 @@ test('prompt formatter includes profile metadata for runtime diagnostics', () =>
   assert.match(prompt, /Retry policy: max/)
   assert.match(prompt, new RegExp(`Delegation style: ${profile.delegationStyle}`))
 })
-

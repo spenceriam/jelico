@@ -1166,6 +1166,7 @@ function getSubAgentTools(
 
       const runtime = webRuntime || {
         providerType: 'unknown',
+        rawProviderType: null,
         apiKey: null,
         baseUrl: null,
         model: 'unknown',
@@ -1265,6 +1266,7 @@ function getSubAgentTools(
     execute: async ({ url, selector }) => {
       const runtime = webRuntime || {
         providerType: 'unknown',
+        rawProviderType: null,
         apiKey: null,
         baseUrl: null,
         model: 'unknown',
@@ -1444,6 +1446,7 @@ async function runSubAgent(agentId: string): Promise<void> {
   const apiKey = await keychainService.getApiKey(agent.providerId)
   const webRuntime: WebProviderRuntime = {
     providerType: normalizeWebProviderType(providerConfig.type),
+    rawProviderType: providerConfig.type || null,
     apiKey,
     baseUrl: providerConfig.base_url || null,
     model: agent.model,
@@ -2164,6 +2167,7 @@ Start by calling a work tool RIGHT NOW. Do NOT call report_progress first.
 - If the main AI gives you shared task IDs, you may call \`report_progress\` with \`taskId\` and \`taskStatus\`
 - If the task references a direct GitHub issue/PR URL, avoid generic web_search/web_fetch and prefer \`execute_command\` with \`gh issue view\` / \`gh pr view\` when that tool is available
 - If stuck, try a different approach before giving up
+- If provider/tool capability blocks your task, ask the main AI with \`[QUESTION]\` and include the exact blocker/error
 - Work efficiently — you have ~5 minutes
 
 ## OUTPUT FORMAT
@@ -2370,106 +2374,115 @@ export function waitForSubAgent(
     // Update activity timestamp
     agent.lastActivityAt = Date.now()
 
-    // Helper to include progress updates in response
-    const getProgressUpdates = () =>
-      agent.progressUpdates.length > 0 ? agent.progressUpdates : undefined
+    let settled = false
+    let timeout: NodeJS.Timeout | null = null
+    let listener: ProgressCallback | null = null
 
-    // Already in a resolvable state?
-    if (agent.status === 'completed') {
-      resolve({
-        success: true,
-        result: agent.result || '',
-        createdArtifacts: agent.createdArtifacts.length > 0 ? agent.createdArtifacts : undefined,
-        progressUpdates: getProgressUpdates(),
-      })
-      return
-    }
-
-    if (agent.status === 'failed') {
-      resolve({
-        success: false,
-        error: agent.error || 'Agent failed',
-        progressUpdates: getProgressUpdates(),
-      })
-      return
-    }
-
-    if (agent.status === 'cancelled' || agent.status === 'dismissed') {
-      resolve({
-        success: false,
-        error: 'Agent was cancelled or dismissed',
-        progressUpdates: getProgressUpdates(),
-      })
-      return
-    }
-
-    if (agent.status === 'waiting_for_input') {
-      resolve({
-        success: true,
-        hasQuestion: true,
-        question: agent.pendingQuestion,
-        progressUpdates: getProgressUpdates(),
-      })
-      return
-    }
-
-    // Set up timeout
-    const timeout = setTimeout(() => {
-      cleanup()
-      resolve({
-        success: false,
-        timedOut: true,
-        error: 'Timed out waiting for agent',
-        progressUpdates: getProgressUpdates(),
-      })
-    }, timeoutMs)
-
-    // Listen for state changes
-    const listener: ProgressCallback = (id, updatedAgent) => {
-      if (id !== agentId) return
-
-      // Update activity on any progress
-      updatedAgent.lastActivityAt = Date.now()
-
-      if (updatedAgent.status === 'completed') {
-        cleanup()
-        resolve({
-          success: true,
-          result: updatedAgent.result || '',
-          createdArtifacts: updatedAgent.createdArtifacts.length > 0 ? updatedAgent.createdArtifacts : undefined,
-          progressUpdates: updatedAgent.progressUpdates.length > 0 ? updatedAgent.progressUpdates : undefined,
-        })
-      } else if (updatedAgent.status === 'failed') {
-        cleanup()
-        resolve({
-          success: false,
-          error: updatedAgent.error || 'Agent failed',
-          progressUpdates: updatedAgent.progressUpdates.length > 0 ? updatedAgent.progressUpdates : undefined,
-        })
-      } else if (updatedAgent.status === 'cancelled' || updatedAgent.status === 'dismissed') {
-        cleanup()
-        resolve({
-          success: false,
-          error: 'Agent was cancelled or dismissed',
-          progressUpdates: updatedAgent.progressUpdates.length > 0 ? updatedAgent.progressUpdates : undefined,
-        })
-      } else if (updatedAgent.status === 'waiting_for_input') {
-        cleanup()
-        resolve({
-          success: true,
-          hasQuestion: true,
-          question: updatedAgent.pendingQuestion,
-          progressUpdates: updatedAgent.progressUpdates.length > 0 ? updatedAgent.progressUpdates : undefined,
-        })
+    const cleanup = () => {
+      if (timeout) {
+        clearTimeout(timeout)
+        timeout = null
+      }
+      if (listener) {
+        removeProgressListener(agentId, listener)
+        listener = null
       }
     }
 
+    const safeResolve = (payload: {
+      success: boolean
+      result?: string
+      error?: string
+      timedOut?: boolean
+      hasQuestion?: boolean
+      question?: SubAgentQuestion | null
+      createdArtifacts?: Array<{ id: string; title: string; type: string; summary: string }>
+      progressUpdates?: ProgressUpdate[]
+    }) => {
+      if (settled) return
+      settled = true
+      cleanup()
+      resolve(payload)
+    }
+
+    const resolveFromAgentState = (stateAgent: SubAgentRecord): boolean => {
+      const progressUpdates = stateAgent.progressUpdates.length > 0 ? stateAgent.progressUpdates : undefined
+      if (stateAgent.status === 'completed') {
+        safeResolve({
+          success: true,
+          result: stateAgent.result || '',
+          createdArtifacts: stateAgent.createdArtifacts.length > 0 ? stateAgent.createdArtifacts : undefined,
+          progressUpdates,
+        })
+        return true
+      }
+
+      if (stateAgent.status === 'failed') {
+        safeResolve({
+          success: false,
+          error: stateAgent.error || 'Agent failed',
+          progressUpdates,
+        })
+        return true
+      }
+
+      if (stateAgent.status === 'cancelled' || stateAgent.status === 'dismissed') {
+        safeResolve({
+          success: false,
+          error: 'Agent was cancelled or dismissed',
+          progressUpdates,
+        })
+        return true
+      }
+
+      if (stateAgent.status === 'waiting_for_input') {
+        safeResolve({
+          success: true,
+          hasQuestion: true,
+          question: stateAgent.pendingQuestion,
+          progressUpdates,
+        })
+        return true
+      }
+
+      return false
+    }
+
+    // Fast-path for already-terminal states.
+    if (resolveFromAgentState(agent)) {
+      return
+    }
+
+    // Set up timeout.
+    timeout = setTimeout(() => {
+      const latest = activeAgents.get(agentId)
+      safeResolve({
+        success: false,
+        timedOut: true,
+        error: 'Timed out waiting for agent',
+        progressUpdates: latest?.progressUpdates.length ? latest.progressUpdates : undefined,
+      })
+    }, timeoutMs)
+
+    // Listen for state changes.
+    listener = (id, updatedAgent) => {
+      if (id !== agentId) return
+
+      // Update activity on any progress.
+      updatedAgent.lastActivityAt = Date.now()
+      resolveFromAgentState(updatedAgent)
+    }
     addProgressListener(agentId, listener)
 
-    function cleanup() {
-      clearTimeout(timeout)
-      removeProgressListener(agentId, listener)
+    // Race guard: re-check state immediately after subscribing so we don't miss a
+    // terminal transition that happened between the fast-path check and listener attach.
+    const latest = activeAgents.get(agentId)
+    if (!latest) {
+      safeResolve({ success: false, error: 'Agent not found' })
+      return
     }
+    latest.lastActivityAt = Date.now()
+    resolveFromAgentState(latest)
   })
 }
 

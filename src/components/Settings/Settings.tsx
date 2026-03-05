@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
-import { X, Plus, Trash2, Check, AlertCircle, AlertTriangle, Settings as SettingsIcon, Zap, Database, Edit2, Loader2, Search, HardDrive, Eye, EyeOff, Shield, User, Palette } from 'lucide-react'
+import { X, Plus, Trash2, Check, AlertCircle, AlertTriangle, Settings as SettingsIcon, Archive, Zap, Database, Edit2, Loader2, Search, HardDrive, Eye, EyeOff, Shield, User, Palette } from 'lucide-react'
 import { useProviderStore } from '../../stores/providers'
 import { useUIStore } from '../../stores/ui'
 import { useChatStore } from '../../stores/chat'
@@ -11,10 +11,11 @@ import { GeneralSettings } from './GeneralSettings'
 import { PermissionsSettings } from './PermissionsSettings'
 import { ProfileSettings } from './ProfileSettings'
 import { AppearanceSettings } from './AppearanceSettings'
+import { ArchiveSettings } from './ArchiveSettings'
 // MicrophoneSettings disabled - WASM crashes on Windows ARM64, will revisit later
 // import { MicrophoneSettings } from './MicrophoneSettings'
 
-type SettingsTab = 'profile' | 'appearance' | 'general' | 'providers' | 'permissions' | 'skills' | 'backup'
+type SettingsTab = 'profile' | 'appearance' | 'general' | 'archive' | 'providers' | 'permissions' | 'skills' | 'backup'
 
 interface SettingsProps {
   onClose: () => void
@@ -463,6 +464,17 @@ export function Settings({ onClose }: SettingsProps) {
             <HardDrive className="w-4 h-4" />
             Backup
           </button>
+          <button
+            onClick={() => setActiveTab('archive')}
+            className={`px-4 py-3 text-sm flex items-center gap-2 border-b-2 -mb-px transition-colors ${
+              activeTab === 'archive'
+                ? 'border-accent text-accent'
+                : 'border-transparent text-text-muted hover:text-text-primary'
+            }`}
+          >
+            <Archive className="w-4 h-4" />
+            Archive
+          </button>
         </div>
 
         {/* Content */}
@@ -807,6 +819,8 @@ export function Settings({ onClose }: SettingsProps) {
           {/* Microphone settings disabled - WASM crashes on Windows ARM64 */}
 
           {activeTab === 'backup' && <BackupSettings />}
+
+          {activeTab === 'archive' && <ArchiveSettings />}
         </div>
       </div>
     </div>

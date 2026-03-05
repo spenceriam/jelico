@@ -27,6 +27,9 @@ All notable changes to Jelico are documented in this file.
 - **Conversation Deletion Flow** — Delete now archives by default, with explicit restore and permanent-delete controls in the sidebar.
 - **Update Flow UX** — Update checks now run at startup and periodically, with toast-style prompts for Download/Apply/Later and release-note access.
 - **Worktrunk New-Chat Flow** — Worktree isolation preferences now persist and new-chat wording is clearer for non-Git users.
+- **Composer and Queue Polish** — Prompt-box helper text, spacing, and queued-message layout are now more consistent between welcome and active chat screens.
+- **Archive Presentation Polish** — Archive age display now uses compact time formats and archive cards better match the muted settings-outline style.
+- **Branding Refresh** — Welcome and sidebar branding now use the updated V2 assets, and Windows packaging uses the new multi-size app icon set.
 
 ## [0.34.2] - 2026-03-04
 

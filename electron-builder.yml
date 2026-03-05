@@ -16,6 +16,8 @@ files:
   - dist-electron/**/*
   - package.json
   - build/icon.png
+  - LICENSE
+  - NOTICE
 
 # Ensure native dependencies are rebuilt for each platform
 npmRebuild: true
@@ -28,6 +30,14 @@ asarUnpack:
   - "**/*.node"
   - "**/node_modules/sharp/**/*"
   - "**/node_modules/@xenova/transformers/**/*"
+
+# Ship third-party license texts with packaged app resources
+extraResources:
+  - from: licenses
+    to: licenses
+    filter:
+      - APACHE-2.0-LICENSE.txt
+      - README.md
 
 # macOS Configuration
 mac:

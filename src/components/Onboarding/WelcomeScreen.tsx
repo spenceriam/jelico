@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { ArrowRight, ArrowLeft, FolderOpen, Sparkles } from 'lucide-react'
 import { ModeSelector } from '../ModeSelector/ModeSelector'
 import { WorkspaceSelector } from '../Workspace/WorkspaceSelector'
-import { JelicoLogo } from '../Brand/JelicoLogo'
+import welcomeBannerUrl from '../../assets/branding/jelico-banner.png'
 
 interface WelcomeScreenProps {
   onComplete: (profile: OnboardingProfile) => void
@@ -76,9 +76,14 @@ export function WelcomeScreen({ onComplete }: WelcomeScreenProps) {
       <div className="min-h-screen bg-bg-void flex items-center justify-center p-10">
         <div className="w-full max-w-[500px] animate-fade-in">
           <div className="text-center mb-10">
-            <JelicoLogo className="welcome-logo mb-6" />
+            <img
+              src={welcomeBannerUrl}
+              alt="Jelico"
+              draggable={false}
+              className="h-[5.25rem] w-auto mx-auto mb-6 object-contain"
+            />
             <h1 className="font-display text-[32px] font-normal text-text-primary mb-3 tracking-tight">
-              Hello! I'm Jelico.
+              Hello there.
             </h1>
             <p className="text-text-secondary text-lg">
               I'm excited to work with you. Let's get to know each other.

@@ -1,6 +1,7 @@
 import { glob } from 'glob'
 import path from 'path'
 import fs from 'fs/promises'
+import { spawn } from 'node:child_process'
 
 export interface ContentSearchMatch {
   path: string
@@ -66,6 +67,236 @@ function isProbablyBinary(content: string): boolean {
   return content.includes('\u0000')
 }
 
+function canMatchZeroLength(regex: RegExp): boolean {
+  const samples = ['', 'a\nb']
+  for (const sample of samples) {
+    regex.lastIndex = 0
+    const match = regex.exec(sample)
+    if (match && (match[0] || '').length === 0) {
+      regex.lastIndex = 0
+      return true
+    }
+  }
+  regex.lastIndex = 0
+  return false
+}
+
+function stripTrailingNewline(text: string): string {
+  return text.replace(/\r?\n$/, '')
+}
+
+function normalizeResultPath(filePath: string): string {
+  return filePath
+    .replace(/\\/g, '/')
+    .replace(/^\.\//, '')
+}
+
+async function searchWithRipgrep(options: {
+  rootDir: string
+  pattern: string
+  includeGlobs: string[]
+  excludeGlobs: string[]
+  caseSensitive?: boolean
+  multiline?: boolean
+  maxResults: number
+  contextLines: number
+  maxFileBytes: number
+}): Promise<{ matches: ContentSearchMatch[]; truncated: boolean } | null> {
+  return new Promise((resolve) => {
+    const args = [
+      '--json',
+      '--line-number',
+      '--column',
+      '--hidden',
+      '--no-messages',
+      '--max-filesize',
+      String(options.maxFileBytes),
+    ]
+
+    if (!options.caseSensitive) args.push('-i')
+    if (options.multiline) {
+      args.push('--multiline')
+      args.push('--multiline-dotall')
+    }
+
+    for (const include of options.includeGlobs) {
+      args.push('-g', include)
+    }
+
+    for (const exclude of options.excludeGlobs) {
+      const normalized = exclude.startsWith('!') ? exclude : `!${exclude}`
+      args.push('-g', normalized)
+    }
+
+    args.push(options.pattern, '.')
+
+    let buffer = ''
+    const stderrParts: string[] = []
+    const fileContext = new Map<string, Map<number, string>>()
+    const rawMatches: Array<{ path: string; line: number; column: number }> = []
+
+    const appendLineContext = (filePath: string, line: number, text: string) => {
+      const normalizedPath = normalizeResultPath(filePath)
+      const byLine = fileContext.get(normalizedPath) || new Map<number, string>()
+      byLine.set(line, stripTrailingNewline(text))
+      fileContext.set(normalizedPath, byLine)
+    }
+
+    const child = spawn('rg', args, {
+      cwd: options.rootDir,
+      stdio: ['ignore', 'pipe', 'pipe'],
+      windowsHide: true,
+    })
+
+    const parseLine = (line: string) => {
+      const trimmed = line.trim()
+      if (!trimmed) return
+
+      let parsed: any
+      try {
+        parsed = JSON.parse(trimmed)
+      } catch {
+        return
+      }
+
+      const type = parsed?.type
+      const data = parsed?.data
+      const filePath = data?.path?.text
+      const lineNumber = Number(data?.line_number || 0)
+      const lineText = typeof data?.lines?.text === 'string' ? data.lines.text : ''
+      if (!filePath || !lineNumber || !lineText) return
+
+      if (type === 'context') {
+        appendLineContext(filePath, lineNumber, lineText)
+        return
+      }
+
+      if (type !== 'match') return
+
+      appendLineContext(filePath, lineNumber, lineText)
+      const firstSubmatch = Array.isArray(data?.submatches) && data.submatches.length > 0
+        ? data.submatches[0]
+        : null
+      const column = Number.isFinite(firstSubmatch?.start)
+        ? Number(firstSubmatch.start) + 1
+        : 1
+
+      rawMatches.push({
+        path: normalizeResultPath(filePath),
+        line: lineNumber,
+        column,
+      })
+    }
+
+    child.stdout.on('data', (chunk: Buffer | string) => {
+      buffer += chunk.toString()
+      let newlineIndex = buffer.indexOf('\n')
+      while (newlineIndex >= 0) {
+        parseLine(buffer.slice(0, newlineIndex))
+        buffer = buffer.slice(newlineIndex + 1)
+        newlineIndex = buffer.indexOf('\n')
+      }
+    })
+
+    child.stderr.on('data', (chunk: Buffer | string) => {
+      stderrParts.push(chunk.toString())
+    })
+
+    child.on('error', () => {
+      resolve(null)
+    })
+
+    child.on('close', (code) => {
+      if (buffer.trim()) parseLine(buffer)
+
+      // 0 = matches, 1 = no matches, 2 = partial/inaccessible paths.
+      if (code !== 0 && code !== 1 && code !== 2) {
+        resolve(null)
+        return
+      }
+
+      const truncated = rawMatches.length > options.maxResults
+      const selected = rawMatches.slice(0, options.maxResults)
+      const matches = selected.map((entry) => {
+        const byLine = fileContext.get(entry.path)
+        const start = Math.max(1, entry.line - options.contextLines)
+        const end = entry.line + options.contextLines
+        const snippetLines: string[] = []
+
+        for (let ln = start; ln <= end; ln += 1) {
+          const text = byLine?.get(ln)
+          if (typeof text === 'string') snippetLines.push(text)
+        }
+
+        const fallbackLine = byLine?.get(entry.line) || ''
+        return {
+          path: entry.path,
+          line: entry.line,
+          column: entry.column,
+          snippet: snippetLines.length > 0 ? snippetLines.join('\n') : fallbackLine,
+        }
+      })
+
+      if (code === 2 && matches.length === 0 && stderrParts.join('').trim()) {
+        resolve(null)
+        return
+      }
+
+      resolve({ matches, truncated })
+    })
+  })
+}
+
+async function searchWithNodeScanner(options: {
+  rootDir: string
+  files: string[]
+  regex: RegExp
+  maxResults: number
+  contextLines: number
+  maxFileBytes: number
+}): Promise<{ matches: ContentSearchMatch[]; truncated: boolean }> {
+  const matches: ContentSearchMatch[] = []
+  let truncated = false
+
+  for (const relFile of options.files) {
+    const filePath = path.join(options.rootDir, relFile)
+
+    try {
+      const stat = await fs.stat(filePath)
+      if (stat.size > options.maxFileBytes) continue
+      const content = await fs.readFile(filePath, 'utf-8')
+      if (!content || isProbablyBinary(content)) continue
+
+      options.regex.lastIndex = 0
+      let match: RegExpExecArray | null
+      while ((match = options.regex.exec(content)) !== null) {
+        const matchText = match[0] || ''
+        if (matchText.length === 0) {
+          options.regex.lastIndex += 1
+          continue
+        }
+
+        const { line, column } = computeLineColumn(content, match.index)
+        matches.push({
+          path: relFile.replace(/\\/g, '/'),
+          line,
+          column,
+          snippet: buildSnippet(content, line, options.contextLines),
+        })
+
+        if (matches.length >= options.maxResults) {
+          truncated = true
+          return { matches, truncated }
+        }
+      }
+    } catch {
+      // Skip unreadable or non-text files.
+    }
+  }
+
+  return { matches, truncated }
+}
+
 export async function searchFileContents(options: ContentSearchOptions): Promise<ContentSearchResult> {
   const includeGlobs = options.includeGlobs && options.includeGlobs.length > 0
     ? options.includeGlobs
@@ -94,48 +325,50 @@ export async function searchFileContents(options: ContentSearchOptions): Promise
     nodir: true,
     dot: false,
   })
+  const scannedFiles = files.length
 
-  const matches: ContentSearchMatch[] = []
-  let scannedFiles = 0
-  let truncated = false
+  if (files.length === 0) {
+    return { matches: [], scannedFiles, truncated: false }
+  }
 
-  for (const relFile of files) {
-    const filePath = path.join(options.rootDir, relFile)
-    scannedFiles += 1
+  // Zero-length matches are intentionally ignored by the existing scanner behavior.
+  // Keep that behavior deterministic by staying on the Node scanner for these patterns.
+  const zeroLengthPattern = canMatchZeroLength(regex)
 
-    try {
-      const stat = await fs.stat(filePath)
-      if (stat.size > maxFileBytes) continue
-      const content = await fs.readFile(filePath, 'utf-8')
-      if (!content || isProbablyBinary(content)) continue
+  if (!zeroLengthPattern) {
+    const ripgrepResult = await searchWithRipgrep({
+      rootDir: options.rootDir,
+      pattern: options.pattern,
+      includeGlobs,
+      excludeGlobs,
+      caseSensitive: options.caseSensitive,
+      multiline: options.multiline,
+      maxResults,
+      contextLines,
+      maxFileBytes,
+    })
 
-      regex.lastIndex = 0
-      let match: RegExpExecArray | null
-      while ((match = regex.exec(content)) !== null) {
-        const matchText = match[0] || ''
-        if (matchText.length === 0) {
-          regex.lastIndex += 1
-          continue
-        }
-
-        const { line, column } = computeLineColumn(content, match.index)
-        matches.push({
-          path: relFile.replace(/\\/g, '/'),
-          line,
-          column,
-          snippet: buildSnippet(content, line, contextLines),
-        })
-
-        if (matches.length >= maxResults) {
-          truncated = true
-          return { matches, scannedFiles, truncated }
-        }
+    if (ripgrepResult) {
+      return {
+        matches: ripgrepResult.matches,
+        scannedFiles,
+        truncated: ripgrepResult.truncated,
       }
-    } catch {
-      // Skip unreadable or non-text files.
     }
   }
 
-  return { matches, scannedFiles, truncated }
-}
+  const fallback = await searchWithNodeScanner({
+    rootDir: options.rootDir,
+    files,
+    regex,
+    maxResults,
+    contextLines,
+    maxFileBytes,
+  })
 
+  return {
+    matches: fallback.matches,
+    scannedFiles,
+    truncated: fallback.truncated,
+  }
+}

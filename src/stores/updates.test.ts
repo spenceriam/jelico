@@ -1,0 +1,189 @@
+import test, { beforeEach } from 'node:test'
+import assert from 'node:assert/strict'
+import { useUpdateStore } from './updates'
+
+const AVAILABLE_DISMISS_KEY = 'jelico:update:dismissed-available-version'
+const APPLY_DISMISS_KEY = 'jelico:update:dismissed-apply-version'
+
+interface LocalStorageLike {
+  getItem: (key: string) => string | null
+  setItem: (key: string, value: string) => void
+  removeItem: (key: string) => void
+  clear: () => void
+}
+
+function createLocalStorageMock(): LocalStorageLike {
+  const store = new Map<string, string>()
+  return {
+    getItem: (key) => (store.has(key) ? store.get(key)! : null),
+    setItem: (key, value) => {
+      store.set(key, value)
+    },
+    removeItem: (key) => {
+      store.delete(key)
+    },
+    clear: () => {
+      store.clear()
+    },
+  }
+}
+
+function setGlobalWindow(overrides: Partial<any> = {}) {
+  const bridge = {
+    getCurrentVersion: async () => '0.35.0',
+    check: async () => ({
+      currentVersion: '0.35.0',
+      latestVersion: '0.36.0',
+      isUpdateAvailable: true,
+      releaseUrl: 'https://example.com/release',
+      publishedAt: '2026-03-04T00:00:00.000Z',
+      assets: [],
+      recommendedAsset: null,
+    }),
+    download: async () => ({ savedTo: 'C:/tmp/Jelico-0.36.0.exe' }),
+    applyDownloaded: async (_filePath: string) => ({ success: true }),
+    openRelease: async (_url: string) => true,
+    onDownloadProgress: (_callback: (progress: any) => void) => () => {},
+    ...overrides,
+  }
+
+  Object.defineProperty(globalThis, 'window', {
+    configurable: true,
+    value: {
+      jelico: {
+        updates: bridge,
+      },
+    },
+  })
+}
+
+function resetStoreState() {
+  useUpdateStore.setState({
+    info: null,
+    currentVersion: null,
+    isChecking: false,
+    isDownloading: false,
+    downloadProgress: null,
+    lastChecked: null,
+    lastDownloadedTo: null,
+    downloadedVersion: null,
+    dismissedAvailableVersion: null,
+    dismissedApplyVersion: null,
+    error: null,
+  })
+}
+
+beforeEach(() => {
+  const localStorageMock = createLocalStorageMock()
+  Object.defineProperty(globalThis, 'localStorage', {
+    configurable: true,
+    value: localStorageMock,
+  })
+
+  setGlobalWindow()
+  resetStoreState()
+})
+
+test('checkForUpdates(force) hydrates update info and current version', async () => {
+  const expectedInfo = {
+    currentVersion: '0.35.0',
+    latestVersion: '0.36.0',
+    isUpdateAvailable: true,
+    releaseUrl: 'https://example.com/release',
+    publishedAt: '2026-03-04T00:00:00.000Z',
+    assets: [],
+    recommendedAsset: null,
+  }
+
+  setGlobalWindow({
+    check: async () => expectedInfo,
+  })
+
+  const result = await useUpdateStore.getState().checkForUpdates({ force: true })
+
+  assert.deepEqual(result, expectedInfo)
+  const state = useUpdateStore.getState()
+  assert.deepEqual(state.info, expectedInfo)
+  assert.equal(state.currentVersion, '0.35.0')
+  assert.equal(typeof state.lastChecked, 'number')
+})
+
+test('downloadUpdate marks downloaded version and persists dismissal keys correctly', async () => {
+  const info = {
+    currentVersion: '0.35.0',
+    latestVersion: '0.36.0',
+    isUpdateAvailable: true,
+    releaseUrl: 'https://example.com/release',
+    publishedAt: '2026-03-04T00:00:00.000Z',
+    assets: [],
+    recommendedAsset: null,
+  }
+  useUpdateStore.setState({ info })
+
+  setGlobalWindow({
+    download: async () => ({ savedTo: 'C:/tmp/Jelico-0.36.0.exe' }),
+  })
+
+  const result = await useUpdateStore.getState().downloadUpdate()
+  assert.deepEqual(result, { savedTo: 'C:/tmp/Jelico-0.36.0.exe' })
+
+  const state = useUpdateStore.getState()
+  assert.equal(state.lastDownloadedTo, 'C:/tmp/Jelico-0.36.0.exe')
+  assert.equal(state.downloadedVersion, '0.36.0')
+  assert.equal(state.dismissedApplyVersion, null)
+  assert.equal(state.dismissedAvailableVersion, '0.36.0')
+  assert.equal(localStorage.getItem(AVAILABLE_DISMISS_KEY), '0.36.0')
+  assert.equal(localStorage.getItem(APPLY_DISMISS_KEY), null)
+})
+
+test('applyDownloadedUpdate returns error when no downloaded path exists', async () => {
+  const result = await useUpdateStore.getState().applyDownloadedUpdate()
+  assert.equal(result, null)
+  assert.match(useUpdateStore.getState().error || '', /No downloaded update file is available yet/i)
+})
+
+test('applyDownloadedUpdate persists apply-dismiss state when launch succeeds', async () => {
+  useUpdateStore.setState({
+    lastDownloadedTo: 'C:/tmp/Jelico-0.36.0.exe',
+    downloadedVersion: '0.36.0',
+    info: {
+      currentVersion: '0.35.0',
+      latestVersion: '0.36.0',
+      isUpdateAvailable: true,
+      releaseUrl: 'https://example.com/release',
+      publishedAt: '2026-03-04T00:00:00.000Z',
+      assets: [],
+      recommendedAsset: null,
+    },
+  })
+
+  setGlobalWindow({
+    applyDownloaded: async (_filePath: string) => ({
+      success: true,
+      launchedPath: 'C:/tmp/Jelico-0.36.0.exe',
+    }),
+  })
+
+  const result = await useUpdateStore.getState().applyDownloadedUpdate()
+
+  assert.deepEqual(result, {
+    success: true,
+    launchedPath: 'C:/tmp/Jelico-0.36.0.exe',
+  })
+  assert.equal(useUpdateStore.getState().dismissedApplyVersion, '0.36.0')
+  assert.equal(localStorage.getItem(APPLY_DISMISS_KEY), '0.36.0')
+})
+
+test('silent check failures do not override an existing visible error', async () => {
+  useUpdateStore.setState({ error: 'existing error' })
+
+  setGlobalWindow({
+    check: async () => {
+      throw new Error('network failure')
+    },
+  })
+
+  const result = await useUpdateStore.getState().checkForUpdates({ force: true, silent: true })
+  assert.equal(result, null)
+  assert.equal(useUpdateStore.getState().error, 'existing error')
+})

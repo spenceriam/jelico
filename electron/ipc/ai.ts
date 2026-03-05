@@ -61,7 +61,7 @@ import {
   type WebProviderRuntime,
 } from '../services/webAdapter'
 import { scanWorkspaceSpecs, formatSpecContext } from '../services/specScanner'
-import { lookupModelsDevOutputLimit, refreshModelCatalog } from '../services/modelCatalog'
+import { lookupModelsDevModelMetadata, lookupModelsDevOutputLimit, refreshModelCatalog } from '../services/modelCatalog'
 import { resolveModelCapabilityProfile, buildModelCapabilityProfilePrompt } from '../services/modelCapabilityProfiles'
 
 // Start orphan cleanup on module load
@@ -1322,7 +1322,9 @@ function getBuiltInTools(
     waitedForAnyAgent: false,
     subAgentWebAttempts: 0,
     subAgentWebFallbackSignals: 0,
-    countedWebAgents: new Set<string>(),
+    countedWebCallCounts: new Map<string, number>(),
+    countedFallbackSignalCounts: new Map<string, number>(),
+    countedLowConfidenceAgents: new Set<string>(),
     directWebCallsUsed: 0,
   }
   const MAX_WEB_RESEARCH_AGENT_ATTEMPTS = 5
@@ -1335,6 +1337,7 @@ function getBuiltInTools(
         if (!providerConfig) {
           return {
             providerType: 'unknown',
+            rawProviderType: null,
             apiKey: null,
             baseUrl: null,
             model: streamContext.model,
@@ -1344,6 +1347,7 @@ function getBuiltInTools(
         const apiKey = await keychainService.getApiKey(streamContext.providerId)
         return {
           providerType: normalizeWebProviderType(providerConfig.type),
+          rawProviderType: providerConfig.type || null,
           apiKey,
           baseUrl: providerConfig.base_url || null,
           model: streamContext.model,
@@ -1352,6 +1356,7 @@ function getBuiltInTools(
         console.warn('[AI] Failed to resolve web runtime; defaulting to unsupported provider:', error)
         return {
           providerType: 'unknown',
+          rawProviderType: null,
           apiKey: null,
           baseUrl: null,
           model: streamContext.model,
@@ -1370,23 +1375,36 @@ function getBuiltInTools(
   const LOW_CONFIDENCE_RESEARCH_PATTERN = /unable to (locate|find)|couldn'?t find|could not find|did not find|no (clear|specific) (evidence|documentation|resource|results?)|not found\b|no specific\b/i
 
   const recordSubAgentWebSignals = (agentId: string, status: ReturnType<typeof getSubAgentStatus>) => {
-    if (!status.found || webResearchState.countedWebAgents.has(agentId)) return
-    webResearchState.countedWebAgents.add(agentId)
+    if (!status.found) return
 
     const webToolCalls = (status.toolCalls || []).filter((toolCall) =>
       toolCall.name === 'web_search' || toolCall.name === 'web_fetch'
     )
 
-    webResearchState.subAgentWebAttempts += webToolCalls.length
-    const fallbackSignals = webToolCalls.filter((toolCall) =>
+    const previousCallCount = webResearchState.countedWebCallCounts.get(agentId) || 0
+    if (webToolCalls.length > previousCallCount) {
+      webResearchState.subAgentWebAttempts += (webToolCalls.length - previousCallCount)
+      webResearchState.countedWebCallCounts.set(agentId, webToolCalls.length)
+    }
+
+    const fallbackSignalsTotal = webToolCalls.filter((toolCall) =>
       !toolCall.success ||
       toolCall.searchResultType === 'blocked' ||
       toolCall.searchResultType === 'no_results' ||
       toolCall.searchResultType === 'unsupported'
     ).length
+    const previousFallbackSignals = webResearchState.countedFallbackSignalCounts.get(agentId) || 0
+    if (fallbackSignalsTotal > previousFallbackSignals) {
+      webResearchState.subAgentWebFallbackSignals += (fallbackSignalsTotal - previousFallbackSignals)
+      webResearchState.countedFallbackSignalCounts.set(agentId, fallbackSignalsTotal)
+    }
+
     const outputText = `${status.result || ''}\n${status.error || ''}`
     const hasLowConfidenceLanguage = LOW_CONFIDENCE_RESEARCH_PATTERN.test(outputText)
-    webResearchState.subAgentWebFallbackSignals += fallbackSignals + (hasLowConfidenceLanguage ? 1 : 0)
+    if (hasLowConfidenceLanguage && !webResearchState.countedLowConfidenceAgents.has(agentId)) {
+      webResearchState.countedLowConfidenceAgents.add(agentId)
+      webResearchState.subAgentWebFallbackSignals += 1
+    }
   }
 
   const shouldAutoRetryWebResearchAgent = (
@@ -1412,6 +1430,13 @@ function getBuiltInTools(
     }
 
     if (status.status === 'failed') {
+      // Sub-agent runner already performs multiple internal recovery passes.
+      // If it still failed after retries, return immediately instead of spawning
+      // additional hidden helpers that keep the UI stuck in wait mode.
+      if ((status.autoContinueAttempts || 0) > 0) {
+        return { retry: false, reason: 'agent_failed_after_internal_retries' }
+      }
+
       // Only retry failed agents if they actually attempted some work
       const hasAnyResearchCalls = toolCalls.some((tc) =>
         tc.name === 'web_search' || tc.name === 'web_fetch' ||
@@ -1433,6 +1458,15 @@ function getBuiltInTools(
         return { retry: false, reason: 'agent_used_filesystem_not_web_no_retry' }
       }
       return { retry: true, reason: 'agent_failed_with_some_work' }
+    }
+
+    // Avoid hidden retry loops when a helper has already completed and produced
+    // a usable draft. Let the main model decide whether to run another helper.
+    if (status.status === 'completed') {
+      const completedOutput = typeof result.result === 'string' ? result.result.trim() : ''
+      if (completedOutput.length >= 80) {
+        return { retry: false, reason: 'agent_completed_with_substantive_output' }
+      }
     }
 
     const webCalls = toolCalls.filter((toolCall) =>
@@ -2171,36 +2205,32 @@ If the agent created an artifact:
             }
 
             try {
-              const retryAgentId = await spawnSubAgent({
-                parentStreamId: streamContext.channelId,
-                conversationId: streamContext.conversationId,
-                name: `Agent-retry-${Date.now().toString(36).slice(-4)}`,
-                task: `${retryTask}\n\n[Retry guidance]\nPrevious attempt could not complete web tool execution reliably. Re-run the research with concrete tool calls and return findings with URLs.`,
-                mode: postWaitStatus.mode || 'auto',
-                providerId: postWaitStatus.providerId || streamContext.providerId,
-                model: postWaitStatus.model || streamContext.model,
-                workspacePath: postWaitStatus.workspacePath || streamContext.workspacePath,
-                siblingContext: postWaitStatus.siblingContext,
-              })
+              const retryGuidance = [
+                `[Retry guidance]`,
+                `Reason: ${retryDecision.reason}`,
+                `Keep working on the same task and preserve your previous findings.`,
+                `Do another concrete research pass with real tool calls and provide source-backed findings.`,
+                `If provider/tool capability blocks progress, ask the main AI for direction using [QUESTION] with the exact blocker.`,
+                `Task: ${retryTask}`,
+              ].join('\n')
 
-              const retryStatus = getSubAgentStatus(retryAgentId)
-              if (sendSpawnAgent) {
-                sendSpawnAgent({
-                  id: retryAgentId,
-                  name: `Agent-retry-${attempt + 1}`,
-                  displayName: retryStatus.displayName,
-                  task: retryTask,
-                  mode: postWaitStatus.mode || 'auto',
-                })
+              const continued = await continueSubAgent(currentAgentId, retryGuidance)
+              if (!continued.success) {
+                return {
+                  success: false,
+                  error: continued.error || 'Unable to continue helper agent.',
+                  retries_attempted: attempt,
+                  needs_user_feedback: true,
+                  progress_updates: allProgressUpdates,
+                }
               }
 
-              currentAgentId = retryAgentId
               attempt += 1
               continue
-            } catch (retrySpawnError: any) {
+            } catch (continueError: any) {
               return {
                 success: false,
-                error: retrySpawnError?.message || 'Unable to spawn a retry helper agent.',
+                error: continueError?.message || 'Unable to continue helper agent.',
                 retries_attempted: attempt,
                 needs_user_feedback: true,
                 progress_updates: allProgressUpdates,
@@ -3895,9 +3925,11 @@ export function registerAIHandlers() {
       const docsGuideTurn = isDocsGuideTurn(params.messages)
       const useLeanPromptDefault = process.env.JELICO_FULL_PROMPT !== '1'
       const providerProfileOverrides = ((providerConfig as any).capability_profiles || null) as Record<string, any> | null
+      const modelsDevMetadata = lookupModelsDevModelMetadata(providerConfig.type, modelId)
       const modelCapabilityProfile = resolveModelCapabilityProfile({
         providerType: providerConfig.type,
         modelId,
+        modelsDevMetadata: modelsDevMetadata || undefined,
         providerOverrides: providerProfileOverrides || undefined,
       })
 

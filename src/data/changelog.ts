@@ -35,6 +35,9 @@ export const changelog: ChangelogEntry[] = [
         'Conversation deletion now archives by default with sidebar restore/permanent-delete flows grouped by workspace/sandbox context (Fixes #114)',
         'Update UX now runs background checks, shows bottom-right availability/apply banners, supports release-note linking, and can launch downloaded installers directly from Settings/App prompts (Fixes #113)',
         'Worktrunk/worktree ergonomics now persist the auto-isolation preference for new chats and use clearer non-technical copy around isolated-worktree creation prompts (Fixes #123)',
+        'Composer UX now keeps consistent helper text, spacing, and queue-row alignment between welcome and active chat surfaces',
+        'Archive settings presentation now uses compact archive-age formatting, wrapped chat titles, and muted-outline styling consistent with other settings tabs',
+        'Branding assets were refreshed for welcome/sidebar surfaces and Windows packaging now uses the updated multi-size V2 icon set',
       ],
       fixed: [
         'Sub-agent capability policy is now driven by a single mode capability matrix wired into tool exposure, prompt contract text, and spawn-agent permission destructiveness checks (Fixes #96)',
