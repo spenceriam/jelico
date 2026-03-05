@@ -10,6 +10,8 @@ export interface ModeCapabilities {
   subAgent: ToolMutationPolicy
 }
 
+let capabilityMatrixValidated = false
+
 // Single capability source of truth used by:
 // - Main tool exposure
 // - Sub-agent tool exposure
@@ -55,6 +57,10 @@ export function canSubAgentMutate(mode: AgentMode): boolean {
 }
 
 export function assertCapabilityMatrix(): void {
+  if (capabilityMatrixValidated) {
+    return
+  }
+
   const requiredModes: AgentMode[] = [
     'auto',
     'execute',
@@ -74,4 +80,6 @@ export function assertCapabilityMatrix(): void {
       throw new Error(`Invalid capability matrix entry for mode: ${mode}`)
     }
   }
+
+  capabilityMatrixValidated = true
 }
