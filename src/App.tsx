@@ -201,13 +201,13 @@ export default function App() {
     loadCurrentVersion()
 
     const startupTimer = window.setTimeout(() => {
-      checkForUpdates({ force: true, silent: true }).catch((error) => {
+      checkForUpdates({ silent: true }).catch((error) => {
         console.warn('Background startup update check failed:', error)
       })
     }, 2500)
 
     const backgroundInterval = window.setInterval(() => {
-      checkForUpdates({ force: true, silent: true }).catch((error) => {
+      checkForUpdates({ silent: true }).catch((error) => {
         console.warn('Background update check failed:', error)
       })
     }, 6 * 60 * 60 * 1000)

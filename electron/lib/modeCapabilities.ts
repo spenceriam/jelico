@@ -17,11 +17,11 @@ export interface ModeCapabilities {
 export const MODE_CAPABILITY_MATRIX: Record<AgentMode, ModeCapabilities> = {
   auto: {
     main: { canWriteFiles: true, canExecuteCommands: true },
-    subAgent: { canWriteFiles: false, canExecuteCommands: false },
+    subAgent: { canWriteFiles: true, canExecuteCommands: true },
   },
   execute: {
     main: { canWriteFiles: true, canExecuteCommands: true },
-    subAgent: { canWriteFiles: false, canExecuteCommands: false },
+    subAgent: { canWriteFiles: true, canExecuteCommands: true },
   },
   plan: {
     main: { canWriteFiles: false, canExecuteCommands: false },
@@ -40,7 +40,7 @@ export const MODE_CAPABILITY_MATRIX: Record<AgentMode, ModeCapabilities> = {
     subAgent: { canWriteFiles: false, canExecuteCommands: false },
   },
   'pr-review': {
-    main: { canWriteFiles: false, canExecuteCommands: false },
+    main: { canWriteFiles: true, canExecuteCommands: true },
     subAgent: { canWriteFiles: true, canExecuteCommands: true },
   },
 }

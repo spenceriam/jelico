@@ -14,7 +14,7 @@ test('capability matrix declares all required modes', () => {
 })
 
 test('sub-agent mutation permissions match capability matrix policy', () => {
-  const expectedMutableModes = new Set(['review', 'pr-review'])
+  const expectedMutableModes = new Set(['auto', 'execute', 'review', 'pr-review'])
   const modes = Object.keys(MODE_CAPABILITY_MATRIX) as Array<keyof typeof MODE_CAPABILITY_MATRIX>
   for (const mode of modes) {
     const shouldMutate = expectedMutableModes.has(mode)

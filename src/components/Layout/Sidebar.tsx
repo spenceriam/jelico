@@ -22,6 +22,7 @@ import { useUIStore } from '../../stores/ui'
 import { useWorkspaceStore, type Workspace } from '../../stores/workspaces'
 import { useArtifactStore, type ArtifactType } from '../../stores/artifacts'
 import { useUpdateStore } from '../../stores/updates'
+import { useDecisionPromptStore } from '../../stores/decisionPrompt'
 import { TransferDialog } from '../Conversations/TransferDialog'
 import sidebarBrandUrl from '../../assets/branding/jelico-icon-v2-transparent.png'
 
@@ -319,7 +320,17 @@ export function Sidebar() {
 
   const handleDeleteConversation = async (e: React.MouseEvent, id: string) => {
     e.stopPropagation()
-    if (confirm('Archive this conversation? You can restore it later from Settings > Archive.')) {
+    const decision = await useDecisionPromptStore.getState().request({
+      title: 'Archive Conversation',
+      message: 'Archive this conversation? You can restore it later from Settings > Archive.',
+      options: [
+        { label: 'Archive', value: 'archive', variant: 'primary' },
+        { label: 'Cancel', value: 'cancel', variant: 'secondary' },
+      ],
+      defaultValue: 'cancel',
+      cancelValue: 'cancel',
+    })
+    if (decision.value === 'archive') {
       await archiveConversation(id)
     }
   }
