@@ -1,6 +1,6 @@
 import test, { beforeEach } from 'node:test'
 import assert from 'node:assert/strict'
-import { useUpdateStore } from './updates'
+import { getUpdateBannerVisibility, useUpdateStore } from './updates'
 
 const AVAILABLE_DISMISS_KEY = 'jelico:update:dismissed-available-version'
 const APPLY_DISMISS_KEY = 'jelico:update:dismissed-apply-version'
@@ -237,6 +237,51 @@ test('successful check clears stale errors even when silent', async () => {
   const result = await useUpdateStore.getState().checkForUpdates({ force: true, silent: true })
   assert.ok(result)
   assert.equal(useUpdateStore.getState().error, null)
+})
+
+test('getUpdateBannerVisibility keeps apply banner visible for an older downloaded installer when a newer update is found', () => {
+  const visibility = getUpdateBannerVisibility({
+    info: {
+      currentVersion: '1.2.0',
+      latestVersion: '1.4.0',
+      isUpdateAvailable: true,
+      releaseUrl: 'https://example.com/release',
+      publishedAt: '2026-03-04T00:00:00.000Z',
+      assets: [],
+      recommendedAsset: null,
+    },
+    lastDownloadedTo: 'C:/tmp/Jelico-1.3.0.exe',
+    downloadedVersion: '1.3.0',
+    dismissedAvailableVersion: '1.4.0',
+    dismissedApplyVersion: null,
+    launchedApplyVersion: null,
+  })
+
+  assert.equal(visibility.latestAvailableVersion, '1.4.0')
+  assert.equal(visibility.showApplyBanner, true)
+  assert.equal(visibility.showAvailableBanner, false)
+})
+
+test('getUpdateBannerVisibility falls back to the available banner after the downloaded installer was explicitly deferred', () => {
+  const visibility = getUpdateBannerVisibility({
+    info: {
+      currentVersion: '1.2.0',
+      latestVersion: '1.4.0',
+      isUpdateAvailable: true,
+      releaseUrl: 'https://example.com/release',
+      publishedAt: '2026-03-04T00:00:00.000Z',
+      assets: [],
+      recommendedAsset: null,
+    },
+    lastDownloadedTo: 'C:/tmp/Jelico-1.3.0.exe',
+    downloadedVersion: '1.3.0',
+    dismissedAvailableVersion: null,
+    dismissedApplyVersion: '1.3.0',
+    launchedApplyVersion: null,
+  })
+
+  assert.equal(visibility.showApplyBanner, false)
+  assert.equal(visibility.showAvailableBanner, true)
 })
 
 test('checkForUpdates clears stale downloaded state after version advances', async () => {

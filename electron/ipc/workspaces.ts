@@ -45,6 +45,11 @@ function resolveGitPath(baseDir: string, value: string): string {
   return path.isAbsolute(value) ? value : path.resolve(baseDir, value)
 }
 
+function normalizeComparablePath(targetPath: string): string {
+  const resolved = path.resolve(targetPath)
+  return process.platform === 'win32' ? resolved.toLowerCase() : resolved
+}
+
 function getNearestExistingDirectory(targetPath: string): string | null {
   let current = path.resolve(targetPath)
 
@@ -79,19 +84,62 @@ async function resolveRepoRootFromCandidate(candidatePath: string): Promise<stri
 }
 
 async function findRepoRootContainingWorktreeRegistration(worktreePath: string): Promise<string | null> {
-  const normalizedWorktreePath = path.resolve(worktreePath)
+  const normalizedWorktreePath = normalizeComparablePath(worktreePath)
+  const normalizedWorktreeGitPath = normalizeComparablePath(path.join(worktreePath, '.git'))
+  const registeredWorkspaces = workspaceDb.list()
+  const directlyRegisteredRepo = registeredWorkspaces.find((workspace) =>
+    (workspace.is_worktree || 0) === 1 &&
+    typeof workspace.project_path === 'string' &&
+    workspace.project_path.trim().length > 0 &&
+    normalizeComparablePath(workspace.path) === normalizedWorktreePath
+  )
+
+  if (directlyRegisteredRepo?.project_path) {
+    const candidate = path.resolve(directlyRegisteredRepo.project_path)
+    if (workspacePathExists(candidate)) {
+      return candidate
+    }
+  }
+
   const repoCandidates = new Set(
-    workspaceDb
-      .list()
+    registeredWorkspaces
       .filter((workspace) => workspace.is_git === 1)
       .map((workspace) => path.resolve(workspace.project_path || workspace.path))
       .filter((candidate) => workspacePathExists(candidate))
   )
 
   for (const candidate of repoCandidates) {
-    const worktrees = await listWorktrees(candidate)
-    if (worktrees.some((worktree) => path.resolve(worktree.path) === normalizedWorktreePath)) {
-      return candidate
+    const worktreesDir = path.join(candidate, '.git', 'worktrees')
+    let entries: fs.Dirent[]
+    try {
+      entries = await fs.promises.readdir(worktreesDir, { withFileTypes: true })
+    } catch {
+      continue
+    }
+
+    for (const entry of entries) {
+      if (!entry.isDirectory()) continue
+
+      const gitdirFile = path.join(worktreesDir, entry.name, 'gitdir')
+      let gitdirValue: string
+      try {
+        gitdirValue = (await fs.promises.readFile(gitdirFile, 'utf8')).trim()
+      } catch {
+        continue
+      }
+
+      if (!gitdirValue) continue
+
+      const resolvedGitDir = resolveGitPath(path.dirname(gitdirFile), gitdirValue)
+      const normalizedGitDir = normalizeComparablePath(resolvedGitDir)
+      const normalizedGitDirParent = normalizeComparablePath(path.dirname(resolvedGitDir))
+
+      if (
+        normalizedGitDir === normalizedWorktreeGitPath ||
+        normalizedGitDirParent === normalizedWorktreePath
+      ) {
+        return candidate
+      }
     }
   }
 

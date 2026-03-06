@@ -159,6 +159,7 @@ async function searchWithRipgrep(options: {
       stdio: ['ignore', 'pipe', 'pipe'],
       windowsHide: true,
     })
+    child.stderr.resume()
 
     const parseLine = (line: string) => {
       const trimmed = line.trim()

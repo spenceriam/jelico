@@ -7,7 +7,7 @@ import { useArtifactStore } from './stores/artifacts'
 import { useWorkspaceStore, initWorkspaceStore } from './stores/workspaces'
 import { usePermissionStore } from './stores/permissions'
 import { useThemeStore } from './stores/theme'
-import { useUpdateStore } from './stores/updates'
+import { getUpdateBannerVisibility, useUpdateStore } from './stores/updates'
 import { Sidebar } from './components/Layout/Sidebar'
 import { Header } from './components/Layout/Header'
 import { ChatArea } from './components/Chat/ChatArea'
@@ -438,25 +438,14 @@ export default function App() {
 
   // Hide header when in new chat view (no conversation or empty conversation)
   const showNewChatUI = !activeConversationId || (messages.length === 0 && !isStreaming)
-  const latestAvailableVersion = updateInfo?.isUpdateAvailable ? updateInfo.latestVersion : null
-  const hasDownloadedUpdate = Boolean(downloadedVersion && lastDownloadedTo)
-  const downloadedMatchesLatest = Boolean(
-    latestAvailableVersion &&
-    downloadedVersion &&
-    downloadedVersion === latestAvailableVersion
-  )
-  const showApplyBanner = Boolean(
-    hasDownloadedUpdate &&
-    (!latestAvailableVersion || downloadedMatchesLatest) &&
-    downloadedVersion &&
-    dismissedApplyVersion !== downloadedVersion &&
-    launchedApplyVersion !== downloadedVersion
-  )
-  const showAvailableBanner = Boolean(
-    latestAvailableVersion &&
-    !downloadedMatchesLatest &&
-    dismissedAvailableVersion !== latestAvailableVersion
-  )
+  const { latestAvailableVersion, showApplyBanner, showAvailableBanner } = getUpdateBannerVisibility({
+    info: updateInfo,
+    lastDownloadedTo,
+    downloadedVersion,
+    dismissedAvailableVersion,
+    dismissedApplyVersion,
+    launchedApplyVersion,
+  })
 
   const handleOpenReleaseNotes = async () => {
     if (!updateInfo?.releaseUrl) return

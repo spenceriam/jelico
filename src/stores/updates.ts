@@ -130,6 +130,48 @@ interface UpdatesState {
   startListening: () => () => void
 }
 
+export interface UpdateBannerVisibility {
+  latestAvailableVersion: string | null
+  showApplyBanner: boolean
+  showAvailableBanner: boolean
+}
+
+export function getUpdateBannerVisibility(input: Pick<
+  UpdatesState,
+  | 'info'
+  | 'lastDownloadedTo'
+  | 'downloadedVersion'
+  | 'dismissedAvailableVersion'
+  | 'dismissedApplyVersion'
+  | 'launchedApplyVersion'
+>): UpdateBannerVisibility {
+  const latestAvailableVersion = input.info?.isUpdateAvailable ? input.info.latestVersion : null
+  const hasDownloadedUpdate = Boolean(input.downloadedVersion && input.lastDownloadedTo)
+  const downloadedMatchesLatest = Boolean(
+    latestAvailableVersion &&
+    input.downloadedVersion &&
+    input.downloadedVersion === latestAvailableVersion
+  )
+  const showApplyBanner = Boolean(
+    hasDownloadedUpdate &&
+    input.downloadedVersion &&
+    input.dismissedApplyVersion !== input.downloadedVersion &&
+    input.launchedApplyVersion !== input.downloadedVersion
+  )
+  const showAvailableBanner = Boolean(
+    !showApplyBanner &&
+    latestAvailableVersion &&
+    !downloadedMatchesLatest &&
+    input.dismissedAvailableVersion !== latestAvailableVersion
+  )
+
+  return {
+    latestAvailableVersion,
+    showApplyBanner,
+    showAvailableBanner,
+  }
+}
+
 export const useUpdateStore = create<UpdatesState>((set, get) => ({
   info: null,
   currentVersion: null,
