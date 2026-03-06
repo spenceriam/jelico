@@ -922,6 +922,12 @@ function getContextualKnowledge(messages: Array<{ role: string; content: string 
   return `\n\n## Reference Documentation\n${matchedKnowledge.join('\n\n---\n\n')}`
 }
 
+function appendOptionalPromptSection(base: string, section: string): string {
+  const normalized = section.trim()
+  if (!normalized) return base
+  return `${base}\n\n${normalized}`
+}
+
 function normalizeMessageSnippet(value: string): string {
   return value.replace(/\s+/g, ' ').trim()
 }
@@ -4001,9 +4007,7 @@ When the user asks to modify, update, fix, or improve an existing artifact, use 
       }
 
       const modelCapabilityPrompt = buildModelCapabilityProfilePrompt(modelCapabilityProfile)
-      if (modelCapabilityPrompt) {
-        systemPrompt += `\n\n${modelCapabilityPrompt}`
-      }
+      systemPrompt = appendOptionalPromptSection(systemPrompt, modelCapabilityPrompt)
 
       // Add tool step limit awareness
       systemPrompt += `\n\n## Tool Step Limits

@@ -88,6 +88,29 @@ test('searchFileContents enforces maxResults and truncates deterministically', a
   })
 })
 
+test('searchFileContents honors contextLines=0 without adding surrounding lines', async () => {
+  await withTempDir(async (dir) => {
+    await fs.writeFile(
+      path.join(dir, 'exact.txt'),
+      [
+        'before match',
+        'needle line',
+        'after match',
+      ].join('\n'),
+      'utf-8'
+    )
+
+    const result = await searchFileContents({
+      rootDir: dir,
+      pattern: 'needle',
+      contextLines: 0,
+    })
+
+    assert.equal(result.matches.length, 1)
+    assert.equal(result.matches[0].snippet, 'needle line')
+  })
+})
+
 test('searchFileContents reports all scanned files even when nothing matches', async () => {
   await withTempDir(async (dir) => {
     await fs.writeFile(path.join(dir, 'a.txt'), 'alpha', 'utf-8')

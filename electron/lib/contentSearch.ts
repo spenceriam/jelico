@@ -46,6 +46,12 @@ function clampPositiveInt(value: unknown, fallback: number, max: number): number
   return Math.min(Math.floor(n), max)
 }
 
+function clampNonNegativeInt(value: unknown, fallback: number, max: number): number {
+  const n = Number(value)
+  if (!Number.isFinite(n) || n < 0) return fallback
+  return Math.min(Math.floor(n), max)
+}
+
 function computeLineColumn(content: string, index: number): { line: number; column: number } {
   const safeIndex = Math.max(0, Math.min(index, content.length))
   const before = content.slice(0, safeIndex)
@@ -314,7 +320,7 @@ export async function searchFileContents(options: ContentSearchOptions): Promise
   const excludeGlobs = [...DEFAULT_EXCLUDES, ...(options.excludeGlobs || [])]
 
   const maxResults = clampPositiveInt(options.maxResults, 200, 2000)
-  const contextLines = clampPositiveInt(options.contextLines, 1, 8)
+  const contextLines = clampNonNegativeInt(options.contextLines, 1, 8)
   const maxFileBytes = clampPositiveInt(options.maxFileBytes, 2 * 1024 * 1024, 10 * 1024 * 1024)
 
   let flags = 'g'

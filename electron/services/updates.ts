@@ -46,10 +46,15 @@ async function persistDownloadedUpdatePath(filePath: string | null): Promise<voi
   }
 }
 
-async function clearDownloadedUpdatePathState(): Promise<void> {
-  lastDownloadedUpdatePath = null
+function setDownloadedUpdatePathState(filePath: string | null): void {
+  downloadedUpdatePathRevision += 1
+  lastDownloadedUpdatePath = filePath
   downloadedUpdatePathLoadPromise = null
   hasLoadedDownloadedUpdatePath = true
+}
+
+async function clearDownloadedUpdatePathState(): Promise<void> {
+  setDownloadedUpdatePathState(null)
   await persistDownloadedUpdatePath(null)
 }
 
@@ -60,6 +65,7 @@ export async function clearDownloadedUpdateState(): Promise<void> {
 let lastDownloadedUpdatePath: string | null = null
 let hasLoadedDownloadedUpdatePath = false
 let downloadedUpdatePathLoadPromise: Promise<string | null> | null = null
+let downloadedUpdatePathRevision = 0
 
 export interface UpdateAssetInfo {
   name: string
@@ -332,7 +338,7 @@ export async function downloadLatestUpdate(
 
   try {
     await downloadFile(updateInfo.recommendedAsset.url, result.filePath, onProgress)
-    lastDownloadedUpdatePath = result.filePath
+    setDownloadedUpdatePathState(result.filePath)
     await persistDownloadedUpdatePath(result.filePath)
     return { savedTo: result.filePath }
   } catch (error) {
@@ -350,15 +356,22 @@ async function getDownloadedUpdatePath(): Promise<string | null> {
   if (hasLoadedDownloadedUpdatePath) return null
 
   if (!downloadedUpdatePathLoadPromise) {
-    downloadedUpdatePathLoadPromise = (async () => {
+    const loadRevision = downloadedUpdatePathRevision
+    const pendingLoad = (async () => {
       const persisted = await readPersistedDownloadedUpdatePath()
-      if (persisted) {
-        lastDownloadedUpdatePath = persisted
+      if (loadRevision !== downloadedUpdatePathRevision) {
+        return lastDownloadedUpdatePath
       }
+
       hasLoadedDownloadedUpdatePath = true
+      lastDownloadedUpdatePath = persisted
       return lastDownloadedUpdatePath
-    })().finally(() => {
-      downloadedUpdatePathLoadPromise = null
+    })
+
+    downloadedUpdatePathLoadPromise = pendingLoad.finally(() => {
+      if (downloadedUpdatePathLoadPromise === pendingLoad) {
+        downloadedUpdatePathLoadPromise = null
+      }
     })
   }
 
