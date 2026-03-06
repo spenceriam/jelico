@@ -21,47 +21,106 @@ interface DecisionPromptResult {
 }
 
 interface QueuedDecisionPrompt {
+  id: number
   request: DecisionPromptRequest
   resolve: (result: DecisionPromptResult) => void
+  detachAbortListener?: () => void
 }
 
 interface DecisionPromptState {
   activeRequest: DecisionPromptRequest | null
-  activeResolve: ((result: DecisionPromptResult) => void) | null
+  activeEntry: QueuedDecisionPrompt | null
   queuedRequests: QueuedDecisionPrompt[]
-  request: (request: DecisionPromptRequest) => Promise<DecisionPromptResult>
+  request: (request: DecisionPromptRequest, signal?: AbortSignal) => Promise<DecisionPromptResult>
   choose: (value: string) => void
   cancel: () => void
+}
+
+let decisionPromptIdCounter = 0
+
+function createCanceledResult(request: DecisionPromptRequest): DecisionPromptResult {
+  return {
+    value: request.cancelValue
+      || request.defaultValue
+      || request.options[0]?.value
+      || '',
+    canceled: true,
+  }
+}
+
+function detachAbortListener(entry: QueuedDecisionPrompt | null | undefined) {
+  entry?.detachAbortListener?.()
+  if (entry) {
+    entry.detachAbortListener = undefined
+  }
 }
 
 function getNextDecisionState(queue: QueuedDecisionPrompt[]) {
   const [nextActive, ...remainingQueue] = queue
   return {
     activeRequest: nextActive?.request ?? null,
-    activeResolve: nextActive?.resolve ?? null,
+    activeEntry: nextActive ?? null,
     queuedRequests: remainingQueue,
   }
 }
 
 export const useDecisionPromptStore = create<DecisionPromptState>((set, get) => ({
   activeRequest: null,
-  activeResolve: null,
+  activeEntry: null,
   queuedRequests: [],
 
-  request: async (request) => {
+  request: async (request, signal) => {
     return await new Promise<DecisionPromptResult>((resolve) => {
+      const entry: QueuedDecisionPrompt = {
+        id: ++decisionPromptIdCounter,
+        request,
+        resolve,
+      }
+
+      if (signal?.aborted) {
+        resolve(createCanceledResult(request))
+        return
+      }
+
+      const abortQueuedRequest = () => {
+        const currentState = get()
+        if (currentState.activeEntry?.id === entry.id) {
+          detachAbortListener(entry)
+          set(getNextDecisionState(currentState.queuedRequests))
+          resolve(createCanceledResult(request))
+          return
+        }
+
+        const nextQueue = currentState.queuedRequests.filter((queuedEntry) => queuedEntry.id !== entry.id)
+        if (nextQueue.length !== currentState.queuedRequests.length) {
+          detachAbortListener(entry)
+          set({ queuedRequests: nextQueue })
+          resolve(createCanceledResult(request))
+        }
+      }
+
+      if (signal) {
+        const onAbort = () => {
+          abortQueuedRequest()
+        }
+        signal.addEventListener('abort', onAbort, { once: true })
+        entry.detachAbortListener = () => {
+          signal.removeEventListener('abort', onAbort)
+        }
+      }
+
       set((state) => {
-        if (!state.activeRequest) {
+        if (!state.activeEntry) {
           return {
             activeRequest: request,
-            activeResolve: resolve,
+            activeEntry: entry,
           }
         }
 
         return {
           queuedRequests: [
             ...state.queuedRequests,
-            { request, resolve },
+            entry,
           ],
         }
       })
@@ -69,29 +128,23 @@ export const useDecisionPromptStore = create<DecisionPromptState>((set, get) => 
   },
 
   choose: (value) => {
-    const { activeRequest, activeResolve, queuedRequests } = get()
-    if (!activeRequest || !activeResolve) return
+    const { activeEntry, queuedRequests } = get()
+    if (!activeEntry) return
 
+    detachAbortListener(activeEntry)
     set(getNextDecisionState(queuedRequests))
-    activeResolve({
+    activeEntry.resolve({
       value,
-      canceled: activeRequest.cancelValue === value,
+      canceled: activeEntry.request.cancelValue === value,
     })
   },
 
   cancel: () => {
-    const { activeRequest, activeResolve, queuedRequests } = get()
-    if (!activeRequest || !activeResolve) return
+    const { activeEntry, queuedRequests } = get()
+    if (!activeEntry) return
 
-    const fallbackValue = activeRequest.cancelValue
-      || activeRequest.defaultValue
-      || activeRequest.options[0]?.value
-      || ''
-
+    detachAbortListener(activeEntry)
     set(getNextDecisionState(queuedRequests))
-    activeResolve({
-      value: fallbackValue,
-      canceled: true,
-    })
+    activeEntry.resolve(createCanceledResult(activeEntry.request))
   },
 }))

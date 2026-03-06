@@ -1137,6 +1137,7 @@ function getSubAgentTools(
           matches: results.matches,
           scannedFiles: results.scannedFiles,
           truncated: results.truncated,
+          partial: results.partial,
         }
       } catch (error: any) {
         return { success: false, error: error.message }

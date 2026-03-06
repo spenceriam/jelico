@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useRef, useMemo, useState } from 'react'
 import { Archive, Undo2, Trash2, AlertTriangle, Folder, Box, GitBranch, GitFork, Clock3 } from 'lucide-react'
 import { useChatStore } from '../../stores/chat'
 import { useWorkspaceStore, type Workspace } from '../../stores/workspaces'
@@ -168,6 +168,7 @@ export function ArchiveSettings() {
   const loadConversations = useChatStore((state) => state.loadConversations)
   const clearConversationArtifacts = useArtifactStore((state) => state.clearConversationArtifacts)
   const { workspaces } = useWorkspaceStore()
+  const pendingDeleteControllersRef = useRef(new Map<string, AbortController>())
 
   const [archivedConversations, setArchivedConversations] = useState<ChatConversation[]>([])
   const [loading, setLoading] = useState(true)
@@ -202,7 +203,7 @@ export function ArchiveSettings() {
     })
   }
 
-  const loadArchivedConversations = async () => {
+  const loadArchivedConversations = useCallback(async () => {
     setLoading(true)
     setLoadError(null)
     try {
@@ -214,10 +215,19 @@ export function ArchiveSettings() {
     } finally {
       setLoading(false)
     }
-  }
+  }, [])
 
   useEffect(() => {
     void loadArchivedConversations()
+  }, [loadArchivedConversations])
+
+  useEffect(() => {
+    return () => {
+      for (const controller of pendingDeleteControllersRef.current.values()) {
+        controller.abort()
+      }
+      pendingDeleteControllersRef.current.clear()
+    }
   }, [])
 
   useEffect(() => {
@@ -244,6 +254,8 @@ export function ArchiveSettings() {
   }
 
   const handlePermanentDeleteConversation = async (id: string) => {
+    const controller = new AbortController()
+    pendingDeleteControllersRef.current.set(id, controller)
     setPendingDeleteConversationIds((prev) => (prev.includes(id) ? prev : [...prev, id]))
     setConversationActionError(id, null)
     try {
@@ -256,7 +268,7 @@ export function ArchiveSettings() {
         ],
         defaultValue: 'cancel',
         cancelValue: 'cancel',
-      })
+      }, controller.signal)
       if (decision.value !== 'delete') {
         return
       }
@@ -280,6 +292,7 @@ export function ArchiveSettings() {
       console.error('Failed to permanently delete archived conversation:', error)
       setConversationActionError(id, 'Delete failed. Please try again.')
     } finally {
+      pendingDeleteControllersRef.current.delete(id)
       setPendingDeleteConversationIds((prev) => prev.filter((value) => value !== id))
       setWorkingConversationIds((prev) => prev.filter((value) => value !== id))
     }

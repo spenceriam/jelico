@@ -18,7 +18,7 @@ function createRequest(title: string, defaultValue = 'cancel'): DecisionPromptRe
 beforeEach(() => {
   useDecisionPromptStore.setState({
     activeRequest: null,
-    activeResolve: null,
+    activeEntry: null,
     queuedRequests: [],
   })
 })
@@ -44,5 +44,21 @@ test('decision prompt requests queue instead of canceling an active dialog', asy
 
   useDecisionPromptStore.getState().cancel()
   assert.deepEqual(await secondPromise, { value: 'cancel', canceled: true })
+  assert.equal(useDecisionPromptStore.getState().activeRequest, null)
+})
+
+test('queued decision prompts can be aborted before they become active', async () => {
+  const controller = new AbortController()
+  const firstPromise = useDecisionPromptStore.getState().request(createRequest('First prompt'))
+  const secondPromise = useDecisionPromptStore.getState().request(createRequest('Second prompt'), controller.signal)
+
+  controller.abort()
+
+  assert.deepEqual(await secondPromise, { value: 'cancel', canceled: true })
+  assert.equal(useDecisionPromptStore.getState().queuedRequests.length, 0)
+  assert.equal(useDecisionPromptStore.getState().activeRequest?.title, 'First prompt')
+
+  useDecisionPromptStore.getState().cancel()
+  assert.deepEqual(await firstPromise, { value: 'cancel', canceled: true })
   assert.equal(useDecisionPromptStore.getState().activeRequest, null)
 })

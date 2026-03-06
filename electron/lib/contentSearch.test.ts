@@ -35,6 +35,7 @@ test('searchFileContents returns structured matches with path/line/column/snippe
     })
 
     assert.equal(result.truncated, false)
+    assert.equal(result.partial, false)
     assert.equal(result.matches.length, 1)
     assert.equal(result.matches[0].path, 'src/example.ts')
     assert.equal(result.matches[0].line, 2)
@@ -67,6 +68,7 @@ test('searchFileContents handles zero-length patterns without infinite loops', a
 
     assert.equal(result.scannedFiles, 1)
     assert.equal(result.truncated, false)
+    assert.equal(result.partial, false)
     assert.equal(result.matches.length, 0)
   })
 })
@@ -83,6 +85,7 @@ test('searchFileContents enforces maxResults and truncates deterministically', a
     })
 
     assert.equal(result.truncated, true)
+    assert.equal(result.partial, false)
     assert.equal(result.matches.length, 5)
     assert.equal(result.matches[0].line, 1)
   })
@@ -107,6 +110,7 @@ test('searchFileContents honors contextLines=0 without adding surrounding lines'
     })
 
     assert.equal(result.matches.length, 1)
+    assert.equal(result.partial, false)
     assert.equal(result.matches[0].snippet, 'needle line')
   })
 })
@@ -125,6 +129,7 @@ test('searchFileContents reports all scanned files even when nothing matches', a
     assert.equal(result.matches.length, 0)
     assert.equal(result.scannedFiles, 3)
     assert.equal(result.truncated, false)
+    assert.equal(result.partial, false)
   })
 })
 
@@ -140,5 +145,6 @@ test('searchFileContents skips binary-looking files', async () => {
 
     assert.equal(result.matches.length, 0)
     assert.equal(result.scannedFiles, 1)
+    assert.equal(result.partial, false)
   })
 })

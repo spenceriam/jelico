@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useMemo, useRef } from 'react'
 import {
   Plus,
   Settings,
@@ -183,6 +183,7 @@ function buildProjectGroups(
 }
 
 export function Sidebar() {
+  const pendingArchiveControllersRef = useRef(new Map<string, AbortController>())
   const {
     conversations,
     activeConversationId,
@@ -320,18 +321,24 @@ export function Sidebar() {
 
   const handleDeleteConversation = async (e: React.MouseEvent, id: string) => {
     e.stopPropagation()
-    const decision = await useDecisionPromptStore.getState().request({
-      title: 'Archive Conversation',
-      message: 'Archive this conversation? You can restore it later from Settings > Archive.',
-      options: [
-        { label: 'Archive', value: 'archive', variant: 'primary' },
-        { label: 'Cancel', value: 'cancel', variant: 'secondary' },
-      ],
-      defaultValue: 'cancel',
-      cancelValue: 'cancel',
-    })
-    if (decision.value === 'archive') {
-      await archiveConversation(id)
+    const controller = new AbortController()
+    pendingArchiveControllersRef.current.set(id, controller)
+    try {
+      const decision = await useDecisionPromptStore.getState().request({
+        title: 'Archive Conversation',
+        message: 'Archive this conversation? You can restore it later from Settings > Archive.',
+        options: [
+          { label: 'Archive', value: 'archive', variant: 'primary' },
+          { label: 'Cancel', value: 'cancel', variant: 'secondary' },
+        ],
+        defaultValue: 'cancel',
+        cancelValue: 'cancel',
+      }, controller.signal)
+      if (decision.value === 'archive') {
+        await archiveConversation(id)
+      }
+    } finally {
+      pendingArchiveControllersRef.current.delete(id)
     }
   }
 
@@ -346,6 +353,15 @@ export function Sidebar() {
       workspaceId: conv.workspaceId || null,
     })
   }
+
+  useEffect(() => {
+    return () => {
+      for (const controller of pendingArchiveControllersRef.current.values()) {
+        controller.abort()
+      }
+      pendingArchiveControllersRef.current.clear()
+    }
+  }, [])
 
   // When collapsed, render nothing - the floating toggle in App.tsx handles expand
   if (sidebarCollapsed) {

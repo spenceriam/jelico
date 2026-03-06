@@ -26,6 +26,7 @@ export interface ContentSearchResult {
   matches: ContentSearchMatch[]
   scannedFiles: number
   truncated: boolean
+  partial: boolean
 }
 
 const DEFAULT_EXCLUDES = [
@@ -107,7 +108,7 @@ async function searchWithRipgrep(options: {
   maxResults: number
   contextLines: number
   maxFileBytes: number
-}): Promise<{ matches: ContentSearchMatch[]; truncated: boolean; scannedFiles: number } | null> {
+}): Promise<{ matches: ContentSearchMatch[]; truncated: boolean; partial: boolean; scannedFiles: number } | null> {
   return new Promise((resolve) => {
     const args = [
       '--json',
@@ -258,7 +259,7 @@ async function searchWithRipgrep(options: {
         return
       }
 
-      resolve({ matches, truncated, scannedFiles })
+      resolve({ matches, truncated, partial: code === 2, scannedFiles })
     })
   })
 }
@@ -344,7 +345,7 @@ export async function searchFileContents(options: ContentSearchOptions): Promise
   const scannedFiles = files.length
 
   if (files.length === 0) {
-    return { matches: [], scannedFiles, truncated: false }
+    return { matches: [], scannedFiles, truncated: false, partial: false }
   }
 
   // Zero-length matches are intentionally ignored by the existing scanner behavior.
@@ -369,6 +370,7 @@ export async function searchFileContents(options: ContentSearchOptions): Promise
         matches: ripgrepResult.matches,
         scannedFiles: ripgrepResult.scannedFiles > 0 ? ripgrepResult.scannedFiles : scannedFiles,
         truncated: ripgrepResult.truncated,
+        partial: ripgrepResult.partial,
       }
     }
   }
@@ -386,5 +388,6 @@ export async function searchFileContents(options: ContentSearchOptions): Promise
     matches: fallback.matches,
     scannedFiles,
     truncated: fallback.truncated,
+    partial: false,
   }
 }

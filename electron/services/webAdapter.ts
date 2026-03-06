@@ -472,23 +472,14 @@ async function applyUniversalSearchFallback(query: string, primary: WebSearchRes
   }
 
   const fallback = await searchWithAgentBrowser(query)
-  if (fallback.success && fallback.type === 'search_results') {
-    return {
-      ...fallback,
-      backend: `${primary.backend}+${fallback.backend}`,
-    }
+  if (!fallback.success) {
+    return primary
   }
 
-  if (primary.type === 'unsupported') {
-    return fallback.success
-      ? {
-          ...fallback,
-          backend: `${primary.backend}+${fallback.backend}`,
-        }
-      : primary
+  return {
+    ...fallback,
+    backend: `${primary.backend}+${fallback.backend}`,
   }
-
-  return primary
 }
 
 async function localFetchText(url: string, selector?: string): Promise<WebFetchResult> {

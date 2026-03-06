@@ -3154,6 +3154,7 @@ Notes:
           matches: results.matches,
           scannedFiles: results.scannedFiles,
           truncated: results.truncated,
+          partial: results.partial,
           resolvedDirectory: resolved.inSandbox
             ? `[Sandbox] ${resolved.sandboxRelativePath}`
             : resolved.resolvedPath,
