@@ -156,15 +156,25 @@ export function registerConversationHandlers() {
 
   // Archive a conversation (keeps messages/artifacts for later restore)
   ipcMain.handle('conversations:archive', async (_, id: string) => {
-    conversationDb.archive(id)
-    const conversation = conversationDb.get(id)
-    return conversation ? toConversationApi(conversation) : null
+    try {
+      conversationDb.archive(id)
+      const conversation = conversationDb.get(id)
+      return conversation ? toConversationApi(conversation) : null
+    } catch (error) {
+      console.error('[Conversations] Failed to archive conversation:', { id, error })
+      throw error
+    }
   })
 
   // Restore an archived conversation
   ipcMain.handle('conversations:restore', async (_, id: string) => {
-    conversationDb.restore(id)
-    const conversation = conversationDb.get(id)
-    return conversation ? toConversationApi(conversation) : null
+    try {
+      conversationDb.restore(id)
+      const conversation = conversationDb.get(id)
+      return conversation ? toConversationApi(conversation) : null
+    } catch (error) {
+      console.error('[Conversations] Failed to restore conversation:', { id, error })
+      throw error
+    }
   })
 }

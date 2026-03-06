@@ -127,6 +127,24 @@ test('provider override wildcard is fallback-only and does not shadow specific p
   assert.equal(profile.reminderAggressiveness, 'high')
 })
 
+test('provider override partial matches prefer the most specific key', () => {
+  const profile = resolveModelCapabilityProfile({
+    providerType: 'openai',
+    modelId: 'gpt-4-turbo-preview',
+    providerOverrides: {
+      gpt: {
+        delegationStyle: 'minimal',
+      },
+      'gpt-4-turbo': {
+        delegationStyle: 'parallel-first',
+      },
+    },
+  })
+
+  assert.equal(profile.source, 'provider_override')
+  assert.equal(profile.delegationStyle, 'parallel-first')
+})
+
 test('prompt formatter omits neutral default profiles', () => {
   const profile = resolveModelCapabilityProfile({
     providerType: 'openai',

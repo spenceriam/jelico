@@ -112,16 +112,25 @@ function pickOverride(
 
   const normalizedModel = modelId.toLowerCase()
   let wildcardOverride: ModelCapabilityProfileOverride | null = null
+  let bestPartialMatch: { keyLength: number; override: ModelCapabilityProfileOverride } | null = null
 
   for (const [key, value] of Object.entries(overrides)) {
     if (key === '*') {
       wildcardOverride = value
       continue
     }
-    if (normalizedModel.includes(key.toLowerCase())) return value
+    if (!normalizedModel.includes(key.toLowerCase())) continue
+
+    const keyLength = key.length
+    if (!bestPartialMatch || keyLength > bestPartialMatch.keyLength) {
+      bestPartialMatch = {
+        keyLength,
+        override: value,
+      }
+    }
   }
 
-  return wildcardOverride
+  return bestPartialMatch?.override || wildcardOverride
 }
 
 export function resolveModelCapabilityProfile(params: {
