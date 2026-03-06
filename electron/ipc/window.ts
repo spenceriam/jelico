@@ -83,15 +83,18 @@ export function registerWindowHandlers() {
       return { success: false, error: 'No window' }
     }
 
-    const width = Math.max(1, Math.floor(request.width || 0))
-    const height = Math.max(1, Math.floor(request.height || 0))
-    const x = Math.max(0, Math.floor(request.x || 0))
-    const y = Math.max(0, Math.floor(request.y || 0))
+    const rawWidth = Number.isFinite(request.width) ? Math.floor(request.width) : 0
+    const rawHeight = Number.isFinite(request.height) ? Math.floor(request.height) : 0
+    const x = Number.isFinite(request.x) ? Math.max(0, Math.floor(request.x)) : 0
+    const y = Number.isFinite(request.y) ? Math.max(0, Math.floor(request.y)) : 0
     const copyToClipboard = request.copyToClipboard === true
 
-    if (width <= 0 || height <= 0) {
+    if (rawWidth <= 0 || rawHeight <= 0) {
       return { success: false, error: 'Invalid capture area' }
     }
+
+    const width = Math.max(1, rawWidth)
+    const height = Math.max(1, rawHeight)
 
     try {
       const image = await win.capturePage({ x, y, width, height })

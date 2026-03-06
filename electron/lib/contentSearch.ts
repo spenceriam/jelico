@@ -1,7 +1,7 @@
 import { glob } from 'glob'
 import path from 'path'
 import fs from 'fs/promises'
-import { spawn } from 'node:child_process'
+import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process'
 
 export interface ContentSearchMatch {
   path: string
@@ -40,6 +40,36 @@ const DEFAULT_EXCLUDES = [
   '**/.idea/**',
   '**/.vscode/**',
 ]
+
+const DEFAULT_RIPGREP_TIMEOUT_MS = 30_000
+
+type RipgrepSpawn = (
+  command: string,
+  args: string[],
+  options: {
+    cwd: string
+    stdio: ['ignore', 'pipe', 'pipe']
+    windowsHide: boolean
+  }
+) => ChildProcessWithoutNullStreams
+
+const defaultRipgrepSpawn: RipgrepSpawn = (command, args, options) => spawn(command, args, options)
+
+let ripgrepSpawn: RipgrepSpawn = defaultRipgrepSpawn
+let ripgrepTimeoutMs = DEFAULT_RIPGREP_TIMEOUT_MS
+
+export function __setRipgrepSpawnForTests(spawnFn: RipgrepSpawn | null): void {
+  ripgrepSpawn = spawnFn || defaultRipgrepSpawn
+}
+
+export function __setRipgrepTimeoutForTests(timeoutMs: number | null): void {
+  if (typeof timeoutMs === 'number' && Number.isFinite(timeoutMs) && timeoutMs >= 0) {
+    ripgrepTimeoutMs = timeoutMs
+    return
+  }
+
+  ripgrepTimeoutMs = DEFAULT_RIPGREP_TIMEOUT_MS
+}
 
 function clampPositiveInt(value: unknown, fallback: number, max: number): number {
   const n = Number(value)
@@ -110,6 +140,16 @@ async function searchWithRipgrep(options: {
   maxFileBytes: number
 }): Promise<{ matches: ContentSearchMatch[]; truncated: boolean; partial: boolean; scannedFiles: number } | null> {
   return new Promise((resolve) => {
+    let settled = false
+    let killTimeout: ReturnType<typeof setTimeout> | null = null
+
+    const finish = (result: { matches: ContentSearchMatch[]; truncated: boolean; partial: boolean; scannedFiles: number } | null) => {
+      if (settled) return
+      settled = true
+      if (killTimeout) clearTimeout(killTimeout)
+      resolve(result)
+    }
+
     const args = [
       '--json',
       '--line-number',
@@ -154,12 +194,27 @@ async function searchWithRipgrep(options: {
       fileContext.set(normalizedPath, byLine)
     }
 
-    const child = spawn('rg', args, {
-      cwd: options.rootDir,
-      stdio: ['ignore', 'pipe', 'pipe'],
-      windowsHide: true,
-    })
+    let child: ChildProcessWithoutNullStreams
+    try {
+      child = ripgrepSpawn('rg', args, {
+        cwd: options.rootDir,
+        stdio: ['ignore', 'pipe', 'pipe'],
+        windowsHide: true,
+      })
+    } catch {
+      finish(null)
+      return
+    }
     child.stderr.resume()
+    killTimeout = setTimeout(() => {
+      finish(null)
+      try {
+        child.kill()
+      } catch {
+        // Ignore late process-exit races during timeout cleanup.
+      }
+    }, ripgrepTimeoutMs)
+    killTimeout.unref?.()
 
     const parseLine = (line: string) => {
       const trimmed = line.trim()
@@ -221,15 +276,16 @@ async function searchWithRipgrep(options: {
     })
 
     child.on('error', () => {
-      resolve(null)
+      finish(null)
     })
 
     child.on('close', (code) => {
+      if (settled) return
       if (buffer.trim()) parseLine(buffer)
 
       // 0 = matches, 1 = no matches, 2 = partial/inaccessible paths.
       if (code !== 0 && code !== 1 && code !== 2) {
-        resolve(null)
+        finish(null)
         return
       }
 
@@ -256,11 +312,11 @@ async function searchWithRipgrep(options: {
       })
 
       if (code === 2 && matches.length === 0) {
-        resolve(null)
+        finish(null)
         return
       }
 
-      resolve({ matches, truncated, partial: code === 2, scannedFiles })
+      finish({ matches, truncated, partial: code === 2, scannedFiles })
     })
   })
 }

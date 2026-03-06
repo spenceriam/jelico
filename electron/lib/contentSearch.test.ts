@@ -1,9 +1,15 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
+import { EventEmitter } from 'node:events'
 import fs from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
-import { searchFileContents } from './contentSearch'
+import { PassThrough } from 'node:stream'
+import {
+  __setRipgrepSpawnForTests,
+  __setRipgrepTimeoutForTests,
+  searchFileContents,
+} from './contentSearch'
 
 async function withTempDir(fn: (dir: string) => Promise<void>): Promise<void> {
   const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'jelico-content-search-'))
@@ -146,5 +152,40 @@ test('searchFileContents skips binary-looking files', async () => {
     assert.equal(result.matches.length, 0)
     assert.equal(result.scannedFiles, 1)
     assert.equal(result.partial, false)
+  })
+})
+
+test('searchFileContents falls back to the node scanner when ripgrep times out', async () => {
+  await withTempDir(async (dir) => {
+    await fs.writeFile(path.join(dir, 'slow.txt'), 'timeout token', 'utf-8')
+
+    let killCalls = 0
+    const fakeChild = Object.assign(new EventEmitter(), {
+      stdout: new PassThrough(),
+      stderr: new PassThrough(),
+      kill() {
+        killCalls += 1
+        return true
+      },
+    })
+
+    __setRipgrepSpawnForTests(() => fakeChild as any)
+    __setRipgrepTimeoutForTests(5)
+
+    try {
+      const result = await searchFileContents({
+        rootDir: dir,
+        pattern: 'token',
+      })
+
+      assert.equal(killCalls, 1)
+      assert.equal(result.partial, false)
+      assert.equal(result.matches.length, 1)
+      assert.equal(result.matches[0].path, 'slow.txt')
+      assert.match(result.matches[0].snippet, /timeout token/)
+    } finally {
+      __setRipgrepSpawnForTests(null)
+      __setRipgrepTimeoutForTests(null)
+    }
   })
 })
