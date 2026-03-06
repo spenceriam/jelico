@@ -255,6 +255,17 @@ async function removeWorktree(repoPath: string, worktreePath: string): Promise<b
     await execGit(repoPath, ['worktree', 'remove', worktreePath, '--force'])
     return true
   } catch {
+    if (!workspacePathExists(worktreePath)) {
+      try {
+        await execGit(repoPath, ['worktree', 'prune', '--expire', 'now'])
+        const normalizedWorktreePath = path.resolve(worktreePath)
+        const remainingWorktrees = await listWorktrees(repoPath)
+        return !remainingWorktrees.some((worktree) => path.resolve(worktree.path) === normalizedWorktreePath)
+      } catch {
+        return false
+      }
+    }
+
     return false
   }
 }
@@ -400,7 +411,7 @@ export function registerWorkspaceHandlers() {
     const isGit = workspace.is_git === 1
 
     // If this record represents a git worktree, remove the real worktree first.
-    if (isWorktree && isGit && workspacePathExists(workspace.path)) {
+    if (isWorktree && isGit) {
       const repoPath = await resolveWorktreeRemovalRepoPath(workspace.path, workspace.project_path)
       const removed = await removeWorktree(repoPath, workspace.path)
       if (!removed) {

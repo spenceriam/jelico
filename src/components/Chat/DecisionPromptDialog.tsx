@@ -35,6 +35,8 @@ export function DecisionPromptDialog() {
   useEffect(() => {
     if (!activeRequest) return
 
+    const defaultValue = activeRequest.defaultValue || activeRequest.options[0]?.value
+
     const focusDefaultAction = () => {
       const dialog = dialogRef.current
       const fallbackFocusTarget = defaultActionRef.current || getFocusableElements(dialog)[0] || dialog
@@ -88,6 +90,12 @@ export function DecisionPromptDialog() {
         event.preventDefault()
         event.stopPropagation()
         event.stopImmediatePropagation()
+
+        if (event.key === 'Enter' && defaultValue) {
+          choose(defaultValue)
+          return
+        }
+
         focusDefaultAction()
       }
     }
@@ -110,7 +118,7 @@ export function DecisionPromptDialog() {
       document.removeEventListener('focusin', handleFocusIn, true)
       previouslyFocused?.focus()
     }
-  }, [activeRequest, cancel])
+  }, [activeRequest, cancel, choose])
 
   if (!activeRequest) return null
 
