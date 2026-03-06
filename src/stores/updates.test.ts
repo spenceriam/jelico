@@ -421,7 +421,7 @@ test('loadCurrentVersion restores a snoozed apply banner on app restart', async 
   assert.equal(localStorage.getItem(DOWNLOADED_VERSION_KEY), '0.36.0')
 })
 
-test('loadCurrentVersion preserves same-version downloaded state until a network check confirms it is stale', async () => {
+test('loadCurrentVersion clears same-version downloaded state on startup', async () => {
   useUpdateStore.setState({
     downloadedVersion: '0.36.0',
     lastDownloadedTo: 'C:/tmp/Jelico-0.36.0.exe',
@@ -436,12 +436,12 @@ test('loadCurrentVersion preserves same-version downloaded state until a network
   const version = await useUpdateStore.getState().loadCurrentVersion()
 
   assert.equal(version, '0.36.0')
-  assert.equal(useUpdateStore.getState().downloadedVersion, '0.36.0')
-  assert.equal(useUpdateStore.getState().lastDownloadedTo, 'C:/tmp/Jelico-0.36.0.exe')
+  assert.equal(useUpdateStore.getState().downloadedVersion, null)
+  assert.equal(useUpdateStore.getState().lastDownloadedTo, null)
   assert.equal(useUpdateStore.getState().dismissedApplyVersion, null)
   assert.equal(useUpdateStore.getState().launchedApplyVersion, null)
-  assert.equal(localStorage.getItem(DOWNLOADED_VERSION_KEY), '0.36.0')
-  assert.equal(localStorage.getItem(DOWNLOADED_PATH_KEY), 'C:/tmp/Jelico-0.36.0.exe')
+  assert.equal(localStorage.getItem(DOWNLOADED_VERSION_KEY), null)
+  assert.equal(localStorage.getItem(DOWNLOADED_PATH_KEY), null)
   assert.equal(localStorage.getItem(APPLY_DISMISS_KEY), null)
   assert.equal(localStorage.getItem(APPLY_LAUNCHED_KEY), null)
 })

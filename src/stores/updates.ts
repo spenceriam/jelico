@@ -77,11 +77,7 @@ function shouldClearDownloadedStateOnStartup(
   currentVersion: string | null | undefined,
   downloadedVersion: string | null | undefined
 ): boolean {
-  if (!downloadedVersion || !currentVersion) {
-    return false
-  }
-
-  return compareSemver(currentVersion, downloadedVersion) > 0
+  return shouldClearDownloadedStateAfterVersionAdvance(currentVersion, downloadedVersion, false)
 }
 
 function shouldRestoreApplyPromptAfterStartup(

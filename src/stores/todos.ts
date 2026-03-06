@@ -52,6 +52,7 @@ interface TodoState {
   setConversationId: (id: string | null) => Promise<void>
   setVisible: (visible: boolean) => void
   deleteConversationTodos: (conversationId: string) => Promise<void>
+  clearInMemoryTodosForConversation: (conversationId: string) => void
   hydrateConversationFromMessages: (
     conversationId: string,
     messages: Array<{
@@ -260,6 +261,18 @@ export const useTodoStore = create<TodoState>((set, get) => ({
     } catch (error) {
       console.error('[TodoStore] Failed to delete conversation todos:', error)
     }
+  },
+
+  clearInMemoryTodosForConversation: (conversationId) => {
+    if (conversationId !== get().conversationId) {
+      return
+    }
+
+    set({
+      todos: [],
+      isVisible: false,
+      conversationId: null,
+    })
   },
 
   hydrateConversationFromMessages: async (conversationId, messages) => {

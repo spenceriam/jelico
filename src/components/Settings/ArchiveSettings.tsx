@@ -218,6 +218,7 @@ export function ArchiveSettings() {
   }
 
   const handlePermanentDeleteConversation = async (id: string) => {
+    setActionError(null)
     const decision = await useDecisionPromptStore.getState().request({
       title: 'Permanently Delete Chat',
       message: 'Permanently delete this archived conversation? This cannot be undone.',
@@ -233,7 +234,6 @@ export function ArchiveSettings() {
     }
 
     setWorkingConversationIds((prev) => (prev.includes(id) ? prev : [...prev, id]))
-    setActionError(null)
     try {
       await clearConversationArtifacts(id)
       try {

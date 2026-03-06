@@ -409,13 +409,17 @@ export function registerWorkspaceHandlers() {
 
     const isWorktree = (workspace.is_worktree || 0) === 1
     const isGit = workspace.is_git === 1
+    const worktreePathMissing = !workspacePathExists(workspace.path)
 
     // If this record represents a git worktree, remove the real worktree first.
     if (isWorktree && isGit) {
       const repoPath = await resolveWorktreeRemovalRepoPath(workspace.path, workspace.project_path)
       const removed = await removeWorktree(repoPath, workspace.path)
-      if (!removed) {
+      if (!removed && !worktreePathMissing) {
         throw new Error('Failed to remove git worktree. Resolve local changes and try again.')
+      }
+      if (!removed && worktreePathMissing) {
+        console.warn('[workspaces] Removing orphaned worktree record after best-effort git cleanup failed:', workspace.path)
       }
     }
 

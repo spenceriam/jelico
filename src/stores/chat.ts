@@ -2237,6 +2237,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
       }
       clearPendingStreamCheckpoint(id)
       worktreeGuidanceByConversation.delete(id)
+      useTodoStore.getState().clearInMemoryTodosForConversation(id)
       useClarificationStore.getState().clearForConversation(id)
 
       await window.jelico.conversations.archive(id)
