@@ -172,6 +172,7 @@ export function ArchiveSettings() {
   const [archivedConversations, setArchivedConversations] = useState<ChatConversation[]>([])
   const [loading, setLoading] = useState(true)
   const [workingConversationIds, setWorkingConversationIds] = useState<string[]>([])
+  const [pendingDeleteConversationIds, setPendingDeleteConversationIds] = useState<string[]>([])
   const [selectedConversationId, setSelectedConversationId] = useState<string | null>(null)
   const [loadError, setLoadError] = useState<string | null>(null)
   const [actionErrors, setActionErrors] = useState<Record<string, string>>({})
@@ -243,23 +244,24 @@ export function ArchiveSettings() {
   }
 
   const handlePermanentDeleteConversation = async (id: string) => {
+    setPendingDeleteConversationIds((prev) => (prev.includes(id) ? prev : [...prev, id]))
     setConversationActionError(id, null)
-    const decision = await useDecisionPromptStore.getState().request({
-      title: 'Permanently Delete Chat',
-      message: 'Permanently delete this archived conversation? This cannot be undone.',
-      options: [
-        { label: 'Delete permanently', value: 'delete', variant: 'danger' },
-        { label: 'Cancel', value: 'cancel', variant: 'secondary' },
-      ],
-      defaultValue: 'cancel',
-      cancelValue: 'cancel',
-    })
-    if (decision.value !== 'delete') {
-      return
-    }
-
-    setWorkingConversationIds((prev) => (prev.includes(id) ? prev : [...prev, id]))
     try {
+      const decision = await useDecisionPromptStore.getState().request({
+        title: 'Permanently Delete Chat',
+        message: 'Permanently delete this archived conversation? This cannot be undone.',
+        options: [
+          { label: 'Delete permanently', value: 'delete', variant: 'danger' },
+          { label: 'Cancel', value: 'cancel', variant: 'secondary' },
+        ],
+        defaultValue: 'cancel',
+        cancelValue: 'cancel',
+      })
+      if (decision.value !== 'delete') {
+        return
+      }
+
+      setWorkingConversationIds((prev) => (prev.includes(id) ? prev : [...prev, id]))
       await clearConversationArtifacts(id)
       try {
         await window.jelico.sandbox.clear(id)
@@ -278,6 +280,7 @@ export function ArchiveSettings() {
       console.error('Failed to permanently delete archived conversation:', error)
       setConversationActionError(id, 'Delete failed. Please try again.')
     } finally {
+      setPendingDeleteConversationIds((prev) => prev.filter((value) => value !== id))
       setWorkingConversationIds((prev) => prev.filter((value) => value !== id))
     }
   }
@@ -367,6 +370,7 @@ export function ArchiveSettings() {
                   <div className="space-y-2">
                     {group.conversations.map((conversation) => {
                       const isWorking = workingConversationIds.includes(conversation.id)
+                        || pendingDeleteConversationIds.includes(conversation.id)
                       const isSelected = selectedConversationId === conversation.id
                       const workspace = conversation.workspaceId ? workspaceById.get(conversation.workspaceId) : null
                       const createdAge = formatRelativeAge(conversation.createdAt)

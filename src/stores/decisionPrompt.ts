@@ -20,66 +20,78 @@ interface DecisionPromptResult {
   canceled: boolean
 }
 
+interface QueuedDecisionPrompt {
+  request: DecisionPromptRequest
+  resolve: (result: DecisionPromptResult) => void
+}
+
 interface DecisionPromptState {
   activeRequest: DecisionPromptRequest | null
+  activeResolve: ((result: DecisionPromptResult) => void) | null
+  queuedRequests: QueuedDecisionPrompt[]
   request: (request: DecisionPromptRequest) => Promise<DecisionPromptResult>
   choose: (value: string) => void
   cancel: () => void
 }
 
-let pendingResolver: ((result: DecisionPromptResult) => void) | null = null
-
-function resolvePending(result: DecisionPromptResult) {
-  if (pendingResolver) {
-    const resolver = pendingResolver
-    pendingResolver = null
-    resolver(result)
+function getNextDecisionState(queue: QueuedDecisionPrompt[]) {
+  const [nextActive, ...remainingQueue] = queue
+  return {
+    activeRequest: nextActive?.request ?? null,
+    activeResolve: nextActive?.resolve ?? null,
+    queuedRequests: remainingQueue,
   }
 }
 
 export const useDecisionPromptStore = create<DecisionPromptState>((set, get) => ({
   activeRequest: null,
+  activeResolve: null,
+  queuedRequests: [],
 
   request: async (request) => {
-    // Resolve any previous unresolved prompt as canceled to avoid hanging callers.
-    if (pendingResolver) {
-      const previous = get().activeRequest
-      const fallbackValue = previous?.cancelValue
-        || previous?.defaultValue
-        || previous?.options?.[0]?.value
-        || ''
-      resolvePending({ value: fallbackValue, canceled: true })
-    }
-
     return await new Promise<DecisionPromptResult>((resolve) => {
-      pendingResolver = resolve
-      set({ activeRequest: request })
+      set((state) => {
+        if (!state.activeRequest) {
+          return {
+            activeRequest: request,
+            activeResolve: resolve,
+          }
+        }
+
+        return {
+          queuedRequests: [
+            ...state.queuedRequests,
+            { request, resolve },
+          ],
+        }
+      })
     })
   },
 
   choose: (value) => {
-    const request = get().activeRequest
-    set({ activeRequest: null })
-    if (request) {
-      resolvePending({
-        value,
-        canceled: request.cancelValue === value,
-      })
-    }
+    const { activeRequest, activeResolve, queuedRequests } = get()
+    if (!activeRequest || !activeResolve) return
+
+    set(getNextDecisionState(queuedRequests))
+    activeResolve({
+      value,
+      canceled: activeRequest.cancelValue === value,
+    })
   },
 
   cancel: () => {
-    const request = get().activeRequest
-    set({ activeRequest: null })
-    if (request) {
-      const fallbackValue = request.cancelValue
-        || request.defaultValue
-        || request.options[0]?.value
-        || ''
-      resolvePending({
-        value: fallbackValue,
-        canceled: true,
-      })
-    }
+    const { activeRequest, activeResolve, queuedRequests } = get()
+    if (!activeRequest || !activeResolve) return
+
+    const fallbackValue = activeRequest.cancelValue
+      || activeRequest.defaultValue
+      || activeRequest.options[0]?.value
+      || ''
+
+    set(getNextDecisionState(queuedRequests))
+    activeResolve({
+      value: fallbackValue,
+      canceled: true,
+    })
   },
 }))
