@@ -158,8 +158,8 @@ export function getUpdateBannerVisibility(input: Pick<
     input.dismissedApplyVersion !== input.downloadedVersion &&
     input.launchedApplyVersion !== input.downloadedVersion
   )
+  // Keep the newer-version signal visible even when an older installer is still ready to apply.
   const showAvailableBanner = Boolean(
-    !showApplyBanner &&
     latestAvailableVersion &&
     !downloadedMatchesLatest &&
     input.dismissedAvailableVersion !== latestAvailableVersion

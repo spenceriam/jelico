@@ -262,6 +262,29 @@ test('getUpdateBannerVisibility keeps apply banner visible for an older download
   assert.equal(visibility.showAvailableBanner, false)
 })
 
+test('getUpdateBannerVisibility preserves the newer-version notice while an older installer is still ready', () => {
+  const visibility = getUpdateBannerVisibility({
+    info: {
+      currentVersion: '1.2.0',
+      latestVersion: '1.4.0',
+      isUpdateAvailable: true,
+      releaseUrl: 'https://example.com/release',
+      publishedAt: '2026-03-04T00:00:00.000Z',
+      assets: [],
+      recommendedAsset: null,
+    },
+    lastDownloadedTo: 'C:/tmp/Jelico-1.3.0.exe',
+    downloadedVersion: '1.3.0',
+    dismissedAvailableVersion: null,
+    dismissedApplyVersion: null,
+    launchedApplyVersion: null,
+  })
+
+  assert.equal(visibility.latestAvailableVersion, '1.4.0')
+  assert.equal(visibility.showApplyBanner, true)
+  assert.equal(visibility.showAvailableBanner, true)
+})
+
 test('getUpdateBannerVisibility falls back to the available banner after the downloaded installer was explicitly deferred', () => {
   const visibility = getUpdateBannerVisibility({
     info: {

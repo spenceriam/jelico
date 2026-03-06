@@ -583,6 +583,25 @@ export default function App() {
                   <div className="text-xs text-text-muted mt-1 break-all">
                     Downloaded to: {lastDownloadedTo}
                   </div>
+                  {showAvailableBanner && latestAvailableVersion && downloadedVersion && downloadedVersion !== latestAvailableVersion && (
+                    <div className="mt-2 flex items-start justify-between gap-2 rounded-lg border border-warning/30 bg-warning/10 px-3 py-2">
+                      <div>
+                        <div className="text-xs font-medium text-warning">
+                          Jelico {latestAvailableVersion} is also available
+                        </div>
+                        <div className="text-xs text-text-muted mt-1">
+                          Applying this installer will install the older {downloadedVersion} build.
+                        </div>
+                      </div>
+                      <button
+                        onClick={() => dismissAvailablePrompt(latestAvailableVersion)}
+                        className="p-1.5 rounded-md text-warning hover:text-text-primary hover:bg-warning/10 transition-colors"
+                        title="Dismiss newer-version notice"
+                      >
+                        <X className="w-4 h-4" />
+                      </button>
+                    </div>
+                  )}
                 </div>
                 <div className="flex flex-wrap gap-2">
                   <button
