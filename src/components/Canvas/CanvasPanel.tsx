@@ -1,4 +1,4 @@
-import { X, FileCode, FileText, Image, Presentation, ChevronLeft, ChevronRight, ChevronDown, File, History, FolderOpen, Trash2 } from 'lucide-react'
+import { X, FileCode, FileText, Image, Presentation, ChevronLeft, ChevronRight, ChevronDown, File, History, FolderOpen, Trash2, Camera } from 'lucide-react'
 import { useState, useRef, useEffect, useCallback } from 'react'
 import { useArtifactStore, type Artifact, type ArtifactType } from '../../stores/artifacts'
 import { useChatStore } from '../../stores/chat'
@@ -123,6 +123,7 @@ export function CanvasPanel() {
   const [revisions, setRevisions] = useState<Artifact[]>([])
   const dropdownRef = useRef<HTMLDivElement>(null)
   const revisionDropdownRef = useRef<HTMLDivElement>(null)
+  const panelRef = useRef<HTMLDivElement>(null)
   const revisionsRequestRef = useRef(0)
 
   // Filter artifacts to current conversation
@@ -214,6 +215,40 @@ export function CanvasPanel() {
     }
   }
 
+  const handleCaptureScreenshot = useCallback(async () => {
+    const panel = panelRef.current
+    if (!panel) return
+
+    const rect = panel.getBoundingClientRect()
+    if (rect.width <= 0 || rect.height <= 0) return
+
+    try {
+      const result = await window.jelico.window.captureArea({
+        x: Math.round(rect.left),
+        y: Math.round(rect.top),
+        width: Math.round(rect.width),
+        height: Math.round(rect.height),
+      }, {
+        copyToClipboard: false,
+      })
+
+      if (!result.success || !result.data || !result.name || !result.mimeType) {
+        console.error('Failed to capture artifact screenshot:', result.error)
+        return
+      }
+
+      window.dispatchEvent(new CustomEvent('jelico:add-chat-attachment', {
+        detail: {
+          name: result.name,
+          mimeType: result.mimeType,
+          data: result.data,
+        },
+      }))
+    } catch (error) {
+      console.error('Failed to capture artifact screenshot:', error)
+    }
+  }, [])
+
   // Determine current viewing revision.
   // When no explicit revision is selected, reflect the currently displayed artifact.
   const currentRevision = selectedRevisionId
@@ -224,6 +259,7 @@ export function CanvasPanel() {
 
   return (
     <div
+      ref={panelRef}
       className="w-full h-full bg-bg-surface flex flex-col overflow-hidden app-font-exempt"
       data-window-toggle="ignore"
     >
@@ -363,6 +399,13 @@ export function CanvasPanel() {
           {/* Artifact actions */}
           {displayArtifact && (
             <>
+              <button
+                onClick={handleCaptureScreenshot}
+                className="p-1.5 text-text-muted hover:text-text-primary hover:bg-bg-hover rounded transition-colors"
+                title="Capture artifact screenshot and attach to chat"
+              >
+                <Camera className="w-4 h-4" />
+              </button>
               <button
                 onClick={async () => {
                   try {

@@ -289,6 +289,7 @@ function toApiFormat(row: any) {
     baseUrl: row.base_url,
     defaultModel: row.default_model,
     hiddenFromSelector: row.hidden_from_selector === 1,
+    capabilityProfiles: row.capability_profiles || null,
     isDefault: row.is_default === 1,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
@@ -572,6 +573,7 @@ export function registerProviderHandlers() {
       name: input.name,
       baseUrl: input.baseUrl,
       defaultModel: input.defaultModel,
+      capabilityProfiles: input.capabilityProfiles,
       isDefault: input.isDefault,
     })
 
@@ -585,7 +587,10 @@ export function registerProviderHandlers() {
 
   // Update a provider
   ipcMain.handle('providers:update', async (_, id: string, updates: any) => {
-    const provider = providerDb.update(id, updates)
+    const provider = providerDb.update(id, {
+      ...updates,
+      capabilityProfiles: updates.capabilityProfiles,
+    })
 
     // Update API key if provided
     if (updates.apiKey !== undefined) {

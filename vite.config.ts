@@ -21,6 +21,8 @@ export default defineConfig({
                 'onnxruntime-node',
                 'onnxruntime-web',
                 'sharp',
+                'agent-browser',
+                /^agent-browser\//,
               ],
             },
           },

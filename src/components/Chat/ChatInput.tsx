@@ -1,5 +1,5 @@
 import { useState, useRef, useCallback, KeyboardEvent, useMemo, DragEvent, useEffect } from 'react'
-import { Send, Square, Clock, Paperclip, X, FileText, Image, File, ChevronUp, ChevronDown } from 'lucide-react'
+import { Send, Square, Clock, Paperclip, X, FileText, Image, File as FileIcon, ChevronUp, ChevronDown } from 'lucide-react'
 import { useChatStore, type MessageAttachment } from '../../stores/chat'
 import { useProviderStore } from '../../stores/providers'
 // Speech-to-text disabled - WASM crashes on Windows ARM64
@@ -52,6 +52,39 @@ const ACCEPTED_EXTENSIONS = '.png,.jpg,.jpeg,.gif,.webp,.bmp,.svg,.tif,.tiff,.av
 const PASTE_COLLAPSE_THRESHOLD = 10
 const NEW_CHAT_DRAFT_KEY = '__new__'
 const chatDraftsByConversation = new Map<string, string>()
+const PROMPT_PLACEHOLDER_INDEX_KEY = 'jelico:prompt-placeholder-index'
+
+const PROMPT_PLACEHOLDERS = [
+  'What do you want to tackle next?',
+  'Describe the task, and I’ll help you work through it.',
+  'Share a goal, question, or plan.',
+  'Tell me what you want to build or fix.',
+  'Paste context or outline your next step.',
+  'What should we focus on right now?',
+  'Start with a prompt, and we’ll take it from there.',
+  'Need a plan, code, or research?',
+  'Give me the objective and constraints.',
+  'What outcome are you aiming for?',
+]
+
+function readPlaceholderIndex(): number {
+  try {
+    const raw = globalThis?.localStorage?.getItem(PROMPT_PLACEHOLDER_INDEX_KEY)
+    const parsed = raw ? Number(raw) : 0
+    if (!Number.isFinite(parsed) || parsed < 0) return 0
+    return parsed % PROMPT_PLACEHOLDERS.length
+  } catch {
+    return 0
+  }
+}
+
+function writePlaceholderIndex(index: number) {
+  try {
+    globalThis?.localStorage?.setItem(PROMPT_PLACEHOLDER_INDEX_KEY, String(index))
+  } catch {
+    // Ignore storage failures.
+  }
+}
 
 function getDraftKey(conversationId: string | null): string {
   return conversationId || NEW_CHAT_DRAFT_KEY
@@ -79,6 +112,16 @@ function normalizeFileMimeType(file: File): string {
   return 'application/octet-stream'
 }
 
+function base64ToFile(base64Data: string, name: string, mimeType: string): File {
+  const binary = atob(base64Data)
+  const bytes = new Uint8Array(binary.length)
+  for (let i = 0; i < binary.length; i += 1) {
+    bytes[i] = binary.charCodeAt(i)
+  }
+  const blob = new Blob([bytes], { type: mimeType })
+  return new window.File([blob], name, { type: mimeType })
+}
+
 interface ChatInputProps {
   disabled?: boolean
   isStreaming?: boolean
@@ -91,6 +134,7 @@ interface ChatInputProps {
 export function ChatInput({ disabled, isStreaming, centered }: ChatInputProps) {
   const [input, setInput] = useState('')
   const [attachments, setAttachments] = useState<Attachment[]>([])
+  const [placeholderIndex, setPlaceholderIndex] = useState<number>(() => readPlaceholderIndex())
   const [isDragging, setIsDragging] = useState(false)
   // Speech-to-text disabled
   // const [recordingState, setRecordingState] = useState<RecordingState>('idle')
@@ -98,6 +142,7 @@ export function ChatInput({ disabled, isStreaming, centered }: ChatInputProps) {
   // const [recordingError, setRecordingError] = useState<string | null>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const forceScrollTopAfterPasteRef = useRef(false)
   // Speech-to-text disabled
   // const mediaRecorderRef = useRef<MediaRecorder | null>(null)
   // const audioChunksRef = useRef<Blob[]>([])
@@ -116,10 +161,9 @@ export function ChatInput({ disabled, isStreaming, centered }: ChatInputProps) {
     if (!textarea) return
 
     textarea.style.height = 'auto'
-    // Chat view (not centered): compact 1-line style, grows as needed
-    // Welcome screen (centered): taller 4-line style
-    const minHeight = centered ? 96 : 72
-    const maxHeight = centered ? 200 : 150
+    // Keep welcome/new-chat composer roomy, but use a shorter default height in active chat.
+    const minHeight = centered ? 92 : 64
+    const maxHeight = centered ? 240 : 192
     if (!content) {
       textarea.style.height = `${minHeight}px`
       return
@@ -168,20 +212,62 @@ export function ChatInput({ disabled, isStreaming, centered }: ChatInputProps) {
 
   // OS-aware modifier key
   const modKey = useMemo(() => isMac() ? '⌘' : 'Ctrl', [])
+  const activePromptPlaceholder = useMemo(
+    () => PROMPT_PLACEHOLDERS[placeholderIndex] || PROMPT_PLACEHOLDERS[0],
+    [placeholderIndex]
+  )
+
+  const rotatePromptPlaceholder = useCallback(() => {
+    setPlaceholderIndex((prev) => {
+      const next = (prev + 1) % PROMPT_PLACEHOLDERS.length
+      writePlaceholderIndex(next)
+      return next
+    })
+  }, [])
 
   // Generate unique ID for attachments
   const generateId = () => `att-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
 
+  // Accept externally generated attachments (for example, artifact screenshots).
+  useEffect(() => {
+    const onAddAttachment = (event: Event) => {
+      const customEvent = event as CustomEvent<{ name?: string; mimeType?: string; data?: string }>
+      const name = customEvent.detail?.name
+      const mimeType = customEvent.detail?.mimeType
+      const data = customEvent.detail?.data
+      if (!name || !mimeType || !data) return
+
+      try {
+        const file = base64ToFile(data, name, mimeType)
+        setAttachments((prev) => [
+          ...prev,
+          {
+            id: generateId(),
+            type: 'file',
+            name,
+            file,
+          },
+        ])
+        requestAnimationFrame(() => focusTextarea())
+      } catch (error) {
+        console.error('[ChatInput] Failed to import external attachment:', error)
+      }
+    }
+
+    window.addEventListener('jelico:add-chat-attachment', onAddAttachment as EventListener)
+    return () => window.removeEventListener('jelico:add-chat-attachment', onAddAttachment as EventListener)
+  }, [focusTextarea])
+
   // Get file type icon
   const getFileIcon = (file: File | undefined, type: string) => {
     if (type === 'pasted') return FileText
-    if (!file) return File
+    if (!file) return FileIcon
 
     const normalizedMimeType = normalizeFileMimeType(file)
     if (normalizedMimeType.startsWith('image/')) return Image
     if (SUPPORTED_FILE_TYPES.text.includes(normalizedMimeType) || normalizedMimeType.startsWith('text/')) return FileText
 
-    return File
+    return FileIcon
   }
 
   // Handle file selection
@@ -231,16 +317,21 @@ export function ChatInput({ disabled, isStreaming, centered }: ChatInputProps) {
 
   // Handle paste with content detection
   const handlePaste = useCallback((e: React.ClipboardEvent) => {
+    const pastedText = e.clipboardData.getData('text/plain') || e.clipboardData.getData('text')
+
     // Welcome/new-chat view prioritizes reliability over custom paste behavior.
     // Let the browser handle paste natively so users can always paste and edit.
+    // For long pastes, force top-visible content after insertion for readability.
     if (centered) {
+      if (pastedText && pastedText.length > 200) {
+        forceScrollTopAfterPasteRef.current = true
+      }
       requestAnimationFrame(() => focusTextarea())
       return
     }
 
     // Prefer textual clipboard payloads over file payloads.
     // Some clipboard sources include both, and text should win for prompt authoring.
-    const pastedText = e.clipboardData.getData('text/plain') || e.clipboardData.getData('text')
     if (pastedText) {
       const lineCount = pastedText.split('\n').length
 
@@ -256,6 +347,8 @@ export function ChatInput({ disabled, isStreaming, centered }: ChatInputProps) {
           isExpanded: false,
         }
         setAttachments(prev => [...prev, newAttachment])
+      } else if (pastedText.length > 200) {
+        forceScrollTopAfterPasteRef.current = true
       }
 
       requestAnimationFrame(() => focusTextarea())
@@ -400,12 +493,13 @@ export function ChatInput({ disabled, isStreaming, centered }: ChatInputProps) {
       setInput('')
       setAttachments([])
       persistDraft('')
+      rotatePromptPlaceholder()
       return true
     } catch (error) {
       console.error('[ChatInput] Failed to send message:', error)
       return false
     }
-  }, [input, attachments, activeProviderId, activeModel, sendMessage, persistDraft])
+  }, [input, attachments, activeProviderId, activeModel, sendMessage, persistDraft, rotatePromptPlaceholder])
 
   const handleKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
     if (
@@ -432,6 +526,16 @@ export function ChatInput({ disabled, isStreaming, centered }: ChatInputProps) {
     const nextValue = e.target.value
     setInput(nextValue)
     persistDraft(nextValue)
+
+    if (forceScrollTopAfterPasteRef.current) {
+      forceScrollTopAfterPasteRef.current = false
+      requestAnimationFrame(() => {
+        const textarea = textareaRef.current
+        if (textarea) {
+          textarea.scrollTop = 0
+        }
+      })
+    }
   }
 
   const handleStop = () => {
@@ -519,14 +623,11 @@ export function ChatInput({ disabled, isStreaming, centered }: ChatInputProps) {
           {/* Expanded queue list */}
           {queueExpanded && (
             <div className="border-t border-border-subtle px-2 pt-1.5 pb-2 space-y-1.5 max-h-36 overflow-y-auto">
-              {queueEntriesForActiveConversation.map(({ message: msg, index: queueIndex }, idx) => (
+              {queueEntriesForActiveConversation.map(({ message: msg, index: queueIndex }) => (
                 <div
                   key={queueIndex}
-                  className="flex items-start gap-2 p-2 bg-bg-elevated border border-border-subtle rounded-lg text-sm"
+                  className="flex items-center gap-2 p-2 bg-bg-elevated border border-border-subtle rounded-lg text-sm"
                 >
-                  <span className="flex-shrink-0 w-5 h-5 flex items-center justify-center bg-accent/20 text-accent text-xs font-medium rounded">
-                    {idx + 1}
-                  </span>
                   <div className="flex-1 min-w-0">
                     <p className="text-text-secondary truncate">
                       {msg.content || (msg.attachments?.length ? `${msg.attachments.length} attachment(s)` : 'Empty message')}
@@ -603,7 +704,7 @@ export function ChatInput({ disabled, isStreaming, centered }: ChatInputProps) {
         } ${
           isDragging
             ? 'border-accent border-dashed bg-accent/5'
-            : 'border-border hover:border-border-strong focus-within:border-accent'
+            : 'border-accent hover:border-accent-bright focus-within:border-accent-bright'
         }`}
         onDragOver={handleDragOver}
         onDragLeave={handleDragLeave}
@@ -611,33 +712,35 @@ export function ChatInput({ disabled, isStreaming, centered }: ChatInputProps) {
         onClick={focusTextarea} // Click anywhere to focus
       >
         {/* Text area */}
-        <textarea
-          ref={textareaRef}
-          value={input}
-          onChange={handleInput}
-          onKeyDown={handleKeyDown}
-          onPaste={handlePaste}
-          placeholder={
-            isDragging
-              ? 'Drop files here...'
-              : disabled
-              ? 'Draft message... (select a provider to send)'
-              : isStreaming
-              ? 'Message will be queued...'
-              : 'Message Jelico...'
-          }
-          autoFocus
-          rows={centered ? 4 : 2}
-          className={`flex-1 bg-transparent text-sm text-text-primary placeholder:text-text-muted outline-none resize-none focus:outline-none focus:ring-0 border-none leading-6 px-3 pt-4 pb-0 scroll-pt-4 overflow-y-auto select-text ${
-            centered ? 'min-h-[96px] max-h-[200px]' : 'min-h-[72px] max-h-[150px]'
-          }`}
-        />
+        <div className="px-3 pt-3 pb-2">
+          <textarea
+            ref={textareaRef}
+            value={input}
+            onChange={handleInput}
+            onKeyDown={handleKeyDown}
+            onPaste={handlePaste}
+            placeholder={
+              isDragging
+                ? 'Drop files here...'
+                : disabled
+                ? 'Draft message... (select a provider to send)'
+                : isStreaming
+                ? 'Message will be queued...'
+                : activePromptPlaceholder
+            }
+            autoFocus
+            rows={2}
+            className={`block w-full bg-transparent text-sm text-text-primary placeholder:text-text-muted outline-none resize-none focus:outline-none focus:ring-0 border-none leading-6 px-1 pt-1 pb-4 scroll-pt-2 scroll-pb-4 overflow-y-auto select-text ${
+              centered ? 'min-h-[92px] max-h-[240px]' : 'min-h-[64px] max-h-[192px]'
+            }`}
+          />
+        </div>
 
         {/* Divider */}
         <div className="mx-3 border-t border-border-subtle" />
 
-        {/* Icon row */}
-        <div className="flex items-center justify-between px-[0.75em] py-[0.6em]">
+        {/* Bottom controls + guidance row */}
+        <div className="flex items-center gap-2 px-[0.75em] py-[0.6em]">
           {/* Left side - Attachments */}
           <button
             onClick={openFilePicker}
@@ -647,48 +750,42 @@ export function ChatInput({ disabled, isStreaming, centered }: ChatInputProps) {
             <Paperclip className="w-[1.15em] h-[1.15em]" />
           </button>
 
-	          {/* Right side - Send button */}
-	          <div className="flex items-center gap-1.5">
-	            {/* Speech-to-text disabled - WASM crashes on Windows ARM64, will revisit later */}
-
-	            {/* Stop button */}
-	            {isStreaming && (
-	              <button
-	                onClick={handleStop}
-	                className="inline-flex h-[2.2em] w-[2.2em] items-center justify-center rounded-full bg-error text-white hover:bg-error/90 transition-colors flex-shrink-0"
-	                title="Stop generating"
-	              >
-	                <Square className="w-[1.15em] h-[1.15em]" />
-	              </button>
-	            )}
-
-            {/* Send / Queue button */}
-	            {(!isStreaming || showQueueSubmit) && (
-	              <button
-	                onClick={isStreaming ? handleQueueSubmit : handleSubmit}
-	                disabled={disabled || !hasDraftToSend}
-	                className="relative inline-flex h-[2.2em] w-[2.2em] items-center justify-center rounded-full bg-accent text-black hover:bg-accent-bright disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex-shrink-0"
-	                title={isStreaming ? 'Queue message' : 'Send message'}
-	              >
-	                <Send className="w-[1.15em] h-[1.15em]" />
-	              </button>
-	            )}
-          </div>
-        </div>
-
-        {/* Hints footer (inside prompt box) */}
-        {!centered && (
           <div
-            className="px-3 pb-2 text-text-primary flex items-center justify-between gap-3"
-            style={{
-              fontSize: 'calc(11px * var(--chat-font-scale, 1))',
-              lineHeight: 'calc(16px * var(--chat-font-scale, 1))',
-            }}
+            className="flex-1 text-center text-sm text-text-primary whitespace-nowrap overflow-hidden text-ellipsis px-1"
           >
-            <span>Enter to send · Shift+Enter for new line · Tab to cycle modes</span>
+            <span>Enter to submit · Shift+Enter for new line</span>
+            <span className="mx-2 text-text-muted">|</span>
             <span>{modKey}+K for commands</span>
           </div>
-        )}
+
+          {/* Right side - Send button */}
+          <div className="ml-auto flex items-center gap-1.5">
+            {/* Speech-to-text disabled - WASM crashes on Windows ARM64, will revisit later */}
+
+            {/* Stop button */}
+            {isStreaming && (
+              <button
+                onClick={handleStop}
+                className="inline-flex h-[2.2em] w-[2.2em] items-center justify-center rounded-full bg-error text-white hover:bg-error/90 transition-colors flex-shrink-0"
+                title="Stop generating"
+              >
+                <Square className="w-[1.15em] h-[1.15em]" />
+              </button>
+            )}
+
+            {/* Send / Queue button */}
+            {(!isStreaming || showQueueSubmit) && (
+              <button
+                onClick={isStreaming ? handleQueueSubmit : handleSubmit}
+                disabled={disabled || !hasDraftToSend}
+                className="relative inline-flex h-[2.2em] w-[2.2em] items-center justify-center rounded-full bg-accent text-black hover:bg-accent-bright disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex-shrink-0"
+                title={isStreaming ? 'Queue message' : 'Send message'}
+              >
+                <Send className="w-[1.15em] h-[1.15em]" />
+              </button>
+            )}
+          </div>
+        </div>
       </div>
     </div>
   )

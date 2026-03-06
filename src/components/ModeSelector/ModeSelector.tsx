@@ -90,7 +90,7 @@ export function ModeSelector({ flatTop = false }: ModeSelectorProps) {
               transition-all duration-200
               ${m.id === mode
                 ? 'bg-accent/22 text-accent shadow-sm ring-1 ring-inset ring-accent z-10'
-                : 'text-text-muted hover:text-text-secondary'
+                : 'text-text-muted border mode-chip-inactive hover:text-text-secondary'
               }
               ${modeTransitioning ? 'cursor-wait' : ''}
             `}

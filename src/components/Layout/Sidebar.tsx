@@ -1,8 +1,9 @@
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useMemo, useRef } from 'react'
 import {
   Plus,
   Settings,
-  Trash2,
+  Archive,
+  AlertTriangle,
   FileCode,
   FileText,
   Presentation,
@@ -18,11 +19,12 @@ import {
 } from 'lucide-react'
 import { useChatStore } from '../../stores/chat'
 import { useUIStore } from '../../stores/ui'
-import { useWorkspaceStore } from '../../stores/workspaces'
+import { useWorkspaceStore, type Workspace } from '../../stores/workspaces'
 import { useArtifactStore, type ArtifactType } from '../../stores/artifacts'
 import { useUpdateStore } from '../../stores/updates'
+import { useDecisionPromptStore } from '../../stores/decisionPrompt'
 import { TransferDialog } from '../Conversations/TransferDialog'
-import { JelicoLogo } from '../Brand/JelicoLogo'
+import sidebarBrandUrl from '../../assets/branding/jelico-icon-v2-transparent.png'
 
 type ChatConversation = ReturnType<typeof useChatStore.getState>['conversations'][number]
 
@@ -44,6 +46,7 @@ interface ProjectGroup {
   workspaceIds: string[]
   preferredWorkspaceId: string | null
   isSandbox: boolean
+  isOrphan: boolean
   isGit: boolean
   isWorktree: boolean
   conversations: ChatConversation[]
@@ -92,8 +95,102 @@ function getPathBasename(value: string): string {
   return parts[parts.length - 1] || value
 }
 
+function buildProjectGroups(
+  allConversations: ChatConversation[],
+  workspaceById: Map<string, Workspace>
+): ProjectGroup[] {
+  const workspaceGroupsByProject = new Map<string, ProjectGroup>()
+  const orphanConversations: ChatConversation[] = []
+
+  for (const conversation of allConversations) {
+    if (!conversation.workspaceId) continue
+    const workspace = workspaceById.get(conversation.workspaceId)
+    if (!workspace) {
+      orphanConversations.push(conversation)
+      continue
+    }
+
+    const projectPath = workspace.projectPath || workspace.path
+    const projectKey = projectPath || `workspace-${workspace.id}`
+    const existingGroup = workspaceGroupsByProject.get(projectKey)
+
+    if (!existingGroup) {
+      workspaceGroupsByProject.set(projectKey, {
+        id: `project-${projectKey}`,
+        label: projectPath ? getPathBasename(projectPath) : workspace.name,
+        path: projectPath || workspace.path,
+        workspaceIds: [workspace.id],
+        preferredWorkspaceId: workspace.isWorktree ? null : workspace.id,
+        isSandbox: false,
+        isOrphan: false,
+        isGit: workspace.isGit,
+        isWorktree: workspace.isWorktree === true,
+        conversations: [conversation],
+      })
+      continue
+    }
+
+    if (!existingGroup.workspaceIds.includes(workspace.id)) {
+      existingGroup.workspaceIds.push(workspace.id)
+    }
+    if (!existingGroup.preferredWorkspaceId && !workspace.isWorktree) {
+      existingGroup.preferredWorkspaceId = workspace.id
+    }
+
+    existingGroup.isGit = existingGroup.isGit || workspace.isGit
+    existingGroup.isWorktree = existingGroup.isWorktree || workspace.isWorktree === true
+    existingGroup.conversations.push(conversation)
+  }
+
+  const workspaceGroups = Array.from(workspaceGroupsByProject.values()).map((group) => ({
+    ...group,
+    conversations: [...group.conversations].sort((a, b) => b.updatedAt - a.updatedAt),
+  }))
+
+  const groupedConversations: ProjectGroup[] = [...workspaceGroups]
+
+  const sandboxConversations = allConversations.filter((conversation) => !conversation.workspaceId)
+  if (sandboxConversations.length > 0) {
+    groupedConversations.push({
+      id: 'sandbox',
+      label: 'Sandbox',
+      workspaceIds: [],
+      preferredWorkspaceId: null,
+      isSandbox: true,
+      isOrphan: false,
+      isGit: false,
+      isWorktree: false,
+      conversations: sandboxConversations,
+    })
+  }
+
+  if (orphanConversations.length > 0) {
+    groupedConversations.push({
+      id: 'orphaned',
+      label: 'Orphaned',
+      workspaceIds: [],
+      preferredWorkspaceId: null,
+      isSandbox: false,
+      isOrphan: true,
+      isGit: false,
+      isWorktree: false,
+      conversations: orphanConversations.sort((a, b) => b.updatedAt - a.updatedAt),
+    })
+  }
+
+  groupedConversations.sort((a, b) => getProjectLatestUpdate(b) - getProjectLatestUpdate(a))
+  return groupedConversations
+}
+
 export function Sidebar() {
-  const { conversations, activeConversationId, setActiveConversation, deleteConversation, conversationStreams } = useChatStore()
+  const pendingArchiveControllersRef = useRef(new Map<string, AbortController>())
+  const {
+    conversations,
+    activeConversationId,
+    setActiveConversation,
+    archiveConversation,
+    conversationStreams,
+  } = useChatStore()
   const { sidebarCollapsed, openSettings } = useUIStore()
   const { workspaces, activeWorkspaceId, setActiveWorkspace } = useWorkspaceStore()
   const { artifacts, selectArtifact, openCanvas } = useArtifactStore()
@@ -124,71 +221,10 @@ export function Sidebar() {
     [workspaces]
   )
 
-  const projectGroups = useMemo<ProjectGroup[]>(() => {
-    const workspaceGroupsByProject = new Map<string, ProjectGroup>()
-
-    for (const conversation of conversations) {
-      if (!conversation.workspaceId) continue
-      const workspace = workspaceById.get(conversation.workspaceId)
-      if (!workspace) continue
-
-      const projectPath = workspace.projectPath || workspace.path
-      const projectKey = projectPath || `workspace-${workspace.id}`
-      const existingGroup = workspaceGroupsByProject.get(projectKey)
-
-      if (!existingGroup) {
-        workspaceGroupsByProject.set(projectKey, {
-          id: `project-${projectKey}`,
-          label: projectPath ? getPathBasename(projectPath) : workspace.name,
-          path: projectPath || workspace.path,
-          workspaceIds: [workspace.id],
-          preferredWorkspaceId: workspace.isWorktree ? null : workspace.id,
-          isSandbox: false,
-          isGit: workspace.isGit,
-          isWorktree: workspace.isWorktree === true,
-          conversations: [conversation],
-        })
-        continue
-      }
-
-      if (!existingGroup.workspaceIds.includes(workspace.id)) {
-        existingGroup.workspaceIds.push(workspace.id)
-      }
-      if (!existingGroup.preferredWorkspaceId && !workspace.isWorktree) {
-        existingGroup.preferredWorkspaceId = workspace.id
-      }
-
-      existingGroup.isGit = existingGroup.isGit || workspace.isGit
-      existingGroup.isWorktree = existingGroup.isWorktree || workspace.isWorktree === true
-      existingGroup.conversations.push(conversation)
-    }
-
-    const workspaceGroups = Array.from(workspaceGroupsByProject.values()).map((group) => ({
-      ...group,
-      conversations: [...group.conversations].sort((a, b) => b.updatedAt - a.updatedAt),
-    }))
-
-    workspaceGroups.sort((a, b) => getProjectLatestUpdate(b) - getProjectLatestUpdate(a))
-
-    const sandboxConversations = conversations.filter((conversation) => !conversation.workspaceId)
-    if (sandboxConversations.length === 0) {
-      return workspaceGroups
-    }
-
-    return [
-      ...workspaceGroups,
-      {
-        id: 'sandbox',
-        label: 'Sandbox',
-        workspaceIds: [],
-        preferredWorkspaceId: null,
-        isSandbox: true,
-        isGit: false,
-        isWorktree: false,
-        conversations: sandboxConversations,
-      },
-    ]
-  }, [conversations, workspaceById])
+  const projectGroups = useMemo<ProjectGroup[]>(
+    () => buildProjectGroups(conversations, workspaceById),
+    [conversations, workspaceById]
+  )
 
   // Auto-expand project groups the first time they appear, respecting persisted collapsed state
   useEffect(() => {
@@ -283,10 +319,26 @@ export function Sidebar() {
     setActiveConversation(null)
   }
 
-  const handleDeleteConversation = (e: React.MouseEvent, id: string) => {
+  const handleDeleteConversation = async (e: React.MouseEvent, id: string) => {
     e.stopPropagation()
-    if (confirm('Delete this conversation?')) {
-      deleteConversation(id)
+    const controller = new AbortController()
+    pendingArchiveControllersRef.current.set(id, controller)
+    try {
+      const decision = await useDecisionPromptStore.getState().request({
+        title: 'Archive Conversation',
+        message: 'Archive this conversation? You can restore it later from Settings > Archive.',
+        options: [
+          { label: 'Archive', value: 'archive', variant: 'primary' },
+          { label: 'Cancel', value: 'cancel', variant: 'secondary' },
+        ],
+        defaultValue: 'cancel',
+        cancelValue: 'cancel',
+      }, controller.signal)
+      if (decision.value === 'archive') {
+        await archiveConversation(id)
+      }
+    } finally {
+      pendingArchiveControllersRef.current.delete(id)
     }
   }
 
@@ -302,6 +354,15 @@ export function Sidebar() {
     })
   }
 
+  useEffect(() => {
+    return () => {
+      for (const controller of pendingArchiveControllersRef.current.values()) {
+        controller.abort()
+      }
+      pendingArchiveControllersRef.current.clear()
+    }
+  }, [])
+
   // When collapsed, render nothing - the floating toggle in App.tsx handles expand
   if (sidebarCollapsed) {
     return null
@@ -314,10 +375,12 @@ export function Sidebar() {
     >
       {/* Header */}
       <div className="p-4">
-        <div className="flex items-center gap-2">
-          <JelicoLogo size={22} className="w-[22px] h-[22px] flex-shrink-0" />
-          <div className="font-display text-xl font-normal text-text-primary tracking-tight">Jelico</div>
-        </div>
+        <img
+          src={sidebarBrandUrl}
+          alt="Jelico"
+          draggable={false}
+          className="h-[3.9rem] w-auto max-w-[332px] object-contain"
+        />
       </div>
 
       {/* New chat button */}
@@ -346,9 +409,11 @@ export function Sidebar() {
           const isActiveProject = Boolean(
             activeWorkspaceId && group.workspaceIds.includes(activeWorkspaceId)
           )
-          const GroupIcon = group.isSandbox
-            ? Box
-            : Folder
+          const GroupIcon = group.isOrphan
+            ? AlertTriangle
+            : group.isSandbox
+              ? Box
+              : Folder
 
           return (
             <div key={group.id} className="mb-3">
@@ -371,18 +436,20 @@ export function Sidebar() {
                   <GroupIcon className="w-4 h-4 flex-shrink-0 text-text-muted" />
                   <div className="min-w-0 flex-1">
                     <div className="text-sm truncate">
-                      {group.isSandbox ? group.label : `/${group.label}`}
+                      {group.isSandbox || group.isOrphan ? group.label : `/${group.label}`}
                     </div>
                   </div>
                 </button>
 
-                <button
-                  onClick={() => handleNewChatInProject(group)}
-                  className="p-1.5 text-text-muted hover:text-text-primary hover:bg-bg-hover rounded transition-colors"
-                  title={`New chat in ${group.label}`}
-                >
-                  <Plus className="w-3 h-3" />
-                </button>
+                {!group.isOrphan && (
+                  <button
+                    onClick={() => handleNewChatInProject(group)}
+                    className="p-1.5 text-text-muted hover:text-text-primary hover:bg-bg-hover rounded transition-colors"
+                    title={`New chat in ${group.label}`}
+                  >
+                    <Plus className="w-3 h-3" />
+                  </button>
+                )}
               </div>
 
               {isExpanded && (
@@ -448,9 +515,10 @@ export function Sidebar() {
 
                           <button
                             onClick={(e) => handleDeleteConversation(e, conv.id)}
-                            className="opacity-0 group-hover:opacity-100 p-1 hover:bg-bg-hover rounded text-text-muted hover:text-error flex-shrink-0"
+                            title="Archive conversation"
+                            className="opacity-0 group-hover:opacity-100 p-1 hover:bg-bg-hover rounded text-text-muted hover:text-accent flex-shrink-0"
                           >
-                            <Trash2 className="w-3 h-3" />
+                            <Archive className="w-3 h-3" />
                           </button>
                         </div>
 
@@ -519,6 +587,7 @@ export function Sidebar() {
             </div>
           )
         })}
+
       </div>
 
       {/* Settings */}

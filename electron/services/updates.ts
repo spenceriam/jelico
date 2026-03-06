@@ -1,12 +1,71 @@
-import { app, dialog, type BrowserWindow } from 'electron'
+import { app, dialog, shell, type BrowserWindow } from 'electron'
 import https from 'https'
 import path from 'path'
-import { createWriteStream, promises as fs, readFileSync } from 'fs'
+import { createWriteStream, promises as fs } from 'fs'
 
 const OWNER = 'spenceriam'
 const REPO = 'jelico'
 const RELEASES_API_URL = `https://api.github.com/repos/${OWNER}/${REPO}/releases/latest`
 const USER_AGENT = 'Jelico'
+const LAST_DOWNLOADED_UPDATE_STATE_FILE = 'last-downloaded-update.json'
+
+function getLastDownloadedUpdateStatePath(): string | null {
+  try {
+    return path.join(app.getPath('userData'), LAST_DOWNLOADED_UPDATE_STATE_FILE)
+  } catch {
+    return null
+  }
+}
+
+async function readPersistedDownloadedUpdatePath(): Promise<string | null> {
+  const statePath = getLastDownloadedUpdateStatePath()
+  if (!statePath) return null
+
+  try {
+    const raw = await fs.readFile(statePath, 'utf-8')
+    const parsed = JSON.parse(raw) as { path?: unknown } | null
+    const savedPath = typeof parsed?.path === 'string' ? parsed.path.trim() : ''
+    return savedPath.length > 0 ? savedPath : null
+  } catch {
+    return null
+  }
+}
+
+async function persistDownloadedUpdatePath(filePath: string | null): Promise<void> {
+  const statePath = getLastDownloadedUpdateStatePath()
+  if (!statePath) return
+
+  try {
+    if (filePath) {
+      await fs.writeFile(statePath, JSON.stringify({ path: filePath }), 'utf-8')
+    } else {
+      await fs.unlink(statePath)
+    }
+  } catch {
+    // Ignore persistence failures; in-memory tracking still works for current session.
+  }
+}
+
+function setDownloadedUpdatePathState(filePath: string | null): void {
+  downloadedUpdatePathRevision += 1
+  lastDownloadedUpdatePath = filePath
+  downloadedUpdatePathLoadPromise = null
+  hasLoadedDownloadedUpdatePath = true
+}
+
+async function clearDownloadedUpdatePathState(): Promise<void> {
+  setDownloadedUpdatePathState(null)
+  await persistDownloadedUpdatePath(null)
+}
+
+export async function clearDownloadedUpdateState(): Promise<void> {
+  await clearDownloadedUpdatePathState()
+}
+
+let lastDownloadedUpdatePath: string | null = null
+let hasLoadedDownloadedUpdatePath = false
+let downloadedUpdatePathLoadPromise: Promise<string | null> | null = null
+let downloadedUpdatePathRevision = 0
 
 export interface UpdateAssetInfo {
   name: string
@@ -33,6 +92,12 @@ export interface UpdateDownloadProgress {
 export interface UpdateDownloadResult {
   canceled?: boolean
   savedTo?: string
+  error?: string
+}
+
+export interface UpdateApplyResult {
+  success: boolean
+  launchedPath?: string
   error?: string
 }
 
@@ -99,9 +164,9 @@ function pickAssetByExtension(
   return byExt[0] || null
 }
 
-function detectLinuxAssetPreferenceOrder(): string[] {
+async function detectLinuxAssetPreferenceOrder(): Promise<string[]> {
   try {
-    const osRelease = readFileSync('/etc/os-release', 'utf-8').toLowerCase()
+    const osRelease = (await fs.readFile('/etc/os-release', 'utf-8')).toLowerCase()
     const normalized = osRelease.replace(/"/g, '')
 
     if (/\bid(_like)?=.*(debian|ubuntu|mint|pop|elementary)\b/.test(normalized)) {
@@ -118,7 +183,7 @@ function detectLinuxAssetPreferenceOrder(): string[] {
   return ['.AppImage', '.deb', '.rpm']
 }
 
-function getRecommendedAsset(assets: UpdateAssetInfo[]): UpdateAssetInfo | null {
+async function getRecommendedAsset(assets: UpdateAssetInfo[]): Promise<UpdateAssetInfo | null> {
   const platform = process.platform
   const arch = process.arch
 
@@ -136,7 +201,7 @@ function getRecommendedAsset(assets: UpdateAssetInfo[]): UpdateAssetInfo | null 
     return pickAssetByExtension(assets, ['.exe', '.msi'], archHints)
   }
 
-  const linuxExtensionPreference = detectLinuxAssetPreferenceOrder()
+  const linuxExtensionPreference = await detectLinuxAssetPreferenceOrder()
   return pickAssetByExtension(assets, linuxExtensionPreference, archHints)
 }
 
@@ -186,7 +251,7 @@ export async function checkForUpdates(): Promise<UpdateInfo> {
     releaseUrl: release.html_url,
     publishedAt: release.published_at,
     assets,
-    recommendedAsset: getRecommendedAsset(assets),
+    recommendedAsset: await getRecommendedAsset(assets),
   }
 }
 
@@ -273,6 +338,8 @@ export async function downloadLatestUpdate(
 
   try {
     await downloadFile(updateInfo.recommendedAsset.url, result.filePath, onProgress)
+    setDownloadedUpdatePathState(result.filePath)
+    await persistDownloadedUpdatePath(result.filePath)
     return { savedTo: result.filePath }
   } catch (error) {
     try {
@@ -282,4 +349,73 @@ export async function downloadLatestUpdate(
     }
     return { error: error instanceof Error ? error.message : 'Download failed.' }
   }
+}
+
+async function getDownloadedUpdatePath(): Promise<string | null> {
+  if (lastDownloadedUpdatePath) return lastDownloadedUpdatePath
+  if (hasLoadedDownloadedUpdatePath) return null
+
+  if (!downloadedUpdatePathLoadPromise) {
+    const loadRevision = downloadedUpdatePathRevision
+    const pendingLoad = (async () => {
+      const persisted = await readPersistedDownloadedUpdatePath()
+      if (loadRevision !== downloadedUpdatePathRevision) {
+        return lastDownloadedUpdatePath
+      }
+
+      hasLoadedDownloadedUpdatePath = true
+      lastDownloadedUpdatePath = persisted
+      return lastDownloadedUpdatePath
+    })()
+
+    const trackedLoad = pendingLoad.finally(() => {
+      if (downloadedUpdatePathLoadPromise === trackedLoad) {
+        downloadedUpdatePathLoadPromise = null
+      }
+    })
+
+    downloadedUpdatePathLoadPromise = trackedLoad
+  }
+
+  return downloadedUpdatePathLoadPromise
+}
+
+export async function applyDownloadedUpdate(): Promise<UpdateApplyResult> {
+  const resolvedPath = await getDownloadedUpdatePath()
+  if (!resolvedPath) {
+    return { success: false, error: 'No downloaded update file is available.' }
+  }
+
+  let fileStats: Awaited<ReturnType<typeof fs.stat>>
+  try {
+    fileStats = await fs.stat(resolvedPath)
+  } catch {
+    await clearDownloadedUpdatePathState()
+    return { success: false, error: 'Downloaded update file no longer exists.' }
+  }
+
+  if (!fileStats.isFile()) {
+    await clearDownloadedUpdatePathState()
+    return { success: false, error: 'Downloaded update target is not a file.' }
+  }
+
+  // Best-effort Linux helper: AppImage often needs executable bit to launch.
+  if (process.platform === 'linux' && resolvedPath.toLowerCase().endsWith('.appimage')) {
+    try {
+      if ((fileStats.mode & 0o111) === 0) {
+        await fs.chmod(resolvedPath, fileStats.mode | 0o755)
+      }
+    } catch {
+      // Continue anyway; openPath may still succeed depending on permissions.
+    }
+  }
+
+  const openError = await shell.openPath(resolvedPath)
+  if (openError) {
+    return { success: false, error: openError }
+  }
+
+  // Keep the persisted installer path/version after launch so a canceled installer
+  // can be offered again on the next app start instead of forcing a re-download.
+  return { success: true, launchedPath: resolvedPath }
 }

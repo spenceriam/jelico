@@ -11,7 +11,16 @@ export function registerTodoHandlers() {
   ipcMain.handle('todos:replaceAll', async (_, conversationId: string, todos: Array<{
     id: string
     text: string
-    status: 'pending' | 'in_progress' | 'done' | 'failed' | 'cancelled'
+    status: 'pending' | 'in_progress' | 'done' | 'failed' | 'cancelled' | 'blocked'
+    owner?: string
+    dependencies?: string[]
+    blocked_reason?: string | null
+    history?: Array<{
+      status: 'pending' | 'in_progress' | 'done' | 'failed' | 'cancelled' | 'blocked'
+      at: number
+      actor?: string
+      note?: string
+    }>
     created_at?: number
     updated_at?: number
   }>) => {
@@ -22,7 +31,16 @@ export function registerTodoHandlers() {
   // Update a single todo
   ipcMain.handle('todos:update', async (_, conversationId: string, todoId: string, updates: {
     text?: string
-    status?: 'pending' | 'in_progress' | 'done' | 'failed' | 'cancelled'
+    status?: 'pending' | 'in_progress' | 'done' | 'failed' | 'cancelled' | 'blocked'
+    owner?: string
+    dependencies?: string[]
+    blocked_reason?: string | null
+    history?: Array<{
+      status: 'pending' | 'in_progress' | 'done' | 'failed' | 'cancelled' | 'blocked'
+      at: number
+      actor?: string
+      note?: string
+    }>
   }) => {
     const result = todoDb.updateTodo(conversationId, todoId, updates)
     return { success: !!result, todo: result }

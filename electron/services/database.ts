@@ -69,6 +69,25 @@ function loadDb(): void {
           if (provider.hidden_from_selector === undefined) {
             provider.hidden_from_selector = 0
           }
+          if (provider.capability_profiles === undefined) {
+            provider.capability_profiles = null
+          }
+        })
+      }
+      // Conversation archive migration: legacy rows had no archived_at field.
+      if (db.conversations?.length) {
+        db.conversations.forEach((conversation: any) => {
+          if (conversation.archived_at === undefined) {
+            conversation.archived_at = null
+          }
+        })
+      }
+      if (db.todos?.length) {
+        db.todos.forEach((todo: any) => {
+          if (todo.owner === undefined) todo.owner = null
+          if (todo.dependencies === undefined) todo.dependencies = []
+          if (todo.blocked_reason === undefined) todo.blocked_reason = null
+          if (todo.history === undefined) todo.history = []
         })
       }
     }
@@ -307,6 +326,7 @@ export const providerDb = {
       base_url: provider.baseUrl || null,
       default_model: provider.defaultModel,
       hidden_from_selector: provider.hiddenFromSelector ? 1 : 0,
+      capability_profiles: provider.capabilityProfiles || null,
       is_default: isDefault ? 1 : 0,
       created_at: now,
       updated_at: now,
@@ -333,6 +353,7 @@ export const providerDb = {
     if (updates.baseUrl !== undefined) provider.base_url = updates.baseUrl || null
     if (updates.defaultModel !== undefined) provider.default_model = updates.defaultModel
     if (updates.hiddenFromSelector !== undefined) provider.hidden_from_selector = updates.hiddenFromSelector ? 1 : 0
+    if (updates.capabilityProfiles !== undefined) provider.capability_profiles = updates.capabilityProfiles || null
     if (updates.isDefault !== undefined) provider.is_default = updates.isDefault ? 1 : 0
     provider.updated_at = now
 
@@ -362,8 +383,17 @@ export const providerDb = {
 
 // Conversation operations
 export const conversationDb = {
-  list(): ConversationRow[] {
-    return [...db.conversations].sort((a, b) => b.updated_at - a.updated_at)
+  list(includeArchived: boolean = false): ConversationRow[] {
+    const conversations = includeArchived
+      ? [...db.conversations]
+      : db.conversations.filter((conversation) => conversation.archived_at === null)
+    return conversations.sort((a, b) => b.updated_at - a.updated_at)
+  },
+
+  listArchived(): ConversationRow[] {
+    return db.conversations
+      .filter((conversation) => conversation.archived_at !== null)
+      .sort((a, b) => b.updated_at - a.updated_at)
   },
 
   get(id: string): ConversationRow | null {
@@ -391,6 +421,7 @@ export const conversationDb = {
       workspace_id: conv.workspaceId || null,
       model: conv.model,
       provider_id: conv.providerId,
+      archived_at: null,
       created_at: now,
       updated_at: now,
     }
@@ -434,6 +465,22 @@ export const conversationDb = {
       conv.updated_at = Date.now()
       saveDb()
     }
+  },
+
+  archive(id: string): void {
+    const conv = db.conversations.find(c => c.id === id)
+    if (!conv) return
+    conv.archived_at = Date.now()
+    conv.updated_at = Date.now()
+    saveDb()
+  },
+
+  restore(id: string): void {
+    const conv = db.conversations.find(c => c.id === id)
+    if (!conv) return
+    conv.archived_at = null
+    conv.updated_at = Date.now()
+    saveDb()
   },
 
   delete(id: string): void {
@@ -608,6 +655,7 @@ interface ProviderRow {
   base_url: string | null
   default_model: string
   hidden_from_selector: number
+  capability_profiles?: Record<string, unknown> | null
   is_default: number
   created_at: number
   updated_at: number
@@ -619,6 +667,7 @@ interface ProviderInput {
   baseUrl?: string
   defaultModel: string
   hiddenFromSelector?: boolean
+  capabilityProfiles?: Record<string, unknown>
   isDefault?: boolean
 }
 
@@ -628,6 +677,7 @@ interface ConversationRow {
   workspace_id: string | null
   model: string
   provider_id: string
+  archived_at: number | null
   created_at: number
   updated_at: number
 }
@@ -1504,6 +1554,15 @@ interface TodoRow {
   conversation_id: string
   text: string
   status: TodoStatus
+  owner?: string | null
+  dependencies?: string[]
+  blocked_reason?: string | null
+  history?: Array<{
+    status: TodoStatus
+    at: number
+    actor?: string
+    note?: string
+  }>
   created_at: number
   updated_at: number
 }
@@ -1524,6 +1583,10 @@ export const todoDb = {
     const newTodos: TodoRow[] = todos.map((todo, index) => ({
       ...todo,
       conversation_id: conversationId,
+      owner: todo.owner || null,
+      dependencies: Array.isArray(todo.dependencies) ? todo.dependencies : [],
+      blocked_reason: todo.blocked_reason || null,
+      history: Array.isArray(todo.history) ? todo.history : [],
       // Ensure timestamps are set
       created_at: todo.created_at || now + index,
       updated_at: todo.updated_at || now + index,
@@ -1533,12 +1596,29 @@ export const todoDb = {
     saveDb()
   },
 
-  updateTodo(conversationId: string, todoId: string, updates: Partial<Pick<TodoRow, 'text' | 'status'>>): TodoRow | null {
+  updateTodo(
+    conversationId: string,
+    todoId: string,
+    updates: Partial<Pick<TodoRow, 'text' | 'status' | 'owner' | 'dependencies' | 'blocked_reason' | 'history'>>
+  ): TodoRow | null {
     const todo = db.todos.find(t => t.id === todoId && t.conversation_id === conversationId)
     if (!todo) return null
 
+    const previousStatus = todo.status
     if (updates.text !== undefined) todo.text = updates.text
     if (updates.status !== undefined) todo.status = updates.status
+    if (updates.owner !== undefined) todo.owner = updates.owner
+    if (updates.dependencies !== undefined) todo.dependencies = Array.isArray(updates.dependencies) ? updates.dependencies : []
+    if (updates.blocked_reason !== undefined) todo.blocked_reason = updates.blocked_reason
+    if (updates.history !== undefined) todo.history = Array.isArray(updates.history) ? updates.history : []
+    if (updates.status !== undefined && updates.status !== previousStatus && updates.history === undefined) {
+      todo.history = Array.isArray(todo.history) ? todo.history : []
+      todo.history.push({
+        status: updates.status,
+        at: Date.now(),
+        actor: updates.owner || todo.owner || 'main',
+      })
+    }
     todo.updated_at = Date.now()
 
     saveDb()
@@ -1575,6 +1655,10 @@ export const todoDb = {
             conversation_id: conversationId,
             text: String(t.text || ''),
             status: (t.status as TodoStatus) || 'pending',
+            owner: null,
+            dependencies: [],
+            blocked_reason: null,
+            history: [],
             created_at: Number(t.createdAt) || Date.now(),
             updated_at: Number(t.updatedAt) || Date.now(),
           }))

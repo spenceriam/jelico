@@ -672,3 +672,12 @@ may consider it more useful to permit linking proprietary applications with
 the library.  If this is what you want to do, use the GNU Lesser General
 Public License instead of this License.  But first, please read
 <https://www.gnu.org/licenses/why-not-lgpl.html>.
+
+
+Third-Party Dependencies
+========================
+
+agent-browser - Copyright (c) 2026 Vercel, Inc. - Licensed under Apache License 2.0
+
+This project bundles agent-browser which is © Vercel, Inc. and licensed under Apache 2.0. The full license text is available in licenses/APACHE-2.0-LICENSE.txt
+

@@ -31,10 +31,44 @@ interface WorkspaceStore {
   clearError: () => void
 }
 
+const ACTIVE_WORKSPACE_KEY = 'jelico:activeWorkspace'
+const WORKTREE_PREFERENCE_KEY = 'jelico:worktrunk:autoWorktreeNewChat'
+
+function persistActiveWorkspaceId(id: string | null) {
+  try {
+    if (id) {
+      localStorage.setItem(ACTIVE_WORKSPACE_KEY, id)
+    } else {
+      localStorage.removeItem(ACTIVE_WORKSPACE_KEY)
+    }
+  } catch {
+    // Ignore localStorage persistence failures.
+  }
+}
+
+function readStoredBooleanPreference(key: string, fallback: boolean): boolean {
+  try {
+    const value = localStorage.getItem(key)
+    if (value === 'true') return true
+    if (value === 'false') return false
+  } catch {
+    // Ignore localStorage access errors and use fallback.
+  }
+  return fallback
+}
+
+function persistBooleanPreference(key: string, value: boolean) {
+  try {
+    localStorage.setItem(key, String(value))
+  } catch {
+    // Ignore localStorage persistence failures.
+  }
+}
+
 export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
   workspaces: [],
   activeWorkspaceId: null,
-  createWorktreeOnNewChat: false,
+  createWorktreeOnNewChat: readStoredBooleanPreference(WORKTREE_PREFERENCE_KEY, false),
   isLoading: false,
   error: null,
 
@@ -42,7 +76,20 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
     set({ isLoading: true })
     try {
       const workspaces = await window.jelico.workspaces.list()
-      set({ workspaces, isLoading: false })
+      const { activeWorkspaceId } = get()
+      const hasActiveWorkspace = activeWorkspaceId
+        ? workspaces.some((workspace) => workspace.id === activeWorkspaceId)
+        : true
+
+      if (!hasActiveWorkspace) {
+        persistActiveWorkspaceId(null)
+      }
+
+      set({
+        workspaces,
+        isLoading: false,
+        activeWorkspaceId: hasActiveWorkspace ? activeWorkspaceId : null,
+      })
     } catch (error: any) {
       set({ error: error.message, isLoading: false })
     }
@@ -71,11 +118,7 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
 
     set({ activeWorkspaceId: id })
     // Store in localStorage for persistence
-    if (id) {
-      localStorage.setItem('jelico:activeWorkspace', id)
-    } else {
-      localStorage.removeItem('jelico:activeWorkspace')
-    }
+    persistActiveWorkspaceId(id)
     // Update the active conversation's workspace in the database
     // (skip when restoring from conversation, as the value is already correct)
     if (!skipDbUpdate) {
@@ -95,6 +138,7 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
   },
 
   setCreateWorktreeOnNewChat: (enabled) => {
+    persistBooleanPreference(WORKTREE_PREFERENCE_KEY, enabled)
     set({ createWorktreeOnNewChat: enabled })
   },
 
@@ -113,9 +157,21 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
       await window.jelico.workspaces.delete(id)
       const workspaces = await window.jelico.workspaces.list()
       const { activeWorkspaceId } = get()
+      const isActiveWorkspaceDeleted = activeWorkspaceId === id
+      const hasActiveWorkspace = activeWorkspaceId
+        ? workspaces.some((workspace) => workspace.id === activeWorkspaceId)
+        : true
+      const nextActiveWorkspaceId = isActiveWorkspaceDeleted || !hasActiveWorkspace
+        ? null
+        : activeWorkspaceId
+
+      if (!nextActiveWorkspaceId) {
+        persistActiveWorkspaceId(null)
+      }
+
       set({
         workspaces,
-        activeWorkspaceId: activeWorkspaceId === id ? null : activeWorkspaceId,
+        activeWorkspaceId: nextActiveWorkspaceId,
       })
     } catch (error: any) {
       set({ error: error.message })
@@ -137,8 +193,8 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
 
 // Helper to restore active workspace from localStorage
 export function initWorkspaceStore() {
-  const stored = localStorage.getItem('jelico:activeWorkspace')
+  const stored = localStorage.getItem(ACTIVE_WORKSPACE_KEY)
   if (stored) {
-    useWorkspaceStore.getState().setActiveWorkspace(stored)
+    useWorkspaceStore.setState({ activeWorkspaceId: stored })
   }
 }

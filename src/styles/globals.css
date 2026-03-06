@@ -449,6 +449,17 @@
   font-size: 14px;
 }
 
+/* Inactive mode chips should use a darkened accent tone, not full accent. */
+.mode-chip-inactive {
+  border-color: var(--accent-dim);
+  border-color: color-mix(in srgb, var(--accent) 24%, black 76%);
+}
+
+.mode-chip-inactive:hover {
+  border-color: var(--accent-dim);
+  border-color: color-mix(in srgb, var(--accent) 34%, black 66%);
+}
+
 @layer components {
   .btn {
     padding: 10px 20px;

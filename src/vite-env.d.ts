@@ -24,6 +24,7 @@ interface Window {
     }
     conversations: {
       list: () => Promise<Conversation[]>
+      listArchived: () => Promise<Conversation[]>
       get: (id: string) => Promise<Conversation | null>
       create: (conversation: ConversationInput) => Promise<Conversation>
       addMessage: (convId: string, message: MessageInput) => Promise<Message>
@@ -40,6 +41,8 @@ interface Window {
         conversation: Conversation | null
       }>
       getArtifactCount: (id: string) => Promise<number>
+      archive: (id: string) => Promise<Conversation | null>
+      restore: (id: string) => Promise<Conversation | null>
       delete: (id: string) => Promise<void>
     }
     workspaces: {
@@ -69,6 +72,8 @@ interface Window {
       getCurrentVersion: () => Promise<string>
       check: () => Promise<UpdateInfo>
       download: () => Promise<UpdateDownloadResult>
+      applyDownloaded: () => Promise<UpdateApplyResult>
+      clearDownloadedState: () => Promise<boolean>
       openRelease: (url: string) => Promise<boolean>
       onDownloadProgress: (callback: (progress: UpdateDownloadProgress) => void) => () => void
     }
@@ -77,6 +82,18 @@ interface Window {
       startDrag: (mouseScreenX: number, mouseScreenY: number) => Promise<{ success: boolean; error?: string }>
       updateDrag: (mouseScreenX: number, mouseScreenY: number) => Promise<{ success: boolean; error?: string }>
       endDrag: () => Promise<{ success: boolean; error?: string }>
+      captureArea: (
+        rect: { x: number; y: number; width: number; height: number },
+        options?: { copyToClipboard?: boolean }
+      ) => Promise<{
+        success: boolean
+        name?: string
+        mimeType?: string
+        data?: string
+        width?: number
+        height?: number
+        error?: string
+      }>
     }
     ai: {
       stream: (params: StreamParams) => string
@@ -228,6 +245,7 @@ interface ProviderConfig {
   baseUrl?: string
   defaultModel: string
   hiddenFromSelector?: boolean
+  capabilityProfiles?: Record<string, unknown> | null
   isDefault: boolean
   createdAt: number
   updatedAt: number
@@ -239,6 +257,7 @@ interface ProviderInput {
   baseUrl?: string
   defaultModel: string
   hiddenFromSelector?: boolean
+  capabilityProfiles?: Record<string, unknown> | null
   isDefault?: boolean
 }
 
@@ -248,6 +267,7 @@ interface Conversation {
   workspaceId?: string
   model: string
   providerId: string
+  archivedAt?: number | null
   createdAt: number
   updatedAt: number
   messages?: Message[]
@@ -380,7 +400,18 @@ interface ModeSwitchEvent {
 interface TodoTask {
   id: string
   text: string
-  status: 'pending' | 'in_progress' | 'done' | 'failed' | 'cancelled'
+  status: 'pending' | 'in_progress' | 'done' | 'failed' | 'cancelled' | 'blocked'
+  owner?: string | null
+  dependencies?: string[]
+  blocked_reason?: string | null
+  history?: Array<{
+    status: 'pending' | 'in_progress' | 'done' | 'failed' | 'cancelled' | 'blocked'
+    at: number
+    actor?: string
+    note?: string
+  }>
+  created_at?: number
+  updated_at?: number
 }
 
 interface ReasoningEvent {
@@ -803,6 +834,12 @@ interface UpdateDownloadProgress {
 interface UpdateDownloadResult {
   canceled?: boolean
   savedTo?: string
+  error?: string
+}
+
+interface UpdateApplyResult {
+  success: boolean
+  launchedPath?: string
   error?: string
 }
 

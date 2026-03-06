@@ -12,12 +12,23 @@
 
 import { create } from 'zustand'
 
-export type TodoStatus = 'pending' | 'in_progress' | 'done' | 'failed' | 'cancelled'
+export type TodoStatus = 'pending' | 'in_progress' | 'done' | 'failed' | 'cancelled' | 'blocked'
+
+export interface TodoHistoryEntry {
+  status: TodoStatus
+  at: number
+  actor?: string
+  note?: string
+}
 
 export interface TodoItem {
   id: string
   text: string
   status: TodoStatus
+  owner?: string | null
+  dependencies?: string[]
+  blockedReason?: string | null
+  history?: TodoHistoryEntry[]
   createdAt: number
   updatedAt: number
 }
@@ -33,7 +44,7 @@ interface TodoState {
   setTodos: (conversationId: string, todos: Omit<TodoItem, 'createdAt' | 'updatedAt'>[]) => Promise<void>
   updateTodo: (
     id: string,
-    updates: Partial<Pick<TodoItem, 'text' | 'status'>>,
+    updates: Partial<Pick<TodoItem, 'text' | 'status' | 'owner' | 'dependencies' | 'blockedReason' | 'history'>>,
     conversationId?: string
   ) => Promise<void>
   getTodo: (id: string) => TodoItem | undefined
@@ -41,6 +52,7 @@ interface TodoState {
   setConversationId: (id: string | null) => Promise<void>
   setVisible: (visible: boolean) => void
   deleteConversationTodos: (conversationId: string) => Promise<void>
+  clearInMemoryTodosForConversation: (conversationId: string) => void
   hydrateConversationFromMessages: (
     conversationId: string,
     messages: Array<{
@@ -64,9 +76,27 @@ function rowToTodo(row: any): TodoItem {
     id: row.id,
     text: row.text,
     status: row.status,
+    owner: row.owner ?? null,
+    dependencies: Array.isArray(row.dependencies) ? row.dependencies : [],
+    blockedReason: row.blocked_reason ?? null,
+    history: Array.isArray(row.history) ? row.history : [],
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   }
+}
+
+function normalizeDependencies(value: string[] | undefined): string {
+  return JSON.stringify([...(value || [])].sort())
+}
+
+function hasHistoryChanged(
+  existingHistory: TodoHistoryEntry[] | undefined,
+  nextHistory: TodoHistoryEntry[] | undefined
+): boolean {
+  const existingLength = existingHistory?.length ?? 0
+  const nextLength = nextHistory?.length ?? 0
+  if (existingLength !== nextLength) return true
+  return JSON.stringify(existingHistory || []) !== JSON.stringify(nextHistory || [])
 }
 
 export const useTodoStore = create<TodoState>((set, get) => ({
@@ -104,7 +134,13 @@ export const useTodoStore = create<TodoState>((set, get) => ({
       const existing = currentTodos.find(t => t.id === todo.id)
       if (existing) {
         // Update existing: keep createdAt, update updatedAt if changed
-        const hasChanged = existing.text !== todo.text || existing.status !== todo.status
+        const hasChanged =
+          existing.text !== todo.text ||
+          existing.status !== todo.status ||
+          (existing.owner || null) !== (todo.owner || null) ||
+          normalizeDependencies(existing.dependencies) !== normalizeDependencies(todo.dependencies) ||
+          (existing.blockedReason || null) !== (todo.blockedReason || null) ||
+          hasHistoryChanged(existing.history, todo.history)
         return {
           ...todo,
           createdAt: existing.createdAt,
@@ -133,6 +169,10 @@ export const useTodoStore = create<TodoState>((set, get) => ({
           id: t.id,
           text: t.text,
           status: t.status,
+          owner: t.owner || undefined,
+          dependencies: t.dependencies || [],
+          blocked_reason: t.blockedReason || null,
+          history: t.history || [],
           created_at: t.createdAt,
           updated_at: t.updatedAt,
         }))
@@ -162,6 +202,10 @@ export const useTodoStore = create<TodoState>((set, get) => ({
       await window.jelico.todos.update(targetConversationId, id, {
         text: updates.text,
         status: updates.status,
+        owner: updates.owner,
+        dependencies: updates.dependencies,
+        blocked_reason: updates.blockedReason,
+        history: updates.history,
       })
     } catch (error) {
       console.error('[TodoStore] Failed to update todo:', error)
@@ -219,6 +263,18 @@ export const useTodoStore = create<TodoState>((set, get) => ({
     }
   },
 
+  clearInMemoryTodosForConversation: (conversationId) => {
+    if (conversationId !== get().conversationId) {
+      return
+    }
+
+    set({
+      todos: [],
+      isVisible: false,
+      conversationId: null,
+    })
+  },
+
   hydrateConversationFromMessages: async (conversationId, messages) => {
     if (!conversationId) return
 
@@ -242,8 +298,16 @@ export const useTodoStore = create<TodoState>((set, get) => ({
       console.error('[TodoStore] Failed to check existing todos:', error)
     }
 
-    const validStatuses = new Set<TodoStatus>(['pending', 'in_progress', 'done', 'failed', 'cancelled'])
-    let recoveredTasks: Array<{ id: string; text: string; status: TodoStatus }> | null = null
+    const validStatuses = new Set<TodoStatus>(['pending', 'in_progress', 'done', 'failed', 'cancelled', 'blocked'])
+    let recoveredTasks: Array<{
+      id: string
+      text: string
+      status: TodoStatus
+      owner: string | null
+      dependencies: string[]
+      blockedReason: string | null
+      history: TodoHistoryEntry[]
+    }> | null = null
 
     for (const message of messages) {
       const toolCalls = message.toolCalls || []
@@ -265,14 +329,31 @@ export const useTodoStore = create<TodoState>((set, get) => ({
             const status = validStatuses.has(rawStatus as TodoStatus)
               ? (rawStatus as TodoStatus)
               : 'pending'
+            const dependencies = Array.isArray(taskRecord.dependencies)
+              ? taskRecord.dependencies.map((dep) => String(dep))
+              : []
 
             return {
               id,
               text,
               status,
+              owner: typeof taskRecord.owner === 'string' ? taskRecord.owner : null,
+              dependencies,
+              blockedReason: typeof taskRecord.blockedReason === 'string'
+                ? taskRecord.blockedReason
+                : (typeof taskRecord.blocked_reason === 'string' ? taskRecord.blocked_reason : null),
+              history: Array.isArray(taskRecord.history) ? taskRecord.history as TodoHistoryEntry[] : [],
             }
           })
-          .filter((task): task is { id: string; text: string; status: TodoStatus } => task !== null)
+          .filter((task): task is {
+            id: string
+            text: string
+            status: TodoStatus
+            owner: string | null
+            dependencies: string[]
+            blockedReason: string | null
+            history: TodoHistoryEntry[]
+          } => task !== null)
 
         if (normalizedTasks.length > 0) {
           recoveredTasks = normalizedTasks
@@ -300,7 +381,9 @@ export const useTodoStore = create<TodoState>((set, get) => ({
   },
 
   getActiveTasks: () => {
-    // Tasks that are still actionable (not done, failed, or cancelled)
-    return get().todos.filter(t => t.status === 'pending' || t.status === 'in_progress')
+    // Tasks that are currently actionable without additional dependency resolution.
+    return get().todos.filter(
+      t => t.status === 'pending' || t.status === 'in_progress'
+    )
   },
 }))

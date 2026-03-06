@@ -62,6 +62,10 @@ let mainWindow: BrowserWindow | null = null
 let lastAlreadyRunningNoticeAt = 0
 let isAppQuitting = false
 
+function isHttpUrl(value: string): boolean {
+  return /^https?:\/\//i.test(value)
+}
+
 const gotSingleInstanceLock = app.requestSingleInstanceLock()
 
 if (!gotSingleInstanceLock) {
@@ -266,6 +270,24 @@ function createWindow() {
       closeAllArtifactTestSessions()
       app.quit()
     }
+  })
+
+  // Ensure links from chat/messages open in the user's default browser instead
+  // of spawning an in-app window that can break authenticated sessions.
+  mainWindow.webContents.setWindowOpenHandler(({ url }) => {
+    if (isHttpUrl(url)) {
+      void shell.openExternal(url)
+      return { action: 'deny' }
+    }
+    return { action: 'allow' }
+  })
+
+  mainWindow.webContents.on('will-navigate', (event, url) => {
+    const currentUrl = mainWindow?.webContents.getURL() || ''
+    if (url === currentUrl) return
+    if (!isHttpUrl(url)) return
+    event.preventDefault()
+    void shell.openExternal(url)
   })
 
   // Handle renderer crashes silently - log and reload

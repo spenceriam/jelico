@@ -1,4 +1,4 @@
-import { ipcMain, BrowserWindow } from 'electron'
+import { ipcMain, BrowserWindow, clipboard } from 'electron'
 
 interface WindowDragState {
   offsetX: number
@@ -69,5 +69,56 @@ export function registerWindowHandlers() {
   ipcMain.handle('window:endDrag', (event) => {
     dragStateByWebContents.delete(event.sender.id)
     return { success: true }
+  })
+
+  ipcMain.handle('window:captureArea', async (event, request: {
+    x: number
+    y: number
+    width: number
+    height: number
+    copyToClipboard?: boolean
+  }) => {
+    const win = BrowserWindow.fromWebContents(event.sender)
+    if (!win) {
+      return { success: false, error: 'No window' }
+    }
+
+    const rawWidth = Number.isFinite(request.width) ? Math.floor(request.width) : 0
+    const rawHeight = Number.isFinite(request.height) ? Math.floor(request.height) : 0
+    const x = Number.isFinite(request.x) ? Math.max(0, Math.floor(request.x)) : 0
+    const y = Number.isFinite(request.y) ? Math.max(0, Math.floor(request.y)) : 0
+    const copyToClipboard = request.copyToClipboard === true
+
+    if (rawWidth <= 0 || rawHeight <= 0) {
+      return { success: false, error: 'Invalid capture area' }
+    }
+
+    const width = Math.max(1, rawWidth)
+    const height = Math.max(1, rawHeight)
+
+    try {
+      const image = await win.capturePage({ x, y, width, height })
+      if (image.isEmpty()) {
+        return { success: false, error: 'Capture returned empty image' }
+      }
+
+      if (copyToClipboard) {
+        clipboard.writeImage(image)
+      }
+      const pngBuffer = image.toPNG()
+      const randomSuffix = Math.random().toString(36).slice(2, 8)
+      const fileName = `Screenshot-${randomSuffix}.png`
+
+      return {
+        success: true,
+        name: fileName,
+        mimeType: 'image/png',
+        data: pngBuffer.toString('base64'),
+        width: image.getSize().width,
+        height: image.getSize().height,
+      }
+    } catch (error: any) {
+      return { success: false, error: error?.message || 'Capture failed' }
+    }
   })
 }

@@ -5,6 +5,8 @@
 
 import { BrowserWindow, ipcMain } from 'electron'
 import { permissionDb } from './database.js'
+import { canSubAgentMutate } from '../lib/modeCapabilities'
+import type { AgentMode } from '../lib/modes'
 
 // Types
 export type PermissionAction = 'allow_always' | 'allow_once' | 'deny'
@@ -171,6 +173,7 @@ export function classifyAction(toolName: string, args: Record<string, unknown>):
     case 'read_file':
     case 'list_directory':
     case 'search_files':
+    case 'search_content':
       return { type: 'read', description: `Read: ${args.path || args.pattern || 'file'}`, isDestructive: false }
 
     case 'write_file':
@@ -198,8 +201,15 @@ export function classifyAction(toolName: string, args: Record<string, unknown>):
     case 'web_fetch':
       return { type: 'web', description: `Web: ${args.query || args.url}`, isDestructive: false }
 
-    case 'spawn_agent':
-      return { type: 'spawn', description: `Spawn agent: ${args.name}`, isDestructive: false }
+    case 'spawn_agent': {
+      const requestedMode = typeof args.mode === 'string' ? args.mode as AgentMode : 'auto'
+      const mutating = canSubAgentMutate(requestedMode)
+      return {
+        type: 'spawn',
+        description: `Spawn agent (${requestedMode}): ${args.name || args.task || 'sub-agent task'}`,
+        isDestructive: mutating,
+      }
+    }
 
     default:
       return { type: 'execute', description: `${toolName}`, isDestructive: false }

@@ -40,7 +40,28 @@ function compareSemver(a: string, b: string): number {
 
 export function GeneralSettings() {
   const { setMode } = useChatStore()
-  const { info, currentVersion, isChecking, isDownloading, downloadProgress, lastDownloadedTo, error, checkForUpdates, downloadUpdate } = useUpdateStore()
+  const {
+    info,
+    currentVersion,
+    isChecking,
+    isDownloading,
+    downloadProgress,
+    lastDownloadedTo,
+    downloadedVersion,
+    dismissedApplyVersion,
+    launchedApplyVersion,
+    error,
+    checkForUpdates,
+    downloadUpdate,
+    applyDownloadedUpdate,
+    dismissApplyPrompt,
+  } = useUpdateStore()
+  const canApplyDownloadedUpdate = Boolean(
+    lastDownloadedTo &&
+    downloadedVersion &&
+    dismissedApplyVersion !== downloadedVersion &&
+    launchedApplyVersion !== downloadedVersion
+  )
   const versionStatus = (() => {
     if (!info) return null
 
@@ -238,7 +259,7 @@ export function GeneralSettings() {
 
             <div className="flex flex-wrap gap-2">
               <button
-                onClick={() => checkForUpdates()}
+                onClick={() => checkForUpdates({ force: true })}
                 disabled={isChecking}
                 className="flex items-center gap-2 px-3 py-2 rounded-lg border border-border text-text-secondary hover:text-text-primary hover:border-border-strong transition-colors disabled:opacity-50"
               >
@@ -285,8 +306,27 @@ export function GeneralSettings() {
             )}
 
             {lastDownloadedTo && !isDownloading && (
-              <div className="text-xs text-text-muted">
-                Downloaded to: {lastDownloadedTo}
+              <div className="space-y-2">
+                <div className="text-xs text-text-muted break-all">
+                  Downloaded to: {lastDownloadedTo}
+                </div>
+                {canApplyDownloadedUpdate && (
+                  <div className="flex flex-wrap gap-2">
+                    <button
+                      onClick={() => applyDownloadedUpdate()}
+                      className="flex items-center gap-2 px-3 py-2 rounded-lg bg-accent text-black hover:bg-accent-bright transition-colors"
+                    >
+                      <Download className="w-4 h-4" />
+                      Apply now
+                    </button>
+                    <button
+                      onClick={() => dismissApplyPrompt(downloadedVersion)}
+                      className="px-3 py-2 rounded-lg border border-border text-text-secondary hover:text-text-primary hover:border-border-strong transition-colors"
+                    >
+                      Later
+                    </button>
+                  </div>
+                )}
               </div>
             )}
           </div>

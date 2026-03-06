@@ -2,10 +2,10 @@ import { ipcMain, dialog, BrowserWindow } from 'electron'
 import { workspaceDb, conversationDb } from '../services/database'
 import * as fs from 'fs'
 import * as path from 'path'
-import { exec } from 'child_process'
+import { execFile } from 'child_process'
 import { promisify } from 'util'
 
-const execAsync = promisify(exec)
+const execFileAsync = promisify(execFile)
 
 interface WorkspaceConfig {
   id: string
@@ -45,20 +45,164 @@ function resolveGitPath(baseDir: string, value: string): string {
   return path.isAbsolute(value) ? value : path.resolve(baseDir, value)
 }
 
+function normalizeComparablePath(targetPath: string): string {
+  const resolved = path.resolve(targetPath)
+  return process.platform === 'win32' ? resolved.toLowerCase() : resolved
+}
+
+function getNearestExistingDirectory(targetPath: string): string | null {
+  let current = path.resolve(targetPath)
+
+  while (true) {
+    if (workspacePathExists(current)) {
+      return current
+    }
+
+    const parent = path.dirname(current)
+    if (parent === current) {
+      return null
+    }
+    current = parent
+  }
+}
+
+async function resolveRepoRootFromCandidate(candidatePath: string): Promise<string | null> {
+  if (!workspacePathExists(candidatePath)) {
+    return null
+  }
+
+  try {
+    const { stdout } = await execFileAsync('git', ['rev-parse', '--show-toplevel'], {
+      cwd: candidatePath,
+      windowsHide: true,
+    })
+    const repoRoot = resolveGitPath(candidatePath, stdout.trim())
+    return workspacePathExists(repoRoot) ? repoRoot : null
+  } catch {
+    return null
+  }
+}
+
+async function findRepoRootContainingWorktreeRegistration(worktreePath: string): Promise<string | null> {
+  const normalizedWorktreePath = normalizeComparablePath(worktreePath)
+  const normalizedWorktreeGitPath = normalizeComparablePath(path.join(worktreePath, '.git'))
+  const registeredWorkspaces = workspaceDb.list()
+  const directlyRegisteredRepo = registeredWorkspaces.find((workspace) =>
+    (workspace.is_worktree || 0) === 1 &&
+    typeof workspace.project_path === 'string' &&
+    workspace.project_path.trim().length > 0 &&
+    normalizeComparablePath(workspace.path) === normalizedWorktreePath
+  )
+
+  if (directlyRegisteredRepo?.project_path) {
+    const candidate = path.resolve(directlyRegisteredRepo.project_path)
+    if (workspacePathExists(candidate)) {
+      return candidate
+    }
+  }
+
+  const repoCandidates = new Set(
+    registeredWorkspaces
+      .filter((workspace) => workspace.is_git === 1)
+      .map((workspace) => path.resolve(workspace.project_path || workspace.path))
+      .filter((candidate) => workspacePathExists(candidate))
+  )
+
+  for (const candidate of repoCandidates) {
+    const worktreesDir = path.join(candidate, '.git', 'worktrees')
+    let entries: fs.Dirent[]
+    try {
+      entries = await fs.promises.readdir(worktreesDir, { withFileTypes: true })
+    } catch {
+      continue
+    }
+
+    for (const entry of entries) {
+      if (!entry.isDirectory()) continue
+
+      const gitdirFile = path.join(worktreesDir, entry.name, 'gitdir')
+      let gitdirValue: string
+      try {
+        gitdirValue = (await fs.promises.readFile(gitdirFile, 'utf8')).trim()
+      } catch {
+        continue
+      }
+
+      if (!gitdirValue) continue
+
+      const resolvedGitDir = resolveGitPath(path.dirname(gitdirFile), gitdirValue)
+      const normalizedGitDir = normalizeComparablePath(resolvedGitDir)
+      const normalizedGitDirParent = normalizeComparablePath(path.dirname(resolvedGitDir))
+
+      if (
+        normalizedGitDir === normalizedWorktreeGitPath ||
+        normalizedGitDirParent === normalizedWorktreePath
+      ) {
+        return candidate
+      }
+    }
+  }
+
+  return null
+}
+
+async function resolveWorktreeRemovalRepoPath(worktreePath: string, projectPath?: string | null): Promise<string | null> {
+  if (projectPath) {
+    const repoRoot = await resolveRepoRootFromCandidate(projectPath)
+    if (repoRoot) {
+      return repoRoot
+    }
+  }
+
+  if (workspacePathExists(worktreePath)) {
+    try {
+      const { stdout } = await execFileAsync('git', ['rev-parse', '--git-common-dir'], {
+        cwd: worktreePath,
+        windowsHide: true,
+      })
+      const resolvedCommonDir = resolveGitPath(worktreePath, stdout.trim())
+      const repoRoot = path.dirname(resolvedCommonDir)
+      if (workspacePathExists(repoRoot)) {
+        return repoRoot
+      }
+    } catch {
+      // Fall through to broader repo discovery below.
+    }
+  }
+
+  const nearestExistingDirectory = getNearestExistingDirectory(worktreePath)
+  if (nearestExistingDirectory) {
+    const repoRoot = await resolveRepoRootFromCandidate(nearestExistingDirectory)
+    if (repoRoot) {
+      return repoRoot
+    }
+  }
+
+  const registeredRepoRoot = await findRepoRootContainingWorktreeRegistration(worktreePath)
+  if (registeredRepoRoot) {
+    return registeredRepoRoot
+  }
+
+  return null
+}
+
 async function isGitRepository(
   dirPath: string
 ): Promise<{ isGit: boolean; isWorktree?: boolean; projectPath?: string; branch?: string }> {
   try {
-    const { stdout: insideWorkTreeOut } = await execAsync('git rev-parse --is-inside-work-tree', { cwd: dirPath })
+    const { stdout: insideWorkTreeOut } = await execFileAsync('git', ['rev-parse', '--is-inside-work-tree'], {
+      cwd: dirPath,
+      windowsHide: true,
+    })
     if (insideWorkTreeOut.trim() !== 'true') {
       return { isGit: false, projectPath: dirPath }
     }
 
     const [{ stdout: branchOut }, { stdout: gitDirOut }, { stdout: gitCommonDirOut }, { stdout: topLevelOut }] = await Promise.all([
-      execAsync('git rev-parse --abbrev-ref HEAD', { cwd: dirPath }),
-      execAsync('git rev-parse --git-dir', { cwd: dirPath }),
-      execAsync('git rev-parse --git-common-dir', { cwd: dirPath }),
-      execAsync('git rev-parse --show-toplevel', { cwd: dirPath }),
+      execFileAsync('git', ['rev-parse', '--abbrev-ref', 'HEAD'], { cwd: dirPath, windowsHide: true }),
+      execFileAsync('git', ['rev-parse', '--git-dir'], { cwd: dirPath, windowsHide: true }),
+      execFileAsync('git', ['rev-parse', '--git-common-dir'], { cwd: dirPath, windowsHide: true }),
+      execFileAsync('git', ['rev-parse', '--show-toplevel'], { cwd: dirPath, windowsHide: true }),
     ])
 
     const resolvedGitDir = resolveGitPath(dirPath, gitDirOut.trim())
@@ -75,7 +219,10 @@ async function isGitRepository(
 // Git worktree helpers
 async function listWorktrees(repoPath: string): Promise<{ path: string; branch: string; isBare: boolean }[]> {
   try {
-    const { stdout } = await execAsync('git worktree list --porcelain', { cwd: repoPath })
+    const { stdout } = await execFileAsync('git', ['worktree', 'list', '--porcelain'], {
+      cwd: repoPath,
+      windowsHide: true,
+    })
     const worktrees: { path: string; branch: string; isBare: boolean }[] = []
     const lines = stdout.split('\n')
 
@@ -151,7 +298,10 @@ async function discoverAndUpsertWorktrees(workspaces: WorkspaceDbRow[]): Promise
 
 async function listBranches(repoPath: string): Promise<{ name: string; isRemote: boolean; isCurrent: boolean }[]> {
   try {
-    const { stdout } = await execAsync('git branch -a --format="%(HEAD) %(refname:short)"', { cwd: repoPath })
+    const { stdout } = await execFileAsync('git', ['branch', '-a', '--format=%(HEAD) %(refname:short)'], {
+      cwd: repoPath,
+      windowsHide: true,
+    })
     return stdout.split('\n').filter(Boolean).map(line => {
       const isCurrent = line.startsWith('*')
       const rawName = line.substring(2).trim()
@@ -186,6 +336,10 @@ async function getPreferredWorktreeBaseRef(repoPath: string): Promise<string | n
   return null
 }
 
+async function execGit(repoPath: string, args: string[]): Promise<void> {
+  await execFileAsync('git', args, { cwd: repoPath, windowsHide: true })
+}
+
 async function createWorktree(repoPath: string, branch: string, targetPath: string): Promise<boolean> {
   try {
     // Check if local or remote branch exists
@@ -195,17 +349,17 @@ async function createWorktree(repoPath: string, branch: string, targetPath: stri
 
     if (localBranchExists) {
       // Use existing local branch
-      await execAsync(`git worktree add "${targetPath}" "${branch}"`, { cwd: repoPath })
+      await execGit(repoPath, ['worktree', 'add', targetPath, branch])
     } else if (remoteBranchExists) {
       // Create local branch that tracks the remote branch.
-      await execAsync(`git worktree add -b "${branch}" "${targetPath}" "origin/${branch}"`, { cwd: repoPath })
+      await execGit(repoPath, ['worktree', 'add', '-b', branch, targetPath, `origin/${branch}`])
     } else {
       // Create a new branch from main/master when available; otherwise fallback to current HEAD.
       const preferredBaseRef = await getPreferredWorktreeBaseRef(repoPath)
       if (preferredBaseRef) {
-        await execAsync(`git worktree add -b "${branch}" "${targetPath}" "${preferredBaseRef}"`, { cwd: repoPath })
+        await execGit(repoPath, ['worktree', 'add', '-b', branch, targetPath, preferredBaseRef])
       } else {
-        await execAsync(`git worktree add -b "${branch}" "${targetPath}"`, { cwd: repoPath })
+        await execGit(repoPath, ['worktree', 'add', '-b', branch, targetPath])
       }
     }
     return true
@@ -217,9 +371,20 @@ async function createWorktree(repoPath: string, branch: string, targetPath: stri
 
 async function removeWorktree(repoPath: string, worktreePath: string): Promise<boolean> {
   try {
-    await execAsync(`git worktree remove "${worktreePath}" --force`, { cwd: repoPath })
+    await execGit(repoPath, ['worktree', 'remove', worktreePath, '--force'])
     return true
   } catch {
+    if (!workspacePathExists(worktreePath)) {
+      try {
+        await execGit(repoPath, ['worktree', 'prune', '--expire', 'now'])
+        const normalizedWorktreePath = path.resolve(worktreePath)
+        const remainingWorktrees = await listWorktrees(repoPath)
+        return !remainingWorktrees.some((worktree) => path.resolve(worktree.path) === normalizedWorktreePath)
+      } catch {
+        return false
+      }
+    }
+
     return false
   }
 }
@@ -357,7 +522,30 @@ export function registerWorkspaceHandlers() {
   })
 
   // Delete workspace
-  ipcMain.handle('workspaces:delete', (_, id: string) => {
+  ipcMain.handle('workspaces:delete', async (_, id: string) => {
+    const workspace = workspaceDb.get(id)
+    if (!workspace) return
+
+    const isWorktree = (workspace.is_worktree || 0) === 1
+    const isGit = workspace.is_git === 1
+    const worktreePathMissing = !workspacePathExists(workspace.path)
+
+    // If this record represents a git worktree, remove the real worktree first.
+    if (isWorktree && isGit) {
+      const repoPath = await resolveWorktreeRemovalRepoPath(workspace.path, workspace.project_path)
+      if (!repoPath) {
+        console.warn('[workspaces] Removing worktree record without git cleanup because repository root could not be resolved:', workspace.path)
+      } else {
+        const removed = await removeWorktree(repoPath, workspace.path)
+        if (!removed && !worktreePathMissing) {
+          throw new Error('Failed to remove git worktree. Resolve local changes and try again.')
+        }
+        if (!removed && worktreePathMissing) {
+          console.warn('[workspaces] Removing orphaned worktree record after best-effort git cleanup failed:', workspace.path)
+        }
+      }
+    }
+
     workspaceDb.delete(id)
   })
 

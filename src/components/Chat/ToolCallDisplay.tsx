@@ -25,6 +25,7 @@ const TOOL_LABELS: Record<string, string> = {
   write_file: 'Write File',
   list_directory: 'List Directory',
   search_files: 'Search Files',
+  search_content: 'Search Content',
   // Execution
   execute_command: 'Execute Command',
   // Web
@@ -203,6 +204,8 @@ function formatSubAgentToolStatus(
         return args.path ? `Explored ${getShortPath(String(args.path))}` : 'Directory explored'
       case 'search_files':
         return 'Search complete'
+      case 'search_content':
+        return 'Content search complete'
       case 'execute_command':
         return 'Command complete'
       case 'web_search':
@@ -225,6 +228,8 @@ function formatSubAgentToolStatus(
       return args.path ? `Exploring ${getShortPath(String(args.path))}` : 'Exploring directory...'
     case 'search_files':
       return args.pattern ? `Searching for "${args.pattern}"` : 'Searching files...'
+    case 'search_content':
+      return args.pattern ? `Searching content for "${String(args.pattern).slice(0, 32)}"` : 'Searching file contents...'
     case 'execute_command':
       return 'Running command...'
     case 'web_search':
@@ -589,6 +594,9 @@ export function SingleToolCallDisplay({
         break
       case 'search_files':
         if (args.pattern) return `${baseName}: "${args.pattern}"`
+        break
+      case 'search_content':
+        if (args.pattern) return `${baseName}: "${String(args.pattern).slice(0, 30)}"`
         break
       case 'execute_command': {
         const cmd = String(args.command || '')
@@ -1009,18 +1017,164 @@ export function ToolCallDisplay({ toolCalls, toolResults = [], isStreaming }: To
     agents,
     isStreaming,
   })
+  const renderEntries = buildToolRenderEntries(visibleToolCalls)
 
   return (
     <div className="space-y-3 my-4">
-      {visibleToolCalls.map((toolCall, index) => (
-        <SingleToolCallDisplay
-          key={toolCall.id || `tool-${index}`}
-          toolCall={toolCall}
-          toolResult={resultsMap.get(toolCall.id)}
-          isStreaming={isStreaming}
-          processingTone={processingToneByToolCallId.get(toolCall.id)}
-        />
-      ))}
+      {renderEntries.map((entry, index) => {
+        if (entry.type === 'single') {
+          const { toolCall } = entry
+          return (
+            <SingleToolCallDisplay
+              key={toolCall.id || `tool-${index}`}
+              toolCall={toolCall}
+              toolResult={resultsMap.get(toolCall.id)}
+              isStreaming={isStreaming}
+              processingTone={processingToneByToolCallId.get(toolCall.id)}
+            />
+          )
+        }
+
+        return (
+          <ConsolidatedToolCallGroup
+            key={`group-${entry.toolName}-${index}`}
+            toolName={entry.toolName}
+            toolCalls={entry.toolCalls}
+            resultsMap={resultsMap}
+            isStreaming={isStreaming}
+            processingToneByToolCallId={processingToneByToolCallId}
+          />
+        )
+      })}
+    </div>
+  )
+}
+
+export type ToolRenderEntry =
+  | { type: 'single'; toolCall: ToolCall }
+  | { type: 'group'; toolName: string; toolCalls: ToolCall[] }
+
+const MINIMUM_GROUP_SIZE_BY_TOOL_NAME: Record<string, number> = {
+  artifact_test: 2, // Keep artifact testing condensed even on shorter chains.
+}
+
+export function buildToolRenderEntries(toolCalls: ToolCall[]): ToolRenderEntry[] {
+  const renderEntries: ToolRenderEntry[] = []
+  let cursor = 0
+
+  while (cursor < toolCalls.length) {
+    const current = toolCalls[cursor]
+    let next = cursor + 1
+    while (next < toolCalls.length && toolCalls[next].name === current.name) {
+      next += 1
+    }
+
+    const run = toolCalls.slice(cursor, next)
+    const threshold = MINIMUM_GROUP_SIZE_BY_TOOL_NAME[current.name] || 3
+    const shouldGroup = current.name !== 'spawn_agent' && run.length >= threshold
+
+    if (shouldGroup) {
+      renderEntries.push({
+        type: 'group',
+        toolName: current.name,
+        toolCalls: run,
+      })
+    } else {
+      for (const toolCall of run) {
+        renderEntries.push({
+          type: 'single',
+          toolCall,
+        })
+      }
+    }
+
+    cursor = next
+  }
+
+  return renderEntries
+}
+
+export function ConsolidatedToolCallGroup({
+  toolName,
+  toolCalls,
+  resultsMap,
+  isStreaming,
+  processingToneByToolCallId,
+}: {
+  toolName: string
+  toolCalls: ToolCall[]
+  resultsMap: Map<string, ToolResult>
+  isStreaming?: boolean
+  processingToneByToolCallId: Map<string, number>
+}) {
+  const [expanded, setExpanded] = useState(false)
+  const label = TOOL_LABELS[toolName] || toolName.replace(/_/g, ' ')
+
+  let inProgressCount = 0
+  let completedCount = 0
+  let errorCount = 0
+
+  for (const toolCall of toolCalls) {
+    const toolResult = resultsMap.get(toolCall.id)
+    const { isInProgress, isCanceled } = resolveToolCallState(toolCall, toolResult, isStreaming)
+    if (isInProgress) inProgressCount += 1
+
+    if (toolResult) {
+      const formattedResult = formatToolResult(toolResult.result)
+      if (formattedResult.isError) {
+        errorCount += 1
+      } else if (!isCanceled) {
+        completedCount += 1
+      }
+    }
+  }
+
+  const statusLabel = inProgressCount > 0
+    ? `${toolCalls.length} calls · ${inProgressCount} running`
+    : errorCount > 0
+      ? `${toolCalls.length} calls · ${errorCount} failed`
+      : `${toolCalls.length} calls`
+
+  return (
+    <div className="border border-border rounded-lg overflow-hidden bg-bg-deep">
+      <button
+        type="button"
+        onClick={() => setExpanded((prev) => !prev)}
+        className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-bg-hover transition-colors"
+      >
+        {expanded ? (
+          <ChevronDown className="w-4 h-4 text-text-muted flex-shrink-0" />
+        ) : (
+          <ChevronRight className="w-4 h-4 text-text-muted flex-shrink-0" />
+        )}
+        <span className="text-sm font-medium text-accent flex-1 truncate">
+          {label}
+        </span>
+        <span className="text-xs text-text-muted">{statusLabel}</span>
+        {errorCount > 0 ? (
+          <XCircle className="w-4 h-4 text-error flex-shrink-0" />
+        ) : inProgressCount === 0 && completedCount > 0 ? (
+          <CheckCircle className="w-4 h-4 text-green-500 flex-shrink-0" />
+        ) : null}
+      </button>
+
+      {expanded && (
+        <div className="border-t border-border bg-bg-surface p-2 space-y-2">
+          {toolCalls.map((toolCall, index) => (
+            <div key={toolCall.id || `grouped-tool-${index}`} className="space-y-1">
+              <div className="px-1 text-[11px] text-text-faint uppercase tracking-wide">
+                Call {index + 1}
+              </div>
+              <SingleToolCallDisplay
+                toolCall={toolCall}
+                toolResult={resultsMap.get(toolCall.id)}
+                isStreaming={isStreaming}
+                processingTone={processingToneByToolCallId.get(toolCall.id)}
+              />
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   )
 }

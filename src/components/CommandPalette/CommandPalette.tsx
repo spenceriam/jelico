@@ -3,6 +3,7 @@ import {
   Search,
   MessageSquare,
   Settings,
+  Archive,
   FolderOpen,
   Zap,
   Bot,
@@ -176,6 +177,16 @@ export function CommandPalette({ isOpen, onClose }: CommandPaletteProps) {
       icon: Zap,
       category: 'navigation',
       action: () => openSettings('skills'),
+    })
+
+    cmds.push({
+      id: 'settings-archive',
+      name: 'Archive Settings',
+      description: 'Review archive and restore behavior',
+      icon: Archive,
+      category: 'navigation',
+      keywords: ['archive', 'restore', 'orphan'],
+      action: () => openSettings('archive'),
     })
 
     cmds.push({

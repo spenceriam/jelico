@@ -6,10 +6,11 @@ import { useWorkspaceStore } from './workspaces'
 import { useAgentStore } from './agents'
 import { useSkillStore } from './skills'
 import { useContextStore, estimateTokens } from './context'
-import { useSandboxStore } from './sandbox'
 import { useTodoStore } from './todos'
 import { useClarificationStore } from './clarification'
+import { useDecisionPromptStore } from './decisionPrompt'
 import { notifyUserEvent } from '../lib/notifications'
+import { createInlineToolProtocolFilter } from '../lib/inlineToolProtocol'
 
 export interface MessageUsage {
   promptTokens: number
@@ -94,6 +95,7 @@ interface Conversation {
   model: string
   providerId: string
   mode?: AgentMode
+  archivedAt?: number | null
   createdAt: number
   updatedAt: number
   messages?: Message[]
@@ -198,7 +200,7 @@ interface ChatStore {
   processQueue: () => Promise<void>
   sendQueuedNow: (queueIndex: number) => Promise<boolean>
   stopStreaming: () => Promise<void>
-  deleteConversation: (id: string) => Promise<void>
+  archiveConversation: (id: string) => Promise<void>
   setMode: (mode: AgentMode) => void
   setModeTransitioning: (transitioning: boolean) => void
   handleModeSwitch: (fromMode: AgentMode, toMode: AgentMode, reason: string) => void
@@ -215,9 +217,6 @@ interface ChatStore {
 const streamChannelByConversation = new Map<string, string>()
 let modeTransitionTimeoutId: ReturnType<typeof setTimeout> | null = null
 const PENDING_STREAMS_STORAGE_KEY = 'jelico.pending_streams.v1'
-const INLINE_TOOL_CALL_BEGIN_TOKEN = '<|tool_call_begin|>'
-const INLINE_TOOL_CALL_ARGUMENT_BEGIN_TOKEN = '<|tool_call_argument_begin|>'
-const INLINE_TOOL_CALL_END_TOKEN = '<|tool_call_end|>'
 const WORKTREE_MENTION_REGEX = /\b(work[\s-]?tree|git[\s-]?work[\s-]?tree|git tree)\b/i
 const WORKTREE_MENTION_COOLDOWN_MS = 5 * 60 * 1000
 const worktreeGuidanceByConversation = new Map<string, { planningShown: boolean; lastMentionAt: number }>()
@@ -325,97 +324,7 @@ function buildWorktreeGuidanceMessage(input: {
       ? 'Worktree tip: '
       : ''
 
-  return `${contextText}you are in the main workspace "${input.workspaceName}" (not a worktree). ${relatedText}Use "Work Tree" for new chats when you want full filesystem + branch isolation.`
-}
-
-function getTrailingTokenOverlap(value: string, token: string): number {
-  const max = Math.min(value.length, token.length - 1)
-  for (let size = max; size > 0; size -= 1) {
-    if (value.endsWith(token.slice(0, size))) {
-      return size
-    }
-  }
-  return 0
-}
-
-function getMaxTrailingTokenOverlap(value: string, tokens: string[]): number {
-  return tokens.reduce((max, token) => Math.max(max, getTrailingTokenOverlap(value, token)), 0)
-}
-
-function createInlineToolProtocolFilter() {
-  const startTokens = [INLINE_TOOL_CALL_BEGIN_TOKEN, INLINE_TOOL_CALL_ARGUMENT_BEGIN_TOKEN]
-  let carry = ''
-  let inProtocol = false
-
-  const consume = (chunk: string): string => {
-    if (!chunk) return ''
-
-    let input = carry + chunk
-    carry = ''
-    let output = ''
-    let cursor = 0
-
-    while (cursor < input.length) {
-      if (inProtocol) {
-        const endIndex = input.indexOf(INLINE_TOOL_CALL_END_TOKEN, cursor)
-        if (endIndex === -1) {
-          const remaining = input.slice(cursor)
-          const overlap = getTrailingTokenOverlap(remaining, INLINE_TOOL_CALL_END_TOKEN)
-          carry = overlap > 0 ? remaining.slice(-overlap) : ''
-          return output
-        }
-
-        cursor = endIndex + INLINE_TOOL_CALL_END_TOKEN.length
-        inProtocol = false
-        continue
-      }
-
-      let nextStartIndex = -1
-      let matchedStartToken = ''
-      for (const token of startTokens) {
-        const idx = input.indexOf(token, cursor)
-        if (idx !== -1 && (nextStartIndex === -1 || idx < nextStartIndex)) {
-          nextStartIndex = idx
-          matchedStartToken = token
-        }
-      }
-
-      if (nextStartIndex === -1) {
-        const remaining = input.slice(cursor)
-        const overlap = getMaxTrailingTokenOverlap(remaining, startTokens)
-        if (overlap > 0) {
-          output += remaining.slice(0, -overlap)
-          carry = remaining.slice(-overlap)
-        } else {
-          output += remaining
-        }
-        return output
-      }
-
-      output += input.slice(cursor, nextStartIndex)
-      cursor = nextStartIndex + matchedStartToken.length
-      inProtocol = true
-    }
-
-    return output
-  }
-
-  const flush = (): string => {
-    if (inProtocol) {
-      inProtocol = false
-      carry = ''
-      return ''
-    }
-
-    const tail = carry
-    carry = ''
-
-    if (!tail) return ''
-    if (tail.includes('<|tool_call')) return ''
-    return tail
-  }
-
-  return { consume, flush }
+  return `${contextText}you are in the main workspace "${input.workspaceName}" (not a worktree). ${relatedText}Use Worktrunk (new chat isolation) when you want full filesystem + branch isolation.`
 }
 
 function splitBatchedToolPreambles(
@@ -787,15 +696,25 @@ export const useChatStore = create<ChatStore>((set, get) => ({
               .map((conversation, index) => `${index + 1}. ${conversation.title || 'Untitled chat'}`)
             const remainingCount = sortedExisting.length - previewConversations.length
 
-            shouldCreateWorktree = window.confirm(
-              'This workspace already has existing conversations.\n\n' +
-              'Existing conversations in this workspace:\n' +
-              `${previewConversations.join('\n')}` +
-              (remainingCount > 0 ? `\n...and ${remainingCount} more` : '') +
-              '\n\n' +
-              'Select OK to create a Work Tree for this new chat.\n' +
-              'Select Cancel to continue working in this workspace.'
-            )
+            const dialogResult = await useDecisionPromptStore.getState().request({
+              title: 'Worktrunk Isolation',
+              message: 'This workspace already has existing chats.',
+              detail:
+                'You can keep this new chat in the shared workspace, or isolate it in its own Worktrunk branch.\n\n' +
+                'Existing chats in this workspace:\n' +
+                `${previewConversations.join('\n')}` +
+                (remainingCount > 0 ? `\n...and ${remainingCount} more` : '') +
+                '\n\n' +
+                'Choose "Isolate Worktrunk" to create a new isolated worktree + branch for this chat.\n' +
+                'Choose "Stay in workspace" to continue in the shared workspace.',
+              options: [
+                { label: 'Isolate Worktrunk', value: 'isolate', variant: 'primary' },
+                { label: 'Stay in workspace', value: 'shared', variant: 'secondary' },
+              ],
+              defaultValue: 'isolate',
+              cancelValue: 'shared',
+            })
+            shouldCreateWorktree = dialogResult.value === 'isolate'
           }
 
           if (shouldCreateWorktree && targetWorkspaceId) {
@@ -2173,10 +2092,10 @@ export const useChatStore = create<ChatStore>((set, get) => ({
     })
   },
 
-  deleteConversation: async (id) => {
+  archiveConversation: async (id) => {
     const wasActiveConversation = get().activeConversationId === id
 
-    // Optimistically clear active conversation state before slower delete work so
+    // Optimistically clear active conversation state before archive work so
     // the composer immediately returns to a clean, editable new-chat state.
     if (wasActiveConversation) {
       set((state) => {
@@ -2206,20 +2125,10 @@ export const useChatStore = create<ChatStore>((set, get) => ({
       }
       clearPendingStreamCheckpoint(id)
       worktreeGuidanceByConversation.delete(id)
-      useTodoStore.getState().deleteConversationTodos(id)
+      useTodoStore.getState().clearInMemoryTodosForConversation(id)
       useClarificationStore.getState().clearForConversation(id)
 
-      // Delete artifacts for this conversation
-      await useArtifactStore.getState().clearConversationArtifacts(id)
-
-      // Clear sandbox files for this conversation (ignore errors - sandbox may not exist)
-      try {
-        await useSandboxStore.getState().clearSandbox(id)
-      } catch {
-        // Sandbox may not exist for this conversation - that's OK
-      }
-
-      await window.jelico.conversations.delete(id)
+      await window.jelico.conversations.archive(id)
       const conversations = await window.jelico.conversations.list()
 
       if (wasActiveConversation) {
