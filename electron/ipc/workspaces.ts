@@ -98,7 +98,7 @@ async function findRepoRootContainingWorktreeRegistration(worktreePath: string):
   return null
 }
 
-async function resolveWorktreeRemovalRepoPath(worktreePath: string, projectPath?: string | null): Promise<string> {
+async function resolveWorktreeRemovalRepoPath(worktreePath: string, projectPath?: string | null): Promise<string | null> {
   if (projectPath) {
     const repoRoot = await resolveRepoRootFromCandidate(projectPath)
     if (repoRoot) {
@@ -135,7 +135,7 @@ async function resolveWorktreeRemovalRepoPath(worktreePath: string, projectPath?
     return registeredRepoRoot
   }
 
-  return nearestExistingDirectory || process.cwd()
+  return null
 }
 
 async function isGitRepository(
@@ -485,7 +485,7 @@ export function registerWorkspaceHandlers() {
     // If this record represents a git worktree, remove the real worktree first.
     if (isWorktree && isGit) {
       const repoPath = await resolveWorktreeRemovalRepoPath(workspace.path, workspace.project_path)
-      const removed = await removeWorktree(repoPath, workspace.path)
+      const removed = repoPath ? await removeWorktree(repoPath, workspace.path) : false
       if (!removed && !worktreePathMissing) {
         throw new Error('Failed to remove git worktree. Resolve local changes and try again.')
       }

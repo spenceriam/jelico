@@ -92,7 +92,7 @@ function buildArchiveGroups(
 ): ArchiveGroup[] {
   const workspaceGroupsByDirectory = new Map<string, ArchiveGroup>()
   const sandboxConversations: ChatConversation[] = []
-  const orphanConversations: ChatConversation[] = []
+  const orphanGroupsByWorkspaceId = new Map<string, ArchiveGroup>()
 
   for (const conversation of archivedConversations) {
     if (!conversation.workspaceId) {
@@ -102,7 +102,20 @@ function buildArchiveGroups(
 
     const workspace = workspaceById.get(conversation.workspaceId)
     if (!workspace) {
-      orphanConversations.push(conversation)
+      const orphanWorkspaceId = conversation.workspaceId
+      const orphanGroup = orphanGroupsByWorkspaceId.get(orphanWorkspaceId)
+      if (orphanGroup) {
+        orphanGroup.conversations.push(conversation)
+      } else {
+        orphanGroupsByWorkspaceId.set(orphanWorkspaceId, {
+          id: `orphaned-${orphanWorkspaceId}`,
+          label: `Deleted workspace ${orphanWorkspaceId.slice(0, 8)}`,
+          workingDirectory: `Workspace ID: ${orphanWorkspaceId}`,
+          isSandbox: false,
+          isOrphan: true,
+          conversations: [conversation],
+        })
+      }
       continue
     }
 
@@ -141,16 +154,12 @@ function buildArchiveGroups(
     })
   }
 
-  if (orphanConversations.length > 0) {
-    groups.push({
-      id: 'orphaned',
-      label: 'Orphaned',
-      workingDirectory: null,
-      isSandbox: false,
-      isOrphan: true,
-      conversations: orphanConversations.sort((a, b) => b.updatedAt - a.updatedAt),
-    })
-  }
+  groups.push(
+    ...Array.from(orphanGroupsByWorkspaceId.values()).map((group) => ({
+      ...group,
+      conversations: [...group.conversations].sort((a, b) => b.updatedAt - a.updatedAt),
+    }))
+  )
 
   return groups.sort((a, b) => getLatestUpdate(b) - getLatestUpdate(a))
 }
