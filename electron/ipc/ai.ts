@@ -3858,8 +3858,6 @@ export function registerAIHandlers() {
           : undefined
 
         applySubAgentTaskUpdate(latestUpdate, agentId)
-
-        console.log(`[AI] Forwarding agent progress: ${agent.displayName || agent.name} status=${agent.status}${latestUpdate ? ` [${latestUpdate.phase || 'update'}] ${latestUpdate.message}` : ''}`)
         event.sender.send(`ai:agentProgress:${channelId}`, {
           agentId,
           status: agent.status,

@@ -1,7 +1,7 @@
 import { app, dialog, shell, type BrowserWindow } from 'electron'
 import https from 'https'
 import path from 'path'
-import { createWriteStream, promises as fs, readFileSync } from 'fs'
+import { createWriteStream, promises as fs } from 'fs'
 
 const OWNER = 'spenceriam'
 const REPO = 'jelico'
@@ -164,9 +164,9 @@ function pickAssetByExtension(
   return byExt[0] || null
 }
 
-function detectLinuxAssetPreferenceOrder(): string[] {
+async function detectLinuxAssetPreferenceOrder(): Promise<string[]> {
   try {
-    const osRelease = readFileSync('/etc/os-release', 'utf-8').toLowerCase()
+    const osRelease = (await fs.readFile('/etc/os-release', 'utf-8')).toLowerCase()
     const normalized = osRelease.replace(/"/g, '')
 
     if (/\bid(_like)?=.*(debian|ubuntu|mint|pop|elementary)\b/.test(normalized)) {
@@ -183,7 +183,7 @@ function detectLinuxAssetPreferenceOrder(): string[] {
   return ['.AppImage', '.deb', '.rpm']
 }
 
-function getRecommendedAsset(assets: UpdateAssetInfo[]): UpdateAssetInfo | null {
+async function getRecommendedAsset(assets: UpdateAssetInfo[]): Promise<UpdateAssetInfo | null> {
   const platform = process.platform
   const arch = process.arch
 
@@ -201,7 +201,7 @@ function getRecommendedAsset(assets: UpdateAssetInfo[]): UpdateAssetInfo | null 
     return pickAssetByExtension(assets, ['.exe', '.msi'], archHints)
   }
 
-  const linuxExtensionPreference = detectLinuxAssetPreferenceOrder()
+  const linuxExtensionPreference = await detectLinuxAssetPreferenceOrder()
   return pickAssetByExtension(assets, linuxExtensionPreference, archHints)
 }
 
@@ -251,7 +251,7 @@ export async function checkForUpdates(): Promise<UpdateInfo> {
     releaseUrl: release.html_url,
     publishedAt: release.published_at,
     assets,
-    recommendedAsset: getRecommendedAsset(assets),
+    recommendedAsset: await getRecommendedAsset(assets),
   }
 }
 

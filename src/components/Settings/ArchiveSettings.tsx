@@ -164,7 +164,8 @@ export function ArchiveSettings() {
   const [loading, setLoading] = useState(true)
   const [workingConversationIds, setWorkingConversationIds] = useState<string[]>([])
   const [selectedConversationId, setSelectedConversationId] = useState<string | null>(null)
-  const [actionError, setActionError] = useState<string | null>(null)
+  const [loadError, setLoadError] = useState<string | null>(null)
+  const [actionErrors, setActionErrors] = useState<Record<string, string>>({})
 
   const workspaceById = useMemo(
     () => new Map(workspaces.map((workspace) => [workspace.id, workspace])),
@@ -176,15 +177,30 @@ export function ArchiveSettings() {
     [archivedConversations, workspaceById]
   )
 
+  const setConversationActionError = (conversationId: string, message: string | null) => {
+    setActionErrors((prev) => {
+      if (!message) {
+        if (!(conversationId in prev)) return prev
+        const next = { ...prev }
+        delete next[conversationId]
+        return next
+      }
+      return {
+        ...prev,
+        [conversationId]: message,
+      }
+    })
+  }
+
   const loadArchivedConversations = async () => {
     setLoading(true)
-    setActionError(null)
+    setLoadError(null)
     try {
       const archived = await window.jelico.conversations.listArchived()
       setArchivedConversations(archived)
     } catch (error) {
       console.error('Failed to load archived conversations:', error)
-      setActionError('Unable to load archived chats. Please try again.')
+      setLoadError('Unable to load archived chats. Please try again.')
     } finally {
       setLoading(false)
     }
@@ -204,21 +220,21 @@ export function ArchiveSettings() {
 
   const handleRestoreConversation = async (id: string) => {
     setWorkingConversationIds((prev) => (prev.includes(id) ? prev : [...prev, id]))
-    setActionError(null)
+    setConversationActionError(id, null)
     try {
       await window.jelico.conversations.restore(id)
       await loadConversations()
       await loadArchivedConversations()
     } catch (error) {
       console.error('Failed to restore conversation:', error)
-      setActionError('Restore failed. Please try again.')
+      setConversationActionError(id, 'Restore failed. Please try again.')
     } finally {
       setWorkingConversationIds((prev) => prev.filter((value) => value !== id))
     }
   }
 
   const handlePermanentDeleteConversation = async (id: string) => {
-    setActionError(null)
+    setConversationActionError(id, null)
     const decision = await useDecisionPromptStore.getState().request({
       title: 'Permanently Delete Chat',
       message: 'Permanently delete this archived conversation? This cannot be undone.',
@@ -251,7 +267,7 @@ export function ArchiveSettings() {
       await loadArchivedConversations()
     } catch (error) {
       console.error('Failed to permanently delete archived conversation:', error)
-      setActionError('Delete failed. Please try again.')
+      setConversationActionError(id, 'Delete failed. Please try again.')
     } finally {
       setWorkingConversationIds((prev) => prev.filter((value) => value !== id))
     }
@@ -302,9 +318,9 @@ export function ArchiveSettings() {
       <section>
         <h3 className="text-lg font-medium text-text-primary mb-3">Archived Chats</h3>
 
-        {actionError && (
+        {loadError && (
           <div className="mb-3 text-sm text-error bg-error/10 border border-error/30 rounded px-3 py-2">
-            {actionError}
+            {loadError}
           </div>
         )}
 
@@ -346,6 +362,7 @@ export function ArchiveSettings() {
                       const workspace = conversation.workspaceId ? workspaceById.get(conversation.workspaceId) : null
                       const createdAge = formatRelativeAge(conversation.createdAt)
                       const archivedAge = formatRelativeAge(conversation.archivedAt ?? null)
+                      const actionError = actionErrors[conversation.id] ?? null
 
                       return (
                         <div
@@ -398,6 +415,12 @@ export function ArchiveSettings() {
                                 Archived {formatTimestamp(conversation.archivedAt ?? null)}{archivedAge ? ` (${archivedAge})` : ''}
                               </span>
                             </div>
+
+                            {actionError && (
+                              <div className="mt-2 text-xs text-error bg-error/10 border border-error/30 rounded px-2 py-1">
+                                {actionError}
+                              </div>
+                            )}
                           </div>
 
                           {group.isOrphan ? (

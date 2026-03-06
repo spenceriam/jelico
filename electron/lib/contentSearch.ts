@@ -367,7 +367,7 @@ export async function searchFileContents(options: ContentSearchOptions): Promise
     if (ripgrepResult) {
       return {
         matches: ripgrepResult.matches,
-        scannedFiles: ripgrepResult.scannedFiles,
+        scannedFiles: ripgrepResult.scannedFiles > 0 ? ripgrepResult.scannedFiles : scannedFiles,
         truncated: ripgrepResult.truncated,
       }
     }
