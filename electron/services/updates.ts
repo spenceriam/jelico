@@ -366,13 +366,15 @@ async function getDownloadedUpdatePath(): Promise<string | null> {
       hasLoadedDownloadedUpdatePath = true
       lastDownloadedUpdatePath = persisted
       return lastDownloadedUpdatePath
-    })
+    })()
 
-    downloadedUpdatePathLoadPromise = pendingLoad.finally(() => {
-      if (downloadedUpdatePathLoadPromise === pendingLoad) {
+    const trackedLoad = pendingLoad.finally(() => {
+      if (downloadedUpdatePathLoadPromise === trackedLoad) {
         downloadedUpdatePathLoadPromise = null
       }
     })
+
+    downloadedUpdatePathLoadPromise = trackedLoad
   }
 
   return downloadedUpdatePathLoadPromise
