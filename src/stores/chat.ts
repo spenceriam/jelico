@@ -295,7 +295,7 @@ function getSuggestedWorktreeBranchName(initialMessageHint?: string, workspaceNa
   const slug = toBranchSlug(firstLine) || toBranchSlug(workspaceName || '') || 'new-chat'
   const timestamp = new Date()
     .toISOString()
-    .replace(/-|:|T|Z|\./g, '')
+    .replace(/[-:TZ.]/g, '')
     .slice(0, 14)
 
   return `worktree/${branchType}/${slug}-${timestamp}`

@@ -3813,7 +3813,7 @@ export function registerAIHandlers() {
       taskStatus?: TodoTask['status']
       blockedReason?: string
       owner?: string
-    }) => {
+    }, agentId?: string) => {
       if (!latestUpdate?.taskId || !latestUpdate.taskStatus) return
       const existing = currentTodos.find((task) => task.id === latestUpdate.taskId)
       if (!existing) return
@@ -3857,7 +3857,7 @@ export function registerAIHandlers() {
           ? agent.progressUpdates[agent.progressUpdates.length - 1]
           : undefined
 
-        applySubAgentTaskUpdate(latestUpdate)
+        applySubAgentTaskUpdate(latestUpdate, agentId)
 
         console.log(`[AI] Forwarding agent progress: ${agent.displayName || agent.name} status=${agent.status}${latestUpdate ? ` [${latestUpdate.phase || 'update'}] ${latestUpdate.message}` : ''}`)
         event.sender.send(`ai:agentProgress:${channelId}`, {

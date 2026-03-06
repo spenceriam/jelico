@@ -73,6 +73,17 @@ function shouldClearDownloadedStateAfterVersionAdvance(
   return compareSemver(currentVersion, downloadedVersion) > 0
 }
 
+function shouldClearDownloadedStateOnStartup(
+  currentVersion: string | null | undefined,
+  downloadedVersion: string | null | undefined
+): boolean {
+  if (!downloadedVersion || !currentVersion) {
+    return false
+  }
+
+  return compareSemver(currentVersion, downloadedVersion) > 0
+}
+
 function shouldRestoreApplyPromptAfterStartup(
   currentVersion: string | null | undefined,
   downloadedVersion: string | null | undefined,
@@ -146,11 +157,7 @@ export const useUpdateStore = create<UpdatesState>((set, get) => ({
         dismissedApplyVersion,
         launchedApplyVersion,
       } = get()
-      const shouldClearDownloadedState = shouldClearDownloadedStateAfterVersionAdvance(
-        version,
-        downloadedVersion,
-        false
-      )
+      const shouldClearDownloadedState = shouldClearDownloadedStateOnStartup(version, downloadedVersion)
       const shouldRestoreDismissedApplyPrompt = shouldRestoreApplyPromptAfterStartup(
         version,
         downloadedVersion,

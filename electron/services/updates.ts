@@ -415,5 +415,7 @@ export async function applyDownloadedUpdate(): Promise<UpdateApplyResult> {
     return { success: false, error: openError }
   }
 
+  // Keep the persisted installer path/version after launch so a canceled installer
+  // can be offered again on the next app start instead of forcing a re-download.
   return { success: true, launchedPath: resolvedPath }
 }
