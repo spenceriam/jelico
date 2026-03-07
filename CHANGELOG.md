@@ -1,3 +1,16 @@
+## [0.35.1] - 2026-03-07
+
+### Highlights
+- Artifact and file tool runs that are interrupted by provider stream termination now show provider interruption context instead of looking like a local tool failure.
+- Incomplete mutation turns now have a deterministic recovery retry path, reducing stuck artifact/test workflows after partial tool starts.
+
+### Fixed
+- **Interrupted Tool Attribution** — When a stream ends after tool input starts but before a final tool result, Jelico now labels the interruption as provider-driven so the failure source is clear.
+- **Mutation Turn Recovery** — Artifact and file mutation turns now retry completion validation deterministically after interrupted tool starts, so recovery is no longer skipped just because progress was already visible.
+
+### Changed
+- **Completion-Sensitive Streaming** — Artifact/file mutation turns now buffer assistant text while still showing kickoff and tool activity, making retries safer without duplicate narrative output.
+
 # Changelog
 
 All notable changes to Jelico are documented in this file.

@@ -248,6 +248,7 @@ type ToolCancellationReason =
   | 'stream_end_incomplete'
   | 'timeout'
   | 'provider_abort'
+  | 'provider_stream_interrupted'
   | 'unknown'
   | null
 
@@ -257,7 +258,13 @@ function getToolCancellationReason(result: unknown): ToolCancellationReason {
   const explicitReason = typeof payload.cancellationReason === 'string'
     ? payload.cancellationReason
     : null
-  if (explicitReason === 'user_stop' || explicitReason === 'stream_end_incomplete' || explicitReason === 'timeout' || explicitReason === 'provider_abort') {
+  if (
+    explicitReason === 'user_stop' ||
+    explicitReason === 'stream_end_incomplete' ||
+    explicitReason === 'timeout' ||
+    explicitReason === 'provider_abort' ||
+    explicitReason === 'provider_stream_interrupted'
+  ) {
     return explicitReason
   }
 
@@ -287,6 +294,8 @@ function getCanceledResultLabel(result: unknown): string {
       return 'Interrupted due to timeout'
     case 'provider_abort':
       return 'Interrupted by provider'
+    case 'provider_stream_interrupted':
+      return 'Provider ended stream before tool execution'
     case 'unknown':
       return 'Canceled'
     default:

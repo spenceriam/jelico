@@ -1271,6 +1271,12 @@ interface ToolExecution {
   endTime?: number
 }
 
+interface IncompleteToolStart {
+  id: string
+  name: string
+  sawToolCall: boolean
+}
+
 // Todo state type for type safety
 interface TodoTask {
   id: string
@@ -4154,7 +4160,10 @@ If you find yourself frequently hitting limits, suggest breaking the task into m
           : systemPrompt
         // Preserve chronological UI ordering: stream assistant text live on normal turns.
         // Only buffer during validation-repair retries so failed-attempt text isn't emitted.
-        const shouldBufferCompletionSensitiveText = !!pendingCompletionRepairDirective
+        const shouldBufferCompletionSensitiveText =
+          !!pendingCompletionRepairDirective ||
+          expectedArtifactMutation ||
+          expectedFileMutation
 
         // Track step count for warning injection
         let stepCount = 0
@@ -4209,6 +4218,7 @@ If you find yourself frequently hitting limits, suggest breaking the task into m
           let emittedToolKickoffText = kickoffSentInThisTurn
           let emittedTodoPlanPreview = false
           let assistantTextForValidation = ''
+          const incompleteToolStarts = new Map<string, IncompleteToolStart>()
           const bufferedAssistantChunks: string[] = []
           let bufferedToolBoundaryPending = false
           const emitAssistantChunk = (chunk: string, options?: { bypassBuffer?: boolean }) => {
@@ -4382,6 +4392,11 @@ If you find yourself frequently hitting limits, suggest breaking the task into m
                 // Emit a tool call early so UI shows it before tool input progress
                 if (startToolId) {
                   const toolName = startToolName || 'unknown_tool'
+                  incompleteToolStarts.set(startToolId, {
+                    id: startToolId,
+                    name: toolName,
+                    sawToolCall: false,
+                  })
                   if (!toolTracker.has(startToolId)) {
                     toolTracker.set(startToolId, {
                       id: startToolId,
@@ -4539,6 +4554,10 @@ If you find yourself frequently hitting limits, suggest breaking the task into m
                     status: 'starting',
                   })
                 }
+                const incompleteStart = incompleteToolStarts.get(toolCallId)
+                if (incompleteStart) {
+                  incompleteStart.sawToolCall = true
+                }
                 break
               }
 
@@ -4553,6 +4572,10 @@ If you find yourself frequently hitting limits, suggest breaking the task into m
                   break
                 }
                 emitToolKickoffIfNeeded()
+                const incompleteStart = incompleteToolStarts.get(tcToolCallId)
+                if (incompleteStart) {
+                  incompleteStart.sawToolCall = true
+                }
 
                 // Get args from multiple sources - different providers put them in different places
                 // Also check function.arguments which is OpenAI's format
@@ -4645,6 +4668,7 @@ If you find yourself frequently hitting limits, suggest breaking the task into m
                   exec.result = toolResult
                   exec.endTime = Date.now()
                 }
+                incompleteToolStarts.delete(trToolCallId)
 
                 event.sender.send(`ai:toolResults:${channelId}`, [{
                   toolCallId: trToolCallId,
@@ -4696,6 +4720,7 @@ If you find yourself frequently hitting limits, suggest breaking the task into m
                   errorExec.result = { error: errorMessage }
                   errorExec.endTime = Date.now()
                 }
+                incompleteToolStarts.delete(teToolCallId)
 
                 // Send error result to UI so tool shows as complete (with error)
                 event.sender.send(`ai:toolResults:${channelId}`, [{
@@ -4915,6 +4940,14 @@ If you find yourself frequently hitting limits, suggest breaking the task into m
             streamedTextTail = (streamedTextTail + fallbackText).slice(-4)
           }
 
+          const unresolvedIncompleteToolStarts = Array.from(incompleteToolStarts.values())
+          const isMutationTurn = expectedArtifactMutation || expectedFileMutation
+          const hasInterruptedMutationTool =
+            isMutationTurn &&
+            unresolvedIncompleteToolStarts.some((entry) =>
+              isMeaningfulTurnToolName(entry.name)
+            )
+
           if (!abortController.signal.aborted) {
             const turnValidation = await validateTurnMutations({
               assistantText: assistantTextForValidation,
@@ -4930,10 +4963,14 @@ If you find yourself frequently hitting limits, suggest breaking the task into m
                 console.warn('[AI] Completion validation failed:', turnValidation.issues)
               }
 
+              const allowDeterministicInterruptedMutationRetry = hasInterruptedMutationTool
               const retryWouldDuplicateVisibleOutput =
-                hasVisibleAssistantOutput ||
-                kickoffSentInThisTurn ||
-                toolTracker.size > 0
+                !allowDeterministicInterruptedMutationRetry &&
+                (
+                  hasVisibleAssistantOutput ||
+                  kickoffSentInThisTurn ||
+                  toolTracker.size > 0
+                )
 
               if (
                 completionValidationRepairAttempts < MAX_COMPLETION_VALIDATION_REPAIRS &&
@@ -4972,6 +5009,14 @@ If you find yourself frequently hitting limits, suggest breaking the task into m
 
           // Signal completion with stats
           if (!abortController.signal.aborted) {
+            const interruptedToolCalls = unresolvedIncompleteToolStarts.map((entry) => ({
+              toolCallId: entry.id,
+              toolName: entry.name,
+              cancellationReason: entry.sawToolCall ? 'provider_abort' : 'provider_stream_interrupted',
+              error: entry.sawToolCall
+                ? 'Provider interrupted tool execution before a final tool result was returned.'
+                : 'Provider ended the stream before finalizing this tool call.',
+            }))
             event.sender.send(`ai:end:${channelId}`, {
               usage: {
                 promptTokens,
@@ -4979,6 +5024,7 @@ If you find yourself frequently hitting limits, suggest breaking the task into m
                 totalTokens,
               },
               finishReason,
+              interruptedToolCalls,
             })
             console.log('[AI] Profile telemetry:', {
               profile: modelCapabilityProfile.profileId,
@@ -5251,4 +5297,3 @@ If you find yourself frequently hitting limits, suggest breaking the task into m
     return { success: true }
   })
 }
-

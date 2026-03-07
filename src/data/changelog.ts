@@ -21,6 +21,19 @@ export interface ChangelogEntry {
 
 export const changelog: ChangelogEntry[] = [
   {
+    version: '0.35.1',
+    date: '2026-03-07',
+    changes: {
+      fixed: [
+        'Tool streams that end after `tool-input-start` now emit provider-interruption metadata instead of only synthetic local cancellation labels, so incomplete artifact/file workflows surface the original interruption cause clearly (Fixes #136)',
+        'Completion-validation repair now allows deterministic same-turn retry for interrupted mutation workflows even after kickoff/tool activity is visible, reducing unrepaired artifact/file turns (Fixes #136)',
+      ],
+      changed: [
+        'Completion-sensitive artifact/file turns now buffer assistant text for safer retry handling while still surfacing kickoff/tool progress in real time',
+      ],
+    },
+  },
+  {
     version: '0.35.0',
     date: '2026-03-04',
     changes: {

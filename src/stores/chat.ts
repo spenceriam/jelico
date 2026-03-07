@@ -57,6 +57,23 @@ export interface ToolResult {
   error?: string
 }
 
+interface InterruptedToolCallSummary {
+  toolCallId: string
+  toolName: string
+  cancellationReason: 'provider_abort' | 'provider_stream_interrupted'
+  error: string
+}
+
+interface StreamEndStats {
+  usage?: {
+    promptTokens: number
+    completionTokens: number
+    totalTokens: number
+  }
+  finishReason?: string
+  interruptedToolCalls?: InterruptedToolCallSummary[]
+}
+
 const INTERNAL_WEB_GATE_RESULT_TYPES = new Set(['deferred_to_subagents', 'direct_limit_reached'])
 const GIT_BRANCH_SWITCH_COMMAND_PATTERN = /\bgit(?:\s+-c\s+\S+)*\s+(?:checkout|switch)\b/i
 
@@ -1600,7 +1617,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
     })
 
     // Handle stream end
-    window.jelico.ai.onStreamEnd(channelId, async (stats) => {
+    window.jelico.ai.onStreamEnd(channelId, async (stats?: StreamEndStats) => {
       window.jelico.ai.removeListeners(channelId)
       useAgentStore.getState().cancelRunningAgentsByParent(channelId)
       const trailingSanitizedText = inlineToolProtocolFilter.flush()
@@ -1619,6 +1636,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
       const streamingToolResults = streamSnapshot.streamingToolResults
       const totalDurationMs = Date.now() - streamStartTime
       const completedResultIds = new Set(streamingToolResults.map((result) => result.toolCallId))
+      const interruptedToolSummaryById = new Map((stats?.interruptedToolCalls || []).map((entry) => [entry.toolCallId, entry]))
       const normalizedToolCalls = streamingToolCalls.map((toolCall) => {
         if (completedResultIds.has(toolCall.id)) {
           return toolCall.status === 'complete' ? toolCall : { ...toolCall, status: 'complete' as const }
@@ -1631,16 +1649,22 @@ export const useChatStore = create<ChatStore>((set, get) => ({
 
       const inferredToolResults: ToolResult[] = normalizedToolCalls
         .filter((toolCall) => !completedResultIds.has(toolCall.id))
-        .map((toolCall) => ({
-          toolCallId: toolCall.id,
-          result: {
-            success: false,
-            canceled: true,
-            cancellationReason: 'stream_end_incomplete',
-            error: 'Tool ended before returning a final result.',
-          },
-          error: 'Tool ended before returning a final result.',
-        }))
+        .map((toolCall) => {
+          const interrupted = interruptedToolSummaryById.get(toolCall.id)
+          const cancellationReason = interrupted?.cancellationReason || 'stream_end_incomplete'
+          const error = interrupted?.error || 'Tool ended before returning a final result.'
+
+          return {
+            toolCallId: toolCall.id,
+            result: {
+              success: false,
+              canceled: true,
+              cancellationReason,
+              error,
+            },
+            error,
+          }
+        })
 
       const normalizedToolResults = [...streamingToolResults, ...inferredToolResults]
       const hasIncompleteToolCalls = inferredToolResults.length > 0
