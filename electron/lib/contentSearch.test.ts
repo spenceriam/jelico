@@ -160,11 +160,15 @@ test('searchFileContents falls back to the node scanner when ripgrep times out',
     await fs.writeFile(path.join(dir, 'slow.txt'), 'timeout token', 'utf-8')
 
     let killCalls = 0
+    const keepAliveInterval = setInterval(() => {
+      // Keep the event loop alive until the timeout path calls kill().
+    }, 50)
     const fakeChild = Object.assign(new EventEmitter(), {
       stdout: new PassThrough(),
       stderr: new PassThrough(),
       kill() {
         killCalls += 1
+        clearInterval(keepAliveInterval)
         return true
       },
     })
@@ -184,6 +188,7 @@ test('searchFileContents falls back to the node scanner when ripgrep times out',
       assert.equal(result.matches[0].path, 'slow.txt')
       assert.match(result.matches[0].snippet, /timeout token/)
     } finally {
+      clearInterval(keepAliveInterval)
       __setRipgrepSpawnForTests(null)
       __setRipgrepTimeoutForTests(null)
     }

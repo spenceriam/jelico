@@ -63,6 +63,12 @@ import {
 import { scanWorkspaceSpecs, formatSpecContext } from '../services/specScanner'
 import { lookupModelsDevModelMetadata, lookupModelsDevOutputLimit, refreshModelCatalog } from '../services/modelCatalog'
 import { resolveModelCapabilityProfile, buildModelCapabilityProfilePrompt } from '../services/modelCapabilityProfiles'
+import {
+  hasInterruptedMeaningfulMutationTool,
+  isMeaningfulTurnToolName,
+  isMeaningfulTurnToolResult,
+  type IncompleteToolStart,
+} from '../lib/turnToolSemantics'
 
 // Start orphan cleanup on module load
 startOrphanCleanup()
@@ -100,20 +106,6 @@ const MAX_TOOL_INPUT_SIZE = 10 * 1024 * 1024
 const DEFAULT_MAX_RETRIES = 2
 const DEFAULT_RETRY_DELAY_MS = 1000
 
-// Internal/plumbing tools that should not influence end-of-turn wrap-up detection.
-// These are either represented by dedicated UI panels or invisible orchestration steps.
-const NON_USER_VISIBLE_TURN_TOOLS = new Set([
-  'wait_for_agent',
-  'get_agent_status',
-  'get_agents_summary',
-  'ask_user_question',
-  'todo_write',
-  'todo_read',
-  'todo_check',
-])
-
-const INTERNAL_WEB_GATE_RESULT_TYPES = new Set(['deferred_to_subagents', 'direct_limit_reached'])
-
 const USER_FACING_TOOL_LABELS: Record<string, string> = {
   read_file: 'file reads',
   write_file: 'file updates',
@@ -150,27 +142,6 @@ function isRetryableError(error: any): boolean {
 // Sleep helper for retry delays
 function sleep(ms: number): Promise<void> {
   return new Promise(resolve => setTimeout(resolve, ms))
-}
-
-function isInternalWebGateResultPayload(result: unknown): boolean {
-  if (!result || typeof result !== 'object') return false
-  const payload = result as Record<string, unknown>
-  if (payload.success !== true) return false
-  const results = payload.results as Record<string, unknown> | undefined
-  const resultType = typeof results?.type === 'string' ? results.type : ''
-  return INTERNAL_WEB_GATE_RESULT_TYPES.has(resultType)
-}
-
-function isMeaningfulTurnToolName(toolName: string): boolean {
-  return !NON_USER_VISIBLE_TURN_TOOLS.has(toolName)
-}
-
-function isMeaningfulTurnToolResult(toolName: string, result: unknown): boolean {
-  if (!isMeaningfulTurnToolName(toolName)) return false
-  if ((toolName === 'web_search' || toolName === 'web_fetch') && isInternalWebGateResultPayload(result)) {
-    return false
-  }
-  return true
 }
 
 function getUserFacingToolLabel(toolName: string): string {
@@ -4153,8 +4124,11 @@ If you find yourself frequently hitting limits, suggest breaking the task into m
           ? `${systemPrompt}\n\n${pendingCompletionRepairDirective}`
           : systemPrompt
         // Preserve chronological UI ordering: stream assistant text live on normal turns.
-        // Only buffer during validation-repair retries so failed-attempt text isn't emitted.
-        const shouldBufferCompletionSensitiveText = !!pendingCompletionRepairDirective
+        // Buffer mutation-turn text until validation passes so retries and initial attempts do not expose partial narratives.
+        const shouldBufferCompletionSensitiveText =
+          !!pendingCompletionRepairDirective ||
+          expectedArtifactMutation ||
+          expectedFileMutation
 
         // Track step count for warning injection
         let stepCount = 0
@@ -4209,6 +4183,7 @@ If you find yourself frequently hitting limits, suggest breaking the task into m
           let emittedToolKickoffText = kickoffSentInThisTurn
           let emittedTodoPlanPreview = false
           let assistantTextForValidation = ''
+          const incompleteToolStarts = new Map<string, IncompleteToolStart>()
           const bufferedAssistantChunks: string[] = []
           let bufferedToolBoundaryPending = false
           const emitAssistantChunk = (chunk: string, options?: { bypassBuffer?: boolean }) => {
@@ -4382,6 +4357,12 @@ If you find yourself frequently hitting limits, suggest breaking the task into m
                 // Emit a tool call early so UI shows it before tool input progress
                 if (startToolId) {
                   const toolName = startToolName || 'unknown_tool'
+                  incompleteToolStarts.set(startToolId, {
+                    id: startToolId,
+                    name: toolName,
+                    sawToolCall: false,
+                    nameIsKnown: typeof startToolName === 'string' && startToolName.length > 0,
+                  })
                   if (!toolTracker.has(startToolId)) {
                     toolTracker.set(startToolId, {
                       id: startToolId,
@@ -4505,7 +4486,8 @@ If you find yourself frequently hitting limits, suggest breaking the task into m
                 bufferedToolBoundaryPending = true
                 // Validate required properties
                 const toolCallId = part.toolCallId || (part as any).id
-                const toolName = part.toolName || (part as any).name || 'unknown_tool'
+                const rawToolName = part.toolName || (part as any).name
+                const toolName = rawToolName || 'unknown_tool'
 
                 if (!toolCallId) {
                   console.warn('[AI] tool-call-streaming-start missing toolCallId:', part)
@@ -4539,6 +4521,14 @@ If you find yourself frequently hitting limits, suggest breaking the task into m
                     status: 'starting',
                   })
                 }
+                const incompleteStart = incompleteToolStarts.get(toolCallId)
+                if (incompleteStart) {
+                  incompleteStart.sawToolCall = true
+                  if (rawToolName) {
+                    incompleteStart.name = rawToolName
+                    incompleteStart.nameIsKnown = true
+                  }
+                }
                 break
               }
 
@@ -4546,13 +4536,22 @@ If you find yourself frequently hitting limits, suggest breaking the task into m
                 bufferedToolBoundaryPending = true
                 // Validate and extract properties with fallbacks
                 const tcToolCallId = part.toolCallId || (part as any).id
-                const tcToolName = part.toolName || (part as any).name || 'unknown_tool'
+                const rawTcToolName = part.toolName || (part as any).name
+                const tcToolName = rawTcToolName || 'unknown_tool'
 
                 if (!tcToolCallId) {
                   console.warn('[AI] tool-call missing toolCallId:', part)
                   break
                 }
                 emitToolKickoffIfNeeded()
+                const incompleteStart = incompleteToolStarts.get(tcToolCallId)
+                if (incompleteStart) {
+                  incompleteStart.sawToolCall = true
+                  if (rawTcToolName) {
+                    incompleteStart.name = rawTcToolName
+                    incompleteStart.nameIsKnown = true
+                  }
+                }
 
                 // Get args from multiple sources - different providers put them in different places
                 // Also check function.arguments which is OpenAI's format
@@ -4645,6 +4644,7 @@ If you find yourself frequently hitting limits, suggest breaking the task into m
                   exec.result = toolResult
                   exec.endTime = Date.now()
                 }
+                incompleteToolStarts.delete(trToolCallId)
 
                 event.sender.send(`ai:toolResults:${channelId}`, [{
                   toolCallId: trToolCallId,
@@ -4696,6 +4696,7 @@ If you find yourself frequently hitting limits, suggest breaking the task into m
                   errorExec.result = { error: errorMessage }
                   errorExec.endTime = Date.now()
                 }
+                incompleteToolStarts.delete(teToolCallId)
 
                 // Send error result to UI so tool shows as complete (with error)
                 event.sender.send(`ai:toolResults:${channelId}`, [{
@@ -4915,6 +4916,12 @@ If you find yourself frequently hitting limits, suggest breaking the task into m
             streamedTextTail = (streamedTextTail + fallbackText).slice(-4)
           }
 
+          const unresolvedIncompleteToolStarts = Array.from(incompleteToolStarts.values())
+          const hasInterruptedMutationTool = hasInterruptedMeaningfulMutationTool(
+            unresolvedIncompleteToolStarts,
+            { expectedArtifactMutation, expectedFileMutation }
+          )
+
           if (!abortController.signal.aborted) {
             const turnValidation = await validateTurnMutations({
               assistantText: assistantTextForValidation,
@@ -4930,10 +4937,14 @@ If you find yourself frequently hitting limits, suggest breaking the task into m
                 console.warn('[AI] Completion validation failed:', turnValidation.issues)
               }
 
+              const allowDeterministicInterruptedMutationRetry = hasInterruptedMutationTool
               const retryWouldDuplicateVisibleOutput =
-                hasVisibleAssistantOutput ||
-                kickoffSentInThisTurn ||
-                toolTracker.size > 0
+                !allowDeterministicInterruptedMutationRetry &&
+                (
+                  hasVisibleAssistantOutput ||
+                  kickoffSentInThisTurn ||
+                  toolTracker.size > 0
+                )
 
               if (
                 completionValidationRepairAttempts < MAX_COMPLETION_VALIDATION_REPAIRS &&
@@ -4972,6 +4983,14 @@ If you find yourself frequently hitting limits, suggest breaking the task into m
 
           // Signal completion with stats
           if (!abortController.signal.aborted) {
+            const interruptedToolCalls = unresolvedIncompleteToolStarts.map((entry) => ({
+              toolCallId: entry.id,
+              toolName: entry.name,
+              cancellationReason: entry.sawToolCall ? 'provider_abort' : 'provider_stream_interrupted',
+              error: entry.sawToolCall
+                ? 'Provider interrupted tool execution before a final tool result was returned.'
+                : 'Provider ended the stream before finalizing this tool call.',
+            }))
             event.sender.send(`ai:end:${channelId}`, {
               usage: {
                 promptTokens,
@@ -4979,6 +4998,7 @@ If you find yourself frequently hitting limits, suggest breaking the task into m
                 totalTokens,
               },
               finishReason,
+              interruptedToolCalls,
             })
             console.log('[AI] Profile telemetry:', {
               profile: modelCapabilityProfile.profileId,
@@ -5251,4 +5271,3 @@ If you find yourself frequently hitting limits, suggest breaking the task into m
     return { success: true }
   })
 }
-

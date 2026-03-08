@@ -11,6 +11,7 @@ import { useClarificationStore } from './clarification'
 import { useDecisionPromptStore } from './decisionPrompt'
 import { notifyUserEvent } from '../lib/notifications'
 import { createInlineToolProtocolFilter } from '../lib/inlineToolProtocol'
+import { hasIncompleteToolEvidence } from './chatInterruption'
 
 export interface MessageUsage {
   promptTokens: number
@@ -474,22 +475,6 @@ function getLatestUserMessage(messages: Message[]): Message | null {
 function isResumeShortcut(content: string): boolean {
   const normalized = content.trim().toLowerCase()
   return /^(resume|restart|continue)$/.test(normalized)
-}
-
-function hasIncompleteToolEvidence(messages: Message[]): boolean {
-  for (let i = messages.length - 1; i >= 0; i -= 1) {
-    const message = messages[i]
-    if (message.role !== 'assistant') continue
-    const toolResults = message.toolResults || []
-    return toolResults.some((toolResult) => {
-      if (!toolResult?.result || typeof toolResult.result !== 'object') return false
-      const payload = toolResult.result as Record<string, unknown>
-      if (payload.cancellationReason === 'stream_end_incomplete') return true
-      const error = String(payload.error || '').toLowerCase()
-      return error.includes('before returning a final result')
-    })
-  }
-  return false
 }
 
 function getRestoredTokenCount(messages: Message[]): number {
@@ -1600,7 +1585,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
     })
 
     // Handle stream end
-    window.jelico.ai.onStreamEnd(channelId, async (stats) => {
+    window.jelico.ai.onStreamEnd(channelId, async (stats?: StreamEndStats) => {
       window.jelico.ai.removeListeners(channelId)
       useAgentStore.getState().cancelRunningAgentsByParent(channelId)
       const trailingSanitizedText = inlineToolProtocolFilter.flush()
@@ -1619,6 +1604,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
       const streamingToolResults = streamSnapshot.streamingToolResults
       const totalDurationMs = Date.now() - streamStartTime
       const completedResultIds = new Set(streamingToolResults.map((result) => result.toolCallId))
+      const interruptedToolSummaryById = new Map((stats?.interruptedToolCalls || []).map((entry) => [entry.toolCallId, entry]))
       const normalizedToolCalls = streamingToolCalls.map((toolCall) => {
         if (completedResultIds.has(toolCall.id)) {
           return toolCall.status === 'complete' ? toolCall : { ...toolCall, status: 'complete' as const }
@@ -1631,16 +1617,22 @@ export const useChatStore = create<ChatStore>((set, get) => ({
 
       const inferredToolResults: ToolResult[] = normalizedToolCalls
         .filter((toolCall) => !completedResultIds.has(toolCall.id))
-        .map((toolCall) => ({
-          toolCallId: toolCall.id,
-          result: {
-            success: false,
-            canceled: true,
-            cancellationReason: 'stream_end_incomplete',
-            error: 'Tool ended before returning a final result.',
-          },
-          error: 'Tool ended before returning a final result.',
-        }))
+        .map((toolCall) => {
+          const interrupted = interruptedToolSummaryById.get(toolCall.id)
+          const cancellationReason = interrupted?.cancellationReason || 'stream_end_incomplete'
+          const error = interrupted?.error || 'Tool ended before returning a final result.'
+
+          return {
+            toolCallId: toolCall.id,
+            result: {
+              success: false,
+              canceled: true,
+              cancellationReason,
+              error,
+            },
+            error,
+          }
+        })
 
       const normalizedToolResults = [...streamingToolResults, ...inferredToolResults]
       const hasIncompleteToolCalls = inferredToolResults.length > 0
@@ -1877,11 +1869,32 @@ export const useChatStore = create<ChatStore>((set, get) => ({
     window.jelico.ai.onStreamError(channelId, (error) => {
       window.jelico.ai.removeListeners(channelId)
       useAgentStore.getState().cancelRunningAgentsByParent(channelId)
+      const streamSnapshot = get().conversationStreams[targetConversationId] || createEmptyConversationStreamState()
+      const pendingCheckpoint = getPendingStreamCheckpoint(targetConversationId)
+      const hadVisibleInterruptedWork =
+        streamSnapshot.streamingContent.trim().length > 0 ||
+        streamSnapshot.streamingToolCalls.length > 0 ||
+        streamSnapshot.streamingToolResults.length > 0 ||
+        streamSnapshot.streamingSegments.length > 0
+      // Preserve restart state for any stream that actually started.
+      // Mutation turns buffer assistant text in the main process, so an early provider
+      // error can arrive before the renderer sees visible chunks or tool activity.
+      const shouldPreserveInterruptedCheckpoint =
+        Boolean(pendingCheckpoint) || hadVisibleInterruptedWork
+      const interruptedCheckpoint = pendingCheckpoint || {
+        providerId,
+        model,
+        startedAt: streamSnapshot.streamingStartTime ?? streamStartedAt,
+      }
       const activeChannel = streamChannelByConversation.get(targetConversationId)
       if (activeChannel === channelId) {
         streamChannelByConversation.delete(targetConversationId)
       }
-      clearPendingStreamCheckpoint(targetConversationId)
+      if (shouldPreserveInterruptedCheckpoint) {
+        setPendingStreamCheckpoint(targetConversationId, interruptedCheckpoint)
+      } else {
+        clearPendingStreamCheckpoint(targetConversationId)
+      }
       useClarificationStore.getState().clearForConversation(targetConversationId)
 
       // Clear streaming preview to prevent stale artifact content
@@ -1891,7 +1904,15 @@ export const useChatStore = create<ChatStore>((set, get) => ({
       set((state) => {
         const { [targetConversationId]: _removedInterrupted, ...restInterrupted } = state.interruptedConversations
         return {
-          interruptedConversations: restInterrupted,
+          interruptedConversations: shouldPreserveInterruptedCheckpoint
+            ? {
+              ...restInterrupted,
+              [targetConversationId]: {
+                ...interruptedCheckpoint,
+                detectedAt: Date.now(),
+              },
+            }
+            : restInterrupted,
           error,
         }
       })

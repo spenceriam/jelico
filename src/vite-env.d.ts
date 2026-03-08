@@ -456,12 +456,18 @@ interface ArtifactUpdateEvent {
 }
 
 interface StreamEndStats {
-  usage: {
+  usage?: {
     promptTokens: number
     completionTokens: number
     totalTokens: number
   }
-  finishReason: string
+  finishReason?: string
+  interruptedToolCalls?: Array<{
+    toolCallId: string
+    toolName: string
+    cancellationReason: 'provider_abort' | 'provider_stream_interrupted'
+    error: string
+  }>
 }
 
 interface GenerateTitleParams {

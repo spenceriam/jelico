@@ -254,7 +254,19 @@ contextBridge.exposeInMainWorld('jelico', {
       const handler = (_: any, chunk: string) => callback(chunk)
       ipcRenderer.on(`ai:chunk:${channelId}`, handler)
     },
-    onStreamEnd: (channelId: string, callback: (stats?: { usage: { promptTokens: number; completionTokens: number; totalTokens: number }; finishReason: string }) => void) => {
+    onStreamEnd: (
+      channelId: string,
+      callback: (stats?: {
+        usage?: { promptTokens: number; completionTokens: number; totalTokens: number }
+        finishReason?: string
+        interruptedToolCalls?: Array<{
+          toolCallId: string
+          toolName: string
+          cancellationReason: 'provider_abort' | 'provider_stream_interrupted'
+          error: string
+        }>
+      }) => void,
+    ) => {
       const handler = (_: any, stats: any) => callback(stats)
       ipcRenderer.on(`ai:end:${channelId}`, handler)
     },
