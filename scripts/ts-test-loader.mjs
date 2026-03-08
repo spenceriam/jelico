@@ -11,9 +11,9 @@ function shouldTryTypeScriptExtension(specifier) {
   return extname(specifier) === ''
 }
 
-export async function resolve(specifier, context, defaultResolve) {
+export async function resolve(specifier, context, nextResolve) {
   try {
-    return await defaultResolve(specifier, context, defaultResolve)
+    return await nextResolve(specifier, context)
   } catch (error) {
     if (error?.code !== 'ERR_MODULE_NOT_FOUND' || !shouldTryTypeScriptExtension(specifier)) {
       throw error
@@ -21,7 +21,7 @@ export async function resolve(specifier, context, defaultResolve) {
 
     for (const extension of TS_EXTENSIONS) {
       try {
-        return await defaultResolve(`${specifier}${extension}`, context, defaultResolve)
+        return await nextResolve(`${specifier}${extension}`, context)
       } catch {
         // Continue trying extensions.
       }
