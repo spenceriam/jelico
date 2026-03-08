@@ -1,6 +1,42 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { hasInterruptedMeaningfulMutationTool } from './turnToolSemantics'
+import {
+  hasInterruptedMeaningfulMutationTool,
+  isMeaningfulTurnToolName,
+  isMeaningfulTurnToolResult,
+} from './turnToolSemantics'
+
+test('isMeaningfulTurnToolName returns false for internal tools', () => {
+  assert.equal(isMeaningfulTurnToolName('todo_write'), false)
+  assert.equal(isMeaningfulTurnToolName('wait_for_agent'), false)
+})
+
+test('isMeaningfulTurnToolName returns true for user-visible tools', () => {
+  assert.equal(isMeaningfulTurnToolName('create_artifact'), true)
+  assert.equal(isMeaningfulTurnToolName('write_file'), true)
+})
+
+test('isMeaningfulTurnToolResult ignores internal web gate results', () => {
+  const internalResult = {
+    success: true,
+    results: {
+      type: 'deferred_to_subagents',
+    },
+  }
+
+  assert.equal(isMeaningfulTurnToolResult('web_search', internalResult), false)
+})
+
+test('isMeaningfulTurnToolResult keeps normal web results meaningful', () => {
+  const normalResult = {
+    success: true,
+    results: {
+      type: 'direct',
+    },
+  }
+
+  assert.equal(isMeaningfulTurnToolResult('web_search', normalResult), true)
+})
 
 test('hasInterruptedMeaningfulMutationTool ignores unknown fallback names', () => {
   const result = hasInterruptedMeaningfulMutationTool(

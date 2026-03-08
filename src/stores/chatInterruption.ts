@@ -13,6 +13,15 @@ const INCOMPLETE_TOOL_CANCELLATION_REASONS = new Set([
   'provider_stream_interrupted',
 ])
 
+// Legacy interrupted turns may only persist the human-readable error string emitted by
+// electron/ipc/ai.ts instead of a structured cancellationReason. Keep these fragments
+// aligned with those renderer-visible messages so older stored conversations stay resumable.
+const LEGACY_INCOMPLETE_TOOL_ERROR_FRAGMENTS = [
+  'before returning a final result',
+  'provider interrupted tool execution',
+  'provider ended the stream before finalizing this tool call',
+]
+
 export function hasIncompleteToolEvidence(messages: MessageLike[]): boolean {
   for (let i = messages.length - 1; i >= 0; i -= 1) {
     const message = messages[i]
@@ -28,11 +37,7 @@ export function hasIncompleteToolEvidence(messages: MessageLike[]): boolean {
         return true
       }
       const error = String(payload.error || '').toLowerCase()
-      return (
-        error.includes('before returning a final result') ||
-        error.includes('provider interrupted tool execution') ||
-        error.includes('provider ended the stream before finalizing this tool call')
-      )
+      return LEGACY_INCOMPLETE_TOOL_ERROR_FRAGMENTS.some((fragment) => error.includes(fragment))
     })
   }
   return false

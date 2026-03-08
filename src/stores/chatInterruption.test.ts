@@ -78,3 +78,14 @@ test('hasIncompleteToolEvidence returns false when the latest assistant message 
 
   assert.equal(hasIncompleteToolEvidence(messages), false)
 })
+
+test('hasIncompleteToolEvidence supports legacy interruption errors without cancellation reasons', () => {
+  const messages = [
+    createAssistantMessage(
+      undefined,
+      'Provider interrupted tool execution before a final tool result was returned.'
+    ),
+  ]
+
+  assert.equal(hasIncompleteToolEvidence(messages), true)
+})
