@@ -63,3 +63,18 @@ test('hasIncompleteToolEvidence ignores completed tool results', () => {
 
   assert.equal(hasIncompleteToolEvidence(messages), false)
 })
+
+test('hasIncompleteToolEvidence returns false when the latest assistant message has no tool results', () => {
+  const messages = [
+    createAssistantMessage(
+      'stream_end_incomplete',
+      'Tool ended before returning a final result.'
+    ),
+    {
+      role: 'assistant',
+      toolResults: [],
+    },
+  ]
+
+  assert.equal(hasIncompleteToolEvidence(messages), false)
+})

@@ -63,6 +63,12 @@ import {
 import { scanWorkspaceSpecs, formatSpecContext } from '../services/specScanner'
 import { lookupModelsDevModelMetadata, lookupModelsDevOutputLimit, refreshModelCatalog } from '../services/modelCatalog'
 import { resolveModelCapabilityProfile, buildModelCapabilityProfilePrompt } from '../services/modelCapabilityProfiles'
+import {
+  hasInterruptedMeaningfulMutationTool,
+  isMeaningfulTurnToolName,
+  isMeaningfulTurnToolResult,
+  type IncompleteToolStart,
+} from '../lib/turnToolSemantics'
 
 // Start orphan cleanup on module load
 startOrphanCleanup()
@@ -100,20 +106,6 @@ const MAX_TOOL_INPUT_SIZE = 10 * 1024 * 1024
 const DEFAULT_MAX_RETRIES = 2
 const DEFAULT_RETRY_DELAY_MS = 1000
 
-// Internal/plumbing tools that should not influence end-of-turn wrap-up detection.
-// These are either represented by dedicated UI panels or invisible orchestration steps.
-const NON_USER_VISIBLE_TURN_TOOLS = new Set([
-  'wait_for_agent',
-  'get_agent_status',
-  'get_agents_summary',
-  'ask_user_question',
-  'todo_write',
-  'todo_read',
-  'todo_check',
-])
-
-const INTERNAL_WEB_GATE_RESULT_TYPES = new Set(['deferred_to_subagents', 'direct_limit_reached'])
-
 const USER_FACING_TOOL_LABELS: Record<string, string> = {
   read_file: 'file reads',
   write_file: 'file updates',
@@ -150,27 +142,6 @@ function isRetryableError(error: any): boolean {
 // Sleep helper for retry delays
 function sleep(ms: number): Promise<void> {
   return new Promise(resolve => setTimeout(resolve, ms))
-}
-
-function isInternalWebGateResultPayload(result: unknown): boolean {
-  if (!result || typeof result !== 'object') return false
-  const payload = result as Record<string, unknown>
-  if (payload.success !== true) return false
-  const results = payload.results as Record<string, unknown> | undefined
-  const resultType = typeof results?.type === 'string' ? results.type : ''
-  return INTERNAL_WEB_GATE_RESULT_TYPES.has(resultType)
-}
-
-function isMeaningfulTurnToolName(toolName: string): boolean {
-  return !NON_USER_VISIBLE_TURN_TOOLS.has(toolName)
-}
-
-function isMeaningfulTurnToolResult(toolName: string, result: unknown): boolean {
-  if (!isMeaningfulTurnToolName(toolName)) return false
-  if ((toolName === 'web_search' || toolName === 'web_fetch') && isInternalWebGateResultPayload(result)) {
-    return false
-  }
-  return true
 }
 
 function getUserFacingToolLabel(toolName: string): string {
@@ -1269,12 +1240,6 @@ interface ToolExecution {
   error?: string
   startTime: number
   endTime?: number
-}
-
-interface IncompleteToolStart {
-  id: string
-  name: string
-  sawToolCall: boolean
 }
 
 // Todo state type for type safety
@@ -4396,6 +4361,7 @@ If you find yourself frequently hitting limits, suggest breaking the task into m
                     id: startToolId,
                     name: toolName,
                     sawToolCall: false,
+                    nameIsKnown: typeof startToolName === 'string' && startToolName.length > 0,
                   })
                   if (!toolTracker.has(startToolId)) {
                     toolTracker.set(startToolId, {
@@ -4520,7 +4486,8 @@ If you find yourself frequently hitting limits, suggest breaking the task into m
                 bufferedToolBoundaryPending = true
                 // Validate required properties
                 const toolCallId = part.toolCallId || (part as any).id
-                const toolName = part.toolName || (part as any).name || 'unknown_tool'
+                const rawToolName = part.toolName || (part as any).name
+                const toolName = rawToolName || 'unknown_tool'
 
                 if (!toolCallId) {
                   console.warn('[AI] tool-call-streaming-start missing toolCallId:', part)
@@ -4557,6 +4524,10 @@ If you find yourself frequently hitting limits, suggest breaking the task into m
                 const incompleteStart = incompleteToolStarts.get(toolCallId)
                 if (incompleteStart) {
                   incompleteStart.sawToolCall = true
+                  if (rawToolName) {
+                    incompleteStart.name = rawToolName
+                    incompleteStart.nameIsKnown = true
+                  }
                 }
                 break
               }
@@ -4565,7 +4536,8 @@ If you find yourself frequently hitting limits, suggest breaking the task into m
                 bufferedToolBoundaryPending = true
                 // Validate and extract properties with fallbacks
                 const tcToolCallId = part.toolCallId || (part as any).id
-                const tcToolName = part.toolName || (part as any).name || 'unknown_tool'
+                const rawTcToolName = part.toolName || (part as any).name
+                const tcToolName = rawTcToolName || 'unknown_tool'
 
                 if (!tcToolCallId) {
                   console.warn('[AI] tool-call missing toolCallId:', part)
@@ -4575,6 +4547,10 @@ If you find yourself frequently hitting limits, suggest breaking the task into m
                 const incompleteStart = incompleteToolStarts.get(tcToolCallId)
                 if (incompleteStart) {
                   incompleteStart.sawToolCall = true
+                  if (rawTcToolName) {
+                    incompleteStart.name = rawTcToolName
+                    incompleteStart.nameIsKnown = true
+                  }
                 }
 
                 // Get args from multiple sources - different providers put them in different places
@@ -4941,12 +4917,10 @@ If you find yourself frequently hitting limits, suggest breaking the task into m
           }
 
           const unresolvedIncompleteToolStarts = Array.from(incompleteToolStarts.values())
-          const isMutationTurn = expectedArtifactMutation || expectedFileMutation
-          const hasInterruptedMutationTool =
-            isMutationTurn &&
-            unresolvedIncompleteToolStarts.some((entry) =>
-              isMeaningfulTurnToolName(entry.name)
-            )
+          const hasInterruptedMutationTool = hasInterruptedMeaningfulMutationTool(
+            unresolvedIncompleteToolStarts,
+            { expectedArtifactMutation, expectedFileMutation }
+          )
 
           if (!abortController.signal.aborted) {
             const turnValidation = await validateTurnMutations({
