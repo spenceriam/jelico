@@ -115,6 +115,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: linux
+          retention-days: 1
           path: |
             release/*.AppImage
             release/*.deb
@@ -150,6 +151,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: windows
+          retention-days: 1
           path: |
             release/*.exe
             release/*.msi
@@ -190,6 +192,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: macos
+          retention-days: 1
           path: |
             release/*.dmg
             release/*.zip
