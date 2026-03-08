@@ -36,6 +36,17 @@ test('hasIncompleteToolEvidence treats provider interruption reasons as restarta
   assert.equal(hasIncompleteToolEvidence(providerStreamInterruptedMessages), true)
 })
 
+test('hasIncompleteToolEvidence treats stream_end_incomplete as restartable evidence', () => {
+  const messages = [
+    createAssistantMessage(
+      'stream_end_incomplete',
+      'Tool ended before returning a final result.'
+    ),
+  ]
+
+  assert.equal(hasIncompleteToolEvidence(messages), true)
+})
+
 test('hasIncompleteToolEvidence ignores completed tool results', () => {
   const messages = [
     {

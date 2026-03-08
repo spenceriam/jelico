@@ -1871,11 +1871,16 @@ export const useChatStore = create<ChatStore>((set, get) => ({
       useAgentStore.getState().cancelRunningAgentsByParent(channelId)
       const streamSnapshot = get().conversationStreams[targetConversationId] || createEmptyConversationStreamState()
       const pendingCheckpoint = getPendingStreamCheckpoint(targetConversationId)
-      const hadInterruptedWork =
+      const hadVisibleInterruptedWork =
         streamSnapshot.streamingContent.trim().length > 0 ||
         streamSnapshot.streamingToolCalls.length > 0 ||
         streamSnapshot.streamingToolResults.length > 0 ||
         streamSnapshot.streamingSegments.length > 0
+      // Preserve restart state for any stream that actually started.
+      // Mutation turns buffer assistant text in the main process, so an early provider
+      // error can arrive before the renderer sees visible chunks or tool activity.
+      const shouldPreserveInterruptedCheckpoint =
+        Boolean(pendingCheckpoint) || hadVisibleInterruptedWork
       const interruptedCheckpoint = pendingCheckpoint || {
         providerId,
         model,
@@ -1885,7 +1890,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
       if (activeChannel === channelId) {
         streamChannelByConversation.delete(targetConversationId)
       }
-      if (hadInterruptedWork) {
+      if (shouldPreserveInterruptedCheckpoint) {
         setPendingStreamCheckpoint(targetConversationId, interruptedCheckpoint)
       } else {
         clearPendingStreamCheckpoint(targetConversationId)
@@ -1899,7 +1904,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
       set((state) => {
         const { [targetConversationId]: _removedInterrupted, ...restInterrupted } = state.interruptedConversations
         return {
-          interruptedConversations: hadInterruptedWork
+          interruptedConversations: shouldPreserveInterruptedCheckpoint
             ? {
               ...restInterrupted,
               [targetConversationId]: {
