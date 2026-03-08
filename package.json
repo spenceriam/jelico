@@ -8,7 +8,7 @@
     "dev": "vite",
     "bundle": "npm run sync-icons && tsc && vite build",
     "dev:stable": "npm run bundle && electron .",
-    "test:targeted": "npm run sync-icons && node --test --experimental-strip-types --loader ./scripts/ts-test-loader.mjs electron/lib/contentSearch.test.ts electron/lib/modeCapabilities.test.ts electron/services/modelCapabilityProfiles.test.ts src/lib/inlineToolProtocol.test.ts src/stores/decisionPrompt.test.ts src/stores/updates.test.ts",
+    "test:targeted": "npm run sync-icons && node --test --experimental-strip-types --import ./scripts/register-ts-test-loader.mjs electron/lib/contentSearch.test.ts electron/lib/modeCapabilities.test.ts electron/services/modelCapabilityProfiles.test.ts src/lib/inlineToolProtocol.test.ts src/stores/chatInterruption.test.ts src/stores/decisionPrompt.test.ts src/stores/updates.test.ts",
     "build": "npm run sync-icons && tsc && vite build && electron-builder",
     "build:x64": "npm run sync-icons && tsc && vite build && electron-builder --x64",
     "build:mac": "npm run sync-icons && tsc && vite build && electron-builder --mac",

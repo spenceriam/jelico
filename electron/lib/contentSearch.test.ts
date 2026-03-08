@@ -188,6 +188,7 @@ test('searchFileContents falls back to the node scanner when ripgrep times out',
       assert.equal(result.matches[0].path, 'slow.txt')
       assert.match(result.matches[0].snippet, /timeout token/)
     } finally {
+      clearInterval(keepAliveInterval)
       __setRipgrepSpawnForTests(null)
       __setRipgrepTimeoutForTests(null)
     }

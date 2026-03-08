@@ -11,6 +11,7 @@ import { useClarificationStore } from './clarification'
 import { useDecisionPromptStore } from './decisionPrompt'
 import { notifyUserEvent } from '../lib/notifications'
 import { createInlineToolProtocolFilter } from '../lib/inlineToolProtocol'
+import { hasIncompleteToolEvidence } from './chatInterruption'
 
 export interface MessageUsage {
   promptTokens: number
@@ -55,23 +56,6 @@ export interface ToolResult {
   toolCallId: string
   result: unknown
   error?: string
-}
-
-interface InterruptedToolCallSummary {
-  toolCallId: string
-  toolName: string
-  cancellationReason: 'provider_abort' | 'provider_stream_interrupted'
-  error: string
-}
-
-interface StreamEndStats {
-  usage?: {
-    promptTokens: number
-    completionTokens: number
-    totalTokens: number
-  }
-  finishReason?: string
-  interruptedToolCalls?: InterruptedToolCallSummary[]
 }
 
 const INTERNAL_WEB_GATE_RESULT_TYPES = new Set(['deferred_to_subagents', 'direct_limit_reached'])
@@ -491,22 +475,6 @@ function getLatestUserMessage(messages: Message[]): Message | null {
 function isResumeShortcut(content: string): boolean {
   const normalized = content.trim().toLowerCase()
   return /^(resume|restart|continue)$/.test(normalized)
-}
-
-function hasIncompleteToolEvidence(messages: Message[]): boolean {
-  for (let i = messages.length - 1; i >= 0; i -= 1) {
-    const message = messages[i]
-    if (message.role !== 'assistant') continue
-    const toolResults = message.toolResults || []
-    return toolResults.some((toolResult) => {
-      if (!toolResult?.result || typeof toolResult.result !== 'object') return false
-      const payload = toolResult.result as Record<string, unknown>
-      if (payload.cancellationReason === 'stream_end_incomplete') return true
-      const error = String(payload.error || '').toLowerCase()
-      return error.includes('before returning a final result')
-    })
-  }
-  return false
 }
 
 function getRestoredTokenCount(messages: Message[]): number {
@@ -1901,11 +1869,27 @@ export const useChatStore = create<ChatStore>((set, get) => ({
     window.jelico.ai.onStreamError(channelId, (error) => {
       window.jelico.ai.removeListeners(channelId)
       useAgentStore.getState().cancelRunningAgentsByParent(channelId)
+      const streamSnapshot = get().conversationStreams[targetConversationId] || createEmptyConversationStreamState()
+      const pendingCheckpoint = getPendingStreamCheckpoint(targetConversationId)
+      const hadInterruptedWork =
+        streamSnapshot.streamingContent.trim().length > 0 ||
+        streamSnapshot.streamingToolCalls.length > 0 ||
+        streamSnapshot.streamingToolResults.length > 0 ||
+        streamSnapshot.streamingSegments.length > 0
+      const interruptedCheckpoint = pendingCheckpoint || {
+        providerId,
+        model,
+        startedAt: streamSnapshot.streamingStartTime ?? streamStartedAt,
+      }
       const activeChannel = streamChannelByConversation.get(targetConversationId)
       if (activeChannel === channelId) {
         streamChannelByConversation.delete(targetConversationId)
       }
-      clearPendingStreamCheckpoint(targetConversationId)
+      if (hadInterruptedWork) {
+        setPendingStreamCheckpoint(targetConversationId, interruptedCheckpoint)
+      } else {
+        clearPendingStreamCheckpoint(targetConversationId)
+      }
       useClarificationStore.getState().clearForConversation(targetConversationId)
 
       // Clear streaming preview to prevent stale artifact content
@@ -1915,7 +1899,15 @@ export const useChatStore = create<ChatStore>((set, get) => ({
       set((state) => {
         const { [targetConversationId]: _removedInterrupted, ...restInterrupted } = state.interruptedConversations
         return {
-          interruptedConversations: restInterrupted,
+          interruptedConversations: hadInterruptedWork
+            ? {
+              ...restInterrupted,
+              [targetConversationId]: {
+                ...interruptedCheckpoint,
+                detectedAt: Date.now(),
+              },
+            }
+            : restInterrupted,
           error,
         }
       })

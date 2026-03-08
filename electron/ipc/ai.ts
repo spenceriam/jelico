@@ -4159,7 +4159,7 @@ If you find yourself frequently hitting limits, suggest breaking the task into m
           ? `${systemPrompt}\n\n${pendingCompletionRepairDirective}`
           : systemPrompt
         // Preserve chronological UI ordering: stream assistant text live on normal turns.
-        // Only buffer during validation-repair retries so failed-attempt text isn't emitted.
+        // Buffer mutation-turn text until validation passes so retries do not expose partial narratives.
         const shouldBufferCompletionSensitiveText =
           !!pendingCompletionRepairDirective ||
           expectedArtifactMutation ||
