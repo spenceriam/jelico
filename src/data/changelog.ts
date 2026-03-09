@@ -21,6 +21,16 @@ export interface ChangelogEntry {
 
 export const changelog: ChangelogEntry[] = [
   {
+    version: '0.35.2',
+    date: '2026-03-09',
+    changes: {
+      fixed: [
+        'Compatible provider lookups now resolve provider-specific Kimi model names such as `kimi-for-coding` through models.dev provider metadata, so Anthropic-compatible Moonshot coding endpoints receive the correct context and output limits instead of falling back to opaque provider defaults (Fixes #141)',
+        'Kimi coding-plan selections now carry the resolved models.dev metadata into runtime capability detection and artifact streaming, reducing truncated HTML artifact failures on large turns (Fixes #141)',
+      ],
+    },
+  },
+  {
     version: '0.35.1',
     date: '2026-03-09',
     changes: {

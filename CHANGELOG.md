@@ -1,3 +1,16 @@
+## [0.35.2] - 2026-03-09
+
+### Highlights
+- Kimi coding endpoints that expose provider-specific model names now resolve to the correct model limits instead of falling back to generic provider defaults.
+- Large artifact generations on compatible Kimi providers are less likely to truncate when the endpoint uses a service-specific model name such as `kimi-for-coding`.
+
+### Fixed
+- **Provider-Specific Kimi Names** — Anthropic-compatible Kimi endpoints that return names like `kimi-for-coding` now map to the correct underlying Kimi model metadata, so Jelico can apply the right context and output limits.
+- **Artifact Truncation on Kimi Coding Plans** — Large HTML artifact turns on Kimi coding providers now inherit the expected output cap instead of relying on an opaque provider default when the endpoint uses a provider-defined model name.
+
+### Changed
+- **Compatible Model Resolution** — Jelico now uses compatible-provider endpoint metadata together with the selected model name when resolving model capabilities and limits from models.dev.
+
 ## [0.35.1] - 2026-03-09
 
 ### Highlights

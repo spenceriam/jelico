@@ -1129,7 +1129,10 @@ async function resolveProviderMaxOutputTokens(providerConfig: any, modelId: stri
 
   try {
     await refreshModelCatalog(false)
-    const limit = lookupModelsDevOutputLimit(providerConfig.type, normalizedModel)
+    const limit = lookupModelsDevOutputLimit(providerConfig.type, normalizedModel, {
+      baseUrl: providerConfig.base_url,
+      providerName: providerConfig.name,
+    })
     if (limit && Number.isFinite(limit) && limit > 0) {
       return Math.round(limit)
     }
@@ -3905,7 +3908,10 @@ export function registerAIHandlers() {
       const projectConversationContext = buildProjectConversationContext(params.conversationId)
       const useLeanPromptDefault = process.env.JELICO_FULL_PROMPT !== '1'
       const providerProfileOverrides = ((providerConfig as any).capability_profiles || null) as Record<string, any> | null
-      const modelsDevMetadata = lookupModelsDevModelMetadata(providerConfig.type, modelId)
+      const modelsDevMetadata = lookupModelsDevModelMetadata(providerConfig.type, modelId, {
+        baseUrl: providerConfig.base_url,
+        providerName: providerConfig.name,
+      })
       const modelCapabilityProfile = resolveModelCapabilityProfile({
         providerType: providerConfig.type,
         modelId,
