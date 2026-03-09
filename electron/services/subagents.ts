@@ -799,7 +799,10 @@ async function resolveProviderMaxOutputTokens(providerConfig: any, modelId: stri
 
   try {
     await refreshModelCatalog(false)
-    const limit = lookupModelsDevOutputLimit(providerConfig.type, normalizedModel)
+    const limit = lookupModelsDevOutputLimit(providerConfig.type, normalizedModel, {
+      baseUrl: providerConfig.base_url,
+      providerName: providerConfig.name,
+    })
     if (limit && Number.isFinite(limit) && limit > 0) {
       return Math.round(limit)
     }

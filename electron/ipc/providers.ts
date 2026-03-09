@@ -878,7 +878,10 @@ export function registerProviderHandlers() {
 
       // Keep catalog fresh and prefer models.dev when available.
       await refreshModelCatalog(false)
-      const fromModelsDev = lookupModelsDevContextLimit(provider.type, modelId)
+      const fromModelsDev = lookupModelsDevContextLimit(provider.type, modelId, {
+        baseUrl,
+        providerName: provider.name,
+      })
       if (fromModelsDev) {
         return fromModelsDev
       }
