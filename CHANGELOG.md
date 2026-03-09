@@ -1,4 +1,4 @@
-## [0.35.1] - 2026-03-07
+## [0.35.1] - 2026-03-09
 
 ### Highlights
 - Artifact and file tool runs that are interrupted by provider stream termination now show provider interruption context instead of looking like a local tool failure.

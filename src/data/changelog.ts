@@ -22,7 +22,7 @@ export interface ChangelogEntry {
 export const changelog: ChangelogEntry[] = [
   {
     version: '0.35.1',
-    date: '2026-03-07',
+    date: '2026-03-09',
     changes: {
       fixed: [
         'Tool streams that end after `tool-input-start` now emit provider-interruption metadata instead of only synthetic local cancellation labels, so incomplete artifact/file workflows surface the original interruption cause clearly (Fixes #136)',
