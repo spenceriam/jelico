@@ -1,13 +1,106 @@
-import { useState, useRef, useCallback, KeyboardEvent, useMemo, DragEvent, useEffect } from 'react'
-import { Send, Square, Clock, Paperclip, X, FileText, Image, File as FileIcon, ChevronUp, ChevronDown } from 'lucide-react'
-import { useChatStore, type MessageAttachment } from '../../stores/chat'
+import { useState, useRef, useCallback, KeyboardEvent, useMemo, DragEvent, useEffect, type ReactNode } from 'react'
+import { createPortal } from 'react-dom'
+import { SendHorizontal, Square, Clock, Paperclip, X, Trash2, FileText, Image, File as FileIcon, ChevronUp, ChevronDown, Edit3 } from 'lucide-react'
+import { useChatStore, type MessageAttachment, type QueuedMessage } from '../../stores/chat'
 import { useProviderStore } from '../../stores/providers'
+import { useContextStore } from '../../stores/context'
+import { getQueuePanelConversationKey, getQueuedMessagePreview, getQueuePanelAnchor, type QueuePanelAnchor } from '../../lib/chatQueuePanel'
 // Speech-to-text disabled - WASM crashes on Windows ARM64
 // import { speechClient } from '../../lib/speechClient'
 
 // Detect if user is on macOS
 function isMac(): boolean {
   return navigator.platform.toUpperCase().indexOf('MAC') >= 0
+}
+
+interface QueueActionIconButtonProps {
+  label: string
+  disabled: boolean
+  className: string
+  onClick: () => void
+  children: ReactNode
+}
+
+function QueueActionIconButton({
+  label,
+  disabled,
+  className,
+  onClick,
+  children,
+}: QueueActionIconButtonProps) {
+  const buttonRef = useRef<HTMLButtonElement | null>(null)
+  const [tooltipVisible, setTooltipVisible] = useState(false)
+  const [tooltipRect, setTooltipRect] = useState<DOMRect | null>(null)
+
+  const updateTooltipPosition = useCallback(() => {
+    if (!buttonRef.current) return
+    setTooltipRect(buttonRef.current.getBoundingClientRect())
+  }, [])
+
+  const showTooltip = useCallback(() => {
+    if (disabled) return
+    updateTooltipPosition()
+    setTooltipVisible(true)
+  }, [disabled, updateTooltipPosition])
+
+  const hideTooltip = useCallback(() => {
+    setTooltipVisible(false)
+  }, [])
+
+  useEffect(() => {
+    if (disabled) {
+      setTooltipVisible(false)
+    }
+  }, [disabled])
+
+  useEffect(() => {
+    if (!tooltipVisible) return
+
+    const handleViewportChange = () => updateTooltipPosition()
+    window.addEventListener('scroll', handleViewportChange, true)
+    window.addEventListener('resize', handleViewportChange)
+
+    return () => {
+      window.removeEventListener('scroll', handleViewportChange, true)
+      window.removeEventListener('resize', handleViewportChange)
+    }
+  }, [tooltipVisible, updateTooltipPosition])
+
+  const tooltip =
+    tooltipVisible && tooltipRect && typeof document !== 'undefined'
+      ? createPortal(
+          <span
+            className="pointer-events-none fixed z-[9999] max-w-[13rem] -translate-x-1/2 rounded-md border border-border-subtle bg-bg-elevated px-2 py-1 text-center text-[11px] leading-snug text-text-primary shadow-lg"
+            style={{
+              left: tooltipRect.left + (tooltipRect.width / 2),
+              top: tooltipRect.top - 6,
+              transform: 'translate(-50%, -100%)',
+            }}
+          >
+            {label}
+          </span>,
+          document.body
+        )
+      : null
+
+  return (
+    <>
+      <button
+        ref={buttonRef}
+        onClick={onClick}
+        onMouseEnter={showTooltip}
+        onMouseLeave={hideTooltip}
+        onFocus={showTooltip}
+        onBlur={hideTooltip}
+        disabled={disabled}
+        className={className}
+        aria-label={label}
+      >
+        {children}
+      </button>
+      {tooltip}
+    </>
+  )
 }
 
 // Speech-to-text disabled - WASM crashes on Windows ARM64
@@ -122,18 +215,52 @@ function base64ToFile(base64Data: string, name: string, mimeType: string): File 
   return new window.File([blob], name, { type: mimeType })
 }
 
+function isPastedAttachment(attachment: MessageAttachment): boolean {
+  return attachment.type === 'text' && /^Pasted ~\d+ lines$/.test(attachment.name)
+}
+
+function messageAttachmentToDraftAttachment(attachment: MessageAttachment): Attachment {
+  if (isPastedAttachment(attachment)) {
+    return {
+      id: attachment.id,
+      type: 'pasted',
+      name: attachment.name,
+      content: attachment.data,
+      lineCount: attachment.data.split('\n').length,
+      isExpanded: false,
+    }
+  }
+
+  return {
+    id: attachment.id,
+    type: 'file',
+    name: attachment.name,
+    file: base64ToFile(attachment.data, attachment.name, attachment.mimeType),
+  }
+}
+
 interface ChatInputProps {
   disabled?: boolean
   isStreaming?: boolean
   centered?: boolean // For new chat view - hides hints below
 }
 
+interface QueuedEditState {
+  queuedMessage: QueuedMessage
+  anchor: QueuePanelAnchor
+}
+
 // Speech-to-text disabled - WASM crashes on Windows ARM64
 // type RecordingState = 'idle' | 'recording' | 'transcribing'
 
-export function ChatInput({ disabled, isStreaming, centered }: ChatInputProps) {
+export function ChatInput({
+  disabled,
+  isStreaming,
+  centered,
+}: ChatInputProps) {
   const [input, setInput] = useState('')
   const [attachments, setAttachments] = useState<Attachment[]>([])
+  const [editingQueuedMessage, setEditingQueuedMessage] = useState<QueuedEditState | null>(null)
   const [placeholderIndex, setPlaceholderIndex] = useState<number>(() => readPlaceholderIndex())
   const [isDragging, setIsDragging] = useState(false)
   // Speech-to-text disabled
@@ -151,10 +278,16 @@ export function ChatInput({ disabled, isStreaming, centered }: ChatInputProps) {
     sendMessage,
     stopStreaming,
     sendQueuedNow,
+    removeQueuedMessage,
+    restoreQueuedMessage,
+    processQueue,
     messageQueue,
+    queuePanelExpandedByConversation,
+    setQueuePanelExpanded,
     activeConversationId,
   } = useChatStore()
   const { activeProviderId, activeModel } = useProviderStore()
+  const { isConversationCompacting } = useContextStore()
 
   const resizeTextarea = useCallback((content: string) => {
     const textarea = textareaRef.current
@@ -484,14 +617,33 @@ export function ChatInput({ disabled, isStreaming, centered }: ChatInputProps) {
     )
 
     try {
-      await sendMessage(
-        trimmedInput,
-        activeProviderId,
-        activeModel,
-        messageAttachments.length > 0 ? messageAttachments : undefined
-      )
+      if (editingQueuedMessage) {
+        const restoredQueuedMessage: QueuedMessage = {
+          ...editingQueuedMessage.queuedMessage,
+          content: trimmedInput,
+          attachments: messageAttachments.length > 0 ? messageAttachments : undefined,
+          providerId: activeProviderId,
+          model: activeModel,
+        }
+
+        restoreQueuedMessage(restoredQueuedMessage, editingQueuedMessage.anchor)
+
+        const targetConversationId = restoredQueuedMessage.conversationId ?? activeConversationId ?? null
+        if (!isStreaming && !(targetConversationId && isConversationCompacting(targetConversationId))) {
+          await processQueue()
+        }
+      } else {
+        await sendMessage(
+          trimmedInput,
+          activeProviderId,
+          activeModel,
+          messageAttachments.length > 0 ? messageAttachments : undefined
+        )
+      }
+
       setInput('')
       setAttachments([])
+      setEditingQueuedMessage(null)
       persistDraft('')
       rotatePromptPlaceholder()
       return true
@@ -499,7 +651,21 @@ export function ChatInput({ disabled, isStreaming, centered }: ChatInputProps) {
       console.error('[ChatInput] Failed to send message:', error)
       return false
     }
-  }, [input, attachments, activeProviderId, activeModel, sendMessage, persistDraft, rotatePromptPlaceholder])
+  }, [
+    activeConversationId,
+    activeModel,
+    activeProviderId,
+    attachments,
+    editingQueuedMessage,
+    input,
+    isConversationCompacting,
+    isStreaming,
+    persistDraft,
+    processQueue,
+    restoreQueuedMessage,
+    rotatePromptPlaceholder,
+    sendMessage,
+  ])
 
   const handleKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
     if (
@@ -550,14 +716,9 @@ export function ChatInput({ disabled, isStreaming, centered }: ChatInputProps) {
   }, [messageQueue, activeConversationId])
 
   const queuedCount = queueEntriesForActiveConversation.length
-  const [queueExpanded, setQueueExpanded] = useState(false)
   const [sendingNowIndex, setSendingNowIndex] = useState<number | null>(null)
-
-  useEffect(() => {
-    if (queuedCount === 0) {
-      setQueueExpanded(false)
-    }
-  }, [queuedCount])
+  const queuePanelKey = getQueuePanelConversationKey(activeConversationId)
+  const queueExpanded = queuePanelExpandedByConversation[queuePanelKey] ?? queuedCount > 0
 
   const handleSendQueuedNow = useCallback(async (queueIndex: number) => {
     setSendingNowIndex(queueIndex)
@@ -570,16 +731,40 @@ export function ChatInput({ disabled, isStreaming, centered }: ChatInputProps) {
     }
   }, [sendQueuedNow])
 
-  const hasDraftToSend = input.trim().length > 0 || attachments.length > 0
-  const showQueueSubmit = Boolean(isStreaming && hasDraftToSend)
-  const isQueueDocked = !centered && queuedCount > 0
+  const handleEditQueuedMessage = useCallback((queueIndex: number) => {
+    const queuedMessage = messageQueue[queueIndex]
+    if (!queuedMessage) return
 
-  const handleQueueSubmit = useCallback(async () => {
-    const sent = await handleSubmit()
-    if (sent) {
-      setQueueExpanded(true)
-    }
-  }, [handleSubmit])
+    setEditingQueuedMessage({
+      queuedMessage,
+      anchor: getQueuePanelAnchor(messageQueue, queuedMessage.id),
+    })
+    removeQueuedMessage(queueIndex)
+    setInput(queuedMessage.content)
+    setAttachments((queuedMessage.attachments || []).map(messageAttachmentToDraftAttachment))
+    persistDraft(queuedMessage.content)
+
+    requestAnimationFrame(() => {
+      focusTextarea()
+    })
+  }, [focusTextarea, messageQueue, persistDraft, removeQueuedMessage])
+
+  const handleCancelQueuedMessage = useCallback((queueIndex: number) => {
+    removeQueuedMessage(queueIndex)
+  }, [removeQueuedMessage])
+
+  const hasDraftToSend = input.trim().length > 0 || attachments.length > 0
+  const submitButtonDisabled = disabled || !hasDraftToSend
+  const showQueueSubmit = Boolean(isStreaming && hasDraftToSend)
+  const showSubmitButton = !isStreaming || showQueueSubmit
+  const isQueueDocked = !centered && queuedCount > 0
+  const isEditingExistingMessage = Boolean(editingQueuedMessage)
+  const submitPillLabel = isEditingExistingMessage ? 'Save' : 'Send'
+  const submitButtonAriaLabel = isEditingExistingMessage
+    ? 'Save edited message'
+    : isStreaming
+      ? 'Queue message'
+      : 'Send message'
 
   return (
     <div className="space-y-0" data-window-toggle="ignore">
@@ -603,9 +788,9 @@ export function ChatInput({ disabled, isStreaming, centered }: ChatInputProps) {
           }`}
         >
           {/* Header - always visible */}
-          <div className="w-full flex items-center gap-2 px-2 py-1.5">
+          <div className="w-full flex items-center gap-2 bg-bg-elevated px-2 py-1.5">
             <button
-              onClick={() => setQueueExpanded(!queueExpanded)}
+              onClick={() => setQueuePanelExpanded(activeConversationId, !queueExpanded)}
               className="flex-1 flex items-center justify-between gap-2 px-1 py-0.5"
             >
               <div className="flex items-center gap-2 text-sm text-text-secondary">
@@ -622,30 +807,61 @@ export function ChatInput({ disabled, isStreaming, centered }: ChatInputProps) {
 
           {/* Expanded queue list */}
           {queueExpanded && (
-            <div className="border-t border-border-subtle px-2 pt-1.5 pb-2 space-y-1.5 max-h-36 overflow-y-auto">
-              {queueEntriesForActiveConversation.map(({ message: msg, index: queueIndex }) => (
+            <div className="border-t border-border-subtle px-2 pt-1.5 pb-2 space-y-1.5 max-h-36 overflow-y-auto overflow-x-hidden">
+              {queueEntriesForActiveConversation.map(({ message: msg, index: queueIndex }, queuePosition) => (
                 <div
-                  key={queueIndex}
-                  className="flex items-center gap-2 p-2 bg-bg-elevated border border-border-subtle rounded-lg text-sm"
+                  key={msg.id}
+                  className={`flex items-start gap-3 rounded-xl border border-border-subtle px-3 py-3 text-sm ${
+                    queuePosition % 2 === 0 ? 'bg-bg-elevated' : 'bg-bg-surface'
+                  }`}
                 >
                   <div className="flex-1 min-w-0">
-                    <p className="text-text-secondary truncate">
-                      {msg.content || (msg.attachments?.length ? `${msg.attachments.length} attachment(s)` : 'Empty message')}
-                    </p>
-                    {msg.attachments && msg.attachments.length > 0 && msg.content && (
-                      <p className="text-xs text-text-muted mt-0.5">
-                        + {msg.attachments.length} attachment{msg.attachments.length > 1 ? 's' : ''}
-                      </p>
-                    )}
+                    {(() => {
+                      const preview = getQueuedMessagePreview(msg)
+                      return (
+                        <>
+                          <p
+                            className="text-text-secondary whitespace-pre-wrap break-words leading-6"
+                          >
+                            {preview.primaryText}
+                          </p>
+                          {preview.secondaryText && (
+                            <p className="mt-1.5 break-words text-xs text-text-muted">
+                              {preview.secondaryText}
+                            </p>
+                          )}
+                        </>
+                      )
+                    })()}
                   </div>
-                  <button
-                    onClick={() => handleSendQueuedNow(queueIndex)}
-                    disabled={sendingNowIndex !== null}
-                    className="flex-shrink-0 px-2 py-1 text-xs rounded bg-accent/15 text-accent hover:bg-accent/25 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                    title="Send this queued message now"
-                  >
-                    {sendingNowIndex === queueIndex ? 'Sending...' : 'Send now'}
-                  </button>
+                  <div className="mt-0.5 flex items-center gap-1 flex-shrink-0 self-start">
+                    <QueueActionIconButton
+                      label="Send now without stopping the agent"
+                      onClick={() => handleSendQueuedNow(queueIndex)}
+                      disabled={sendingNowIndex !== null}
+                      className="inline-flex h-7 w-7 items-center justify-center rounded-md text-accent hover:bg-accent/12 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                    >
+                      {sendingNowIndex === queueIndex
+                        ? <Clock className="h-3.5 w-3.5" />
+                        : <SendHorizontal className="h-3.5 w-3.5" />}
+                    </QueueActionIconButton>
+                    <QueueActionIconButton
+                      label="Click to edit your message"
+                      onClick={() => handleEditQueuedMessage(queueIndex)}
+                      disabled={sendingNowIndex !== null}
+                      className="inline-flex h-7 w-7 items-center justify-center rounded-md text-accent hover:bg-accent/12 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                    >
+                      <Edit3 className="h-3.5 w-3.5" />
+                    </QueueActionIconButton>
+                    <QueueActionIconButton
+                      label="Delete queued message"
+                      onClick={() => handleCancelQueuedMessage(queueIndex)}
+                      disabled={sendingNowIndex !== null}
+                      className="inline-flex h-7 w-7 items-center justify-center rounded-md text-accent hover:bg-error/10 hover:text-error disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </QueueActionIconButton>
+                  </div>
                 </div>
               ))}
             </div>
@@ -740,18 +956,19 @@ export function ChatInput({ disabled, isStreaming, centered }: ChatInputProps) {
         <div className="mx-3 border-t border-border-subtle" />
 
         {/* Bottom controls + guidance row */}
-        <div className="flex items-center gap-2 px-[0.75em] py-[0.6em]">
-          {/* Left side - Attachments */}
-          <button
-            onClick={openFilePicker}
-            className="p-[0.45em] text-text-muted hover:text-text-secondary transition-colors rounded-lg hover:bg-bg-hover"
-            title="Attach files"
-          >
-            <Paperclip className="w-[1.15em] h-[1.15em]" />
-          </button>
+        <div className="grid grid-cols-[8.25em_minmax(0,1fr)_8.25em] items-center gap-2 px-[0.75em] py-[0.6em]">
+          <div className="flex items-center justify-start">
+            <button
+              onClick={openFilePicker}
+              className="p-[0.45em] text-text-muted hover:text-text-secondary transition-colors rounded-lg hover:bg-bg-hover"
+              title="Attach files"
+            >
+              <Paperclip className="w-[1.15em] h-[1.15em]" />
+            </button>
+          </div>
 
           <div
-            className="flex-1 text-center text-sm text-text-primary whitespace-nowrap overflow-hidden text-ellipsis px-1"
+            className="min-w-0 text-center text-sm text-text-primary whitespace-nowrap overflow-hidden text-ellipsis px-1"
           >
             <span>Enter to submit · Shift+Enter for new line</span>
             <span className="mx-2 text-text-muted">|</span>
@@ -759,7 +976,7 @@ export function ChatInput({ disabled, isStreaming, centered }: ChatInputProps) {
           </div>
 
           {/* Right side - Send button */}
-          <div className="ml-auto flex items-center gap-1.5">
+          <div className="flex items-center justify-end gap-1.5">
             {/* Speech-to-text disabled - WASM crashes on Windows ARM64, will revisit later */}
 
             {/* Stop button */}
@@ -774,15 +991,29 @@ export function ChatInput({ disabled, isStreaming, centered }: ChatInputProps) {
             )}
 
             {/* Send / Queue button */}
-            {(!isStreaming || showQueueSubmit) && (
-              <button
-                onClick={isStreaming ? handleQueueSubmit : handleSubmit}
-                disabled={disabled || !hasDraftToSend}
-                className="relative inline-flex h-[2.2em] w-[2.2em] items-center justify-center rounded-full bg-accent text-accent-foreground hover:bg-accent-bright disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex-shrink-0"
-                title={isStreaming ? 'Queue message' : 'Send message'}
-              >
-                <Send className="w-[1.15em] h-[1.15em]" />
-              </button>
+            {showSubmitButton && (
+              <div className="group relative h-[2.2em] w-[2.2em] flex-shrink-0 overflow-visible transition-[width] duration-200 ease-out hover:w-[5.2em] focus-within:w-[5.2em]">
+                <div
+                  aria-hidden="true"
+                  className={`pointer-events-none absolute inset-y-0 right-0 inline-flex h-[2.2em] w-[2.2em] origin-right items-center justify-end overflow-hidden rounded-full pr-[0.52em] text-accent-foreground transition-[width,background-color,opacity] duration-200 ease-out group-hover:w-full group-focus-within:w-full ${
+                    submitButtonDisabled
+                      ? 'bg-accent opacity-50'
+                      : 'bg-accent group-hover:bg-accent-bright group-focus-within:bg-accent-bright'
+                  }`}
+                >
+                  <span className="pointer-events-none absolute left-[0.95em] whitespace-nowrap text-[0.76rem] font-medium opacity-0 transition-opacity duration-150 ease-out group-hover:opacity-100 group-focus-within:opacity-100">
+                    {submitPillLabel}
+                  </span>
+                </div>
+                <button
+                  onClick={handleSubmit}
+                  disabled={submitButtonDisabled}
+                  aria-label={submitButtonAriaLabel}
+                  className="absolute inset-y-0 right-0 inline-flex h-[2.2em] w-[2.2em] items-center justify-center rounded-full text-accent-foreground disabled:cursor-not-allowed"
+                >
+                  <SendHorizontal className="h-[1.05em] w-[1.05em]" strokeWidth={2.25} />
+                </button>
+              </div>
             )}
           </div>
         </div>

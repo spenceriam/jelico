@@ -21,6 +21,24 @@ export interface ChangelogEntry {
 
 export const changelog: ChangelogEntry[] = [
   {
+    version: '0.36.0',
+    date: '2026-03-10',
+    changes: {
+      added: [
+        'Queued messages now persist across app restarts and can be sent immediately, edited back into place, or removed directly from the queue panel while the current response is still active',
+        'The most recent user message before the latest assistant turn can now be edited inline in its existing chat bubble, then regenerated from the updated prompt and attachments',
+      ],
+      changed: [
+        'Queued-message rows now use richer wrapped previews, clearer hover/tooltips, scan-friendly alternating surfaces, and queue-state sharing across both new-chat and active-chat composer layouts',
+      ],
+      fixed: [
+        'Queueing a new message during an active response now always auto-expands the queued messages panel for the active conversation instead of leaving new entries hidden in a collapsed state (Fixes #135)',
+        'Queued messages are no longer dropped on restart or failed queue handoff attempts; queue state now survives reloads and restores items when immediate/deferred sends fail',
+        'Regenerate now preserves attachments from the preceding user message instead of silently dropping them on resend',
+      ],
+    },
+  },
+  {
     version: '0.35.3',
     date: '2026-03-10',
     changes: {

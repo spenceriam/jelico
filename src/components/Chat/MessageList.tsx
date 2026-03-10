@@ -65,6 +65,16 @@ export function MessageList({
     }
   }
 
+  let editableUserMessageId: string | null = null
+  if (!isStreamingAssistantMessageVisible && lastAssistantIndex !== -1) {
+    for (let i = lastAssistantIndex - 1; i >= 0; i -= 1) {
+      if (messages[i].role === 'user') {
+        editableUserMessageId = messages[i].id
+        break
+      }
+    }
+  }
+
   const handleRegenerate = async () => {
     if (!onRegenerate || isRegenerating || retryingMessageId) return
     setIsRegenerating(true)
@@ -94,6 +104,7 @@ export function MessageList({
           isLastAssistantMessage={index === lastAssistantIndex}
           onRegenerate={index === lastAssistantIndex ? handleRegenerate : undefined}
           isRegenerating={isRegenerating}
+          canEdit={message.role === 'user' && message.id === editableUserMessageId}
           showRetry={message.role === 'user' && message.id === retryableUserMessageId}
           onRetry={message.role === 'user' && message.id === retryableUserMessageId
             ? () => { void handleRetryUnansweredMessage(message.id) }

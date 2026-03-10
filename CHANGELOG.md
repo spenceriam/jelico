@@ -1,3 +1,22 @@
+## [0.36.0] - 2026-03-10
+
+### Highlights
+- Queued messages now open immediately when added, stay available after restart, and can be managed directly from the queue panel.
+- You can now edit or remove queued messages inline, or send one immediately without losing visibility into the rest of the queue.
+- The last prompt before the latest AI reply can now be edited directly inside its chat bubble and then regenerated from the updated text and attachments.
+
+### New
+- **Queue Message Controls** — Queued messages now have direct inline controls so you can send one now, edit it, or remove it without leaving the queue panel.
+- **Inline Prompt Editing Before Regenerate** — The latest user message before the most recent AI turn can now be edited in place inside the chat history, then reused for regenerate.
+
+### Fixed
+- **Collapsed Queue Visibility** — Adding a queued message during an active response now opens the queued-messages panel right away so new queued work is visible immediately.
+- **Queue Recovery After Restart** — Queued messages now survive app restarts and failed queue handoffs instead of disappearing.
+- **Regenerate Attachment Loss** — Regenerate now keeps the original prompt attachments instead of resending only the text.
+
+### Changed
+- **Queue Panel Polish** — Queued message previews now wrap naturally, use clearer action icons and tooltips, alternate row surfaces for easier scanning, and stay consistent across new-chat and active-chat layouts.
+
 ## [0.35.3] - 2026-03-10
 
 ### Highlights

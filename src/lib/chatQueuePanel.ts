@@ -1,0 +1,147 @@
+const NEW_CHAT_QUEUE_PANEL_KEY = '__new__'
+
+export interface QueuePanelMessageLike {
+  conversationId?: string | null
+}
+
+export interface QueuePanelOrderedMessageLike extends QueuePanelMessageLike {
+  id: string
+}
+
+export interface QueuePanelAttachmentLike {
+  name?: string
+}
+
+export interface QueuePanelPreviewMessageLike {
+  content?: string | null
+  attachments?: QueuePanelAttachmentLike[]
+}
+
+export interface QueuePanelAnchor {
+  previousId: string | null
+  nextId: string | null
+}
+
+export function getQueuePanelConversationKey(conversationId: string | null | undefined): string {
+  return conversationId ?? NEW_CHAT_QUEUE_PANEL_KEY
+}
+
+export function getQueuedCountForConversation<T extends QueuePanelMessageLike>(
+  messageQueue: T[],
+  conversationId: string | null | undefined
+): number {
+  const targetKey = getQueuePanelConversationKey(conversationId)
+  return messageQueue.reduce((count, message) => (
+    getQueuePanelConversationKey(message.conversationId) === targetKey ? count + 1 : count
+  ), 0)
+}
+
+export function getQueuePanelExpandedByConversation<T extends QueuePanelMessageLike>(
+  messageQueue: T[]
+): Record<string, boolean> {
+  return messageQueue.reduce<Record<string, boolean>>((expandedByConversation, message) => {
+    expandedByConversation[getQueuePanelConversationKey(message.conversationId)] = true
+    return expandedByConversation
+  }, {})
+}
+
+export function getQueuePanelAnchor<T extends QueuePanelOrderedMessageLike>(
+  messageQueue: T[],
+  targetId: string
+): QueuePanelAnchor {
+  const targetIndex = messageQueue.findIndex((message) => message.id === targetId)
+  if (targetIndex === -1) {
+    return { previousId: null, nextId: null }
+  }
+
+  const targetConversationId = messageQueue[targetIndex].conversationId ?? null
+  let previousId: string | null = null
+  let nextId: string | null = null
+
+  for (let index = targetIndex - 1; index >= 0; index -= 1) {
+    if ((messageQueue[index].conversationId ?? null) === targetConversationId) {
+      previousId = messageQueue[index].id
+      break
+    }
+  }
+
+  for (let index = targetIndex + 1; index < messageQueue.length; index += 1) {
+    if ((messageQueue[index].conversationId ?? null) === targetConversationId) {
+      nextId = messageQueue[index].id
+      break
+    }
+  }
+
+  return { previousId, nextId }
+}
+
+export function insertQueuedMessageAtAnchor<T extends QueuePanelOrderedMessageLike>(
+  messageQueue: T[],
+  queuedMessage: T,
+  anchor: QueuePanelAnchor
+): T[] {
+  const withoutMessage = messageQueue.filter((message) => message.id !== queuedMessage.id)
+
+  if (anchor.nextId) {
+    const nextIndex = withoutMessage.findIndex((message) => message.id === anchor.nextId)
+    if (nextIndex !== -1) {
+      return [
+        ...withoutMessage.slice(0, nextIndex),
+        queuedMessage,
+        ...withoutMessage.slice(nextIndex),
+      ]
+    }
+  }
+
+  if (anchor.previousId) {
+    const previousIndex = withoutMessage.findIndex((message) => message.id === anchor.previousId)
+    if (previousIndex !== -1) {
+      return [
+        ...withoutMessage.slice(0, previousIndex + 1),
+        queuedMessage,
+        ...withoutMessage.slice(previousIndex + 1),
+      ]
+    }
+  }
+
+  return [...withoutMessage, queuedMessage]
+}
+
+function formatSingleAttachmentLabel(attachment: QueuePanelAttachmentLike): string {
+  const attachmentName = attachment.name?.trim()
+  return attachmentName && attachmentName.length > 0 ? attachmentName : '1 attachment'
+}
+
+function formatAttachmentSummary(attachments: QueuePanelAttachmentLike[]): string | null {
+  if (attachments.length === 0) return null
+  if (attachments.length === 1) return formatSingleAttachmentLabel(attachments[0])
+  return `${attachments.length} attachments`
+}
+
+export function getQueuedMessagePreview(message: QueuePanelPreviewMessageLike): {
+  primaryText: string
+  secondaryText: string | null
+} {
+  const content = message.content?.trim() || ''
+  const attachments = message.attachments || []
+  const attachmentSummary = formatAttachmentSummary(attachments)
+
+  if (content) {
+    return {
+      primaryText: content,
+      secondaryText: attachmentSummary ? `+ ${attachmentSummary}` : null,
+    }
+  }
+
+  if (attachmentSummary) {
+    return {
+      primaryText: attachmentSummary,
+      secondaryText: null,
+    }
+  }
+
+  return {
+    primaryText: 'Empty message',
+    secondaryText: null,
+  }
+}

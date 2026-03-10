@@ -12,6 +12,14 @@ import { useDecisionPromptStore } from './decisionPrompt'
 import { notifyUserEvent } from '../lib/notifications'
 import { createInlineToolProtocolFilter } from '../lib/inlineToolProtocol'
 import { hasIncompleteToolEvidence } from './chatInterruption'
+import {
+  getQueuePanelAnchor,
+  getQueuePanelConversationKey,
+  getQueuePanelExpandedByConversation,
+  getQueuedCountForConversation,
+  insertQueuedMessageAtAnchor,
+  type QueuePanelAnchor,
+} from '../lib/chatQueuePanel'
 
 export interface MessageUsage {
   promptTokens: number
@@ -103,7 +111,8 @@ interface Conversation {
 }
 
 // Message queue for queuing messages while streaming
-interface QueuedMessage {
+export interface QueuedMessage {
+  id: string
   content: string
   attachments?: MessageAttachment[]
   providerId: string
@@ -181,6 +190,7 @@ interface ChatStore {
   modeTransitioning: boolean
   modeSwitchReason: string | null
   messageQueue: QueuedMessage[]
+  queuePanelExpandedByConversation: Record<string, boolean>
   lastCompletedTool: { name: string; args: Record<string, unknown>; completedAt: number } | null
   // Status display queue for graceful UX - ensures each status shows for minimum time
   statusDisplayQueue: StatusDisplayItem[]
@@ -197,7 +207,11 @@ interface ChatStore {
   createConversation: (providerId: string, model: string, initialMessageHint?: string) => Promise<string>
   setActiveConversation: (id: string | null) => Promise<void>
   sendMessage: (content: string, providerId: string, model: string, attachments?: MessageAttachment[]) => Promise<void>
+  updateExistingMessage: (messageId: string, updates: { content: string; attachments?: MessageAttachment[] }) => Promise<Message | null>
   queueMessage: (content: string, providerId: string, model: string, attachments?: MessageAttachment[], conversationId?: string | null) => void
+  setQueuePanelExpanded: (conversationId: string | null | undefined, expanded: boolean) => void
+  removeQueuedMessage: (queueIndex: number) => void
+  restoreQueuedMessage: (queuedMessage: QueuedMessage, anchor: QueuePanelAnchor) => void
   processQueue: () => Promise<void>
   sendQueuedNow: (queueIndex: number) => Promise<boolean>
   stopStreaming: () => Promise<void>
@@ -223,6 +237,8 @@ const WORKTREE_MENTION_COOLDOWN_MS = 5 * 60 * 1000
 const worktreeGuidanceByConversation = new Map<string, { planningShown: boolean; lastMentionAt: number }>()
 const DEFAULT_MODE_PREFERENCE_KEY = 'defaultMode'
 const AGENT_MODES: AgentMode[] = ['auto', 'execute', 'plan', 'explore', 'review']
+const createQueuedMessageId = () => `queued-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`
+let persistQueuedMessagesPromise: Promise<void> = Promise.resolve()
 const FULL_EXECUTE_CONFIRM_MESSAGE = [
   'Enable Full Execute?',
   '',
@@ -230,6 +246,54 @@ const FULL_EXECUTE_CONFIRM_MESSAGE = [
   'Use this only in environments you trust (for example, a sandbox, VM, or disposable workspace).',
   'You are responsible for actions taken in this mode.',
 ].join('\n')
+
+function toPersistedQueuedMessage(queuedMessage: QueuedMessage): QueuedMessageData {
+  return {
+    id: queuedMessage.id,
+    content: queuedMessage.content,
+    attachments: queuedMessage.attachments,
+    providerId: queuedMessage.providerId,
+    model: queuedMessage.model,
+    conversationId: queuedMessage.conversationId ?? null,
+  }
+}
+
+function fromPersistedQueuedMessage(queuedMessage: QueuedMessageData): QueuedMessage {
+  return {
+    id: queuedMessage.id,
+    content: queuedMessage.content,
+    attachments: queuedMessage.attachments,
+    providerId: queuedMessage.providerId,
+    model: queuedMessage.model,
+    conversationId: queuedMessage.conversationId ?? null,
+  }
+}
+
+function persistQueuedMessages(messageQueue: QueuedMessage[]): void {
+  if (typeof window === 'undefined' || !window.jelico?.queue) return
+
+  const queuedMessages = messageQueue.map(toPersistedQueuedMessage)
+  persistQueuedMessagesPromise = persistQueuedMessagesPromise
+    .catch(() => undefined)
+    .then(async () => {
+      await window.jelico.queue.replaceAll(queuedMessages)
+    })
+    .catch((error) => {
+      console.error('[Chat Store] Failed to persist queued messages:', error)
+    })
+}
+
+async function loadPersistedQueuedMessages(): Promise<QueuedMessage[]> {
+  if (typeof window === 'undefined' || !window.jelico?.queue) return []
+
+  try {
+    const queuedMessages = await window.jelico.queue.list()
+    return queuedMessages.map(fromPersistedQueuedMessage)
+  } catch (error) {
+    console.error('[Chat Store] Failed to load queued messages:', error)
+    return []
+  }
+}
 
 function isAgentMode(value: unknown): value is AgentMode {
   return typeof value === 'string' && AGENT_MODES.includes(value as AgentMode)
@@ -631,6 +695,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
   error: null,
   mode: 'auto' as AgentMode,
   messageQueue: [],
+  queuePanelExpandedByConversation: {},
   statusDisplayQueue: [],
   toolInputProgress: null,
   isReasoning: false,
@@ -640,8 +705,23 @@ export const useChatStore = create<ChatStore>((set, get) => ({
   loadConversations: async () => {
     set({ isLoading: true })
     try {
-      const conversations = await window.jelico.conversations.list()
-      set({ conversations, isLoading: false })
+      const shouldHydrateQueue = get().messageQueue.length === 0
+      const [conversations, persistedQueuedMessages] = await Promise.all([
+        window.jelico.conversations.list(),
+        shouldHydrateQueue ? loadPersistedQueuedMessages() : Promise.resolve(null),
+      ])
+
+      set((state) => {
+        const messageQueue = persistedQueuedMessages ?? state.messageQueue
+        return {
+          conversations,
+          messageQueue,
+          queuePanelExpandedByConversation: persistedQueuedMessages
+            ? getQueuePanelExpandedByConversation(messageQueue)
+            : state.queuePanelExpandedByConversation,
+          isLoading: false,
+        }
+      })
     } catch (error: any) {
       set({ error: error.message, isLoading: false })
     }
@@ -1922,10 +2002,115 @@ export const useChatStore = create<ChatStore>((set, get) => ({
     })
   },
 
+  updateExistingMessage: async (messageId, updates) => {
+    try {
+      const updatedMessage = await window.jelico.conversations.updateMessage(messageId, {
+        content: updates.content,
+        attachments: updates.attachments,
+      })
+
+      if (!updatedMessage) return null
+
+      set((state) => ({
+        messages: state.messages.map((message) => (
+          message.id === messageId
+            ? {
+                ...message,
+                content: updatedMessage.content,
+                attachments: updatedMessage.attachments,
+                segments: updatedMessage.segments,
+                toolCalls: updatedMessage.toolCalls,
+                toolResults: updatedMessage.toolResults,
+                usage: updatedMessage.usage,
+              }
+            : message
+        )),
+      }))
+
+      const activeConversationId = get().activeConversationId
+      if (activeConversationId) {
+        const estimatedTokenCount = get().messages.reduce(
+          (sum, message) => sum + estimateTokens(message.content || ''),
+          0
+        )
+        useContextStore.getState().updateTokenCount(activeConversationId, estimatedTokenCount)
+      }
+
+      return updatedMessage
+    } catch (error: any) {
+      set({ error: error.message })
+      return null
+    }
+  },
+
   queueMessage: (content, providerId, model, attachments, conversationId) => {
+    const queuedMessage: QueuedMessage = {
+      id: createQueuedMessageId(),
+      content,
+      attachments,
+      providerId,
+      model,
+      conversationId,
+    }
+
+    set((state) => {
+      const queueKey = getQueuePanelConversationKey(conversationId)
+      return {
+        messageQueue: [...state.messageQueue, queuedMessage],
+        queuePanelExpandedByConversation: {
+          ...state.queuePanelExpandedByConversation,
+          [queueKey]: true,
+        },
+      }
+    })
+    persistQueuedMessages(get().messageQueue)
+  },
+
+  setQueuePanelExpanded: (conversationId, expanded) => {
     set((state) => ({
-      messageQueue: [...state.messageQueue, { content, attachments, providerId, model, conversationId }],
+      queuePanelExpandedByConversation: {
+        ...state.queuePanelExpandedByConversation,
+        [getQueuePanelConversationKey(conversationId)]: expanded,
+      },
     }))
+  },
+
+  removeQueuedMessage: (queueIndex) => {
+    set((state) => {
+      const queuedMessage = state.messageQueue[queueIndex]
+      if (!queuedMessage) return {}
+
+      const nextQueue = [...state.messageQueue]
+      nextQueue.splice(queueIndex, 1)
+      const queueKey = getQueuePanelConversationKey(queuedMessage.conversationId)
+      const remainingCount = getQueuedCountForConversation(nextQueue, queuedMessage.conversationId)
+
+      return {
+        messageQueue: nextQueue,
+        queuePanelExpandedByConversation: remainingCount === 0
+          ? {
+              ...state.queuePanelExpandedByConversation,
+              [queueKey]: false,
+            }
+          : state.queuePanelExpandedByConversation,
+      }
+    })
+    persistQueuedMessages(get().messageQueue)
+  },
+
+  restoreQueuedMessage: (queuedMessage, anchor) => {
+    set((state) => {
+      const nextQueue = insertQueuedMessageAtAnchor(state.messageQueue, queuedMessage, anchor)
+      const queueKey = getQueuePanelConversationKey(queuedMessage.conversationId)
+      return {
+        messageQueue: nextQueue,
+        queuePanelExpandedByConversation: {
+          ...state.queuePanelExpandedByConversation,
+          [queueKey]: true,
+        },
+      }
+    })
+    persistQueuedMessages(get().messageQueue)
   },
 
   processQueue: async () => {
@@ -1933,18 +2118,25 @@ export const useChatStore = create<ChatStore>((set, get) => ({
     if (messageQueue.length === 0) return
 
     // Take the first message from the queue
-    const [nextMessage, ...remaining] = messageQueue
-    set({ messageQueue: remaining })
+    const [nextMessage] = messageQueue
+    const anchor = getQueuePanelAnchor(messageQueue, nextMessage.id)
+    get().removeQueuedMessage(0)
 
-    // Send the queued message
-    await (get().sendMessage as any)(
-      nextMessage.content,
-      nextMessage.providerId,
-      nextMessage.model,
-      nextMessage.attachments,
-      false,
-      nextMessage.conversationId ?? null
-    )
+    try {
+      // Send the queued message
+      await (get().sendMessage as any)(
+        nextMessage.content,
+        nextMessage.providerId,
+        nextMessage.model,
+        nextMessage.attachments,
+        false,
+        nextMessage.conversationId ?? null
+      )
+    } catch (error: any) {
+      console.error('[Chat Store] Failed to process queued message:', error)
+      get().restoreQueuedMessage(nextMessage, anchor)
+      set({ error: error?.message || 'Failed to send queued message' })
+    }
   },
 
   sendQueuedNow: async (queueIndex) => {
@@ -1953,32 +2145,36 @@ export const useChatStore = create<ChatStore>((set, get) => ({
     if (!queuedMessage) return false
 
     // Remove selected message from queue first to avoid duplicate processing races.
-    set((state) => {
-      const nextQueue = [...state.messageQueue]
-      nextQueue.splice(queueIndex, 1)
-      return { messageQueue: nextQueue }
-    })
+    const anchor = getQueuePanelAnchor(messageQueue, queuedMessage.id)
+    get().removeQueuedMessage(queueIndex)
 
-    const refreshedState = get()
-    const targetConversationId = queuedMessage.conversationId ?? refreshedState.activeConversationId ?? activeConversationId ?? null
-    const targetStreamState = targetConversationId ? refreshedState.conversationStreams[targetConversationId] : undefined
+    try {
+      const refreshedState = get()
+      const targetConversationId = queuedMessage.conversationId ?? refreshedState.activeConversationId ?? activeConversationId ?? null
+      const targetStreamState = targetConversationId ? refreshedState.conversationStreams[targetConversationId] : undefined
 
-    // "Send now" means send this queued item immediately.
-    // If the target conversation is currently streaming, stop first so this message can run now.
-    if (targetConversationId && targetConversationId === refreshedState.activeConversationId && targetStreamState?.isStreaming) {
-      await refreshedState.stopStreaming()
+      // "Send now" means send this queued item immediately.
+      // If the target conversation is currently streaming, stop first so this message can run now.
+      if (targetConversationId && targetConversationId === refreshedState.activeConversationId && targetStreamState?.isStreaming) {
+        await refreshedState.stopStreaming()
+      }
+
+      await (get().sendMessage as any)(
+        queuedMessage.content,
+        queuedMessage.providerId,
+        queuedMessage.model,
+        queuedMessage.attachments,
+        false,
+        targetConversationId
+      )
+
+      return true
+    } catch (error: any) {
+      console.error('[Chat Store] Failed to send queued message immediately:', error)
+      get().restoreQueuedMessage(queuedMessage, anchor)
+      set({ error: error?.message || 'Failed to send queued message' })
+      return false
     }
-
-    await (get().sendMessage as any)(
-      queuedMessage.content,
-      queuedMessage.providerId,
-      queuedMessage.model,
-      queuedMessage.attachments,
-      false,
-      targetConversationId
-    )
-
-    return true
   },
 
   stopStreaming: async () => {
@@ -2259,7 +2455,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
 
     // Start streaming with existing messages (don't re-add user message)
     // The _isRegenerate flag tells sendMessage to skip adding user message
-    await (get().sendMessage as any)(lastUser.content, providerId, model, undefined, true)
+    await (get().sendMessage as any)(lastUser.content, providerId, model, lastUser.attachments, true)
   },
 
   getRegenerateArtifactImpact: () => {

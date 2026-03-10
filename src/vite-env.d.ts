@@ -45,6 +45,10 @@ interface Window {
       restore: (id: string) => Promise<Conversation | null>
       delete: (id: string) => Promise<void>
     }
+    queue: {
+      list: () => Promise<QueuedMessageData[]>
+      replaceAll: (queuedMessages: QueuedMessageData[]) => Promise<{ success: boolean }>
+    }
     workspaces: {
       list: () => Promise<Workspace[]>
       get: (id: string) => Promise<Workspace | null>
@@ -314,6 +318,15 @@ interface MessageInput {
   toolResults?: ToolResultEvent[]
   attachments?: MessageAttachmentData[]
   usage?: MessageUsageData
+}
+
+interface QueuedMessageData {
+  id: string
+  content: string
+  attachments?: MessageAttachmentData[]
+  providerId: string
+  model: string
+  conversationId?: string | null
 }
 
 interface MessageUsageData {

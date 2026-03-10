@@ -1,7 +1,7 @@
-import { useState } from 'react'
+import { useCallback, useEffect, useRef, useState, type KeyboardEvent } from 'react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
-import { Copy, Check, FileText, Image, File, RotateCcw, Loader2 } from 'lucide-react'
+import { Copy, Check, FileText, Image, File, RotateCcw, Loader2, Edit3, X } from 'lucide-react'
 import {
   ToolCallDisplay,
   SingleToolCallDisplay,
@@ -13,7 +13,7 @@ import {
 import { MessageActions } from './MessageActions'
 import { MermaidInline } from '../Canvas/MermaidViewer'
 import { useAgentStore } from '../../stores/agents'
-import type { ToolCall, ToolResult, MessageUsage, MessageAttachment, StreamingSegment } from '../../stores/chat'
+import { useChatStore, type ToolCall, type ToolResult, type MessageUsage, type MessageAttachment, type StreamingSegment } from '../../stores/chat'
 
 interface MessageProps {
   message: {
@@ -34,6 +34,7 @@ interface MessageProps {
   isLastAssistantMessage?: boolean
   onRegenerate?: () => void
   isRegenerating?: boolean
+  canEdit?: boolean
   showRetry?: boolean
   onRetry?: () => void
   isRetrying?: boolean
@@ -218,14 +219,22 @@ export function Message({
   isLastAssistantMessage,
   onRegenerate,
   isRegenerating,
+  canEdit,
   showRetry,
   onRetry,
   isRetrying,
   userName,
 }: MessageProps) {
+  const updateExistingMessage = useChatStore((state) => state.updateExistingMessage)
   const [copied, setCopied] = useState(false)
   const [lightboxImageUrl, setLightboxImageUrl] = useState<string | null>(null)
   const [failedImagePreviews, setFailedImagePreviews] = useState<Record<string, boolean>>({})
+  const [isEditing, setIsEditing] = useState(false)
+  const [editValue, setEditValue] = useState(message.content)
+  const [isSavingEdit, setIsSavingEdit] = useState(false)
+  const [editBubbleWidth, setEditBubbleWidth] = useState<number | null>(null)
+  const bubbleRef = useRef<HTMLDivElement | null>(null)
+  const editTextareaRef = useRef<HTMLTextAreaElement | null>(null)
   const isUser = message.role === 'user'
   const isAssistant = message.role === 'assistant'
   const timestamp = formatTimestamp(message.createdAt)
@@ -253,7 +262,7 @@ export function Message({
 
   const handleCopy = async () => {
     try {
-      await navigator.clipboard.writeText(message.content)
+      await navigator.clipboard.writeText(isEditing ? editValue : message.content)
       setCopied(true)
       setTimeout(() => setCopied(false), 2000)
     } catch (err) {
@@ -279,6 +288,45 @@ export function Message({
 
   const canOpenLightboxInNewTab = lightboxImageUrl ? !isDataUrl(lightboxImageUrl) : false
 
+  const resizeEditTextarea = useCallback(() => {
+    const textarea = editTextareaRef.current
+    if (!textarea) return
+
+    textarea.style.height = 'auto'
+    textarea.style.height = `${textarea.scrollHeight}px`
+  }, [])
+
+  useEffect(() => {
+    if (isEditing) return
+    setEditValue(message.content)
+  }, [isEditing, message.content])
+
+  useEffect(() => {
+    if (!isEditing) return
+    resizeEditTextarea()
+
+    const frame = requestAnimationFrame(() => {
+      const textarea = editTextareaRef.current
+      if (!textarea) return
+      textarea.focus()
+      textarea.setSelectionRange(textarea.value.length, textarea.value.length)
+    })
+
+    return () => cancelAnimationFrame(frame)
+  }, [isEditing, resizeEditTextarea])
+
+  useEffect(() => {
+    if (!isEditing) return
+    resizeEditTextarea()
+  }, [editValue, isEditing, resizeEditTextarea])
+
+  useEffect(() => {
+    if (canEdit || !isEditing) return
+    setEditValue(message.content)
+    setEditBubbleWidth(null)
+    setIsEditing(false)
+  }, [canEdit, isEditing, message.content])
+
   // Get icon for attachment type
   const getAttachmentIcon = (type: string) => {
     switch (type) {
@@ -292,6 +340,53 @@ export function Message({
   if (isUser) {
     const hasContent = message.content && message.content.trim().length > 0
     const hasAttachments = message.attachments && message.attachments.length > 0
+    const trimmedEditValue = editValue.trim()
+    const canSaveEdit = !isSavingEdit && (trimmedEditValue.length > 0 || hasAttachments)
+
+    const handleStartEdit = () => {
+      setEditValue(message.content)
+      setEditBubbleWidth(bubbleRef.current?.getBoundingClientRect().width ?? null)
+      setIsEditing(true)
+    }
+
+    const handleCancelEdit = () => {
+      setEditValue(message.content)
+      setEditBubbleWidth(null)
+      setIsEditing(false)
+    }
+
+    const handleSaveEdit = async () => {
+      if (!canEdit || isSavingEdit || (!trimmedEditValue && !hasAttachments)) return
+
+      setIsSavingEdit(true)
+      try {
+        const updatedMessage = await updateExistingMessage(message.id, {
+          content: trimmedEditValue,
+          attachments: message.attachments,
+        })
+
+        if (updatedMessage) {
+          setEditValue(updatedMessage.content)
+          setEditBubbleWidth(null)
+          setIsEditing(false)
+        }
+      } finally {
+        setIsSavingEdit(false)
+      }
+    }
+
+    const handleEditKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
+      if ((event.metaKey || event.ctrlKey) && event.key === 'Enter') {
+        event.preventDefault()
+        void handleSaveEdit()
+        return
+      }
+
+      if (event.key === 'Escape') {
+        event.preventDefault()
+        handleCancelEdit()
+      }
+    }
 
     return (
       <div className="flex gap-4 justify-end group relative">
@@ -301,10 +396,14 @@ export function Message({
         </div>
         <div className="max-w-[80%] flex flex-col items-end">
           {/* Message bubble */}
-          <div className="rounded-2xl px-4 py-3 bg-bg-hover text-text-primary">
+          <div
+            ref={bubbleRef}
+            className="rounded-2xl px-4 py-3 bg-bg-hover text-text-primary"
+            style={isEditing && editBubbleWidth ? { width: `${editBubbleWidth}px`, maxWidth: '100%' } : undefined}
+          >
             {/* Show attachments first */}
             {hasAttachments && (
-              <div className={`space-y-2 ${hasContent ? 'mb-3' : ''}`}>
+              <div className={`space-y-2 ${isEditing || hasContent ? 'mb-3' : ''}`}>
                 {message.attachments!.map((att) => {
                   const IconComponent = getAttachmentIcon(att.type)
                   const isTextAttachment = att.type === 'text' && att.data
@@ -351,17 +450,26 @@ export function Message({
                 })}
               </div>
             )}
-            {/* Show text content */}
-            {hasContent && (
+            {isEditing ? (
+              <textarea
+                ref={editTextareaRef}
+                value={editValue}
+                onChange={(event) => setEditValue(event.target.value)}
+                onKeyDown={handleEditKeyDown}
+                placeholder={hasAttachments ? 'Add text to this message' : 'Edit your message'}
+                rows={1}
+                className="block w-full appearance-none resize-none overflow-hidden border-0 bg-transparent p-0 text-sm text-text-primary outline-none shadow-none whitespace-pre-wrap ring-0 focus:border-0 focus:outline-none focus:ring-0 focus:shadow-none"
+              />
+            ) : hasContent ? (
               <p className="whitespace-pre-wrap text-sm break-words">{message.content}</p>
-            )}
+            ) : null}
             {/* Show placeholder if completely empty (shouldn't happen) */}
-            {!hasContent && !hasAttachments && (
+            {!isEditing && !hasContent && !hasAttachments && (
               <p className="text-text-muted italic">Empty message</p>
             )}
           </div>
           {/* Actions OUTSIDE and BELOW the bubble */}
-          <div className={`mt-1 flex items-center gap-3 transition-opacity ${showRetry ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`}>
+          <div className={`mt-1 flex items-center gap-3 transition-opacity ${isEditing || showRetry ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`}>
             {showRetry && onRetry && (
               <button
                 onClick={onRetry}
@@ -380,6 +488,42 @@ export function Message({
                     <span>Retry</span>
                   </>
                 )}
+              </button>
+            )}
+            {canEdit && !isEditing && (
+              <button
+                onClick={handleStartEdit}
+                className="flex items-center gap-1.5 text-xs text-text-muted hover:text-text-secondary transition-colors"
+                title="Edit message"
+              >
+                <Edit3 className="w-3.5 h-3.5" />
+                <span>Edit</span>
+              </button>
+            )}
+            {canEdit && isEditing && (
+              <button
+                onClick={() => { void handleSaveEdit() }}
+                disabled={!canSaveEdit}
+                className="flex items-center gap-1.5 text-xs text-accent hover:text-accent-bright disabled:text-text-muted disabled:cursor-not-allowed transition-colors"
+                title="Save message"
+              >
+                {isSavingEdit ? (
+                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                ) : (
+                  <Check className="w-3.5 h-3.5" />
+                )}
+                <span>Save</span>
+              </button>
+            )}
+            {canEdit && isEditing && (
+              <button
+                onClick={handleCancelEdit}
+                disabled={isSavingEdit}
+                className="flex items-center gap-1.5 text-xs text-text-muted hover:text-text-secondary disabled:text-text-muted/60 disabled:cursor-not-allowed transition-colors"
+                title="Cancel editing"
+              >
+                <X className="w-3.5 h-3.5" />
+                <span>Cancel</span>
               </button>
             )}
             <button

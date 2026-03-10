@@ -41,6 +41,10 @@ contextBridge.exposeInMainWorld('jelico', {
     restore: (id: string) => ipcRenderer.invoke('conversations:restore', id),
     delete: (id: string) => ipcRenderer.invoke('conversations:delete', id),
   },
+  queue: {
+    list: () => ipcRenderer.invoke('queue:list'),
+    replaceAll: (queuedMessages: any[]) => ipcRenderer.invoke('queue:replaceAll', queuedMessages),
+  },
   workspaces: {
     list: () => ipcRenderer.invoke('workspaces:list'),
     get: (id: string) => ipcRenderer.invoke('workspaces:get', id),

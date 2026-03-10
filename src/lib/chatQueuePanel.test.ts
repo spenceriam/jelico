@@ -1,0 +1,138 @@
+import assert from 'node:assert/strict'
+import test from 'node:test'
+import {
+  getQueuePanelAnchor,
+  getQueuePanelExpandedByConversation,
+  getQueuePanelConversationKey,
+  getQueuedCountForConversation,
+  getQueuedMessagePreview,
+  insertQueuedMessageAtAnchor,
+} from './chatQueuePanel'
+
+test('maps missing conversation ids to the shared new-chat queue key', () => {
+  assert.equal(getQueuePanelConversationKey(null), '__new__')
+  assert.equal(getQueuePanelConversationKey(undefined), '__new__')
+})
+
+test('keeps explicit conversation ids as distinct queue keys', () => {
+  assert.equal(getQueuePanelConversationKey('conv-1'), 'conv-1')
+})
+
+test('counts queued entries for a matching active conversation', () => {
+  const queuedCount = getQueuedCountForConversation(
+    [
+      { conversationId: 'conv-1' },
+      { conversationId: 'conv-2' },
+      { conversationId: 'conv-1' },
+    ],
+    'conv-1'
+  )
+
+  assert.equal(queuedCount, 2)
+})
+
+test('counts null-conversation entries against the new-chat queue key', () => {
+  const queuedCount = getQueuedCountForConversation(
+    [
+      { conversationId: null },
+      {},
+      { conversationId: 'conv-1' },
+    ],
+    null
+  )
+
+  assert.equal(queuedCount, 2)
+})
+
+test('marks each conversation with queued items as expanded when hydrating from persistence', () => {
+  const expandedByConversation = getQueuePanelExpandedByConversation([
+    { conversationId: 'conv-1' },
+    { conversationId: null },
+    { conversationId: 'conv-2' },
+    { conversationId: 'conv-1' },
+  ])
+
+  assert.deepEqual(expandedByConversation, {
+    'conv-1': true,
+    '__new__': true,
+    'conv-2': true,
+  })
+})
+
+test('keeps queued text content as the primary preview and adds a single pasted attachment summary', () => {
+  const preview = getQueuedMessagePreview({
+    content: 'This is a long queued message that should wrap in the UI.',
+    attachments: [{ name: 'Pasted ~87 lines' }],
+  })
+
+  assert.deepEqual(preview, {
+    primaryText: 'This is a long queued message that should wrap in the UI.',
+    secondaryText: '+ Pasted ~87 lines',
+  })
+})
+
+test('surfaces pasted attachment names when a queued message has no text content', () => {
+  const preview = getQueuedMessagePreview({
+    content: '',
+    attachments: [{ name: 'Pasted ~121 lines' }],
+  })
+
+  assert.deepEqual(preview, {
+    primaryText: 'Pasted ~121 lines',
+    secondaryText: null,
+  })
+})
+
+test('falls back to a generic attachment count for multi-attachment queued messages', () => {
+  const preview = getQueuedMessagePreview({
+    attachments: [{ name: 'first.txt' }, { name: 'second.png' }],
+  })
+
+  assert.deepEqual(preview, {
+    primaryText: '2 attachments',
+    secondaryText: null,
+  })
+})
+
+test('captures previous and next queued ids for the same conversation', () => {
+  const anchor = getQueuePanelAnchor(
+    [
+      { id: 'a', conversationId: 'conv-1' },
+      { id: 'b', conversationId: 'conv-2' },
+      { id: 'c', conversationId: 'conv-1' },
+      { id: 'd', conversationId: 'conv-1' },
+    ],
+    'c'
+  )
+
+  assert.deepEqual(anchor, {
+    previousId: 'a',
+    nextId: 'd',
+  })
+})
+
+test('re-inserts an edited queued message before its original next sibling when available', () => {
+  const reordered = insertQueuedMessageAtAnchor(
+    [
+      { id: 'a', conversationId: 'conv-1' },
+      { id: 'd', conversationId: 'conv-1' },
+    ],
+    { id: 'c', conversationId: 'conv-1' },
+    { previousId: 'a', nextId: 'd' }
+  )
+
+  assert.deepEqual(reordered.map((message) => message.id), ['a', 'c', 'd'])
+})
+
+test('re-inserts an edited queued message after its original previous sibling when the next one is gone', () => {
+  const reordered = insertQueuedMessageAtAnchor(
+    [
+      { id: 'a', conversationId: 'conv-1' },
+      { id: 'x', conversationId: 'conv-2' },
+    ],
+    { id: 'c', conversationId: 'conv-1' },
+    { previousId: 'a', nextId: 'd' }
+  )
+
+  assert.deepEqual(reordered.map((message) => message.id), ['a', 'c', 'x'])
+})
