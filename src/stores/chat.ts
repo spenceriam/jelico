@@ -13,12 +13,15 @@ import { notifyUserEvent } from '../lib/notifications'
 import { createInlineToolProtocolFilter } from '../lib/inlineToolProtocol'
 import { hasIncompleteToolEvidence } from './chatInterruption'
 import {
+  getPersistableQueuedMessages,
   getQueuePanelAnchor,
   getQueuePanelConversationKey,
   getQueuePanelExpandedByConversation,
   getQueuedCountForConversation,
   insertQueuedMessageAtAnchor,
+  mergeHydratedQueuedMessages,
   type QueuePanelAnchor,
+  type QueuePanelPendingEdit,
 } from '../lib/chatQueuePanel'
 
 export interface MessageUsage {
@@ -120,6 +123,8 @@ export interface QueuedMessage {
   conversationId?: string | null
 }
 
+interface PendingQueuedEdit extends QueuePanelPendingEdit<QueuedMessage> {}
+
 // System notifications that appear inline in chat
 export type SystemNotificationType =
   | 'compaction_warning'
@@ -190,6 +195,8 @@ interface ChatStore {
   modeTransitioning: boolean
   modeSwitchReason: string | null
   messageQueue: QueuedMessage[]
+  pendingQueuedEdit: PendingQueuedEdit | null
+  hasHydratedQueuedMessages: boolean
   queuePanelExpandedByConversation: Record<string, boolean>
   lastCompletedTool: { name: string; args: Record<string, unknown>; completedAt: number } | null
   // Status display queue for graceful UX - ensures each status shows for minimum time
@@ -210,6 +217,9 @@ interface ChatStore {
   updateExistingMessage: (messageId: string, updates: { content: string; attachments?: MessageAttachment[] }) => Promise<Message | null>
   queueMessage: (content: string, providerId: string, model: string, attachments?: MessageAttachment[], conversationId?: string | null) => void
   setQueuePanelExpanded: (conversationId: string | null | undefined, expanded: boolean) => void
+  startQueuedMessageEdit: (queueIndex: number) => PendingQueuedEdit | null
+  cancelQueuedMessageEdit: () => void
+  commitQueuedMessageEdit: (queuedMessage: QueuedMessage) => void
   removeQueuedMessage: (queueIndex: number) => void
   restoreQueuedMessage: (queuedMessage: QueuedMessage, anchor: QueuePanelAnchor) => void
   processQueue: () => Promise<void>
@@ -269,13 +279,19 @@ function fromPersistedQueuedMessage(queuedMessage: QueuedMessageData): QueuedMes
   }
 }
 
-function persistQueuedMessages(messageQueue: QueuedMessage[]): void {
+function persistQueuedMessages(messageQueue: QueuedMessage[], shouldMergePersistedQueue = false): void {
   if (typeof window === 'undefined' || !window.jelico?.queue) return
 
-  const queuedMessages = messageQueue.map(toPersistedQueuedMessage)
   persistQueuedMessagesPromise = persistQueuedMessagesPromise
     .catch(() => undefined)
     .then(async () => {
+      let nextQueue = messageQueue
+      if (shouldMergePersistedQueue) {
+        const persistedQueuedMessages = await loadPersistedQueuedMessages()
+        nextQueue = mergeHydratedQueuedMessages(persistedQueuedMessages, messageQueue)
+      }
+
+      const queuedMessages = nextQueue.map(toPersistedQueuedMessage)
       await window.jelico.queue.replaceAll(queuedMessages)
     })
     .catch((error) => {
@@ -695,6 +711,8 @@ export const useChatStore = create<ChatStore>((set, get) => ({
   error: null,
   mode: 'auto' as AgentMode,
   messageQueue: [],
+  pendingQueuedEdit: null,
+  hasHydratedQueuedMessages: false,
   queuePanelExpandedByConversation: {},
   statusDisplayQueue: [],
   toolInputProgress: null,
@@ -705,17 +723,20 @@ export const useChatStore = create<ChatStore>((set, get) => ({
   loadConversations: async () => {
     set({ isLoading: true })
     try {
-      const shouldHydrateQueue = get().messageQueue.length === 0
+      const shouldHydrateQueue = !get().hasHydratedQueuedMessages
       const [conversations, persistedQueuedMessages] = await Promise.all([
         window.jelico.conversations.list(),
         shouldHydrateQueue ? loadPersistedQueuedMessages() : Promise.resolve(null),
       ])
 
       set((state) => {
-        const messageQueue = persistedQueuedMessages ?? state.messageQueue
+        const messageQueue = persistedQueuedMessages
+          ? mergeHydratedQueuedMessages(persistedQueuedMessages, state.messageQueue)
+          : state.messageQueue
         return {
           conversations,
           messageQueue,
+          hasHydratedQueuedMessages: shouldHydrateQueue ? true : state.hasHydratedQueuedMessages,
           queuePanelExpandedByConversation: persistedQueuedMessages
             ? getQueuePanelExpandedByConversation(messageQueue)
             : state.queuePanelExpandedByConversation,
@@ -2063,7 +2084,11 @@ export const useChatStore = create<ChatStore>((set, get) => ({
         },
       }
     })
-    persistQueuedMessages(get().messageQueue)
+    const { hasHydratedQueuedMessages, messageQueue, pendingQueuedEdit } = get()
+    persistQueuedMessages(
+      getPersistableQueuedMessages(messageQueue, pendingQueuedEdit),
+      !hasHydratedQueuedMessages
+    )
   },
 
   setQueuePanelExpanded: (conversationId, expanded) => {
@@ -2073,6 +2098,100 @@ export const useChatStore = create<ChatStore>((set, get) => ({
         [getQueuePanelConversationKey(conversationId)]: expanded,
       },
     }))
+  },
+
+  startQueuedMessageEdit: (queueIndex) => {
+    let pendingEdit: PendingQueuedEdit | null = null
+
+    set((state) => {
+      const queuedMessage = state.messageQueue[queueIndex]
+      if (!queuedMessage) return {}
+
+      const nextQueue = [...state.messageQueue]
+      nextQueue.splice(queueIndex, 1)
+      const queueKey = getQueuePanelConversationKey(queuedMessage.conversationId)
+      const remainingCount = getQueuedCountForConversation(nextQueue, queuedMessage.conversationId)
+
+      pendingEdit = {
+        queuedMessage,
+        anchor: getQueuePanelAnchor(state.messageQueue, queuedMessage.id),
+      }
+
+      return {
+        messageQueue: nextQueue,
+        pendingQueuedEdit: pendingEdit,
+        queuePanelExpandedByConversation: remainingCount === 0
+          ? {
+              ...state.queuePanelExpandedByConversation,
+              [queueKey]: false,
+            }
+          : state.queuePanelExpandedByConversation,
+      }
+    })
+
+    const { hasHydratedQueuedMessages, messageQueue, pendingQueuedEdit } = get()
+    persistQueuedMessages(
+      getPersistableQueuedMessages(messageQueue, pendingQueuedEdit),
+      !hasHydratedQueuedMessages
+    )
+
+    return pendingEdit
+  },
+
+  cancelQueuedMessageEdit: () => {
+    set((state) => {
+      if (!state.pendingQueuedEdit) return {}
+
+      const restoredQueue = insertQueuedMessageAtAnchor(
+        state.messageQueue,
+        state.pendingQueuedEdit.queuedMessage,
+        state.pendingQueuedEdit.anchor
+      )
+      const queueKey = getQueuePanelConversationKey(state.pendingQueuedEdit.queuedMessage.conversationId)
+
+      return {
+        messageQueue: restoredQueue,
+        pendingQueuedEdit: null,
+        queuePanelExpandedByConversation: {
+          ...state.queuePanelExpandedByConversation,
+          [queueKey]: true,
+        },
+      }
+    })
+
+    const { hasHydratedQueuedMessages, messageQueue, pendingQueuedEdit } = get()
+    persistQueuedMessages(
+      getPersistableQueuedMessages(messageQueue, pendingQueuedEdit),
+      !hasHydratedQueuedMessages
+    )
+  },
+
+  commitQueuedMessageEdit: (queuedMessage) => {
+    set((state) => {
+      if (!state.pendingQueuedEdit) return {}
+
+      const restoredQueue = insertQueuedMessageAtAnchor(
+        state.messageQueue,
+        queuedMessage,
+        state.pendingQueuedEdit.anchor
+      )
+      const queueKey = getQueuePanelConversationKey(queuedMessage.conversationId)
+
+      return {
+        messageQueue: restoredQueue,
+        pendingQueuedEdit: null,
+        queuePanelExpandedByConversation: {
+          ...state.queuePanelExpandedByConversation,
+          [queueKey]: true,
+        },
+      }
+    })
+
+    const { hasHydratedQueuedMessages, messageQueue, pendingQueuedEdit } = get()
+    persistQueuedMessages(
+      getPersistableQueuedMessages(messageQueue, pendingQueuedEdit),
+      !hasHydratedQueuedMessages
+    )
   },
 
   removeQueuedMessage: (queueIndex) => {
@@ -2095,7 +2214,11 @@ export const useChatStore = create<ChatStore>((set, get) => ({
           : state.queuePanelExpandedByConversation,
       }
     })
-    persistQueuedMessages(get().messageQueue)
+    const { hasHydratedQueuedMessages, messageQueue, pendingQueuedEdit } = get()
+    persistQueuedMessages(
+      getPersistableQueuedMessages(messageQueue, pendingQueuedEdit),
+      !hasHydratedQueuedMessages
+    )
   },
 
   restoreQueuedMessage: (queuedMessage, anchor) => {
@@ -2110,7 +2233,11 @@ export const useChatStore = create<ChatStore>((set, get) => ({
         },
       }
     })
-    persistQueuedMessages(get().messageQueue)
+    const { hasHydratedQueuedMessages, messageQueue, pendingQueuedEdit } = get()
+    persistQueuedMessages(
+      getPersistableQueuedMessages(messageQueue, pendingQueuedEdit),
+      !hasHydratedQueuedMessages
+    )
   },
 
   processQueue: async () => {

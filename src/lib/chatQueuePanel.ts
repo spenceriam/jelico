@@ -22,6 +22,11 @@ export interface QueuePanelAnchor {
   nextId: string | null
 }
 
+export interface QueuePanelPendingEdit<T extends QueuePanelOrderedMessageLike> {
+  queuedMessage: T
+  anchor: QueuePanelAnchor
+}
+
 export function getQueuePanelConversationKey(conversationId: string | null | undefined): string {
   return conversationId ?? NEW_CHAT_QUEUE_PANEL_KEY
 }
@@ -105,6 +110,35 @@ export function insertQueuedMessageAtAnchor<T extends QueuePanelOrderedMessageLi
   }
 
   return [...withoutMessage, queuedMessage]
+}
+
+export function mergeHydratedQueuedMessages<T extends QueuePanelOrderedMessageLike>(
+  persistedQueue: T[],
+  inMemoryQueue: T[]
+): T[] {
+  if (persistedQueue.length === 0) return [...inMemoryQueue]
+  if (inMemoryQueue.length === 0) return [...persistedQueue]
+
+  const inMemoryById = new Map(inMemoryQueue.map((message) => [message.id, message]))
+  const mergedQueue = persistedQueue.map((message) => inMemoryById.get(message.id) ?? message)
+  const mergedIds = new Set(mergedQueue.map((message) => message.id))
+
+  for (const message of inMemoryQueue) {
+    if (!mergedIds.has(message.id)) {
+      mergedQueue.push(message)
+      mergedIds.add(message.id)
+    }
+  }
+
+  return mergedQueue
+}
+
+export function getPersistableQueuedMessages<T extends QueuePanelOrderedMessageLike>(
+  messageQueue: T[],
+  pendingEdit: QueuePanelPendingEdit<T> | null
+): T[] {
+  if (!pendingEdit) return messageQueue
+  return insertQueuedMessageAtAnchor(messageQueue, pendingEdit.queuedMessage, pendingEdit.anchor)
 }
 
 function formatSingleAttachmentLabel(attachment: QueuePanelAttachmentLike): string {

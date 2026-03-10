@@ -1,12 +1,14 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import {
+  getPersistableQueuedMessages,
   getQueuePanelAnchor,
   getQueuePanelExpandedByConversation,
   getQueuePanelConversationKey,
   getQueuedCountForConversation,
   getQueuedMessagePreview,
   insertQueuedMessageAtAnchor,
+  mergeHydratedQueuedMessages,
 } from './chatQueuePanel'
 
 test('maps missing conversation ids to the shared new-chat queue key', () => {
@@ -135,4 +137,34 @@ test('re-inserts an edited queued message after its original previous sibling wh
   )
 
   assert.deepEqual(reordered.map((message) => message.id), ['a', 'c', 'x'])
+})
+
+test('merges hydrated queued messages with newer in-memory additions', () => {
+  const merged = mergeHydratedQueuedMessages(
+    [
+      { id: 'a', conversationId: 'conv-1' },
+      { id: 'b', conversationId: 'conv-2' },
+    ],
+    [
+      { id: 'b', conversationId: 'conv-2' },
+      { id: 'c', conversationId: 'conv-1' },
+    ]
+  )
+
+  assert.deepEqual(merged.map((message) => message.id), ['a', 'b', 'c'])
+})
+
+test('keeps a hidden queued edit in the persisted queue output', () => {
+  const persistableQueue = getPersistableQueuedMessages(
+    [
+      { id: 'a', conversationId: 'conv-1' },
+      { id: 'c', conversationId: 'conv-1' },
+    ],
+    {
+      queuedMessage: { id: 'b', conversationId: 'conv-1' },
+      anchor: { previousId: 'a', nextId: 'c' },
+    }
+  )
+
+  assert.deepEqual(persistableQueue.map((message) => message.id), ['a', 'b', 'c'])
 })

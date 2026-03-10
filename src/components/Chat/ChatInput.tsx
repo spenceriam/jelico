@@ -4,7 +4,7 @@ import { SendHorizontal, Square, Clock, Paperclip, X, Trash2, FileText, Image, F
 import { useChatStore, type MessageAttachment, type QueuedMessage } from '../../stores/chat'
 import { useProviderStore } from '../../stores/providers'
 import { useContextStore } from '../../stores/context'
-import { getQueuePanelConversationKey, getQueuedMessagePreview, getQueuePanelAnchor, type QueuePanelAnchor } from '../../lib/chatQueuePanel'
+import { getQueuePanelConversationKey, getQueuedMessagePreview } from '../../lib/chatQueuePanel'
 // Speech-to-text disabled - WASM crashes on Windows ARM64
 // import { speechClient } from '../../lib/speechClient'
 
@@ -145,6 +145,7 @@ const ACCEPTED_EXTENSIONS = '.png,.jpg,.jpeg,.gif,.webp,.bmp,.svg,.tif,.tiff,.av
 const PASTE_COLLAPSE_THRESHOLD = 10
 const NEW_CHAT_DRAFT_KEY = '__new__'
 const chatDraftsByConversation = new Map<string, string>()
+const chatDraftAttachmentsByConversation = new Map<string, Attachment[]>()
 const PROMPT_PLACEHOLDER_INDEX_KEY = 'jelico:prompt-placeholder-index'
 
 const PROMPT_PLACEHOLDERS = [
@@ -181,6 +182,10 @@ function writePlaceholderIndex(index: number) {
 
 function getDraftKey(conversationId: string | null): string {
   return conversationId || NEW_CHAT_DRAFT_KEY
+}
+
+function cloneDraftAttachments(attachments: Attachment[]): Attachment[] {
+  return attachments.map((attachment) => ({ ...attachment }))
 }
 
 function getFileExtension(fileName: string): string {
@@ -247,8 +252,8 @@ interface ChatInputProps {
 
 interface QueuedEditState {
   queuedMessage: QueuedMessage
-  anchor: QueuePanelAnchor
   previousDraft: string
+  previousAttachments: Attachment[]
 }
 
 // Speech-to-text disabled - WASM crashes on Windows ARM64
@@ -280,8 +285,10 @@ export function ChatInput({
     sendMessage,
     stopStreaming,
     sendQueuedNow,
+    startQueuedMessageEdit,
+    cancelQueuedMessageEdit,
+    commitQueuedMessageEdit,
     removeQueuedMessage,
-    restoreQueuedMessage,
     processQueue,
     messageQueue,
     queuePanelExpandedByConversation,
@@ -331,16 +338,29 @@ export function ChatInput({
         chatDraftsByConversation.delete(previousDraftKey)
       }
 
-      restoreQueuedMessage(pendingQueuedEdit.queuedMessage, pendingQueuedEdit.anchor)
+      if (pendingQueuedEdit.previousAttachments.length > 0) {
+        chatDraftAttachmentsByConversation.set(
+          previousDraftKey,
+          cloneDraftAttachments(pendingQueuedEdit.previousAttachments)
+        )
+      } else {
+        chatDraftAttachmentsByConversation.delete(previousDraftKey)
+      }
+
+      cancelQueuedMessageEdit()
       editingQueuedMessageRef.current = null
       setEditingQueuedMessage(null)
-      setAttachments([])
     }
 
-    const draft = chatDraftsByConversation.get(getDraftKey(activeConversationId)) || ''
+    const draftKey = getDraftKey(activeConversationId)
+    const draft = chatDraftsByConversation.get(draftKey) || ''
+    const draftAttachments = cloneDraftAttachments(
+      chatDraftAttachmentsByConversation.get(draftKey) || []
+    )
     setInput(draft)
+    setAttachments(draftAttachments)
     resizeTextarea(draft)
-  }, [activeConversationId, resizeTextarea, restoreQueuedMessage])
+  }, [activeConversationId, cancelQueuedMessageEdit, resizeTextarea])
 
   // Robust focus management - handles view transitions and dialog dismissals
   useEffect(() => {
@@ -459,15 +479,31 @@ export function ChatInput({
     requestAnimationFrame(() => focusTextarea())
   }, [focusTextarea, handleFileSelect])
 
-  const persistDraft = useCallback((nextValue: string) => {
+  const persistDraft = useCallback((nextValue: string, nextAttachments: Attachment[] = attachments) => {
     const draftKey = getDraftKey(activeConversationId)
     if (nextValue) {
       chatDraftsByConversation.set(draftKey, nextValue)
     } else {
       chatDraftsByConversation.delete(draftKey)
     }
+
+    if (nextAttachments.length > 0) {
+      chatDraftAttachmentsByConversation.set(draftKey, cloneDraftAttachments(nextAttachments))
+    } else {
+      chatDraftAttachmentsByConversation.delete(draftKey)
+    }
+
     resizeTextarea(nextValue)
-  }, [activeConversationId, resizeTextarea])
+  }, [activeConversationId, attachments, resizeTextarea])
+
+  useEffect(() => {
+    const draftKey = getDraftKey(activeConversationId)
+    if (attachments.length > 0) {
+      chatDraftAttachmentsByConversation.set(draftKey, cloneDraftAttachments(attachments))
+    } else if (!input) {
+      chatDraftAttachmentsByConversation.delete(draftKey)
+    }
+  }, [activeConversationId, attachments, input])
 
   // Handle paste with content detection
   const handlePaste = useCallback((e: React.ClipboardEvent) => {
@@ -647,7 +683,7 @@ export function ChatInput({
           model: activeModel,
         }
 
-        restoreQueuedMessage(restoredQueuedMessage, editingQueuedMessage.anchor)
+        commitQueuedMessageEdit(restoredQueuedMessage)
 
         const targetConversationId = restoredQueuedMessage.conversationId ?? activeConversationId ?? null
         if (!isStreaming && !(targetConversationId && isConversationCompacting(targetConversationId))) {
@@ -665,7 +701,7 @@ export function ChatInput({
       setInput('')
       setAttachments([])
       setEditingQueuedMessage(null)
-      persistDraft('')
+      persistDraft('', [])
       rotatePromptPlaceholder()
       return true
     } catch (error) {
@@ -683,9 +719,9 @@ export function ChatInput({
     isStreaming,
     persistDraft,
     processQueue,
-    restoreQueuedMessage,
     rotatePromptPlaceholder,
     sendMessage,
+    commitQueuedMessageEdit,
   ])
 
   const handleKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
@@ -753,13 +789,9 @@ export function ChatInput({
   }, [sendQueuedNow])
 
   const handleEditQueuedMessage = useCallback((queueIndex: number) => {
-    const queuedMessage = messageQueue[queueIndex]
-    if (!queuedMessage) return
-
     const pendingQueuedEdit = editingQueuedMessageRef.current
     const previousDraft = pendingQueuedEdit?.previousDraft ?? input
-
-    removeQueuedMessage(queueIndex)
+    const previousAttachments = pendingQueuedEdit?.previousAttachments ?? cloneDraftAttachments(attachments)
 
     if (pendingQueuedEdit) {
       const previousDraftKey = getDraftKey(pendingQueuedEdit.queuedMessage.conversationId ?? null)
@@ -769,24 +801,39 @@ export function ChatInput({
         chatDraftsByConversation.delete(previousDraftKey)
       }
 
-      restoreQueuedMessage(pendingQueuedEdit.queuedMessage, pendingQueuedEdit.anchor)
+      if (pendingQueuedEdit.previousAttachments.length > 0) {
+        chatDraftAttachmentsByConversation.set(
+          previousDraftKey,
+          cloneDraftAttachments(pendingQueuedEdit.previousAttachments)
+        )
+      } else {
+        chatDraftAttachmentsByConversation.delete(previousDraftKey)
+      }
+
+      cancelQueuedMessageEdit()
       editingQueuedMessageRef.current = null
       setEditingQueuedMessage(null)
     }
 
+    const pendingEdit = startQueuedMessageEdit(queueIndex)
+    if (!pendingEdit) return
+
+    const queuedMessageAttachments = (pendingEdit.queuedMessage.attachments || [])
+      .map(messageAttachmentToDraftAttachment)
+
     setEditingQueuedMessage({
-      queuedMessage,
-      anchor: getQueuePanelAnchor(messageQueue, queuedMessage.id),
+      queuedMessage: pendingEdit.queuedMessage,
       previousDraft,
+      previousAttachments,
     })
-    setInput(queuedMessage.content)
-    setAttachments((queuedMessage.attachments || []).map(messageAttachmentToDraftAttachment))
-    persistDraft(queuedMessage.content)
+    setInput(pendingEdit.queuedMessage.content)
+    setAttachments(queuedMessageAttachments)
+    persistDraft(pendingEdit.queuedMessage.content, queuedMessageAttachments)
 
     requestAnimationFrame(() => {
       focusTextarea()
     })
-  }, [focusTextarea, input, messageQueue, persistDraft, removeQueuedMessage, restoreQueuedMessage])
+  }, [attachments, cancelQueuedMessageEdit, focusTextarea, input, persistDraft, startQueuedMessageEdit])
 
   const handleCancelQueuedMessage = useCallback((queueIndex: number) => {
     removeQueuedMessage(queueIndex)

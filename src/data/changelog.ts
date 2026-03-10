@@ -33,7 +33,8 @@ export const changelog: ChangelogEntry[] = [
       ],
       fixed: [
         'Queueing a new message during an active response now always auto-expands the queued messages panel for the active conversation instead of leaving new entries hidden in a collapsed state (Fixes #135)',
-        'Queued messages are no longer dropped on restart or failed queue handoff attempts; queue state now survives reloads and restores items when immediate/deferred sends fail',
+        'Queued messages are no longer dropped on restart, during startup queue hydration, or during failed queue handoff attempts; queue state now survives reloads and restores items when immediate/deferred sends fail',
+        'Starting to edit a queued message no longer removes it from durable queue storage before the edit is finalized, so reloads during edit restore the original queued item instead of silently losing it',
         'Regenerate now preserves attachments from the preceding user message instead of silently dropping them on resend',
       ],
     },

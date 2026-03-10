@@ -11,7 +11,8 @@
 
 ### Fixed
 - **Collapsed Queue Visibility** — Adding a queued message during an active response now opens the queued-messages panel right away so new queued work is visible immediately.
-- **Queue Recovery After Restart** — Queued messages now survive app restarts and failed queue handoffs instead of disappearing.
+- **Queue Recovery After Restart** — Queued messages now survive app restarts, startup loading, and failed queue handoffs instead of disappearing.
+- **Queued Edit Durability** — Starting to edit a queued message no longer risks deleting it if the app reloads before you save or discard the edit.
 - **Regenerate Attachment Loss** — Regenerate now keeps the original prompt attachments instead of resending only the text.
 
 ### Changed
