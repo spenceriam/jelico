@@ -32,6 +32,7 @@ module.exports = {
           bright: 'var(--accent-bright)',
           dim: 'var(--accent-dim)',
           glow: 'var(--accent-glow)',
+          foreground: 'var(--accent-foreground)',
         },
         success: 'var(--success)',
         error: 'var(--error)',

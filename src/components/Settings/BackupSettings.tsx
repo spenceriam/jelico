@@ -243,7 +243,7 @@ export function BackupSettings() {
         <button
           onClick={handleExport}
           disabled={exporting}
-          className="flex items-center gap-2 px-4 py-2 text-sm bg-accent text-black rounded-lg hover:bg-accent-bright transition-colors disabled:opacity-50"
+          className="flex items-center gap-2 px-4 py-2 text-sm bg-accent text-accent-foreground rounded-lg hover:bg-accent-bright transition-colors disabled:opacity-50"
         >
           {exporting ? (
             <Loader2 className="w-4 h-4 animate-spin" />

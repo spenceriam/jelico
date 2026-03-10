@@ -1,3 +1,17 @@
+## [0.35.3] - 2026-03-10
+
+### Highlights
+- Light mode now has clearer surface separation across the sidebar, header, chat canvas, and composer so the interface no longer feels washed out.
+- Tool-call cards, status text, and running-action shimmer are easier to read while artifact and file actions are in progress.
+- Update prompts and titlebar/header surfaces now hold their contrast better in light mode, including the area behind the macOS traffic lights.
+
+### Fixed
+- **Light Theme Contrast** — Off-white surfaces in the sidebar, top bar, bottom rail, chat canvas, message bubbles, and update prompts were retuned so panels and actions stay readable without changing the layout.
+- **Tool Call Readability** — Tool action titles, in-progress artifact labels, context meter visibility, and processing gradients now remain legible in light mode, including grouped tool rows and sidebar activity states.
+
+### Changed
+- **Light Theme Palette** — Accent shades and supporting text colors were adjusted to keep the same visual identity while providing stronger contrast on bright backgrounds.
+
 ## [0.35.2] - 2026-03-09
 
 ### Highlights

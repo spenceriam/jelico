@@ -528,13 +528,18 @@ export function ChatArea() {
       !notification.conversationId || notification.conversationId === activeConversationId
     )
   }, [systemNotifications, activeConversationId])
+  const chatCanvasStyle = {
+    '--chat-font-scale': chatFontScale,
+    '--app-font-scale': 1,
+    backgroundColor: 'color-mix(in srgb, var(--bg-void) 84%, var(--bg-surface) 16%)',
+  } as Record<string, string | number>
 
   // New chat / Welcome UI - centered stack
   if (showNewChatUI) {
     return (
       <div
         className="flex-1 flex flex-col min-h-0 chat-font-scale"
-        style={{ '--chat-font-scale': chatFontScale, '--app-font-scale': 1 } as Record<string, string | number>}
+        style={chatCanvasStyle}
         data-window-toggle="ignore"
       >
         <div className="flex-1 flex items-center justify-center py-6">
@@ -555,7 +560,7 @@ export function ChatArea() {
   return (
     <div
       className="flex-1 flex flex-col min-h-0 chat-font-scale"
-      style={{ '--chat-font-scale': chatFontScale, '--app-font-scale': 1 } as Record<string, string | number>}
+      style={chatCanvasStyle}
       data-window-toggle="ignore"
     >
       {/* Messages area */}
@@ -586,7 +591,7 @@ export function ChatArea() {
                 <div className="flex items-center gap-2">
                   <button
                     onClick={() => resumeInterruptedConversation(activeConversationId || undefined)}
-                    className="px-2 py-1 text-xs font-medium rounded-md bg-accent text-bg-surface hover:opacity-90 transition-opacity"
+                    className="px-2 py-1 text-xs font-medium rounded-md bg-accent text-accent-foreground hover:opacity-90 transition-opacity"
                   >
                     Restart
                   </button>
@@ -650,7 +655,7 @@ export function ChatArea() {
       </div>
 
       {/* Input area */}
-      <div className="border-t border-border bg-bg-surface">
+      <div className="pane-surface border-t border-border">
         <div className={`${footerContainerClass} pt-0 pb-0`}>
           {/* Mode selector rail flush to top separator */}
           <div className="-mx-4 px-4 py-0">
@@ -1273,7 +1278,7 @@ function NewChatView({ disabled, isStreaming }: NewChatViewProps) {
               className={`
                 w-3.5 h-3.5 rounded border transition-colors flex items-center justify-center text-[10px] leading-none
                 ${createWorktreeOnNewChat
-                  ? 'border-accent bg-accent text-bg-deep'
+                  ? 'border-accent bg-accent text-accent-foreground'
                   : 'border-border bg-bg-deep text-transparent'}
                 peer-focus-visible:ring-2 peer-focus-visible:ring-accent/40
               `}

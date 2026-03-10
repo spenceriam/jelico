@@ -826,7 +826,7 @@ export function SingleToolCallDisplay({
           <span className="w-4 h-4 flex-shrink-0" />
         )}
 
-        <span className="text-sm font-medium text-accent flex-1 truncate">{label}</span>
+        <span className="text-sm font-medium text-text-primary flex-1 truncate">{label}</span>
 
         {/* Status indicator - for spawn_agent, show sub-agent status instead of tool completion */}
         {toolCall.name === 'spawn_agent' && subAgent ? (
@@ -857,7 +857,7 @@ export function SingleToolCallDisplay({
       {/* Artifact create/update in progress - simple indicator, no streaming preview */}
       {isArtifactMutationTool && !hasResult && (
         <div className="px-3 py-2 border-t border-border bg-bg-surface">
-          <span className="text-xs text-text-muted">
+          <span className="text-xs text-text-primary">
             {isCreateArtifactTool ? 'Creating ' : 'Updating '}
             {formatArtifactType()}...
           </span>
@@ -1143,23 +1143,29 @@ export function ConsolidatedToolCallGroup({
     : errorCount > 0
       ? `${toolCalls.length} calls · ${errorCount} failed`
       : `${toolCalls.length} calls`
+  const processingTone = toolCalls
+    .map((toolCall) => processingToneByToolCallId.get(toolCall.id))
+    .find((tone): tone is number => tone !== undefined) ?? 0
+  const processingToneClass = inProgressCount > 0
+    ? `tool-call-pill-processing tool-call-pill-processing-tone-${processingTone % 4}`
+    : ''
 
   return (
     <div className="border border-border rounded-lg overflow-hidden bg-bg-deep">
       <button
         type="button"
         onClick={() => setExpanded((prev) => !prev)}
-        className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-bg-hover transition-colors"
+        className={`w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-bg-hover transition-colors ${processingToneClass}`}
       >
         {expanded ? (
           <ChevronDown className="w-4 h-4 text-text-muted flex-shrink-0" />
         ) : (
           <ChevronRight className="w-4 h-4 text-text-muted flex-shrink-0" />
         )}
-        <span className="text-sm font-medium text-accent flex-1 truncate">
+        <span className="text-sm font-medium text-text-primary flex-1 truncate">
           {label}
         </span>
-        <span className="text-xs text-text-muted">{statusLabel}</span>
+        <span className="text-xs text-text-secondary">{statusLabel}</span>
         {errorCount > 0 ? (
           <XCircle className="w-4 h-4 text-error flex-shrink-0" />
         ) : inProgressCount === 0 && completedCount > 0 ? (

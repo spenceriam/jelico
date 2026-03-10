@@ -21,6 +21,19 @@ export interface ChangelogEntry {
 
 export const changelog: ChangelogEntry[] = [
   {
+    version: '0.35.3',
+    date: '2026-03-10',
+    changes: {
+      fixed: [
+        'Light theme surfaces now use a clearer off-white contrast ladder across the header, sidebar, composer rail, chat canvas, update prompts, and message bubbles so light mode no longer washes out UI structure or accent details (Fixes #140)',
+        'Tool-call headers, in-progress artifact copy, context meter ring, and light-mode processing shimmer states now remain legible while actions are running, including grouped tool-call rows and sidebar processing gradients (Fixes #140)',
+      ],
+      changed: [
+        'Light theme accent variants and accent-foreground tokens were rebalanced to preserve the existing palette while improving button and action contrast on brighter surfaces',
+      ],
+    },
+  },
+  {
     version: '0.35.2',
     date: '2026-03-09',
     changes: {

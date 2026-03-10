@@ -119,7 +119,7 @@ export function ProfileSettings() {
             <button
               onClick={handleSaveProfile}
               disabled={isSavingProfile}
-              className="flex items-center gap-2 px-4 py-2 bg-accent text-black rounded-lg hover:bg-accent-bright transition-colors disabled:opacity-50"
+              className="flex items-center gap-2 px-4 py-2 bg-accent text-accent-foreground rounded-lg hover:bg-accent-bright transition-colors disabled:opacity-50"
             >
               {profileSaved ? (
                 <>

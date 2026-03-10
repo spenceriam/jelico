@@ -24,7 +24,7 @@ export function Header() {
 
   return (
     <header
-      className="flex items-center justify-between px-4 border-b border-border bg-bg-surface"
+      className="pane-surface flex items-center justify-between px-4 border-b border-border"
       style={{ height: 'clamp(2.9rem, calc(3.5rem * var(--app-font-scale, 1)), 4.4rem)' }}
     >
       {/* Left - Workspace selector, Model, Context */}

@@ -494,7 +494,7 @@ export default function App() {
       >
         {/* macOS titlebar safe-area fill for the main pane */}
         <div
-          className="absolute top-0 left-0 right-0 bg-bg-surface pointer-events-none"
+          className="pane-surface absolute top-0 left-0 right-0 pointer-events-none"
           style={{ height: 'var(--titlebar-padding)' }}
           aria-hidden="true"
         />
@@ -607,21 +607,21 @@ export default function App() {
                   <button
                     onClick={handleApplyNow}
                     disabled={isUpdateApplying}
-                    className="flex items-center gap-2 px-3 py-2 rounded-lg bg-accent text-black hover:bg-accent-bright transition-colors disabled:opacity-50"
+                    className="flex items-center gap-2 px-3 py-2 rounded-lg bg-accent text-accent-foreground hover:bg-accent-bright transition-colors disabled:opacity-50"
                   >
                     <RefreshCw className={`w-4 h-4 ${isUpdateApplying ? 'animate-spin' : ''}`} />
                     {isUpdateApplying ? 'Applying...' : 'Apply now'}
                   </button>
                   <button
                     onClick={() => dismissApplyPrompt(downloadedVersion || latestAvailableVersion || null)}
-                    className="px-3 py-2 rounded-lg border border-border text-text-secondary hover:text-text-primary hover:border-border-strong transition-colors"
+                    className="px-3 py-2 rounded-lg border border-border bg-bg-surface text-text-primary hover:bg-bg-hover hover:border-border-strong transition-colors"
                   >
                     Later
                   </button>
                   {updateInfo?.releaseUrl && (
                     <button
                       onClick={handleOpenReleaseNotes}
-                      className="flex items-center gap-2 px-3 py-2 rounded-lg border border-border text-text-secondary hover:text-text-primary hover:border-border-strong transition-colors"
+                      className="flex items-center gap-2 px-3 py-2 rounded-lg border border-border bg-bg-surface text-text-primary hover:bg-bg-hover hover:border-border-strong transition-colors"
                     >
                       <ArrowUpRight className="w-4 h-4" />
                       Release notes
@@ -674,7 +674,7 @@ export default function App() {
                   <button
                     onClick={() => downloadUpdate()}
                     disabled={isUpdateDownloading}
-                    className="flex items-center gap-2 px-3 py-2 rounded-lg bg-accent text-black hover:bg-accent-bright transition-colors disabled:opacity-50"
+                    className="flex items-center gap-2 px-3 py-2 rounded-lg bg-accent text-accent-foreground hover:bg-accent-bright transition-colors disabled:opacity-50"
                   >
                     <Download className="w-4 h-4" />
                     {isUpdateDownloading ? 'Downloading...' : 'Download update'}
@@ -682,7 +682,7 @@ export default function App() {
                   {updateInfo?.releaseUrl && (
                     <button
                       onClick={handleOpenReleaseNotes}
-                      className="flex items-center gap-2 px-3 py-2 rounded-lg border border-border text-text-secondary hover:text-text-primary hover:border-border-strong transition-colors"
+                      className="flex items-center gap-2 px-3 py-2 rounded-lg border border-border bg-bg-surface text-text-primary hover:bg-bg-hover hover:border-border-strong transition-colors"
                     >
                       <ArrowUpRight className="w-4 h-4" />
                       Release notes
@@ -690,7 +690,7 @@ export default function App() {
                   )}
                   <button
                     onClick={() => dismissAvailablePrompt(latestAvailableVersion)}
-                    className="px-3 py-2 rounded-lg border border-border text-text-secondary hover:text-text-primary hover:border-border-strong transition-colors"
+                    className="px-3 py-2 rounded-lg border border-border bg-bg-surface text-text-primary hover:bg-bg-hover hover:border-border-strong transition-colors"
                   >
                     Later
                   </button>

@@ -301,7 +301,7 @@ export function Message({
         </div>
         <div className="max-w-[80%] flex flex-col items-end">
           {/* Message bubble */}
-          <div className="rounded-2xl px-4 py-3 bg-bg-elevated text-text-primary">
+          <div className="rounded-2xl px-4 py-3 bg-bg-hover text-text-primary">
             {/* Show attachments first */}
             {hasAttachments && (
               <div className={`space-y-2 ${hasContent ? 'mb-3' : ''}`}>

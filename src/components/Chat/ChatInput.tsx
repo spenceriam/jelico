@@ -778,7 +778,7 @@ export function ChatInput({ disabled, isStreaming, centered }: ChatInputProps) {
               <button
                 onClick={isStreaming ? handleQueueSubmit : handleSubmit}
                 disabled={disabled || !hasDraftToSend}
-                className="relative inline-flex h-[2.2em] w-[2.2em] items-center justify-center rounded-full bg-accent text-black hover:bg-accent-bright disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex-shrink-0"
+                className="relative inline-flex h-[2.2em] w-[2.2em] items-center justify-center rounded-full bg-accent text-accent-foreground hover:bg-accent-bright disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex-shrink-0"
                 title={isStreaming ? 'Queue message' : 'Send message'}
               >
                 <Send className="w-[1.15em] h-[1.15em]" />

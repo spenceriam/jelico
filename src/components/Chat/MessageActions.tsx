@@ -106,7 +106,7 @@ export function MessageActions({ content, segments, toolCalls, toolResults, usag
   }
 
   return (
-    <div className="flex items-center gap-3 mt-3 pt-2 border-t border-border-subtle">
+    <div className="flex items-center gap-3 mt-3 pt-2 border-t border-border">
       {/* Copy button */}
       <button
         onClick={handleCopy}

@@ -71,11 +71,10 @@ export function ContextIndicator() {
       <button
         onClick={toggleContextText}
         className={`
-          flex items-center gap-[0.45em] px-[0.65em] py-[0.4em] rounded text-xs
-          transition-colors
+          flex items-center gap-[0.45em] px-[0.65em] py-[0.4em] rounded text-xs transition-colors
           ${contextUsage.shouldWarn
             ? 'text-warning hover:bg-warning/10'
-            : 'text-text-muted hover:text-text-secondary hover:bg-bg-surface'}
+            : 'text-text-secondary hover:text-text-primary hover:bg-bg-surface'}
         `}
         title={buttonTitle}
       >
@@ -103,8 +102,8 @@ export function ContextIndicator() {
             strokeWidth={trackStrokeWidth}
             strokeDasharray={trackDashPattern}
             strokeLinecap="round"
-            className="text-text-muted"
-            style={{ opacity: 0.24 }}
+            className="text-border-strong"
+            style={{ opacity: 0.86 }}
           />
           <circle
             cx={circleSize / 2}
@@ -123,7 +122,7 @@ export function ContextIndicator() {
 
       {/* Percentage text - toggles on circle click */}
       {showContextText && (
-        <span className="text-sm text-text-secondary">
+        <span className="text-sm text-text-primary">
           Context: {percentage}%{compactText}
         </span>
       )}

@@ -27,7 +27,7 @@ export function SkillManager() {
         <h3 className="text-lg font-medium text-text-primary">Skills</h3>
         <button
           onClick={() => setIsCreating(true)}
-          className="flex items-center gap-2 px-3 py-1.5 text-sm bg-accent text-black rounded-lg hover:bg-accent-bright transition-colors"
+          className="flex items-center gap-2 px-3 py-1.5 text-sm bg-accent text-accent-foreground rounded-lg hover:bg-accent-bright transition-colors"
         >
           <Plus className="w-4 h-4" />
           New Skill
@@ -258,7 +258,7 @@ function SkillEditor({
             </button>
             <button
               type="submit"
-              className="px-4 py-2 text-sm bg-accent text-black rounded-lg hover:bg-accent-bright"
+              className="px-4 py-2 text-sm bg-accent text-accent-foreground rounded-lg hover:bg-accent-bright"
             >
               Save Skill
             </button>

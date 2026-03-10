@@ -492,7 +492,7 @@ export function Settings({ onClose }: SettingsProps) {
                     onClose()
                     openProviderSetup()
                   }}
-                  className="flex items-center gap-2 px-3 py-1.5 text-sm bg-accent text-black rounded-lg hover:bg-accent-bright transition-colors"
+                  className="flex items-center gap-2 px-3 py-1.5 text-sm bg-accent text-accent-foreground rounded-lg hover:bg-accent-bright transition-colors"
                 >
                   <Plus className="w-4 h-4" />
                   Add Provider
@@ -790,7 +790,7 @@ export function Settings({ onClose }: SettingsProps) {
                           <div className="flex items-center gap-2 mt-3">
                             <button
                               onClick={saveProviderEdit}
-                              className="px-3 py-1.5 text-sm bg-accent text-black rounded hover:bg-accent-bright transition-colors"
+                              className="px-3 py-1.5 text-sm bg-accent text-accent-foreground rounded hover:bg-accent-bright transition-colors"
                             >
                               Save
                             </button>

@@ -21,7 +21,7 @@ function getButtonClasses(option: DecisionPromptOption, isDefault: boolean): str
   }
 
   if (option.variant === 'primary' || isDefault) {
-    return 'px-3 py-2 rounded-lg bg-accent text-black hover:bg-accent-bright transition-colors'
+    return 'px-3 py-2 rounded-lg bg-accent text-accent-foreground hover:bg-accent-bright transition-colors'
   }
 
   return 'px-3 py-2 rounded-lg border border-border text-text-secondary hover:text-text-primary hover:border-border-strong transition-colors'

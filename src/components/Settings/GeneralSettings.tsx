@@ -271,7 +271,7 @@ export function GeneralSettings() {
                 <button
                   onClick={() => downloadUpdate()}
                   disabled={isDownloading}
-                  className="flex items-center gap-2 px-3 py-2 rounded-lg bg-accent text-black hover:bg-accent-bright transition-colors disabled:opacity-50"
+                  className="flex items-center gap-2 px-3 py-2 rounded-lg bg-accent text-accent-foreground hover:bg-accent-bright transition-colors disabled:opacity-50"
                 >
                   <Download className="w-4 h-4" />
                   {isDownloading ? 'Downloading...' : 'Download update'}
@@ -314,7 +314,7 @@ export function GeneralSettings() {
                   <div className="flex flex-wrap gap-2">
                     <button
                       onClick={() => applyDownloadedUpdate()}
-                      className="flex items-center gap-2 px-3 py-2 rounded-lg bg-accent text-black hover:bg-accent-bright transition-colors"
+                      className="flex items-center gap-2 px-3 py-2 rounded-lg bg-accent text-accent-foreground hover:bg-accent-bright transition-colors"
                     >
                       <Download className="w-4 h-4" />
                       Apply now
