@@ -370,7 +370,7 @@ export function Sidebar() {
 
   return (
     <div
-      className="w-64 bg-bg-surface border-r border-border flex flex-col"
+      className="pane-surface w-64 border-r border-border flex flex-col"
       style={{ paddingTop: 'var(--titlebar-padding)' }}
     >
       {/* Header */}
@@ -453,7 +453,7 @@ export function Sidebar() {
               </div>
 
               {isExpanded && (
-                <div className="ml-5 mt-1 border-l border-border/50 pl-2">
+                <div className="ml-5 mt-1 border-l border-border-strong pl-2">
                   {group.conversations.map((conv) => {
                     const convArtifacts = getArtifactsForConversation(conv.id)
                     const hasArtifacts = convArtifacts.length > 0
@@ -523,7 +523,7 @@ export function Sidebar() {
                         </div>
 
                         {hasExpandableContent && isConversationExpanded && (
-                          <div className="ml-6 pl-2 border-l border-border/40 mt-1 mb-2">
+                          <div className="ml-6 pl-2 border-l border-border-strong mt-1 mb-2">
                             {hasArtifacts && (
                               <div className="text-[10px] text-text-faint uppercase tracking-wider mb-1">Artifacts</div>
                             )}

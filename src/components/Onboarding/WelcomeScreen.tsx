@@ -110,7 +110,7 @@ export function WelcomeScreen({ onComplete }: WelcomeScreenProps) {
               <button
                 onClick={handleNext}
                 disabled={!canContinue()}
-                className="inline-flex items-center gap-2 px-6 py-3 bg-accent text-black font-medium rounded-lg hover:bg-accent-bright transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                className="inline-flex items-center gap-2 px-6 py-3 bg-accent text-accent-foreground font-medium rounded-lg hover:bg-accent-bright transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 Continue
                 <ArrowRight className="w-4 h-4" />
@@ -165,7 +165,7 @@ export function WelcomeScreen({ onComplete }: WelcomeScreenProps) {
               </button>
               <button
                 onClick={handleNext}
-                className="inline-flex items-center gap-2 px-6 py-3 bg-accent text-black font-medium rounded-lg hover:bg-accent-bright transition-colors"
+                className="inline-flex items-center gap-2 px-6 py-3 bg-accent text-accent-foreground font-medium rounded-lg hover:bg-accent-bright transition-colors"
               >
                 {profile.intentions.trim() ? 'Continue' : 'Skip for now'}
                 <ArrowRight className="w-4 h-4" />
@@ -220,7 +220,7 @@ export function WelcomeScreen({ onComplete }: WelcomeScreenProps) {
               </button>
               <button
                 onClick={handleNext}
-                className="inline-flex items-center gap-2 px-6 py-3 bg-accent text-black font-medium rounded-lg hover:bg-accent-bright transition-colors"
+                className="inline-flex items-center gap-2 px-6 py-3 bg-accent text-accent-foreground font-medium rounded-lg hover:bg-accent-bright transition-colors"
               >
                 {profile.preferences.trim() ? 'Continue' : 'Skip for now'}
                 <ArrowRight className="w-4 h-4" />
@@ -275,7 +275,7 @@ export function WelcomeScreen({ onComplete }: WelcomeScreenProps) {
               </button>
               <button
                 onClick={handleNext}
-                className="inline-flex items-center gap-2 px-6 py-3 bg-accent text-black font-medium rounded-lg hover:bg-accent-bright transition-colors"
+                className="inline-flex items-center gap-2 px-6 py-3 bg-accent text-accent-foreground font-medium rounded-lg hover:bg-accent-bright transition-colors"
               >
                 {profile.additionalInfo.trim() ? 'Continue' : 'Skip for now'}
                 <ArrowRight className="w-4 h-4" />
@@ -336,7 +336,7 @@ export function WelcomeScreen({ onComplete }: WelcomeScreenProps) {
           </button>
           <button
             onClick={handleNext}
-            className="inline-flex items-center gap-2 px-8 py-3 bg-accent text-black font-medium rounded-lg hover:bg-accent-bright transition-colors"
+            className="inline-flex items-center gap-2 px-8 py-3 bg-accent text-accent-foreground font-medium rounded-lg hover:bg-accent-bright transition-colors"
           >
             Let's Begin
             <ArrowRight className="w-4 h-4" />

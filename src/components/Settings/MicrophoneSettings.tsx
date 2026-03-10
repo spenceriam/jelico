@@ -515,7 +515,7 @@ export function MicrophoneSettings() {
                         handleDownloadModel(model.id)
                       }}
                       disabled={isDownloading}
-                      className="flex items-center gap-1 px-3 py-1.5 bg-accent text-black rounded-lg hover:bg-accent-bright transition-colors text-sm disabled:opacity-50"
+                      className="flex items-center gap-1 px-3 py-1.5 bg-accent text-accent-foreground rounded-lg hover:bg-accent-bright transition-colors text-sm disabled:opacity-50"
                     >
                       <Download className="w-4 h-4" />
                       Download
@@ -545,7 +545,7 @@ export function MicrophoneSettings() {
             <button
               onClick={handleTestTranscription}
               disabled={isTranscribing || isDownloading}
-              className="flex items-center gap-2 px-4 py-2 bg-accent text-black rounded-lg hover:bg-accent-bright transition-colors disabled:opacity-50"
+              className="flex items-center gap-2 px-4 py-2 bg-accent text-accent-foreground rounded-lg hover:bg-accent-bright transition-colors disabled:opacity-50"
             >
               {isTranscribing ? (
                 <>

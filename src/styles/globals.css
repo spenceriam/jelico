@@ -25,6 +25,7 @@
     --accent-bright: #e8c49a;
     --accent-dim: #b8863d;
     --accent-glow: rgba(212, 165, 116, 0.15);
+    --accent-foreground: #0d0d10;
 
     /* Status colors */
     --success: #5cb97b;
@@ -54,21 +55,27 @@
 
   /* Light mode overrides */
   :root.light {
-    --bg-void: #f5f5f5;
-    --bg-deep: #ebebeb;
-    --bg-surface: #ffffff;
-    --bg-elevated: #fafafa;
-    --bg-hover: #f0f0f0;
-    --bg-active: #e5e5e5;
+    --accent: #9f740f;
+    --accent-bright: #b58411;
+    --accent-dim: #7d5a0c;
+    --accent-glow: rgba(159, 116, 15, 0.18);
+    --accent-foreground: #fffdf8;
 
-    --text-primary: #1a1a1a;
-    --text-secondary: #4a4a4a;
-    --text-muted: #6a6a6a;
-    --text-faint: #9a9a9a;
+    --bg-void: #f7f2ea;
+    --bg-deep: #d7cab7;
+    --bg-surface: #e7dccb;
+    --bg-elevated: #f3ede2;
+    --bg-hover: #ddd1be;
+    --bg-active: #cfbfaa;
 
-    --border: #e0e0e0;
-    --border-subtle: #f0f0f0;
-    --border-strong: #d0d0d0;
+    --text-primary: #191612;
+    --text-secondary: #4e473f;
+    --text-muted: #70675c;
+    --text-faint: #9b9186;
+
+    --border: #c8b79f;
+    --border-subtle: #d9cab7;
+    --border-strong: #9f896d;
   }
 
   :root.os-mac {
@@ -437,6 +444,71 @@
   );
 }
 
+:root.light .sidebar-conversation-processing {
+  background-image: linear-gradient(
+    135deg,
+    transparent 0%,
+    color-mix(in srgb, var(--accent-dim) 8%, transparent) 22%,
+    color-mix(in srgb, var(--accent-dim) 18%, transparent) 42%,
+    color-mix(in srgb, var(--accent) 28%, transparent) 50%,
+    color-mix(in srgb, var(--accent-dim) 18%, transparent) 58%,
+    color-mix(in srgb, var(--accent-dim) 8%, transparent) 78%,
+    transparent 100%
+  );
+}
+
+:root.light .tool-call-pill-processing-tone-0 {
+  background-image: linear-gradient(
+    135deg,
+    transparent 0%,
+    color-mix(in srgb, var(--accent) 10%, transparent) 22%,
+    color-mix(in srgb, var(--accent) 19%, transparent) 42%,
+    color-mix(in srgb, var(--accent) 30%, transparent) 50%,
+    color-mix(in srgb, var(--accent) 19%, transparent) 58%,
+    color-mix(in srgb, var(--accent) 10%, transparent) 78%,
+    transparent 100%
+  );
+}
+
+:root.light .tool-call-pill-processing-tone-1 {
+  background-image: linear-gradient(
+    135deg,
+    transparent 0%,
+    color-mix(in srgb, var(--accent-bright) 10%, transparent) 22%,
+    color-mix(in srgb, var(--accent-bright) 20%, transparent) 42%,
+    color-mix(in srgb, var(--accent-bright) 31%, transparent) 50%,
+    color-mix(in srgb, var(--accent-bright) 20%, transparent) 58%,
+    color-mix(in srgb, var(--accent-bright) 10%, transparent) 78%,
+    transparent 100%
+  );
+}
+
+:root.light .tool-call-pill-processing-tone-2 {
+  background-image: linear-gradient(
+    135deg,
+    transparent 0%,
+    color-mix(in srgb, var(--accent-dim) 10%, transparent) 22%,
+    color-mix(in srgb, var(--accent-dim) 21%, transparent) 42%,
+    color-mix(in srgb, var(--accent-dim) 32%, transparent) 50%,
+    color-mix(in srgb, var(--accent-dim) 21%, transparent) 58%,
+    color-mix(in srgb, var(--accent-dim) 10%, transparent) 78%,
+    transparent 100%
+  );
+}
+
+:root.light .tool-call-pill-processing-tone-3 {
+  background-image: linear-gradient(
+    135deg,
+    transparent 0%,
+    color-mix(in srgb, var(--accent-bright) 9%, transparent) 22%,
+    color-mix(in srgb, color-mix(in srgb, var(--accent-bright) 65%, var(--accent) 35%) 19%, transparent) 42%,
+    color-mix(in srgb, color-mix(in srgb, var(--accent-bright) 65%, var(--accent) 35%) 30%, transparent) 50%,
+    color-mix(in srgb, color-mix(in srgb, var(--accent-bright) 65%, var(--accent) 35%) 19%, transparent) 58%,
+    color-mix(in srgb, var(--accent-bright) 9%, transparent) 78%,
+    transparent 100%
+  );
+}
+
 @media (prefers-reduced-motion: reduce) {
   .tool-call-pill-processing {
     animation: none;
@@ -504,6 +576,10 @@
   .btn-ghost:hover {
     color: var(--text-primary);
     background: var(--bg-hover);
+  }
+
+  .pane-surface {
+    background-color: color-mix(in srgb, var(--bg-surface) 84%, var(--bg-elevated) 16%);
   }
 
   .input {

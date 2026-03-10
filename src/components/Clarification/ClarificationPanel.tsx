@@ -44,7 +44,7 @@ function OptionRow({
             w-4 h-4 rounded border-2 flex items-center justify-center
             ${isSelected ? 'border-accent bg-accent' : 'border-text-muted'}
           `}>
-            {isSelected && <Check className="w-3 h-3 text-white" />}
+            {isSelected && <Check className="w-3 h-3 text-accent-foreground" />}
           </div>
         ) : (
           <div className={`
@@ -99,7 +99,7 @@ function OtherOption({
               w-4 h-4 rounded border-2 flex items-center justify-center
               ${isSelected ? 'border-accent bg-accent' : 'border-text-muted'}
             `}>
-              {isSelected && <Check className="w-3 h-3 text-white" />}
+              {isSelected && <Check className="w-3 h-3 text-accent-foreground" />}
             </div>
           ) : (
             <div className={`
@@ -384,7 +384,7 @@ export function ClarificationPanel() {
               flex items-center gap-1.5 px-3 py-1 rounded text-sm font-medium
               transition-colors
               ${canSubmit() && !isSubmitting
-                ? 'bg-accent text-white hover:bg-accent-bright'
+                ? 'bg-accent text-accent-foreground hover:bg-accent-bright'
                 : 'bg-bg-elevated text-text-muted cursor-not-allowed'
               }
             `}

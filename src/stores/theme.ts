@@ -48,16 +48,16 @@ export const COLOR_THEMES: ColorTheme[] = [
       bgActive: '#2a2a32',
     },
     light: {
-      accent: '#b8860b',
-      accentBright: '#daa520',
-      accentDim: '#8b6914',
-      accentGlow: 'rgba(184, 134, 11, 0.15)',
-      bgVoid: '#f5f5f5',
-      bgDeep: '#ebebeb',
-      bgSurface: '#ffffff',
-      bgElevated: '#fafafa',
-      bgHover: '#f0f0f0',
-      bgActive: '#e5e5e5',
+      accent: '#9f740f',
+      accentBright: '#b58411',
+      accentDim: '#7d5a0c',
+      accentGlow: 'rgba(159, 116, 15, 0.18)',
+      bgVoid: '#f7f2ea',
+      bgDeep: '#d7cab7',
+      bgSurface: '#e7dccb',
+      bgElevated: '#f3ede2',
+      bgHover: '#ddd1be',
+      bgActive: '#cfbfaa',
     },
   },
   {
@@ -76,16 +76,16 @@ export const COLOR_THEMES: ColorTheme[] = [
       bgActive: '#2a3344',
     },
     light: {
-      accent: '#2563eb',
-      accentBright: '#3b82f6',
-      accentDim: '#1d4ed8',
-      accentGlow: 'rgba(37, 99, 235, 0.15)',
-      bgVoid: '#f0f4f8',
-      bgDeep: '#e8eef4',
-      bgSurface: '#ffffff',
-      bgElevated: '#f8fafc',
-      bgHover: '#f1f5f9',
-      bgActive: '#e2e8f0',
+      accent: '#1d4ed8',
+      accentBright: '#2563eb',
+      accentDim: '#1e40af',
+      accentGlow: 'rgba(29, 78, 216, 0.18)',
+      bgVoid: '#f6f9fc',
+      bgDeep: '#cfdce8',
+      bgSurface: '#dfe8f2',
+      bgElevated: '#eef4fa',
+      bgHover: '#d4e0eb',
+      bgActive: '#c5d3e2',
     },
   },
   {
@@ -104,16 +104,16 @@ export const COLOR_THEMES: ColorTheme[] = [
       bgActive: '#2a332a',
     },
     light: {
-      accent: '#059669',
-      accentBright: '#10b981',
-      accentDim: '#047857',
-      accentGlow: 'rgba(5, 150, 105, 0.15)',
-      bgVoid: '#f0f5f0',
-      bgDeep: '#e8f0e8',
-      bgSurface: '#ffffff',
-      bgElevated: '#f8faf8',
-      bgHover: '#f0f5f0',
-      bgActive: '#e0ebe0',
+      accent: '#047857',
+      accentBright: '#059669',
+      accentDim: '#065f46',
+      accentGlow: 'rgba(4, 120, 87, 0.18)',
+      bgVoid: '#f5f8f4',
+      bgDeep: '#cfdccf',
+      bgSurface: '#dde8dc',
+      bgElevated: '#eef4ed',
+      bgHover: '#d3dfd2',
+      bgActive: '#c4d3c3',
     },
   },
   {
@@ -132,16 +132,16 @@ export const COLOR_THEMES: ColorTheme[] = [
       bgActive: '#332a4a',
     },
     light: {
-      accent: '#7c3aed',
-      accentBright: '#8b5cf6',
-      accentDim: '#6d28d9',
-      accentGlow: 'rgba(124, 58, 237, 0.15)',
-      bgVoid: '#f5f0fa',
-      bgDeep: '#ede8f4',
-      bgSurface: '#ffffff',
-      bgElevated: '#faf8fc',
-      bgHover: '#f3f0f8',
-      bgActive: '#e8e0f0',
+      accent: '#6d28d9',
+      accentBright: '#7c3aed',
+      accentDim: '#5b21b6',
+      accentGlow: 'rgba(109, 40, 217, 0.18)',
+      bgVoid: '#f7f4fb',
+      bgDeep: '#d6cee8',
+      bgSurface: '#e6def1',
+      bgElevated: '#f1ecf8',
+      bgHover: '#dbd2eb',
+      bgActive: '#cdc2df',
     },
   },
   {
@@ -160,16 +160,16 @@ export const COLOR_THEMES: ColorTheme[] = [
       bgActive: '#442a38',
     },
     light: {
-      accent: '#db2777',
-      accentBright: '#ec4899',
-      accentDim: '#be185d',
-      accentGlow: 'rgba(219, 39, 119, 0.15)',
-      bgVoid: '#fdf2f8',
-      bgDeep: '#fce7f3',
-      bgSurface: '#ffffff',
-      bgElevated: '#fefafc',
-      bgHover: '#fdf4f8',
-      bgActive: '#fce8f0',
+      accent: '#be185d',
+      accentBright: '#db2777',
+      accentDim: '#9d174d',
+      accentGlow: 'rgba(190, 24, 93, 0.18)',
+      bgVoid: '#fcf4f7',
+      bgDeep: '#e7d1da',
+      bgSurface: '#f0dde6',
+      bgElevated: '#f7edf2',
+      bgHover: '#e8d4de',
+      bgActive: '#dac3cd',
     },
   },
 ]
@@ -238,6 +238,7 @@ export const useThemeStore = create<ThemeStore>((set, get) => ({
     root.style.setProperty('--accent-bright', colors.accentBright)
     root.style.setProperty('--accent-dim', colors.accentDim)
     root.style.setProperty('--accent-glow', colors.accentGlow)
+    root.style.setProperty('--accent-foreground', effectiveMode === 'light' ? '#fffdf8' : '#0d0d10')
 
     // Apply background colors
     root.style.setProperty('--bg-void', colors.bgVoid)
@@ -249,13 +250,13 @@ export const useThemeStore = create<ThemeStore>((set, get) => ({
 
     // Update text and border colors based on mode
     if (effectiveMode === 'light') {
-      root.style.setProperty('--text-primary', '#1a1a1a')
-      root.style.setProperty('--text-secondary', '#4a4a4a')
-      root.style.setProperty('--text-muted', '#6a6a6a')
-      root.style.setProperty('--text-faint', '#9a9a9a')
-      root.style.setProperty('--border', '#e0e0e0')
-      root.style.setProperty('--border-subtle', '#f0f0f0')
-      root.style.setProperty('--border-strong', '#d0d0d0')
+      root.style.setProperty('--text-primary', '#191612')
+      root.style.setProperty('--text-secondary', '#4e473f')
+      root.style.setProperty('--text-muted', '#70675c')
+      root.style.setProperty('--text-faint', '#9b9186')
+      root.style.setProperty('--border', '#c8b79f')
+      root.style.setProperty('--border-subtle', '#d9cab7')
+      root.style.setProperty('--border-strong', '#9f896d')
       root.classList.remove('dark')
       root.classList.add('light')
     } else {
