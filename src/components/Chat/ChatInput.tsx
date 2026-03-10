@@ -248,6 +248,7 @@ interface ChatInputProps {
 interface QueuedEditState {
   queuedMessage: QueuedMessage
   anchor: QueuePanelAnchor
+  previousDraft: string
 }
 
 // Speech-to-text disabled - WASM crashes on Windows ARM64
@@ -270,6 +271,7 @@ export function ChatInput({
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const forceScrollTopAfterPasteRef = useRef(false)
+  const editingQueuedMessageRef = useRef<QueuedEditState | null>(null)
   // Speech-to-text disabled
   // const mediaRecorderRef = useRef<MediaRecorder | null>(null)
   // const audioChunksRef = useRef<Blob[]>([])
@@ -314,12 +316,31 @@ export function ChatInput({
     }
   }, [])
 
+  useEffect(() => {
+    editingQueuedMessageRef.current = editingQueuedMessage
+  }, [editingQueuedMessage])
+
   // Restore draft when switching conversations (including new-chat view)
   useEffect(() => {
+    const pendingQueuedEdit = editingQueuedMessageRef.current
+    if (pendingQueuedEdit) {
+      const previousDraftKey = getDraftKey(pendingQueuedEdit.queuedMessage.conversationId ?? null)
+      if (pendingQueuedEdit.previousDraft) {
+        chatDraftsByConversation.set(previousDraftKey, pendingQueuedEdit.previousDraft)
+      } else {
+        chatDraftsByConversation.delete(previousDraftKey)
+      }
+
+      restoreQueuedMessage(pendingQueuedEdit.queuedMessage, pendingQueuedEdit.anchor)
+      editingQueuedMessageRef.current = null
+      setEditingQueuedMessage(null)
+      setAttachments([])
+    }
+
     const draft = chatDraftsByConversation.get(getDraftKey(activeConversationId)) || ''
     setInput(draft)
     resizeTextarea(draft)
-  }, [activeConversationId, resizeTextarea])
+  }, [activeConversationId, resizeTextarea, restoreQueuedMessage])
 
   // Robust focus management - handles view transitions and dialog dismissals
   useEffect(() => {
@@ -735,11 +756,29 @@ export function ChatInput({
     const queuedMessage = messageQueue[queueIndex]
     if (!queuedMessage) return
 
+    const pendingQueuedEdit = editingQueuedMessageRef.current
+    const previousDraft = pendingQueuedEdit?.previousDraft ?? input
+
+    removeQueuedMessage(queueIndex)
+
+    if (pendingQueuedEdit) {
+      const previousDraftKey = getDraftKey(pendingQueuedEdit.queuedMessage.conversationId ?? null)
+      if (pendingQueuedEdit.previousDraft) {
+        chatDraftsByConversation.set(previousDraftKey, pendingQueuedEdit.previousDraft)
+      } else {
+        chatDraftsByConversation.delete(previousDraftKey)
+      }
+
+      restoreQueuedMessage(pendingQueuedEdit.queuedMessage, pendingQueuedEdit.anchor)
+      editingQueuedMessageRef.current = null
+      setEditingQueuedMessage(null)
+    }
+
     setEditingQueuedMessage({
       queuedMessage,
       anchor: getQueuePanelAnchor(messageQueue, queuedMessage.id),
+      previousDraft,
     })
-    removeQueuedMessage(queueIndex)
     setInput(queuedMessage.content)
     setAttachments((queuedMessage.attachments || []).map(messageAttachmentToDraftAttachment))
     persistDraft(queuedMessage.content)
@@ -747,7 +786,7 @@ export function ChatInput({
     requestAnimationFrame(() => {
       focusTextarea()
     })
-  }, [focusTextarea, messageQueue, persistDraft, removeQueuedMessage])
+  }, [focusTextarea, input, messageQueue, persistDraft, removeQueuedMessage, restoreQueuedMessage])
 
   const handleCancelQueuedMessage = useCallback((queueIndex: number) => {
     removeQueuedMessage(queueIndex)
