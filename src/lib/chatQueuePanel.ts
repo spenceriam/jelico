@@ -59,25 +59,10 @@ export function getQueuePanelAnchor<T extends QueuePanelOrderedMessageLike>(
     return { previousId: null, nextId: null }
   }
 
-  const targetConversationId = messageQueue[targetIndex].conversationId ?? null
-  let previousId: string | null = null
-  let nextId: string | null = null
-
-  for (let index = targetIndex - 1; index >= 0; index -= 1) {
-    if ((messageQueue[index].conversationId ?? null) === targetConversationId) {
-      previousId = messageQueue[index].id
-      break
-    }
+  return {
+    previousId: targetIndex > 0 ? messageQueue[targetIndex - 1].id : null,
+    nextId: targetIndex < messageQueue.length - 1 ? messageQueue[targetIndex + 1].id : null,
   }
-
-  for (let index = targetIndex + 1; index < messageQueue.length; index += 1) {
-    if ((messageQueue[index].conversationId ?? null) === targetConversationId) {
-      nextId = messageQueue[index].id
-      break
-    }
-  }
-
-  return { previousId, nextId }
 }
 
 export function insertQueuedMessageAtAnchor<T extends QueuePanelOrderedMessageLike>(

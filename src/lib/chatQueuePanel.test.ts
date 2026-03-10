@@ -96,7 +96,7 @@ test('falls back to a generic attachment count for multi-attachment queued messa
   })
 })
 
-test('captures previous and next queued ids for the same conversation', () => {
+test('captures the immediate previous and next queued ids in full queue order', () => {
   const anchor = getQueuePanelAnchor(
     [
       { id: 'a', conversationId: 'conv-1' },
@@ -108,7 +108,7 @@ test('captures previous and next queued ids for the same conversation', () => {
   )
 
   assert.deepEqual(anchor, {
-    previousId: 'a',
+    previousId: 'b',
     nextId: 'd',
   })
 })
@@ -137,6 +137,19 @@ test('re-inserts an edited queued message after its original previous sibling wh
   )
 
   assert.deepEqual(reordered.map((message) => message.id), ['a', 'c', 'x'])
+})
+
+test('restores an edited queued message without reordering other conversations', () => {
+  const reordered = insertQueuedMessageAtAnchor(
+    [
+      { id: 'a', conversationId: 'conv-1' },
+      { id: 'b', conversationId: 'conv-2' },
+    ],
+    { id: 'c', conversationId: 'conv-1' },
+    { previousId: 'b', nextId: null }
+  )
+
+  assert.deepEqual(reordered.map((message) => message.id), ['a', 'b', 'c'])
 })
 
 test('merges hydrated queued messages with newer in-memory additions', () => {
