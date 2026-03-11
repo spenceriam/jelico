@@ -36,6 +36,7 @@ export const changelog: ChangelogEntry[] = [
         'Queued messages are no longer dropped on restart, during startup queue hydration, or during failed queue handoff attempts; queue state now survives reloads and restores items when immediate/deferred sends fail',
         'Starting to edit a queued message no longer removes it from durable queue storage before the edit is finalized, so reloads during edit restore the original queued item instead of silently losing it',
         'Editing or restoring a queued message now preserves the original global queue order, so interleaved work across multiple conversations continues to run FIFO instead of being silently reordered',
+        'Removing the final unsent composer attachment now clears the cached draft attachment state immediately, so deleted files do not reappear after switching conversations',
         'Regenerate now preserves attachments from the preceding user message instead of silently dropping them on resend',
       ],
     },

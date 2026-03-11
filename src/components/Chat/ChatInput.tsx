@@ -500,10 +500,10 @@ export function ChatInput({
     const draftKey = getDraftKey(activeConversationId)
     if (attachments.length > 0) {
       chatDraftAttachmentsByConversation.set(draftKey, cloneDraftAttachments(attachments))
-    } else if (!input) {
+    } else {
       chatDraftAttachmentsByConversation.delete(draftKey)
     }
-  }, [activeConversationId, attachments, input])
+  }, [activeConversationId, attachments])
 
   // Handle paste with content detection
   const handlePaste = useCallback((e: React.ClipboardEvent) => {
