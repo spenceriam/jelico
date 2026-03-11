@@ -637,7 +637,7 @@ export function ChatInput({
   }
 
   const handleSubmit = useCallback(async (): Promise<boolean> => {
-    if ((!input.trim() && attachments.length === 0) || !activeProviderId || !activeModel) return false
+    if ((!input.trim() && attachments.length === 0) || (!editingQueuedMessage && (!activeProviderId || !activeModel))) return false
     const trimmedInput = input.trim()
 
     // Convert attachments to MessageAttachment format
@@ -679,8 +679,6 @@ export function ChatInput({
           ...editingQueuedMessage.queuedMessage,
           content: trimmedInput,
           attachments: messageAttachments.length > 0 ? messageAttachments : undefined,
-          providerId: activeProviderId,
-          model: activeModel,
         }
 
         commitQueuedMessageEdit(restoredQueuedMessage)
@@ -690,10 +688,14 @@ export function ChatInput({
           await processQueue()
         }
       } else {
+        const composerProviderId = activeProviderId
+        const composerModel = activeModel
+        if (!composerProviderId || !composerModel) return false
+
         await sendMessage(
           trimmedInput,
-          activeProviderId,
-          activeModel,
+          composerProviderId,
+          composerModel,
           messageAttachments.length > 0 ? messageAttachments : undefined
         )
       }

@@ -16,7 +16,6 @@ import {
   getPersistableQueuedMessages,
   getQueuePanelAnchor,
   getQueuePanelConversationKey,
-  getQueuePanelExpandedByConversation,
   getQueuedCountForConversation,
   insertQueuedMessageAtAnchor,
   mergeHydratedQueuedMessages,
@@ -197,6 +196,7 @@ interface ChatStore {
   messageQueue: QueuedMessage[]
   pendingQueuedEdit: PendingQueuedEdit | null
   hasHydratedQueuedMessages: boolean
+  queueMutationVersion: number
   queuePanelExpandedByConversation: Record<string, boolean>
   lastCompletedTool: { name: string; args: Record<string, unknown>; completedAt: number } | null
   // Status display queue for graceful UX - ensures each status shows for minimum time
@@ -279,6 +279,38 @@ function fromPersistedQueuedMessage(queuedMessage: QueuedMessageData): QueuedMes
   }
 }
 
+function filterQueuedMessagesByConversationIds(
+  messageQueue: QueuedMessage[],
+  conversationIds: Set<string>
+): QueuedMessage[] {
+  return messageQueue.filter((queuedMessage) => (
+    queuedMessage.conversationId == null || conversationIds.has(queuedMessage.conversationId)
+  ))
+}
+
+function syncQueuePanelExpandedByConversation(
+  currentExpandedByConversation: Record<string, boolean>,
+  messageQueue: QueuedMessage[]
+): Record<string, boolean> {
+  return messageQueue.reduce<Record<string, boolean>>((nextExpandedByConversation, queuedMessage) => {
+    const queueKey = getQueuePanelConversationKey(queuedMessage.conversationId)
+    nextExpandedByConversation[queueKey] = currentExpandedByConversation[queueKey] ?? true
+    return nextExpandedByConversation
+  }, {})
+}
+
+async function loadKnownConversationIds(): Promise<Set<string>> {
+  const [conversations, archivedConversations] = await Promise.all([
+    window.jelico.conversations.list(),
+    window.jelico.conversations.listArchived(),
+  ])
+
+  return new Set([
+    ...conversations.map((conversation) => conversation.id),
+    ...archivedConversations.map((conversation) => conversation.id),
+  ])
+}
+
 function persistQueuedMessages(messageQueue: QueuedMessage[], shouldMergePersistedQueue = false): void {
   if (typeof window === 'undefined' || !window.jelico?.queue) return
 
@@ -288,8 +320,13 @@ function persistQueuedMessages(messageQueue: QueuedMessage[], shouldMergePersist
       let nextQueue = messageQueue
       if (shouldMergePersistedQueue) {
         const persistedQueuedMessages = await loadPersistedQueuedMessages()
-        nextQueue = mergeHydratedQueuedMessages(persistedQueuedMessages, messageQueue)
+        if (persistedQueuedMessages) {
+          nextQueue = mergeHydratedQueuedMessages(persistedQueuedMessages, messageQueue)
+        }
       }
+
+      const conversationIds = await loadKnownConversationIds()
+      nextQueue = filterQueuedMessagesByConversationIds(nextQueue, conversationIds)
 
       const queuedMessages = nextQueue.map(toPersistedQueuedMessage)
       await window.jelico.queue.replaceAll(queuedMessages)
@@ -299,7 +336,7 @@ function persistQueuedMessages(messageQueue: QueuedMessage[], shouldMergePersist
     })
 }
 
-async function loadPersistedQueuedMessages(): Promise<QueuedMessage[]> {
+async function loadPersistedQueuedMessages(): Promise<QueuedMessage[] | null> {
   if (typeof window === 'undefined' || !window.jelico?.queue) return []
 
   try {
@@ -307,7 +344,7 @@ async function loadPersistedQueuedMessages(): Promise<QueuedMessage[]> {
     return queuedMessages.map(fromPersistedQueuedMessage)
   } catch (error) {
     console.error('[Chat Store] Failed to load queued messages:', error)
-    return []
+    return null
   }
 }
 
@@ -713,6 +750,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
   messageQueue: [],
   pendingQueuedEdit: null,
   hasHydratedQueuedMessages: false,
+  queueMutationVersion: 0,
   queuePanelExpandedByConversation: {},
   statusDisplayQueue: [],
   toolInputProgress: null,
@@ -723,23 +761,41 @@ export const useChatStore = create<ChatStore>((set, get) => ({
   loadConversations: async () => {
     set({ isLoading: true })
     try {
-      const shouldHydrateQueue = !get().hasHydratedQueuedMessages
-      const [conversations, persistedQueuedMessages] = await Promise.all([
+      const queueMutationVersionAtStart = get().queueMutationVersion
+      let [conversations, conversationIds, persistedQueuedMessages] = await Promise.all([
         window.jelico.conversations.list(),
-        shouldHydrateQueue ? loadPersistedQueuedMessages() : Promise.resolve(null),
+        loadKnownConversationIds(),
+        loadPersistedQueuedMessages(),
       ])
 
+      if (get().queueMutationVersion !== queueMutationVersionAtStart) {
+        await persistQueuedMessagesPromise.catch(() => undefined)
+        ;[conversations, conversationIds, persistedQueuedMessages] = await Promise.all([
+          window.jelico.conversations.list(),
+          loadKnownConversationIds(),
+          loadPersistedQueuedMessages(),
+        ])
+      }
+
       set((state) => {
-        const messageQueue = persistedQueuedMessages
-          ? mergeHydratedQueuedMessages(persistedQueuedMessages, state.messageQueue)
-          : state.messageQueue
+        const nextQueuedMessages = persistedQueuedMessages ?? state.messageQueue
+        const messageQueue = filterQueuedMessagesByConversationIds(nextQueuedMessages, conversationIds)
+        const pendingQueuedEdit = state.pendingQueuedEdit && (
+          state.pendingQueuedEdit.queuedMessage.conversationId == null ||
+          conversationIds.has(state.pendingQueuedEdit.queuedMessage.conversationId)
+        )
+          ? state.pendingQueuedEdit
+          : null
+
         return {
           conversations,
           messageQueue,
-          hasHydratedQueuedMessages: shouldHydrateQueue ? true : state.hasHydratedQueuedMessages,
-          queuePanelExpandedByConversation: persistedQueuedMessages
-            ? getQueuePanelExpandedByConversation(messageQueue)
-            : state.queuePanelExpandedByConversation,
+          pendingQueuedEdit,
+          hasHydratedQueuedMessages: true,
+          queuePanelExpandedByConversation: syncQueuePanelExpandedByConversation(
+            state.queuePanelExpandedByConversation,
+            messageQueue
+          ),
           isLoading: false,
         }
       })
@@ -2078,6 +2134,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
       const queueKey = getQueuePanelConversationKey(conversationId)
       return {
         messageQueue: [...state.messageQueue, queuedMessage],
+        queueMutationVersion: state.queueMutationVersion + 1,
         queuePanelExpandedByConversation: {
           ...state.queuePanelExpandedByConversation,
           [queueKey]: true,
@@ -2120,6 +2177,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
       return {
         messageQueue: nextQueue,
         pendingQueuedEdit: pendingEdit,
+        queueMutationVersion: state.queueMutationVersion + 1,
         queuePanelExpandedByConversation: remainingCount === 0
           ? {
               ...state.queuePanelExpandedByConversation,
@@ -2152,6 +2210,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
       return {
         messageQueue: restoredQueue,
         pendingQueuedEdit: null,
+        queueMutationVersion: state.queueMutationVersion + 1,
         queuePanelExpandedByConversation: {
           ...state.queuePanelExpandedByConversation,
           [queueKey]: true,
@@ -2180,6 +2239,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
       return {
         messageQueue: restoredQueue,
         pendingQueuedEdit: null,
+        queueMutationVersion: state.queueMutationVersion + 1,
         queuePanelExpandedByConversation: {
           ...state.queuePanelExpandedByConversation,
           [queueKey]: true,
@@ -2206,6 +2266,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
 
       return {
         messageQueue: nextQueue,
+        queueMutationVersion: state.queueMutationVersion + 1,
         queuePanelExpandedByConversation: remainingCount === 0
           ? {
               ...state.queuePanelExpandedByConversation,
@@ -2227,6 +2288,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
       const queueKey = getQueuePanelConversationKey(queuedMessage.conversationId)
       return {
         messageQueue: nextQueue,
+        queueMutationVersion: state.queueMutationVersion + 1,
         queuePanelExpandedByConversation: {
           ...state.queuePanelExpandedByConversation,
           [queueKey]: true,
