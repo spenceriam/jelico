@@ -791,7 +791,9 @@ export const useChatStore = create<ChatStore>((set, get) => ({
           conversations,
           messageQueue,
           pendingQueuedEdit,
-          hasHydratedQueuedMessages: true,
+          hasHydratedQueuedMessages: persistedQueuedMessages !== null
+            ? true
+            : state.hasHydratedQueuedMessages,
           queuePanelExpandedByConversation: syncQueuePanelExpandedByConversation(
             state.queuePanelExpandedByConversation,
             messageQueue

@@ -12,7 +12,7 @@
 ### Fixed
 - **Collapsed Queue Visibility** — Adding a queued message during an active response now opens the queued-messages panel right away so new queued work is visible immediately.
 - **Queue Recovery After Restart** — Queued messages now survive app restarts, startup loading, and failed queue handoffs instead of disappearing.
-- **Queue Sync After Deletes** — Queued items for permanently deleted chats no longer come back from stale renderer state after a reload or later queue action, and a temporary queue-load failure no longer clears the live queue.
+- **Queue Sync After Deletes** — Queued items for permanently deleted chats no longer come back from stale renderer state after a reload or later queue action, and a temporary queue-load failure no longer clears the live queue or disables future queue merges.
 - **Queued Edit Durability** — Starting to edit a queued message no longer risks deleting it if the app reloads before you save or discard the edit.
 - **Queued Message Order** — Editing a queued message no longer changes the order that queued work runs when multiple conversations have interleaved items.
 - **Queued Edit Routing** — Editing a queued message now keeps the provider and model it was originally queued with instead of silently retargeting it to the current composer selection.
