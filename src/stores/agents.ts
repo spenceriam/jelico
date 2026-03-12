@@ -1,7 +1,13 @@
 import { create } from 'zustand'
 import type { AgentMode } from '../lib/modes'
 
-export type AgentStatus = 'pending' | 'running' | 'completed' | 'failed' | 'cancelled'
+export type AgentStatus =
+  | 'pending'
+  | 'running'
+  | 'waiting_for_input'
+  | 'completed'
+  | 'failed'
+  | 'cancelled'
 
 export interface SubAgent {
   id: string

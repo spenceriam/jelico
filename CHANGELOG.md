@@ -10,7 +10,7 @@
 - **Chat Status Sections** — Conversations are now grouped under In Progress, Waiting for Input, Needs Attention, and Done so it is easier to track multiple chats inside the same workspace or sandbox.
 
 ### Fixed
-- **Persistent Attention State** — A failed conversation now stays marked under Needs Attention even after you switch to another chat.
+- **Sidebar Status Accuracy** — Conversations now stay in Waiting for Input when a sub-agent pauses for user input, and old failed sub-agents no longer leave later successful chats stuck under Needs Attention.
 - **macOS Docking** — Jelico now cooperates with macOS window docking gestures by using native drag regions in the titlebar and header.
 
 ### Changed

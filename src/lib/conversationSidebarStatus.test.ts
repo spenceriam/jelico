@@ -10,6 +10,7 @@ test('streaming conversations are classified as in progress', () => {
     isStreaming: true,
     hasRunningAgent: false,
     hasPendingAgent: false,
+    hasWaitingAgent: false,
     hasClarificationRequest: false,
     hasInterruptedStream: false,
     hasFailedAgent: false,
@@ -25,7 +26,23 @@ test('clarification requests are classified as waiting when not actively streami
     isStreaming: false,
     hasRunningAgent: false,
     hasPendingAgent: false,
+    hasWaitingAgent: false,
     hasClarificationRequest: true,
+    hasInterruptedStream: false,
+    hasFailedAgent: false,
+    hasConversationError: false,
+  })
+
+  assert.equal(status, 'waiting')
+})
+
+test('waiting sub-agents are classified as waiting when no clarification card is present', () => {
+  const status = getConversationSidebarStatus({
+    isStreaming: false,
+    hasRunningAgent: false,
+    hasPendingAgent: false,
+    hasWaitingAgent: true,
+    hasClarificationRequest: false,
     hasInterruptedStream: false,
     hasFailedAgent: false,
     hasConversationError: false,
@@ -39,6 +56,7 @@ test('interrupted or failed conversations are classified as error', () => {
     isStreaming: false,
     hasRunningAgent: false,
     hasPendingAgent: false,
+    hasWaitingAgent: false,
     hasClarificationRequest: false,
     hasInterruptedStream: true,
     hasFailedAgent: false,
@@ -54,6 +72,7 @@ test('idle conversations default to done', () => {
     isStreaming: false,
     hasRunningAgent: false,
     hasPendingAgent: false,
+    hasWaitingAgent: false,
     hasClarificationRequest: false,
     hasInterruptedStream: false,
     hasFailedAgent: false,

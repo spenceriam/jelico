@@ -3,6 +3,7 @@ import {
   ChevronDown,
   ChevronRight,
   CheckCircle,
+  Pause,
   XCircle,
   ExternalLink,
   X,
@@ -172,6 +173,8 @@ function getSubAgentStateLabel(status: string): string {
       return 'Running'
     case 'pending':
       return 'Starting'
+    case 'waiting_for_input':
+      return 'Waiting for input'
     case 'completed':
       return 'Completed'
     case 'failed':
@@ -360,7 +363,11 @@ export function buildProcessingToneByToolCallId({
     let isProcessing = isInProgress
     if (toolCall.name === 'spawn_agent') {
       const subAgent = agentMap.get(getSpawnedAgentId(toolResult?.result) || '')
-      if (subAgent?.status === 'running' || subAgent?.status === 'pending') {
+      if (
+        subAgent?.status === 'running' ||
+        subAgent?.status === 'pending' ||
+        subAgent?.status === 'waiting_for_input'
+      ) {
         isProcessing = true
       }
     }
@@ -707,7 +714,11 @@ export function SingleToolCallDisplay({
 
   const isSubAgentInProgress = toolCall.name === 'spawn_agent' &&
     !!subAgent &&
-    (subAgent.status === 'running' || subAgent.status === 'pending')
+    (
+      subAgent.status === 'running' ||
+      subAgent.status === 'pending' ||
+      subAgent.status === 'waiting_for_input'
+    )
   const isProcessing = toolCall.name === 'spawn_agent'
     ? (isInProgress || isSubAgentInProgress)
     : isInProgress
@@ -833,6 +844,8 @@ export function SingleToolCallDisplay({
           // Show sub-agent status
           subAgent.status === 'completed' ? (
             <CheckCircle className="w-4 h-4 text-green-500 flex-shrink-0" />
+          ) : subAgent.status === 'waiting_for_input' ? (
+            <Pause className="w-4 h-4 text-warning flex-shrink-0" />
           ) : subAgent.status === 'failed' ? (
             <XCircle className="w-4 h-4 text-error flex-shrink-0" />
           ) : subAgent.status === 'cancelled' ? (
@@ -920,6 +933,7 @@ export function SingleToolCallDisplay({
               <div className="flex items-center gap-2 text-xs text-text-muted">
                 <span className={`w-2 h-2 rounded-full ${
                   subAgent.status === 'running' || subAgent.status === 'pending'
+                    || subAgent.status === 'waiting_for_input'
                     ? 'bg-accent animate-pulse'
                     : subAgent.status === 'completed'
                       ? 'bg-green-500'

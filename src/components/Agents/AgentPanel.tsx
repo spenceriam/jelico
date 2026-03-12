@@ -6,6 +6,7 @@ import { BrailleLoader } from '../StatusIndicators'
 const STATUS_ICONS: Record<AgentStatus, React.ComponentType<{ className?: string }>> = {
   pending: Pause,
   running: Pause,
+  waiting_for_input: Pause,
   completed: CheckCircle,
   failed: XCircle,
   cancelled: X,
@@ -14,6 +15,7 @@ const STATUS_ICONS: Record<AgentStatus, React.ComponentType<{ className?: string
 const STATUS_COLORS: Record<AgentStatus, string> = {
   pending: 'text-text-muted',
   running: 'text-accent',
+  waiting_for_input: 'text-warning',
   completed: 'text-green-500',
   failed: 'text-error',
   cancelled: 'text-text-muted',
@@ -25,7 +27,7 @@ export function AgentPanel() {
 
   if (agents.length === 0) return null
 
-  const runningCount = agents.filter((a) => a.status === 'running').length
+  const runningCount = agents.filter((a) => a.status === 'running' || a.status === 'waiting_for_input').length
   const completedCount = agents.filter(
     (a) => a.status === 'completed' || a.status === 'failed' || a.status === 'cancelled'
   ).length
@@ -137,6 +139,10 @@ function AgentItem({
             {agent.status === 'running' ? (
               <span className="text-text-secondary">
                 {agent.progress?.slice(-50) || 'Working...'}
+              </span>
+            ) : agent.status === 'waiting_for_input' ? (
+              <span className="text-warning">
+                {agent.progress?.slice(-50) || 'Waiting for input...'}
               </span>
             ) : (
               <span className="text-text-muted">{agent.task.slice(0, 50)}</span>

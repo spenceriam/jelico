@@ -32,7 +32,7 @@ export const changelog: ChangelogEntry[] = [
         'Archive confirmation now happens inline in the sidebar row with striped warning styling and bottom-left toast feedback instead of a modal confirmation prompt (Fixes #145)',
       ],
       fixed: [
-        'Conversation-level failure state now persists per chat so sidebar status grouping continues to show failed conversations under needs attention after switching to another chat (Fixes #143)',
+        'Sidebar status grouping now treats sub-agents waiting on user input as waiting-for-input conversations, and historical failed sub-agents no longer leave later successful chats stuck under needs-attention sections (Fixes #143)',
         'macOS window docking now relies on native drag regions in the titlebar/header path and disables renderer-driven drag/maximize handling on Mac so edge docking gestures work again (Fixes #146)',
       ],
     },

@@ -245,7 +245,7 @@ export function Sidebar() {
   )
 
   const agentStateByConversation = useMemo(() => {
-    const next = new Map<string, { hasRunning: boolean; hasPending: boolean; hasFailed: boolean }>()
+    const next = new Map<string, { hasRunning: boolean; hasPending: boolean; hasWaiting: boolean; hasFailed: boolean }>()
 
     for (const agent of agents) {
       if (!agent.conversationId) continue
@@ -253,18 +253,25 @@ export function Sidebar() {
       const current = next.get(agent.conversationId) || {
         hasRunning: false,
         hasPending: false,
+        hasWaiting: false,
         hasFailed: false,
       }
 
       if (agent.status === 'running') current.hasRunning = true
       if (agent.status === 'pending') current.hasPending = true
-      if (agent.status === 'failed') current.hasFailed = true
+      if (agent.status === 'waiting_for_input') current.hasWaiting = true
+      if (
+        agent.status === 'failed' &&
+        (interruptedConversations[agent.conversationId] || conversationErrors[agent.conversationId])
+      ) {
+        current.hasFailed = true
+      }
 
       next.set(agent.conversationId, current)
     }
 
     return next
-  }, [agents])
+  }, [agents, conversationErrors, interruptedConversations])
 
   const conversationStatusById = useMemo(() => {
     const next = new Map<string, ConversationSidebarStatus>()
@@ -277,6 +284,7 @@ export function Sidebar() {
           isStreaming: conversationStreams[conversation.id]?.isStreaming === true,
           hasRunningAgent: agentState?.hasRunning === true,
           hasPendingAgent: agentState?.hasPending === true,
+          hasWaitingAgent: agentState?.hasWaiting === true,
           hasClarificationRequest: Boolean(clarificationRequestsByConversation[conversation.id]),
           hasInterruptedStream: Boolean(interruptedConversations[conversation.id]),
           hasFailedAgent: agentState?.hasFailed === true,

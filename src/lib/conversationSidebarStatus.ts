@@ -4,6 +4,7 @@ export interface ConversationSidebarStatusInput {
   isStreaming: boolean
   hasRunningAgent: boolean
   hasPendingAgent: boolean
+  hasWaitingAgent: boolean
   hasClarificationRequest: boolean
   hasInterruptedStream: boolean
   hasFailedAgent: boolean
@@ -30,7 +31,7 @@ export function getConversationSidebarStatus(
     return 'in_progress'
   }
 
-  if (input.hasClarificationRequest) {
+  if (input.hasClarificationRequest || input.hasWaitingAgent) {
     return 'waiting'
   }
 

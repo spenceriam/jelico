@@ -1764,13 +1764,22 @@ export const useChatStore = create<ChatStore>((set, get) => ({
         result: update.result,
         error: update.error,
         toolCalls: mappedToolCalls,
-        completedAt: update.status === 'completed' || update.status === 'failed' ? Date.now() : undefined,
+        completedAt:
+          update.status === 'completed' ||
+          update.status === 'failed' ||
+          update.status === 'cancelled'
+            ? Date.now()
+            : undefined,
         latestUpdate: update.latestUpdate,  // Self-reported status from agent
       })
 
       // Clear streaming preview when sub-agent completes or fails
       // This handles cases where the sub-agent finishes without creating an artifact
-      if (update.status === 'completed' || update.status === 'failed') {
+      if (
+        update.status === 'completed' ||
+        update.status === 'failed' ||
+        update.status === 'cancelled'
+      ) {
         useArtifactStore.getState().clearStreamingPreview()
       }
     })
@@ -2589,9 +2598,20 @@ export const useChatStore = create<ChatStore>((set, get) => ({
     // Build context about active agents so the next turn knows what was happening
     const conversationAgents = useAgentStore.getState().getAgentsByConversation(activeConversationId)
     const activeAgentSummaries = conversationAgents
-      .filter(a => a.status === 'running' || a.status === 'pending' || a.status === 'completed')
+      .filter(
+        (a) =>
+          a.status === 'running' ||
+          a.status === 'pending' ||
+          a.status === 'waiting_for_input' ||
+          a.status === 'completed'
+      )
       .map(a => {
-        const statusLabel = a.status === 'completed' ? 'finished' : 'was in progress'
+        const statusLabel =
+          a.status === 'completed'
+            ? 'finished'
+            : a.status === 'waiting_for_input'
+              ? 'was waiting for input'
+              : 'was in progress'
         const errorNote = a.error ? ` (error: ${a.error})` : ''
         return `- ${a.displayName || a.name}: ${a.task.slice(0, 120)}${a.task.length > 120 ? '...' : ''} [${statusLabel}${errorNote}]`
       })
