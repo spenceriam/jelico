@@ -16,6 +16,7 @@ interface MessageData {
 
 interface MessageListProps {
   messages: MessageData[]
+  isStreaming?: boolean
   streamingContent?: string
   streamingStartedAt?: number | null
   streamingToolCalls?: ToolCall[]
@@ -29,6 +30,7 @@ interface MessageListProps {
 
 export function MessageList({
   messages,
+  isStreaming = false,
   streamingContent,
   streamingStartedAt,
   streamingToolCalls,
@@ -51,12 +53,8 @@ export function MessageList({
     }
   }
 
-  const isStreamingAssistantMessageVisible =
-    streamingContent !== undefined &&
-    (streamingContent !== '' || (streamingToolCalls?.length || 0) > 0)
-
   let retryableUserMessageId: string | null = null
-  if (onRetryUnansweredMessage && !isStreamingAssistantMessageVisible) {
+  if (onRetryUnansweredMessage && !isStreaming) {
     for (let i = messages.length - 1; i > lastAssistantIndex; i--) {
       if (messages[i].role === 'user') {
         retryableUserMessageId = messages[i].id
@@ -66,7 +64,7 @@ export function MessageList({
   }
 
   let editableUserMessageId: string | null = null
-  if (!isStreamingAssistantMessageVisible && lastAssistantIndex !== -1) {
+  if (!isStreaming && lastAssistantIndex !== -1) {
     for (let i = lastAssistantIndex - 1; i >= 0; i -= 1) {
       if (messages[i].role === 'user') {
         editableUserMessageId = messages[i].id

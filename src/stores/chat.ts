@@ -321,14 +321,16 @@ function persistQueuedMessages(messageQueue: QueuedMessage[], shouldMergePersist
       let nextQueue = messageQueue
       if (shouldMergePersistedQueue) {
         const persistedQueuedMessages = await loadPersistedQueuedMessages()
-        if (persistedQueuedMessages) {
-          const { preHydrationDeletedQueuedMessageIds } = useChatStore.getState()
-          nextQueue = mergeHydratedQueuedMessages(
-            persistedQueuedMessages,
-            messageQueue,
-            Object.keys(preHydrationDeletedQueuedMessageIds)
-          )
+        if (persistedQueuedMessages === null) {
+          return
         }
+
+        const { preHydrationDeletedQueuedMessageIds } = useChatStore.getState()
+        nextQueue = mergeHydratedQueuedMessages(
+          persistedQueuedMessages,
+          messageQueue,
+          Object.keys(preHydrationDeletedQueuedMessageIds)
+        )
       }
 
       const conversationIds = await loadKnownConversationIds()

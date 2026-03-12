@@ -686,7 +686,7 @@ todo_write({ tasks: [
 - **Phase 1-7 Complete**: Core functionality, UI, artifacts, memory, soul system
 - **Phase 8 Complete**: Onboarding flow, backup/restore, versioning
 - **Current Focus**: Testing, polish, user feedback integration, and release hardening across tool UX and workspace flows
-- **Latest Release (0.36.0)**: Minor release focused on durable queued-message management, reload-safe queue resync after conversation deletes, fallback-safe queue reload recovery, success-only queue hydration state, race-safe queue snapshot application, deletion-safe hydration merging, startup-safe queue hydration, FIFO-safe queue editing across conversations, draft-safe queued edit saves, conversation-safe queued edit submission, stable draft-attachment recovery, preserved queued-message routing, inline queue controls, and direct editing/regenerate flow improvements for the latest prompt
+- **Latest Release (0.36.0)**: Minor release focused on durable queued-message management, reload-safe queue resync after conversation deletes, fallback-safe queue reload recovery, success-only queue hydration state, startup read-failure-safe queue persistence, race-safe queue snapshot application, deletion-safe hydration merging, startup-safe queue hydration, FIFO-safe queue editing across conversations, draft-safe queued edit saves, conversation-safe queued edit submission, stream-safe latest-prompt editing, stable draft-attachment recovery, preserved queued-message routing, inline queue controls, and direct editing/regenerate flow improvements for the latest prompt
 
 ## Code style
 - TypeScript strict mode enabled
