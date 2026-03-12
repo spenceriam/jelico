@@ -1,12 +1,15 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import {
+  getNextProcessableQueuedMessageIndex,
   getPersistableQueuedMessages,
+  promoteQueuedMessageToFront,
   getQueuePanelAnchor,
   getQueuePanelExpandedByConversation,
   getQueuePanelConversationKey,
   getQueuedCountForConversation,
   getQueuedMessagePreview,
+  getVisibleQueuedMessages,
   insertQueuedMessageAtAnchor,
   mergeHydratedQueuedMessages,
 } from './chatQueuePanel'
@@ -126,6 +129,19 @@ test('re-inserts an edited queued message before its original next sibling when 
   assert.deepEqual(reordered.map((message) => message.id), ['a', 'c', 'd'])
 })
 
+test('promotes a queued message to the front without changing the rest of the order', () => {
+  const reordered = promoteQueuedMessageToFront(
+    [
+      { id: 'a', conversationId: 'conv-1' },
+      { id: 'b', conversationId: 'conv-2' },
+      { id: 'c', conversationId: 'conv-1' },
+    ],
+    'c'
+  )
+
+  assert.deepEqual(reordered.map((message) => message.id), ['c', 'a', 'b'])
+})
+
 test('re-inserts an edited queued message after its original previous sibling when the next one is gone', () => {
   const reordered = insertQueuedMessageAtAnchor(
     [
@@ -150,6 +166,31 @@ test('restores an edited queued message without reordering other conversations',
   )
 
   assert.deepEqual(reordered.map((message) => message.id), ['a', 'b', 'c'])
+})
+
+test('finds the first queued message whose conversation is not blocked', () => {
+  const nextIndex = getNextProcessableQueuedMessageIndex(
+    [
+      { id: 'a', conversationId: 'conv-1' },
+      { id: 'b', conversationId: 'conv-2' },
+      { id: 'c', conversationId: null },
+    ],
+    new Set(['conv-1'])
+  )
+
+  assert.equal(nextIndex, 1)
+})
+
+test('treats new-chat queued entries as immediately processable', () => {
+  const nextIndex = getNextProcessableQueuedMessageIndex(
+    [
+      { id: 'a', conversationId: null },
+      { id: 'b', conversationId: 'conv-2' },
+    ],
+    new Set(['conv-2'])
+  )
+
+  assert.equal(nextIndex, 0)
 })
 
 test('merges hydrated queued messages with newer in-memory additions', () => {
@@ -193,4 +234,20 @@ test('keeps a hidden queued edit in the persisted queue output', () => {
   )
 
   assert.deepEqual(persistableQueue.map((message) => message.id), ['a', 'b', 'c'])
+})
+
+test('excludes a hidden queued edit from the visible queue output', () => {
+  const visibleQueue = getVisibleQueuedMessages(
+    [
+      { id: 'a', conversationId: 'conv-1' },
+      { id: 'b', conversationId: 'conv-1' },
+      { id: 'c', conversationId: 'conv-1' },
+    ],
+    {
+      queuedMessage: { id: 'b', conversationId: 'conv-1' },
+      anchor: { previousId: 'a', nextId: 'c' },
+    }
+  )
+
+  assert.deepEqual(visibleQueue.map((message) => message.id), ['a', 'c'])
 })

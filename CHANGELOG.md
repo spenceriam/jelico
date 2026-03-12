@@ -2,11 +2,11 @@
 
 ### Highlights
 - Queued messages now open immediately when added, stay available after restart, and can be managed directly from the queue panel.
-- You can now edit or remove queued messages inline, or send one immediately without losing visibility into the rest of the queue.
+- You can now edit or remove queued messages inline, or push one to run next without interrupting the current response.
 - The last prompt before the latest AI reply can now be edited directly inside its chat bubble and then regenerated from the updated text and attachments.
 
 ### New
-- **Queue Message Controls** — Queued messages now have direct inline controls so you can send one now, edit it, or remove it without leaving the queue panel.
+- **Queue Message Controls** — Queued messages now have direct inline controls so you can send one immediately when the conversation is idle, prioritize it next while the current response finishes, edit it, or remove it without leaving the queue panel.
 - **Inline Prompt Editing Before Regenerate** — The latest user message before the most recent AI turn can now be edited in place inside the chat history, then reused for regenerate.
 
 ### Fixed
@@ -19,12 +19,13 @@
 - **Queued Edit Routing** — Editing a queued message now keeps the provider and model it was originally queued with instead of silently retargeting it to the current composer selection.
 - **Queued Edit Draft Recovery** — Saving a queued-message edit now returns you to the draft you were already composing instead of clearing it.
 - **Queued Edit Conversation Safety** — If you switch chats while a queued edit is still open, the stale edit can no longer be submitted into the wrong conversation during the transition.
+- **Queued Edit Reload Safety** — Reloading conversations while a queued message is being edited no longer makes that hidden queue item reappear in the visible queue panel mid-edit.
 - **Prompt Edit Streaming Safety** — The last prompt can no longer be edited while a response is actively starting, which avoids saving a different prompt than the one the assistant is already answering.
 - **Draft Attachment Removal** — Removing the last unsent attachment now stays removed when you switch chats and come back instead of unexpectedly reappearing in the draft.
 - **Regenerate Attachment Loss** — Regenerate now keeps the original prompt attachments instead of resending only the text.
 
 ### Changed
-- **Queue Panel Polish** — Queued message previews now wrap naturally, use clearer action icons and tooltips, alternate row surfaces for easier scanning, and stay consistent across new-chat and active-chat layouts.
+- **Queue Panel Polish** — Queued message previews now wrap naturally, use clearer action icons and tooltips, alternate row surfaces for easier scanning, stay consistent across new-chat and active-chat layouts, and let the queued send action prioritize the next runnable turn without stopping the active response.
 
 ## [0.35.3] - 2026-03-10
 

@@ -97,6 +97,19 @@ export function insertQueuedMessageAtAnchor<T extends QueuePanelOrderedMessageLi
   return [...withoutMessage, queuedMessage]
 }
 
+export function promoteQueuedMessageToFront<T extends QueuePanelOrderedMessageLike>(
+  messageQueue: T[],
+  targetId: string
+): T[] {
+  const targetIndex = messageQueue.findIndex((message) => message.id === targetId)
+  if (targetIndex <= 0) return messageQueue
+
+  const nextQueue = [...messageQueue]
+  const [queuedMessage] = nextQueue.splice(targetIndex, 1)
+  nextQueue.unshift(queuedMessage)
+  return nextQueue
+}
+
 export function mergeHydratedQueuedMessages<T extends QueuePanelOrderedMessageLike>(
   persistedQueue: T[],
   inMemoryQueue: T[],
@@ -132,6 +145,23 @@ export function getPersistableQueuedMessages<T extends QueuePanelOrderedMessageL
 ): T[] {
   if (!pendingEdit) return messageQueue
   return insertQueuedMessageAtAnchor(messageQueue, pendingEdit.queuedMessage, pendingEdit.anchor)
+}
+
+export function getVisibleQueuedMessages<T extends QueuePanelOrderedMessageLike>(
+  messageQueue: T[],
+  pendingEdit: QueuePanelPendingEdit<T> | null
+): T[] {
+  if (!pendingEdit) return messageQueue
+  return messageQueue.filter((message) => message.id !== pendingEdit.queuedMessage.id)
+}
+
+export function getNextProcessableQueuedMessageIndex<T extends QueuePanelMessageLike>(
+  messageQueue: T[],
+  blockedConversationIds: Set<string>
+): number {
+  return messageQueue.findIndex((message) => (
+    message.conversationId == null || !blockedConversationIds.has(message.conversationId)
+  ))
 }
 
 function formatSingleAttachmentLabel(attachment: QueuePanelAttachmentLike): string {

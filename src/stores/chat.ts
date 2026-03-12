@@ -13,10 +13,13 @@ import { notifyUserEvent } from '../lib/notifications'
 import { createInlineToolProtocolFilter } from '../lib/inlineToolProtocol'
 import { hasIncompleteToolEvidence } from './chatInterruption'
 import {
+  getNextProcessableQueuedMessageIndex,
   getPersistableQueuedMessages,
+  promoteQueuedMessageToFront,
   getQueuePanelAnchor,
   getQueuePanelConversationKey,
   getQueuedCountForConversation,
+  getVisibleQueuedMessages,
   insertQueuedMessageAtAnchor,
   mergeHydratedQueuedMessages,
   type QueuePanelAnchor,
@@ -298,6 +301,34 @@ function syncQueuePanelExpandedByConversation(
     nextExpandedByConversation[queueKey] = currentExpandedByConversation[queueKey] ?? true
     return nextExpandedByConversation
   }, {})
+}
+
+function getQueuedMessageTargetConversationId(
+  queuedMessage: QueuedMessage,
+  fallbackConversationId: string | null
+): string | null {
+  return queuedMessage.conversationId ?? fallbackConversationId
+}
+
+function getBlockedQueuedConversationIds(
+  conversationStreams: Record<string, ConversationStreamState>
+): Set<string> {
+  const blockedConversationIds = new Set<string>()
+
+  for (const [conversationId, streamState] of Object.entries(conversationStreams)) {
+    if (streamState.isStreaming) {
+      blockedConversationIds.add(conversationId)
+    }
+  }
+
+  const { compactingConversations } = useContextStore.getState()
+  for (const [conversationId, isCompacting] of Object.entries(compactingConversations)) {
+    if (isCompacting) {
+      blockedConversationIds.add(conversationId)
+    }
+  }
+
+  return blockedConversationIds
 }
 
 async function loadKnownConversationIds(): Promise<Set<string>> {
@@ -791,16 +822,19 @@ export const useChatStore = create<ChatStore>((set, get) => ({
 
       set((state) => {
         const shouldApplyPersistedQueue = queueMutationVersionBeforeApply === queueMutationVersionForSnapshot
-        const nextQueuedMessages = shouldApplyPersistedQueue
-          ? (persistedQueuedMessages ?? state.messageQueue)
-          : state.messageQueue
-        const messageQueue = filterQueuedMessagesByConversationIds(nextQueuedMessages, conversationIds)
         const pendingQueuedEdit = state.pendingQueuedEdit && (
           state.pendingQueuedEdit.queuedMessage.conversationId == null ||
           conversationIds.has(state.pendingQueuedEdit.queuedMessage.conversationId)
         )
           ? state.pendingQueuedEdit
           : null
+        const nextQueuedMessages = shouldApplyPersistedQueue
+          ? (persistedQueuedMessages ?? state.messageQueue)
+          : state.messageQueue
+        const messageQueue = filterQueuedMessagesByConversationIds(
+          getVisibleQueuedMessages(nextQueuedMessages, pendingQueuedEdit),
+          conversationIds
+        )
 
         return {
           conversations,
@@ -2353,13 +2387,19 @@ export const useChatStore = create<ChatStore>((set, get) => ({
   },
 
   processQueue: async () => {
-    const { messageQueue } = get()
+    const { messageQueue, conversationStreams } = get()
     if (messageQueue.length === 0) return
 
-    // Take the first message from the queue
-    const [nextMessage] = messageQueue
+    const nextQueueIndex = getNextProcessableQueuedMessageIndex(
+      messageQueue,
+      getBlockedQueuedConversationIds(conversationStreams)
+    )
+    if (nextQueueIndex === -1) return
+
+    // Take the first processable message from the queue.
+    const nextMessage = messageQueue[nextQueueIndex]
     const anchor = getQueuePanelAnchor(messageQueue, nextMessage.id)
-    get().removeQueuedMessage(0)
+    get().removeQueuedMessage(nextQueueIndex)
 
     try {
       // Send the queued message
@@ -2379,25 +2419,40 @@ export const useChatStore = create<ChatStore>((set, get) => ({
   },
 
   sendQueuedNow: async (queueIndex) => {
-    const { messageQueue, activeConversationId } = get()
+    const { messageQueue, activeConversationId, conversationStreams } = get()
     const queuedMessage = messageQueue[queueIndex]
     if (!queuedMessage) return false
+
+    const targetConversationId = getQueuedMessageTargetConversationId(
+      queuedMessage,
+      activeConversationId ?? null
+    )
+    const blockedConversationIds = getBlockedQueuedConversationIds(conversationStreams)
+
+    if (targetConversationId && blockedConversationIds.has(targetConversationId)) {
+      set((state) => {
+        const nextQueue = promoteQueuedMessageToFront(state.messageQueue, queuedMessage.id)
+        if (nextQueue === state.messageQueue) return {}
+
+        return {
+          messageQueue: nextQueue,
+          queueMutationVersion: state.queueMutationVersion + 1,
+        }
+      })
+
+      const { hasHydratedQueuedMessages, messageQueue: updatedQueue, pendingQueuedEdit } = get()
+      persistQueuedMessages(
+        getPersistableQueuedMessages(updatedQueue, pendingQueuedEdit),
+        !hasHydratedQueuedMessages
+      )
+      return true
+    }
 
     // Remove selected message from queue first to avoid duplicate processing races.
     const anchor = getQueuePanelAnchor(messageQueue, queuedMessage.id)
     get().removeQueuedMessage(queueIndex)
 
     try {
-      const refreshedState = get()
-      const targetConversationId = queuedMessage.conversationId ?? refreshedState.activeConversationId ?? activeConversationId ?? null
-      const targetStreamState = targetConversationId ? refreshedState.conversationStreams[targetConversationId] : undefined
-
-      // "Send now" means send this queued item immediately.
-      // If the target conversation is currently streaming, stop first so this message can run now.
-      if (targetConversationId && targetConversationId === refreshedState.activeConversationId && targetStreamState?.isStreaming) {
-        await refreshedState.stopStreaming()
-      }
-
       await (get().sendMessage as any)(
         queuedMessage.content,
         queuedMessage.providerId,

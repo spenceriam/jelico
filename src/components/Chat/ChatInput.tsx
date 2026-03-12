@@ -291,6 +291,7 @@ export function ChatInput({
     removeQueuedMessage,
     processQueue,
     messageQueue,
+    conversationStreams,
     queuePanelExpandedByConversation,
     setQueuePanelExpanded,
     activeConversationId,
@@ -857,6 +858,20 @@ export function ChatInput({
     removeQueuedMessage(queueIndex)
   }, [removeQueuedMessage])
 
+  const getQueuedSendLabel = useCallback((queuedMessage: QueuedMessage) => {
+    const targetConversationId = queuedMessage.conversationId ?? activeConversationId ?? null
+    const targetIsBusy = Boolean(
+      targetConversationId && (
+        conversationStreams[targetConversationId]?.isStreaming ||
+        isConversationCompacting(targetConversationId)
+      )
+    )
+
+    return targetIsBusy
+      ? 'Send this queued message next without stopping the agent'
+      : 'Send queued message now'
+  }, [activeConversationId, conversationStreams, isConversationCompacting])
+
   const hasDraftToSend = input.trim().length > 0 || attachments.length > 0
   const submitButtonDisabled = disabled || !hasDraftToSend
   const showQueueSubmit = Boolean(isStreaming && hasDraftToSend)
@@ -940,7 +955,7 @@ export function ChatInput({
                   </div>
                   <div className="mt-0.5 flex items-center gap-1 flex-shrink-0 self-start">
                     <QueueActionIconButton
-                      label="Send now without stopping the agent"
+                      label={getQueuedSendLabel(msg)}
                       onClick={() => handleSendQueuedNow(queueIndex)}
                       disabled={sendingNowIndex !== null}
                       className="inline-flex h-7 w-7 items-center justify-center rounded-md text-accent hover:bg-accent/12 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
