@@ -572,6 +572,7 @@ export function ChatArea() {
           >
             <MessageList
               messages={messages}
+              isStreaming={isStreaming}
               streamingContent={isStreaming ? streamingContent : undefined}
               streamingStartedAt={isStreaming ? streamingStartTime : undefined}
               streamingToolCalls={isStreaming ? streamingToolCalls : undefined}

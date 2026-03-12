@@ -1,3 +1,33 @@
+## [0.36.0] - 2026-03-10
+
+### Highlights
+- Queued messages now open immediately when added, stay available after restart, and can be managed directly from the queue panel.
+- You can now edit or remove queued messages inline, or push one to run next without interrupting the current response.
+- The last prompt before the latest AI reply can now be edited directly inside its chat bubble and then regenerated from the updated text and attachments.
+
+### New
+- **Queue Message Controls** — Queued messages now have direct inline controls so you can send one immediately when the conversation is idle, prioritize it next while the current response finishes, edit it, or remove it without leaving the queue panel.
+- **Inline Prompt Editing Before Regenerate** — The latest user message before the most recent AI turn can now be edited in place inside the chat history, then reused for regenerate.
+
+### Fixed
+- **Collapsed Queue Visibility** — Adding a queued message during an active response now opens the queued-messages panel right away so new queued work is visible immediately.
+- **Queue Recovery After Restart** — Queued messages now survive app restarts, startup loading, and failed queue handoffs instead of disappearing.
+- **Queue Sync After Deletes** — Queued items for permanently deleted chats no longer come back from stale renderer state after a reload or later queue action, in-flight queue reloads no longer overwrite newer queued work after temporary load failures, and startup-time queue deletions no longer get silently restored from older disk state.
+- **Queue Recovery After Startup Read Failures** — If the app hits a temporary queue read error during startup, later queue changes no longer overwrite the saved queue with a partial in-memory snapshot.
+- **Queued Edit Durability** — Starting to edit a queued message no longer risks deleting it if the app reloads before you save or discard the edit.
+- **Queued Message Order** — Editing a queued message no longer changes the order that queued work runs when multiple conversations have interleaved items.
+- **Queued Edit Routing** — Editing a queued message now keeps the provider and model it was originally queued with instead of silently retargeting it to the current composer selection.
+- **Queued Edit Draft Recovery** — Saving a queued-message edit now returns you to the draft you were already composing instead of clearing it.
+- **Queued Edit Conversation Safety** — If you switch chats while a queued edit is still open, the stale edit can no longer be submitted into the wrong conversation during the transition.
+- **Queued Edit Reload Safety** — Reloading conversations while a queued message is being edited no longer makes that hidden queue item reappear in the visible queue panel mid-edit.
+- **Queued Edit Save Availability** — Saving an edited queued message no longer depends on the current global provider selection, so queue edits stay usable even if the provider picker is temporarily unset.
+- **Prompt Edit Streaming Safety** — The last prompt can no longer be edited while a response is actively starting, which avoids saving a different prompt than the one the assistant is already answering.
+- **Draft Attachment Removal** — Removing the last unsent attachment now stays removed when you switch chats and come back instead of unexpectedly reappearing in the draft.
+- **Regenerate Attachment Loss** — Regenerate now keeps the original prompt attachments instead of resending only the text.
+
+### Changed
+- **Queue Panel Polish** — Queued message previews now wrap naturally, use clearer action icons and tooltips, alternate row surfaces for easier scanning, stay consistent across new-chat and active-chat layouts, and let the queued send action reserve the very next runnable turn without stopping the active response.
+
 ## [0.35.3] - 2026-03-10
 
 ### Highlights
