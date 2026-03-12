@@ -64,7 +64,7 @@ Jelico is a local-first AI desktop assistant. A native app where you chat with A
 
 The Soul/Memory system should make Jelico increasingly personalized - it learns YOUR coding style, YOUR preferences, YOUR common mistakes. Every conversation teaches it to help YOU better.
 
-**Current Status:** Soul/Memory systems exist but need verification that they're properly injected into AI prompts. Current stabilization work is focused on response/tool ordering UX, readable streamed output assembly, non-interrupting queued follow-ups, and stronger conversation/composer state recovery after edge-case interactions.
+**Current Status:** Soul/Memory systems exist but need verification that they're properly injected into AI prompts. Current stabilization work is focused on response/tool ordering UX, readable streamed output assembly, conversation-status accuracy in the sidebar, streamlined archive flows, macOS shell/window behavior, and stronger conversation/composer state recovery after edge-case interactions.
 
 ## Setup commands
 - Install dependencies: `npm install`
@@ -76,7 +76,7 @@ The Soul/Memory system should make Jelico increasingly personalized - it learns 
 ## Project overview
 Jelico is an AI Productivity Desktop built with Electron, React, TypeScript, and Vite. It provides a frictionless AI assistant experience with multi-provider support (Anthropic, OpenAI, Google), workspace management, conversation persistence, and a soul/memory system that learns user patterns and preferences over time.
 
-**Current Version:** 0.36.0
+**Current Version:** 0.37.0 (working branch version; not yet a public release)
 
 **License:** GNU General Public License v3.0 (GPL-3.0-or-later)
 - See LICENSE file in project root
@@ -685,8 +685,28 @@ todo_write({ tasks: [
 
 - **Phase 1-7 Complete**: Core functionality, UI, artifacts, memory, soul system
 - **Phase 8 Complete**: Onboarding flow, backup/restore, versioning
-- **Current Focus**: Testing, polish, user feedback integration, and release hardening across tool UX and workspace flows
-- **Latest Release (0.36.0)**: Minor release focused on durable queued-message management, reload-safe queue resync after conversation deletes, fallback-safe queue reload recovery, success-only queue hydration state, startup read-failure-safe queue persistence, race-safe queue snapshot application, deletion-safe hydration merging, startup-safe queue hydration, FIFO-safe queue editing across conversations, draft-safe queued edit saves, provider-independent queued edit save availability, conversation-safe queued edit submission, hidden-edit-safe queue reloads, persisted non-interrupting queued send-now prioritization, stream-safe latest-prompt editing, stable draft-attachment recovery, preserved queued-message routing, inline queue controls, and direct editing/regenerate flow improvements for the latest prompt
+- **Current Focus**: Testing, polish, user feedback integration, release hardening, and sidebar/shell UX stabilization across conversation status tracking, archive flows, and macOS window ergonomics
+- **Next Planned Release (0.37.0)**: Minor release planned from the current PR branch with the muted animated new-chat backdrop, grouped sidebar conversation-status sections, inline archive confirmation/toasts, stable waiting/error status classification across sub-agent and interrupted-turn states, and macOS-native docking behavior.
+- **Latest Public Release (0.36.0)**: Minor release focused on durable queued-message management, reload-safe queue hydration, persisted queue prioritization/editing, and direct latest-prompt edit/regenerate flow improvements.
+- **Public Release History**:
+  - `0.36.0` - Durable queued-message management, reload-safe queue hydration, persisted queue prioritization, and direct latest-prompt edit/regenerate improvements.
+  - `0.35.2` - Provider-specific Kimi capability resolution through models.dev metadata for compatible coding endpoints.
+  - `0.35.1` - Improved interrupted tool attribution and deterministic completion-sensitive retry behavior for partial artifact/file mutation turns.
+  - `0.35.0` - Chat archiving, proactive update prompts, artifact screenshot capture, grouped task-graph upgrades, and refreshed branding/worktree UX.
+  - `0.34.1` - Prompt focus reliability after modal/clarification flows and stronger prompt-box top padding for long drafts.
+  - `0.33.10` - Live workspace branch indicator refresh after successful in-chat `git checkout` and `git switch` commands.
+  - `0.33.8` - Accurate interrupted-tool labeling, preserved resumable checkpoints, and deterministic `resume`/`restart`/`continue` recovery.
+  - `0.33.7` - Fixed duplicate same-turn assistant restarts and improved review-only prompt classification.
+  - `0.33.6` - Restored chronological streaming order between assistant text and tool activity.
+  - `0.33.5` - Sandbox artifact revision continuity, duplicate-app-launch protection, and hidden window cleanup on exit.
+  - `0.33.4` - Smarter kickoff/planning text and improved streaming readability around tool execution.
+  - `0.33.3` - More reliable image attachment previews and better artifact thumbnail/update visibility.
+  - `0.33.2` - Removed duplicate final summaries and hardened deterministic end-of-turn fallback behavior.
+  - `0.10.1` - Added the header context indicator and fixed persisted context-usage restoration across restarts/regenerate flows.
+  - `0.10.0` - Introduced app-surface drag/maximize behavior and reduced accidental text selection during window interactions.
+  - `0.9.4` - Public packaged desktop release with standard multi-platform installer artifacts.
+  - `0.9.3` - Public packaged desktop release with standard multi-platform installer artifacts.
+  - `0.9.2` - First public deployment for target operating-system testing.
 
 ## Code style
 - TypeScript strict mode enabled

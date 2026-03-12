@@ -185,6 +185,7 @@ interface ChatStore {
   messages: Message[]
   conversationStreams: Record<string, ConversationStreamState>
   interruptedConversations: Record<string, InterruptedConversationState>
+  conversationErrors: Record<string, string>
   isStreaming: boolean
   streamingContent: string
   streamingToolCalls: ToolCall[]
@@ -777,6 +778,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
   messages: [],
   conversationStreams: {},
   interruptedConversations: {},
+  conversationErrors: {},
   modeTransitioning: false,
   modeSwitchReason: null,
   lastCompletedTool: null,
@@ -943,6 +945,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
         conversations,
         activeConversationId: conversation.id,
         messages: [],
+        error: null,
       })
       useTodoStore.getState().setConversationId(conversation.id)
       useClarificationStore.getState().setConversationId(conversation.id)
@@ -1007,6 +1010,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
           activeConversationId: id,
           messages: loadedMessages,
           isLoading: false,
+          error: state.conversationErrors[id] || null,
           modeTransitioning: false,
           modeSwitchReason: null,
           ...projectStreamStateToActiveFields(streamState),
@@ -1153,6 +1157,15 @@ export const useChatStore = create<ChatStore>((set, get) => ({
     if (!conversationId) return
 
     const targetConversationId = conversationId
+    set((state) => {
+      const nextConversationErrors = { ...state.conversationErrors }
+      delete nextConversationErrors[targetConversationId]
+      return {
+        conversationErrors: nextConversationErrors,
+        error: state.activeConversationId === targetConversationId ? null : state.error,
+      }
+    })
+
     // Clean up stale running rows from previous turns before starting a new stream.
     // This is especially important for legacy agents that were created before parentId linkage.
     useAgentStore.getState().cancelRunningAgentsByConversation(targetConversationId)
@@ -1393,7 +1406,14 @@ export const useChatStore = create<ChatStore>((set, get) => ({
       console.error('[Chat Store] Failed to start stream:', error)
       clearPendingStreamCheckpoint(targetConversationId)
       clearConversationStreamState()
-      set({ error: error?.message || 'Failed to start AI stream' })
+      const message = error?.message || 'Failed to start AI stream'
+      set((state) => ({
+        conversationErrors: {
+          ...state.conversationErrors,
+          [targetConversationId]: message,
+        },
+        error: state.activeConversationId === targetConversationId ? message : state.error,
+      }))
       return
     }
     streamChannelByConversation.set(targetConversationId, channelId)
@@ -1744,13 +1764,22 @@ export const useChatStore = create<ChatStore>((set, get) => ({
         result: update.result,
         error: update.error,
         toolCalls: mappedToolCalls,
-        completedAt: update.status === 'completed' || update.status === 'failed' ? Date.now() : undefined,
+        completedAt:
+          update.status === 'completed' ||
+          update.status === 'failed' ||
+          update.status === 'cancelled'
+            ? Date.now()
+            : undefined,
         latestUpdate: update.latestUpdate,  // Self-reported status from agent
       })
 
       // Clear streaming preview when sub-agent completes or fails
       // This handles cases where the sub-agent finishes without creating an artifact
-      if (update.status === 'completed' || update.status === 'failed') {
+      if (
+        update.status === 'completed' ||
+        update.status === 'failed' ||
+        update.status === 'cancelled'
+      ) {
         useArtifactStore.getState().clearStreamingPreview()
       }
     })
@@ -1936,6 +1965,8 @@ export const useChatStore = create<ChatStore>((set, get) => ({
           const nextMessages = state.activeConversationId === targetConversationId
             ? [...state.messages, messageWithTools]
             : state.messages
+          const nextConversationErrors = { ...state.conversationErrors }
+          delete nextConversationErrors[targetConversationId]
 
           const { [targetConversationId]: _removed, ...restStreams } = state.conversationStreams
           const nextInterruptedConversations = hasIncompleteToolCalls
@@ -1954,10 +1985,13 @@ export const useChatStore = create<ChatStore>((set, get) => ({
             messages: nextMessages,
             conversationStreams: restStreams,
             interruptedConversations: nextInterruptedConversations,
+            conversationErrors: nextConversationErrors,
           }
 
           if (state.activeConversationId === targetConversationId) {
-            Object.assign(updates, projectStreamStateToActiveFields(createEmptyConversationStreamState()))
+            Object.assign(updates, projectStreamStateToActiveFields(createEmptyConversationStreamState()), {
+              error: null,
+            })
           }
 
           return updates as Partial<ChatStore>
@@ -1980,7 +2014,14 @@ export const useChatStore = create<ChatStore>((set, get) => ({
             },
           }))
         }
-        set({ error: `Failed to save message: ${error}` })
+        const message = `Failed to save message: ${error}`
+        set((state) => ({
+          conversationErrors: {
+            ...state.conversationErrors,
+            [targetConversationId]: message,
+          },
+          error: state.activeConversationId === targetConversationId ? message : state.error,
+        }))
       }
 
       // Add system notification for created artifacts
@@ -2127,7 +2168,11 @@ export const useChatStore = create<ChatStore>((set, get) => ({
               },
             }
             : restInterrupted,
-          error,
+          conversationErrors: {
+            ...state.conversationErrors,
+            [targetConversationId]: error,
+          },
+          error: state.activeConversationId === targetConversationId ? error : state.error,
         }
       })
 
@@ -2553,9 +2598,20 @@ export const useChatStore = create<ChatStore>((set, get) => ({
     // Build context about active agents so the next turn knows what was happening
     const conversationAgents = useAgentStore.getState().getAgentsByConversation(activeConversationId)
     const activeAgentSummaries = conversationAgents
-      .filter(a => a.status === 'running' || a.status === 'pending' || a.status === 'completed')
+      .filter(
+        (a) =>
+          a.status === 'running' ||
+          a.status === 'pending' ||
+          a.status === 'waiting_for_input' ||
+          a.status === 'completed'
+      )
       .map(a => {
-        const statusLabel = a.status === 'completed' ? 'finished' : 'was in progress'
+        const statusLabel =
+          a.status === 'completed'
+            ? 'finished'
+            : a.status === 'waiting_for_input'
+              ? 'was waiting for input'
+              : 'was in progress'
         const errorNote = a.error ? ` (error: ${a.error})` : ''
         return `- ${a.displayName || a.name}: ${a.task.slice(0, 120)}${a.task.length > 120 ? '...' : ''} [${statusLabel}${errorNote}]`
       })
@@ -2616,11 +2672,13 @@ export const useChatStore = create<ChatStore>((set, get) => ({
       set((state) => {
         const { [id]: _removedStream, ...restStreams } = state.conversationStreams
         const { [id]: _removedInterrupted, ...restInterrupted } = state.interruptedConversations
+        const { [id]: _removedError, ...restErrors } = state.conversationErrors
         return {
           activeConversationId: null,
           messages: [],
           conversationStreams: restStreams,
           interruptedConversations: restInterrupted,
+          conversationErrors: restErrors,
           ...projectStreamStateToActiveFields(createEmptyConversationStreamState()),
           error: null,
         }
@@ -2652,15 +2710,18 @@ export const useChatStore = create<ChatStore>((set, get) => ({
         set((state) => {
           const { [id]: _removedStream, ...restStreams } = state.conversationStreams
           const { [id]: _removedInterrupted, ...restInterrupted } = state.interruptedConversations
+          const { [id]: _removedError, ...restErrors } = state.conversationErrors
           return {
             conversations,
             conversationStreams: restStreams,
             interruptedConversations: restInterrupted,
+            conversationErrors: restErrors,
           }
         })
       }
     } catch (error: any) {
       set({ error: error.message })
+      throw error
     }
   },
 
@@ -2714,7 +2775,19 @@ export const useChatStore = create<ChatStore>((set, get) => ({
     }, 2000)
   },
 
-  clearError: () => set({ error: null }),
+  clearError: () => set((state) => {
+    if (!state.activeConversationId) {
+      return { error: null }
+    }
+
+    const nextConversationErrors = { ...state.conversationErrors }
+    delete nextConversationErrors[state.activeConversationId]
+
+    return {
+      error: null,
+      conversationErrors: nextConversationErrors,
+    }
+  }),
 
   regenerateLastResponse: async (providerId, model) => {
     const { messages, activeConversationId, isStreaming } = get()
@@ -2841,7 +2914,16 @@ export const useChatStore = create<ChatStore>((set, get) => ({
         targetConversationId
       )
     } catch (error: any) {
-      set({ error: error.message || String(error) })
+      const message = error.message || String(error)
+      set((state) => ({
+        conversationErrors: targetConversationId
+          ? {
+            ...state.conversationErrors,
+            [targetConversationId]: message,
+          }
+          : state.conversationErrors,
+        error: state.activeConversationId === targetConversationId ? message : state.error,
+      }))
     }
   },
 

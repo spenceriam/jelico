@@ -1,3 +1,4 @@
+import type { CSSProperties } from 'react'
 import { Settings, Presentation, GitBranch } from 'lucide-react'
 import { useUIStore } from '../../stores/ui'
 import { useArtifactStore } from '../../stores/artifacts'
@@ -9,6 +10,9 @@ import { ModelSelector } from '../Model/ModelSelector'
 import { ContextIndicator } from './ContextIndicator'
 
 export function Header() {
+  const isMacPlatform = navigator.platform.toUpperCase().includes('MAC')
+  const dragRegionStyle = isMacPlatform ? ({ WebkitAppRegion: 'drag' } as CSSProperties) : {}
+  const noDragRegionStyle = isMacPlatform ? ({ WebkitAppRegion: 'no-drag' } as CSSProperties) : {}
   const { openSettings, sidebarCollapsed } = useUIStore()
   const { artifacts, canvasOpen, toggleCanvas } = useArtifactStore()
   const activeConversationId = useChatStore((state) => state.activeConversationId)
@@ -25,10 +29,16 @@ export function Header() {
   return (
     <header
       className="pane-surface flex items-center justify-between px-4 border-b border-border"
-      style={{ height: 'clamp(2.9rem, calc(3.5rem * var(--app-font-scale, 1)), 4.4rem)' }}
+      style={{
+        height: 'clamp(2.9rem, calc(3.5rem * var(--app-font-scale, 1)), 4.4rem)',
+        ...dragRegionStyle,
+      }}
     >
       {/* Left - Workspace selector, Model, Context */}
-      <div className="flex-1 min-w-0 flex items-center gap-3">
+      <div
+        className="flex-1 min-w-0 flex items-center gap-3"
+        style={noDragRegionStyle}
+      >
         <WorkspaceSelector />
         <ModelSelector />
         <ContextIndicator />
@@ -44,7 +54,10 @@ export function Header() {
       </div>
 
       {/* Right - Canvas & Settings */}
-      <div className="flex items-center gap-2">
+      <div
+        className="flex items-center gap-2"
+        style={noDragRegionStyle}
+      >
         {/* Canvas toggle button */}
         <button
           onClick={toggleCanvas}

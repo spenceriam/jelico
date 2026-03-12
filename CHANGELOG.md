@@ -1,3 +1,21 @@
+## [0.37.0] - 2026-03-12
+
+### Highlights
+- The new chat screen now has a subtle animated paths backdrop that adds motion without distracting from the greeting, controls, or composer.
+- The sidebar now groups chats by status, keeps failed chats marked for attention, and uses inline archive confirmation with toast feedback.
+- macOS window docking now works with native drag behavior instead of the old custom drag handling.
+
+### New
+- **Animated New Chat Backdrop** — The empty new-chat screen now shows a muted looping paths animation that stays behind the existing layout and respects reduced-motion settings.
+- **Chat Status Sections** — Conversations are now grouped under In Progress, Waiting for Input, Needs Attention, and Done so it is easier to track multiple chats inside the same workspace or sandbox.
+
+### Fixed
+- **Sidebar Status Accuracy** — Conversations now stay in Waiting for Input when a sub-agent pauses for user input, and old failed sub-agents no longer leave later successful chats stuck under Needs Attention.
+- **macOS Docking** — Jelico now cooperates with macOS window docking gestures by using native drag regions in the titlebar and header.
+
+### Changed
+- **Archive Confirmation Flow** — Archiving a chat now uses an inline highlighted confirmation state in the sidebar row and a bottom-left toast after completion instead of a separate prompt dialog.
+
 ## [0.36.0] - 2026-03-10
 
 ### Highlights
