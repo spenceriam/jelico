@@ -674,6 +674,9 @@ export function ChatInput({
     )
 
     try {
+      let nextDraftValue = ''
+      let nextDraftAttachments: Attachment[] = []
+
       if (editingQueuedMessage) {
         const restoredQueuedMessage: QueuedMessage = {
           ...editingQueuedMessage.queuedMessage,
@@ -682,6 +685,8 @@ export function ChatInput({
         }
 
         commitQueuedMessageEdit(restoredQueuedMessage)
+        nextDraftValue = editingQueuedMessage.previousDraft
+        nextDraftAttachments = cloneDraftAttachments(editingQueuedMessage.previousAttachments)
 
         const targetConversationId = restoredQueuedMessage.conversationId ?? activeConversationId ?? null
         if (!isStreaming && !(targetConversationId && isConversationCompacting(targetConversationId))) {
@@ -700,11 +705,14 @@ export function ChatInput({
         )
       }
 
-      setInput('')
-      setAttachments([])
+      setInput(nextDraftValue)
+      setAttachments(nextDraftAttachments)
+      editingQueuedMessageRef.current = null
       setEditingQueuedMessage(null)
-      persistDraft('', [])
-      rotatePromptPlaceholder()
+      persistDraft(nextDraftValue, nextDraftAttachments)
+      if (!nextDraftValue && nextDraftAttachments.length === 0) {
+        rotatePromptPlaceholder()
+      }
       return true
     } catch (error) {
       console.error('[ChatInput] Failed to send message:', error)

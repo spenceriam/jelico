@@ -34,10 +34,11 @@ export const changelog: ChangelogEntry[] = [
       fixed: [
         'Queueing a new message during an active response now always auto-expands the queued messages panel for the active conversation instead of leaving new entries hidden in a collapsed state (Fixes #135)',
         'Queued messages are no longer dropped on restart, during startup queue hydration, or during failed queue handoff attempts; queue state now survives reloads and restores items when immediate/deferred sends fail',
-        'Conversation reloads now resync the persisted queue state, filter out queued rows for permanently deleted conversations, and keep queue hydration in merge mode until persisted queue loading succeeds, so stale work cannot be resurrected and transient IPC failures do not clear or overwrite queued items',
+        'Conversation reloads now resync the persisted queue state, filter out queued rows for permanently deleted conversations, keep queue hydration in merge mode until persisted queue loading succeeds, and refuse to apply stale hydrated snapshots after later queue mutations, so transient IPC failures and in-flight reload races do not clear or overwrite queued items',
         'Starting to edit a queued message no longer removes it from durable queue storage before the edit is finalized, so reloads during edit restore the original queued item instead of silently losing it',
         'Editing or restoring a queued message now preserves the original global queue order, so interleaved work across multiple conversations continues to run FIFO instead of being silently reordered',
         'Editing a queued message now preserves its original provider/model routing instead of silently replacing it with the current composer selection',
+        'Saving a queued-message edit now restores the draft text and attachments that were already in the composer before edit mode, instead of clearing that unsent work after the queue item is updated',
         'Removing the final unsent composer attachment now clears the cached draft attachment state immediately, so deleted files do not reappear after switching conversations',
         'Regenerate now preserves attachments from the preceding user message instead of silently dropping them on resend',
       ],

@@ -761,15 +761,16 @@ export const useChatStore = create<ChatStore>((set, get) => ({
   loadConversations: async () => {
     set({ isLoading: true })
     try {
-      const queueMutationVersionAtStart = get().queueMutationVersion
+      let queueMutationVersionForSnapshot = get().queueMutationVersion
       let [conversations, conversationIds, persistedQueuedMessages] = await Promise.all([
         window.jelico.conversations.list(),
         loadKnownConversationIds(),
         loadPersistedQueuedMessages(),
       ])
 
-      if (get().queueMutationVersion !== queueMutationVersionAtStart) {
+      if (get().queueMutationVersion !== queueMutationVersionForSnapshot) {
         await persistQueuedMessagesPromise.catch(() => undefined)
+        queueMutationVersionForSnapshot = get().queueMutationVersion
         ;[conversations, conversationIds, persistedQueuedMessages] = await Promise.all([
           window.jelico.conversations.list(),
           loadKnownConversationIds(),
@@ -777,8 +778,13 @@ export const useChatStore = create<ChatStore>((set, get) => ({
         ])
       }
 
+      const queueMutationVersionBeforeApply = get().queueMutationVersion
+
       set((state) => {
-        const nextQueuedMessages = persistedQueuedMessages ?? state.messageQueue
+        const shouldApplyPersistedQueue = queueMutationVersionBeforeApply === queueMutationVersionForSnapshot
+        const nextQueuedMessages = shouldApplyPersistedQueue
+          ? (persistedQueuedMessages ?? state.messageQueue)
+          : state.messageQueue
         const messageQueue = filterQueuedMessagesByConversationIds(nextQueuedMessages, conversationIds)
         const pendingQueuedEdit = state.pendingQueuedEdit && (
           state.pendingQueuedEdit.queuedMessage.conversationId == null ||
@@ -791,7 +797,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
           conversations,
           messageQueue,
           pendingQueuedEdit,
-          hasHydratedQueuedMessages: persistedQueuedMessages !== null
+          hasHydratedQueuedMessages: shouldApplyPersistedQueue && persistedQueuedMessages !== null
             ? true
             : state.hasHydratedQueuedMessages,
           queuePanelExpandedByConversation: syncQueuePanelExpandedByConversation(
