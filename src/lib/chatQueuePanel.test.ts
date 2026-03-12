@@ -167,6 +167,19 @@ test('merges hydrated queued messages with newer in-memory additions', () => {
   assert.deepEqual(merged.map((message) => message.id), ['a', 'b', 'c'])
 })
 
+test('drops explicitly deleted queued ids while merging hydrated queue state', () => {
+  const merged = mergeHydratedQueuedMessages(
+    [
+      { id: 'a', conversationId: 'conv-1' },
+      { id: 'b', conversationId: 'conv-2' },
+    ],
+    [],
+    ['a']
+  )
+
+  assert.deepEqual(merged.map((message) => message.id), ['b'])
+})
+
 test('keeps a hidden queued edit in the persisted queue output', () => {
   const persistableQueue = getPersistableQueuedMessages(
     [

@@ -297,6 +297,9 @@ export function ChatInput({
   } = useChatStore()
   const { activeProviderId, activeModel } = useProviderStore()
   const { isConversationCompacting } = useContextStore()
+  const isEditingQueuedMessageForActiveConversation = editingQueuedMessage
+    ? (editingQueuedMessage.queuedMessage.conversationId ?? null) === (activeConversationId ?? null)
+    : false
 
   const resizeTextarea = useCallback((content: string) => {
     const textarea = textareaRef.current
@@ -637,7 +640,11 @@ export function ChatInput({
   }
 
   const handleSubmit = useCallback(async (): Promise<boolean> => {
-    if ((!input.trim() && attachments.length === 0) || (!editingQueuedMessage && (!activeProviderId || !activeModel))) return false
+    if (
+      (!input.trim() && attachments.length === 0) ||
+      (!isEditingQueuedMessageForActiveConversation && !editingQueuedMessage && (!activeProviderId || !activeModel))
+    ) return false
+    if (editingQueuedMessage && !isEditingQueuedMessageForActiveConversation) return false
     const trimmedInput = input.trim()
 
     // Convert attachments to MessageAttachment format
@@ -677,7 +684,7 @@ export function ChatInput({
       let nextDraftValue = ''
       let nextDraftAttachments: Attachment[] = []
 
-      if (editingQueuedMessage) {
+      if (isEditingQueuedMessageForActiveConversation && editingQueuedMessage) {
         const restoredQueuedMessage: QueuedMessage = {
           ...editingQueuedMessage.queuedMessage,
           content: trimmedInput,
@@ -725,6 +732,7 @@ export function ChatInput({
     attachments,
     editingQueuedMessage,
     input,
+    isEditingQueuedMessageForActiveConversation,
     isConversationCompacting,
     isStreaming,
     persistDraft,

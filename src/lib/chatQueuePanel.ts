@@ -99,17 +99,25 @@ export function insertQueuedMessageAtAnchor<T extends QueuePanelOrderedMessageLi
 
 export function mergeHydratedQueuedMessages<T extends QueuePanelOrderedMessageLike>(
   persistedQueue: T[],
-  inMemoryQueue: T[]
+  inMemoryQueue: T[],
+  removedIds: Iterable<string> = []
 ): T[] {
-  if (persistedQueue.length === 0) return [...inMemoryQueue]
-  if (inMemoryQueue.length === 0) return [...persistedQueue]
+  const removedIdSet = new Set(removedIds)
+  if (persistedQueue.length === 0) {
+    return inMemoryQueue.filter((message) => !removedIdSet.has(message.id))
+  }
+  if (inMemoryQueue.length === 0) {
+    return persistedQueue.filter((message) => !removedIdSet.has(message.id))
+  }
 
   const inMemoryById = new Map(inMemoryQueue.map((message) => [message.id, message]))
-  const mergedQueue = persistedQueue.map((message) => inMemoryById.get(message.id) ?? message)
+  const mergedQueue = persistedQueue
+    .filter((message) => !removedIdSet.has(message.id))
+    .map((message) => inMemoryById.get(message.id) ?? message)
   const mergedIds = new Set(mergedQueue.map((message) => message.id))
 
   for (const message of inMemoryQueue) {
-    if (!mergedIds.has(message.id)) {
+    if (!mergedIds.has(message.id) && !removedIdSet.has(message.id)) {
       mergedQueue.push(message)
       mergedIds.add(message.id)
     }

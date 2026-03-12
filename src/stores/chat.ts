@@ -197,6 +197,7 @@ interface ChatStore {
   pendingQueuedEdit: PendingQueuedEdit | null
   hasHydratedQueuedMessages: boolean
   queueMutationVersion: number
+  preHydrationDeletedQueuedMessageIds: Record<string, true>
   queuePanelExpandedByConversation: Record<string, boolean>
   lastCompletedTool: { name: string; args: Record<string, unknown>; completedAt: number } | null
   // Status display queue for graceful UX - ensures each status shows for minimum time
@@ -321,7 +322,12 @@ function persistQueuedMessages(messageQueue: QueuedMessage[], shouldMergePersist
       if (shouldMergePersistedQueue) {
         const persistedQueuedMessages = await loadPersistedQueuedMessages()
         if (persistedQueuedMessages) {
-          nextQueue = mergeHydratedQueuedMessages(persistedQueuedMessages, messageQueue)
+          const { preHydrationDeletedQueuedMessageIds } = useChatStore.getState()
+          nextQueue = mergeHydratedQueuedMessages(
+            persistedQueuedMessages,
+            messageQueue,
+            Object.keys(preHydrationDeletedQueuedMessageIds)
+          )
         }
       }
 
@@ -751,6 +757,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
   pendingQueuedEdit: null,
   hasHydratedQueuedMessages: false,
   queueMutationVersion: 0,
+  preHydrationDeletedQueuedMessageIds: {},
   queuePanelExpandedByConversation: {},
   statusDisplayQueue: [],
   toolInputProgress: null,
@@ -800,6 +807,9 @@ export const useChatStore = create<ChatStore>((set, get) => ({
           hasHydratedQueuedMessages: shouldApplyPersistedQueue && persistedQueuedMessages !== null
             ? true
             : state.hasHydratedQueuedMessages,
+          preHydrationDeletedQueuedMessageIds: shouldApplyPersistedQueue && persistedQueuedMessages !== null
+            ? {}
+            : state.preHydrationDeletedQueuedMessageIds,
           queuePanelExpandedByConversation: syncQueuePanelExpandedByConversation(
             state.queuePanelExpandedByConversation,
             messageQueue
@@ -2143,6 +2153,12 @@ export const useChatStore = create<ChatStore>((set, get) => ({
       return {
         messageQueue: [...state.messageQueue, queuedMessage],
         queueMutationVersion: state.queueMutationVersion + 1,
+        preHydrationDeletedQueuedMessageIds: Object.keys(state.preHydrationDeletedQueuedMessageIds).length > 0
+          ? Object.fromEntries(
+              Object.entries(state.preHydrationDeletedQueuedMessageIds)
+                .filter(([queuedMessageId]) => queuedMessageId !== queuedMessage.id)
+            )
+          : state.preHydrationDeletedQueuedMessageIds,
         queuePanelExpandedByConversation: {
           ...state.queuePanelExpandedByConversation,
           [queueKey]: true,
@@ -2219,6 +2235,12 @@ export const useChatStore = create<ChatStore>((set, get) => ({
         messageQueue: restoredQueue,
         pendingQueuedEdit: null,
         queueMutationVersion: state.queueMutationVersion + 1,
+        preHydrationDeletedQueuedMessageIds: Object.keys(state.preHydrationDeletedQueuedMessageIds).length > 0
+          ? Object.fromEntries(
+              Object.entries(state.preHydrationDeletedQueuedMessageIds)
+                .filter(([queuedMessageId]) => queuedMessageId !== state.pendingQueuedEdit?.queuedMessage.id)
+            )
+          : state.preHydrationDeletedQueuedMessageIds,
         queuePanelExpandedByConversation: {
           ...state.queuePanelExpandedByConversation,
           [queueKey]: true,
@@ -2248,6 +2270,12 @@ export const useChatStore = create<ChatStore>((set, get) => ({
         messageQueue: restoredQueue,
         pendingQueuedEdit: null,
         queueMutationVersion: state.queueMutationVersion + 1,
+        preHydrationDeletedQueuedMessageIds: Object.keys(state.preHydrationDeletedQueuedMessageIds).length > 0
+          ? Object.fromEntries(
+              Object.entries(state.preHydrationDeletedQueuedMessageIds)
+                .filter(([queuedMessageId]) => queuedMessageId !== queuedMessage.id)
+            )
+          : state.preHydrationDeletedQueuedMessageIds,
         queuePanelExpandedByConversation: {
           ...state.queuePanelExpandedByConversation,
           [queueKey]: true,
@@ -2275,6 +2303,12 @@ export const useChatStore = create<ChatStore>((set, get) => ({
       return {
         messageQueue: nextQueue,
         queueMutationVersion: state.queueMutationVersion + 1,
+        preHydrationDeletedQueuedMessageIds: state.hasHydratedQueuedMessages
+          ? state.preHydrationDeletedQueuedMessageIds
+          : {
+              ...state.preHydrationDeletedQueuedMessageIds,
+              [queuedMessage.id]: true,
+            },
         queuePanelExpandedByConversation: remainingCount === 0
           ? {
               ...state.queuePanelExpandedByConversation,
@@ -2297,6 +2331,12 @@ export const useChatStore = create<ChatStore>((set, get) => ({
       return {
         messageQueue: nextQueue,
         queueMutationVersion: state.queueMutationVersion + 1,
+        preHydrationDeletedQueuedMessageIds: Object.keys(state.preHydrationDeletedQueuedMessageIds).length > 0
+          ? Object.fromEntries(
+              Object.entries(state.preHydrationDeletedQueuedMessageIds)
+                .filter(([queuedMessageId]) => queuedMessageId !== queuedMessage.id)
+            )
+          : state.preHydrationDeletedQueuedMessageIds,
         queuePanelExpandedByConversation: {
           ...state.queuePanelExpandedByConversation,
           [queueKey]: true,
