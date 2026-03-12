@@ -1,4 +1,4 @@
-import { useEffect, useCallback, useState, useRef } from 'react'
+import { useEffect, useCallback, useState, useRef, type CSSProperties } from 'react'
 import { ArrowUpRight, Download, PanelLeftClose, PanelLeftOpen, RefreshCw, X } from 'lucide-react'
 import { useProviderStore } from './stores/providers'
 import { useChatStore } from './stores/chat'
@@ -20,6 +20,7 @@ import { Settings } from './components/Settings/Settings'
 import { PermissionDialog } from './components/Permissions/PermissionDialog'
 import { ClarificationPanel } from './components/Clarification/ClarificationPanel'
 import { WelcomeScreen, type OnboardingProfile } from './components/Onboarding/WelcomeScreen'
+import { ToastViewport } from './components/Feedback/ToastViewport'
 
 // Default and constraints for canvas panel width
 const DEFAULT_CANVAS_WIDTH = 500
@@ -60,6 +61,8 @@ interface FontShortcutState {
 }
 
 export default function App() {
+  const isMacPlatform = navigator.platform.toUpperCase().includes('MAC')
+  const macDragRegionStyle = isMacPlatform ? ({ WebkitAppRegion: 'drag' } as CSSProperties) : {}
   const { providers, loadProviders, isLoading } = useProviderStore()
   const { loadConversations, activeConversationId, messages, isStreaming } = useChatStore()
   const {
@@ -241,6 +244,7 @@ export default function App() {
   }, [])
 
   const handleAppMouseDown = useCallback((event: React.MouseEvent<HTMLDivElement>) => {
+    if (isMacPlatform) return
     if (event.button !== 0) return
     if (event.detail > 1) return
 
@@ -311,20 +315,21 @@ export default function App() {
 
     document.addEventListener('mousemove', onMouseMove)
     document.addEventListener('mouseup', onMouseUp)
-  }, [isInteractiveTarget, isResizing, stopWindowDrag])
+  }, [isInteractiveTarget, isMacPlatform, isResizing, stopWindowDrag])
 
   useEffect(() => {
     return () => stopWindowDrag()
   }, [stopWindowDrag])
 
   const handleAppDoubleClick = useCallback((event: React.MouseEvent<HTMLDivElement>) => {
+    if (isMacPlatform) return
     if (isResizing) return
     const target = event.target as HTMLElement | null
     if (isInteractiveTarget(target)) return
     window.jelico.window.toggleMaximize().catch((error) => {
       console.error('Failed to toggle window maximize:', error)
     })
-  }, [isResizing, isInteractiveTarget])
+  }, [isInteractiveTarget, isMacPlatform, isResizing])
 
   const finishResize = useCallback(() => {
     const current = resizeRef.current
@@ -494,8 +499,11 @@ export default function App() {
       >
         {/* macOS titlebar safe-area fill for the main pane */}
         <div
-          className="pane-surface absolute top-0 left-0 right-0 pointer-events-none"
-          style={{ height: 'var(--titlebar-padding)' }}
+          className={`pane-surface absolute top-0 left-0 right-0 ${isMacPlatform ? '' : 'pointer-events-none'}`}
+          style={{
+            height: 'var(--titlebar-padding)',
+            ...macDragRegionStyle,
+          }}
           aria-hidden="true"
         />
 
@@ -558,6 +566,8 @@ export default function App() {
           </div>
         </div>
       )}
+
+      <ToastViewport />
 
       {/* Command palette */}
       <CommandPalette isOpen={commandPalette.isOpen} onClose={commandPalette.close} />

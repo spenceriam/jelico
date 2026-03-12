@@ -1,9 +1,12 @@
-import { useState, useEffect, useMemo, useRef } from 'react'
+import { useState, useEffect, useMemo, type CSSProperties } from 'react'
 import {
   Plus,
   Settings,
   Archive,
   AlertTriangle,
+  HelpCircle,
+  Check,
+  X,
   FileCode,
   FileText,
   Presentation,
@@ -18,12 +21,20 @@ import {
   Box,
 } from 'lucide-react'
 import { useChatStore } from '../../stores/chat'
+import { useAgentStore } from '../../stores/agents'
+import { useClarificationStore } from '../../stores/clarification'
 import { useUIStore } from '../../stores/ui'
 import { useWorkspaceStore, type Workspace } from '../../stores/workspaces'
 import { useArtifactStore, type ArtifactType } from '../../stores/artifacts'
+import { useToastStore } from '../../stores/toasts'
 import { useUpdateStore } from '../../stores/updates'
-import { useDecisionPromptStore } from '../../stores/decisionPrompt'
 import { TransferDialog } from '../Conversations/TransferDialog'
+import {
+  CONVERSATION_SIDEBAR_STATUS_ORDER,
+  getConversationSidebarStatus,
+  getConversationSidebarStatusMeta,
+  type ConversationSidebarStatus,
+} from '../../lib/conversationSidebarStatus'
 import sidebarBrandUrl from '../../assets/branding/jelico-icon-v2-transparent.png'
 
 type ChatConversation = ReturnType<typeof useChatStore.getState>['conversations'][number]
@@ -183,18 +194,24 @@ function buildProjectGroups(
 }
 
 export function Sidebar() {
-  const pendingArchiveControllersRef = useRef(new Map<string, AbortController>())
   const {
     conversations,
     activeConversationId,
     setActiveConversation,
     archiveConversation,
     conversationStreams,
+    interruptedConversations,
+    conversationErrors,
   } = useChatStore()
+  const agents = useAgentStore((state) => state.agents)
+  const clarificationRequestsByConversation = useClarificationStore((state) => state.requestsByConversation)
   const { sidebarCollapsed, openSettings } = useUIStore()
   const { workspaces, activeWorkspaceId, setActiveWorkspace } = useWorkspaceStore()
   const { artifacts, selectArtifact, openCanvas } = useArtifactStore()
+  const addToast = useToastStore((state) => state.addToast)
   const updateAvailable = useUpdateStore((state) => state.info?.isUpdateAvailable)
+  const isMacPlatform = useMemo(() => navigator.platform.toUpperCase().includes('MAC'), [])
+  const macDragRegionStyle = isMacPlatform ? ({ WebkitAppRegion: 'drag' } as CSSProperties) : {}
   // Track which project groups are expanded (persisted to localStorage)
   const SIDEBAR_COLLAPSED_KEY = 'jelico:sidebar:collapsed-groups'
   const [expandedProjects, setExpandedProjects] = useState<Set<string>>(() => {
@@ -213,6 +230,7 @@ export function Sidebar() {
   })
   // Track which conversations have their artifact trees expanded
   const [expandedConversations, setExpandedConversations] = useState<Set<string>>(new Set())
+  const [archiveConfirmConversationId, setArchiveConfirmConversationId] = useState<string | null>(null)
   // Transfer dialog state
   const [transferDialogConv, setTransferDialogConv] = useState<{ id: string; title: string; workspaceId: string | null } | null>(null)
 
@@ -225,6 +243,57 @@ export function Sidebar() {
     () => buildProjectGroups(conversations, workspaceById),
     [conversations, workspaceById]
   )
+
+  const agentStateByConversation = useMemo(() => {
+    const next = new Map<string, { hasRunning: boolean; hasPending: boolean; hasFailed: boolean }>()
+
+    for (const agent of agents) {
+      if (!agent.conversationId) continue
+
+      const current = next.get(agent.conversationId) || {
+        hasRunning: false,
+        hasPending: false,
+        hasFailed: false,
+      }
+
+      if (agent.status === 'running') current.hasRunning = true
+      if (agent.status === 'pending') current.hasPending = true
+      if (agent.status === 'failed') current.hasFailed = true
+
+      next.set(agent.conversationId, current)
+    }
+
+    return next
+  }, [agents])
+
+  const conversationStatusById = useMemo(() => {
+    const next = new Map<string, ConversationSidebarStatus>()
+
+    for (const conversation of conversations) {
+      const agentState = agentStateByConversation.get(conversation.id)
+      next.set(
+        conversation.id,
+        getConversationSidebarStatus({
+          isStreaming: conversationStreams[conversation.id]?.isStreaming === true,
+          hasRunningAgent: agentState?.hasRunning === true,
+          hasPendingAgent: agentState?.hasPending === true,
+          hasClarificationRequest: Boolean(clarificationRequestsByConversation[conversation.id]),
+          hasInterruptedStream: Boolean(interruptedConversations[conversation.id]),
+          hasFailedAgent: agentState?.hasFailed === true,
+          hasConversationError: Boolean(conversationErrors[conversation.id]),
+        })
+      )
+    }
+
+    return next
+  }, [
+    agentStateByConversation,
+    clarificationRequestsByConversation,
+    conversationErrors,
+    conversationStreams,
+    conversations,
+    interruptedConversations,
+  ])
 
   // Auto-expand project groups the first time they appear, respecting persisted collapsed state
   useEffect(() => {
@@ -300,10 +369,12 @@ export function Sidebar() {
   }
 
   const handleNewChat = () => {
+    setArchiveConfirmConversationId(null)
     setActiveConversation(null)
   }
 
   const handleNewChatInProject = (group: ProjectGroup) => {
+    setArchiveConfirmConversationId(null)
     if (group.isSandbox || group.workspaceIds.length === 0) {
       setActiveWorkspace(null, true)
       setActiveConversation(null)
@@ -321,24 +392,32 @@ export function Sidebar() {
 
   const handleDeleteConversation = async (e: React.MouseEvent, id: string) => {
     e.stopPropagation()
-    const controller = new AbortController()
-    pendingArchiveControllersRef.current.set(id, controller)
+    setArchiveConfirmConversationId((current) => current === id ? null : id)
+  }
+
+  const handleConfirmArchiveConversation = async (
+    e: React.MouseEvent,
+    conv: { id: string; title: string }
+  ) => {
+    e.stopPropagation()
+    setArchiveConfirmConversationId(null)
+
     try {
-      const decision = await useDecisionPromptStore.getState().request({
-        title: 'Archive Conversation',
-        message: 'Archive this conversation? You can restore it later from Settings > Archive.',
-        options: [
-          { label: 'Archive', value: 'archive', variant: 'primary' },
-          { label: 'Cancel', value: 'cancel', variant: 'secondary' },
-        ],
-        defaultValue: 'cancel',
-        cancelValue: 'cancel',
-      }, controller.signal)
-      if (decision.value === 'archive') {
-        await archiveConversation(id)
-      }
-    } finally {
-      pendingArchiveControllersRef.current.delete(id)
+      await archiveConversation(conv.id)
+      addToast({
+        title: 'Chat archived',
+        description: conv.title,
+        variant: 'success',
+        durationMs: 3600,
+      })
+    } catch (archiveError) {
+      const message = archiveError instanceof Error ? archiveError.message : 'Failed to archive chat.'
+      addToast({
+        title: 'Archive failed',
+        description: message,
+        variant: 'error',
+        durationMs: 4200,
+      })
     }
   }
 
@@ -355,13 +434,10 @@ export function Sidebar() {
   }
 
   useEffect(() => {
-    return () => {
-      for (const controller of pendingArchiveControllersRef.current.values()) {
-        controller.abort()
-      }
-      pendingArchiveControllersRef.current.clear()
-    }
-  }, [])
+    if (!archiveConfirmConversationId) return
+    if (conversations.some((conversation) => conversation.id === archiveConfirmConversationId)) return
+    setArchiveConfirmConversationId(null)
+  }, [archiveConfirmConversationId, conversations])
 
   // When collapsed, render nothing - the floating toggle in App.tsx handles expand
   if (sidebarCollapsed) {
@@ -370,9 +446,18 @@ export function Sidebar() {
 
   return (
     <div
-      className="pane-surface w-64 border-r border-border flex flex-col"
+      className="pane-surface relative w-64 border-r border-border flex flex-col"
       style={{ paddingTop: 'var(--titlebar-padding)' }}
     >
+      <div
+        className="absolute left-0 right-0 top-0 z-10"
+        style={{
+          height: 'var(--titlebar-padding)',
+          ...macDragRegionStyle,
+        }}
+        aria-hidden="true"
+      />
+
       {/* Header */}
       <div className="p-4">
         <img
@@ -454,131 +539,194 @@ export function Sidebar() {
 
               {isExpanded && (
                 <div className="ml-5 mt-1 border-l border-border-strong pl-2">
-                  {group.conversations.map((conv) => {
-                    const convArtifacts = getArtifactsForConversation(conv.id)
-                    const hasArtifacts = convArtifacts.length > 0
-                    const hasExpandableContent = hasArtifacts
-                    const isConversationExpanded = expandedConversations.has(conv.id)
-                    const isActiveConversation = activeConversationId === conv.id
-                    const isSandboxConversation = !conv.workspaceId
-                    const isProcessing = conversationStreams[conv.id]?.isStreaming === true
-                    const conversationWorkspace = conv.workspaceId ? workspaceById.get(conv.workspaceId) : undefined
-                    const isWorktreeConversation = conversationWorkspace?.isWorktree === true
-                    const daysOld = getDaysOld(conv.createdAt)
+                  {CONVERSATION_SIDEBAR_STATUS_ORDER.map((status) => {
+                    const sectionConversations = group.conversations.filter(
+                      (conversation) => conversationStatusById.get(conversation.id) === status
+                    )
+
+                    if (sectionConversations.length === 0) return null
+
+                    const statusMeta = getConversationSidebarStatusMeta(status)
 
                     return (
-                      <div key={conv.id} className="mb-1 last:mb-0">
-                        <div
-                          onClick={() => setActiveConversation(conv.id)}
-                          title={formatCreatedDate(conv.createdAt)}
-                          style={{
-                            width: 'calc(100% + 0.75rem)',
-                            marginRight: '-0.75rem',
-                          }}
-                          className={`
-                            flex items-center gap-2 pl-2 pr-5 py-1.5 text-sm rounded-l-md rounded-r-none transition-colors group cursor-pointer sidebar-conversation-row
-                            ${isActiveConversation
-                              ? 'bg-bg-elevated text-text-primary border-l-2 border-accent'
-                              : 'text-text-secondary hover:text-text-primary hover:bg-bg-hover border-l-2 border-transparent'}
-                            ${isProcessing && !isActiveConversation ? 'bg-bg-elevated/70 text-text-primary' : ''}
-                            ${isProcessing ? 'sidebar-conversation-processing' : ''}
-                          `}
-                        >
-                          {hasExpandableContent ? (
-                            <button
-                              onClick={(e) => toggleConversationArtifacts(e, conv.id)}
-                              className="p-0.5 -ml-1 hover:bg-bg-hover rounded transition-colors flex-shrink-0"
-                            >
-                              {isConversationExpanded ? (
-                                <ChevronDown className="w-3 h-3 text-text-muted" />
-                              ) : (
-                                <ChevronRight className="w-3 h-3 text-text-muted" />
-                              )}
-                            </button>
-                          ) : (
-                            <div className="w-4 flex-shrink-0" />
-                          )}
-
-                          <div className="flex-1 min-w-0 flex items-center gap-1.5">
-                            <span className="break-words">{conv.title}</span>
-                          </div>
-
-                          {isWorktreeConversation && (
-                            <GitFork className="w-3 h-3 text-accent flex-shrink-0" />
-                          )}
-
-                          {daysOld >= 2 && (
-                            <span className="text-[10px] text-text-faint tabular-nums mr-1">
-                              {daysOld}d
-                            </span>
-                          )}
-
-                          <button
-                            onClick={(e) => handleDeleteConversation(e, conv.id)}
-                            title="Archive conversation"
-                            className="opacity-0 group-hover:opacity-100 p-1 hover:bg-bg-hover rounded text-text-muted hover:text-accent flex-shrink-0"
-                          >
-                            <Archive className="w-3 h-3" />
-                          </button>
+                      <div key={status} className="mb-2 last:mb-0">
+                        <div className="mb-1 flex items-center justify-between px-2 text-[10px] uppercase tracking-[0.18em] text-text-faint">
+                          <span>{statusMeta.sectionLabel}</span>
+                          <span>{sectionConversations.length}</span>
                         </div>
 
-                        {hasExpandableContent && isConversationExpanded && (
-                          <div className="ml-6 pl-2 border-l border-border-strong mt-1 mb-2">
-                            {hasArtifacts && (
-                              <div className="text-[10px] text-text-faint uppercase tracking-wider mb-1">Artifacts</div>
-                            )}
-                            {convArtifacts.map((artifact) => {
-                              const Icon = ARTIFACT_ICONS[artifact.type] || DEFAULT_ARTIFACT_ICON
-                              return (
-                                <div
-                                  key={artifact.id}
-                                  className="group flex items-center gap-2 px-2 py-1 text-xs text-text-muted hover:text-text-primary hover:bg-bg-hover rounded transition-colors"
-                                >
+                        {sectionConversations.map((conv) => {
+                          const convArtifacts = getArtifactsForConversation(conv.id)
+                          const hasArtifacts = convArtifacts.length > 0
+                          const hasExpandableContent = hasArtifacts
+                          const isConversationExpanded = expandedConversations.has(conv.id)
+                          const isActiveConversation = activeConversationId === conv.id
+                          const isSandboxConversation = !conv.workspaceId
+                          const conversationWorkspace = conv.workspaceId ? workspaceById.get(conv.workspaceId) : undefined
+                          const isWorktreeConversation = conversationWorkspace?.isWorktree === true
+                          const daysOld = getDaysOld(conv.createdAt)
+                          const isArchiveConfirming = archiveConfirmConversationId === conv.id
+                          const conversationStatus = conversationStatusById.get(conv.id) || 'done'
+                          const conversationStatusMeta = getConversationSidebarStatusMeta(conversationStatus)
+
+                          return (
+                            <div key={conv.id} className="mb-1 last:mb-0">
+                              <div
+                                onClick={() => {
+                                  if (isArchiveConfirming) return
+                                  setArchiveConfirmConversationId(null)
+                                  setActiveConversation(conv.id)
+                                }}
+                                title={formatCreatedDate(conv.createdAt)}
+                                style={{
+                                  width: 'calc(100% + 0.75rem)',
+                                  marginRight: '-0.75rem',
+                                }}
+                                className={`
+                                  flex items-center gap-2 pl-2 pr-3 py-1.5 text-sm rounded-l-none rounded-r-none transition-colors group sidebar-conversation-row
+                                  ${isArchiveConfirming ? 'sidebar-conversation-archive-confirm cursor-default text-text-primary border-l-2 border-warning/60' : ''}
+                                  ${!isArchiveConfirming && isActiveConversation
+                                    ? 'text-text-primary border-l-2 border-accent cursor-pointer'
+                                    : ''}
+                                  ${!isArchiveConfirming && !isActiveConversation
+                                    ? 'text-text-secondary hover:text-text-primary border-l-2 border-transparent cursor-pointer'
+                                    : ''}
+                                  ${!isArchiveConfirming ? `sidebar-conversation-status-${conversationStatus}` : ''}
+                                `}
+                              >
+                                {hasExpandableContent ? (
                                   <button
-                                    onClick={async (e) => {
-                                      e.stopPropagation()
-                                      try {
-                                        await setActiveConversation(conv.id)
-                                        selectArtifact(artifact.id)
-                                        openCanvas()
-                                      } catch (error) {
-                                        console.error('Failed to open artifact from sidebar:', error)
-                                      }
-                                    }}
-                                    className="flex items-center gap-2 flex-1 min-w-0 text-left"
+                                    onClick={(e) => toggleConversationArtifacts(e, conv.id)}
+                                    className="p-0.5 -ml-1 rounded transition-colors flex-shrink-0 hover:bg-bg-hover"
                                   >
-                                    <Icon className="w-3 h-3 flex-shrink-0" />
-                                    <span className="truncate">{artifact.title}</span>
+                                    {isConversationExpanded ? (
+                                      <ChevronDown className="w-3 h-3 text-text-muted" />
+                                    ) : (
+                                      <ChevronRight className="w-3 h-3 text-text-muted" />
+                                    )}
                                   </button>
+                                ) : (
+                                  <div className="w-4 flex-shrink-0" />
+                                )}
+
+                                <div className="flex-1 min-w-0 flex items-center gap-1.5">
+                                  {isArchiveConfirming ? (
+                                    <HelpCircle className="w-3.5 h-3.5 flex-shrink-0 text-warning" />
+                                  ) : (
+                                    <span
+                                      className={`sidebar-conversation-status-dot sidebar-conversation-status-dot-${conversationStatus}`}
+                                      title={conversationStatusMeta.label}
+                                      aria-hidden="true"
+                                    />
+                                  )}
+                                  <span className={`break-words ${isArchiveConfirming ? 'font-medium' : ''}`}>
+                                    {isArchiveConfirming ? `Archive "${conv.title}"?` : conv.title}
+                                  </span>
+                                </div>
+
+                                {!isArchiveConfirming && isWorktreeConversation && (
+                                  <GitFork className="w-3 h-3 text-accent flex-shrink-0" />
+                                )}
+
+                                {!isArchiveConfirming && daysOld >= 2 && (
+                                  <span className="text-[10px] text-text-faint tabular-nums mr-1">
+                                    {daysOld}d
+                                  </span>
+                                )}
+
+                                {isArchiveConfirming ? (
+                                  <div className="flex items-center gap-1 flex-shrink-0">
+                                    <button
+                                      onClick={(e) => {
+                                        e.stopPropagation()
+                                        setArchiveConfirmConversationId(null)
+                                      }}
+                                      title="Cancel archive"
+                                      className="rounded px-2 py-1 text-[11px] font-medium text-text-secondary transition-colors hover:bg-black/10 hover:text-text-primary"
+                                    >
+                                      <span className="sr-only">Cancel archive</span>
+                                      <X className="h-3.5 w-3.5" />
+                                    </button>
+                                    <button
+                                      onClick={(e) => handleConfirmArchiveConversation(e, conv)}
+                                      title="Confirm archive"
+                                      className="rounded bg-warning/20 px-2 py-1 text-[11px] font-medium text-text-primary transition-colors hover:bg-warning/30"
+                                    >
+                                      <span className="sr-only">Confirm archive</span>
+                                      <Check className="h-3.5 w-3.5" />
+                                    </button>
+                                  </div>
+                                ) : (
                                   <button
-                                    onClick={async (e) => {
-                                      e.stopPropagation()
-                                      try {
-                                        await window.jelico.artifacts.reveal(artifact.id)
-                                      } catch (error) {
-                                        console.error('Failed to reveal artifact:', error)
-                                      }
-                                    }}
-                                    title="Reveal in folder"
+                                    onClick={(e) => handleDeleteConversation(e, conv.id)}
+                                    title="Archive conversation"
                                     className="opacity-0 group-hover:opacity-100 p-1 hover:bg-bg-hover rounded text-text-muted hover:text-accent flex-shrink-0"
                                   >
-                                    <FolderOpen className="w-3 h-3" />
+                                    <Archive className="w-3 h-3" />
                                   </button>
-                                </div>
-                              )
-                            })}
+                                )}
+                              </div>
 
-                            {isSandboxConversation && (
-                              <button
-                                onClick={(e) => handleOpenTransferDialog(e, conv)}
-                                className="mt-2 w-full flex items-center gap-2 py-1.5 text-xs text-accent hover:text-accent hover:bg-bg-hover rounded transition-colors"
-                              >
-                                <FolderUp className="w-3 h-3 flex-shrink-0" />
-                                <span>Transfer to Workspace</span>
-                              </button>
-                            )}
-                          </div>
-                        )}
+                              {hasExpandableContent && isConversationExpanded && (
+                                <div className="ml-6 pl-2 border-l border-border-strong mt-1 mb-2">
+                                  {hasArtifacts && (
+                                    <div className="text-[10px] text-text-faint uppercase tracking-wider mb-1">Artifacts</div>
+                                  )}
+                                  {convArtifacts.map((artifact) => {
+                                    const Icon = ARTIFACT_ICONS[artifact.type] || DEFAULT_ARTIFACT_ICON
+                                    return (
+                                      <div
+                                        key={artifact.id}
+                                        className="group flex items-center gap-2 px-2 py-1 text-xs text-text-muted hover:text-text-primary hover:bg-bg-hover rounded transition-colors"
+                                      >
+                                        <button
+                                          onClick={async (e) => {
+                                            e.stopPropagation()
+                                            try {
+                                              await setActiveConversation(conv.id)
+                                              selectArtifact(artifact.id)
+                                              openCanvas()
+                                            } catch (artifactError) {
+                                              console.error('Failed to open artifact from sidebar:', artifactError)
+                                            }
+                                          }}
+                                          className="flex items-center gap-2 flex-1 min-w-0 text-left"
+                                        >
+                                          <Icon className="w-3 h-3 flex-shrink-0" />
+                                          <span className="truncate">{artifact.title}</span>
+                                        </button>
+                                        <button
+                                          onClick={async (e) => {
+                                            e.stopPropagation()
+                                            try {
+                                              await window.jelico.artifacts.reveal(artifact.id)
+                                            } catch (artifactError) {
+                                              console.error('Failed to reveal artifact:', artifactError)
+                                            }
+                                          }}
+                                          title="Reveal in folder"
+                                          className="opacity-0 group-hover:opacity-100 p-1 hover:bg-bg-hover rounded text-text-muted hover:text-accent flex-shrink-0"
+                                        >
+                                          <FolderOpen className="w-3 h-3" />
+                                        </button>
+                                      </div>
+                                    )
+                                  })}
+
+                                  {isSandboxConversation && (
+                                    <button
+                                      onClick={(e) => handleOpenTransferDialog(e, conv)}
+                                      className="mt-2 w-full flex items-center gap-2 py-1.5 text-xs text-accent hover:text-accent hover:bg-bg-hover rounded transition-colors"
+                                    >
+                                      <FolderUp className="w-3 h-3 flex-shrink-0" />
+                                      <span>Transfer to Workspace</span>
+                                    </button>
+                                  )}
+                                </div>
+                              )}
+                            </div>
+                          )
+                        })}
                       </div>
                     )
                   })}

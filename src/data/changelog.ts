@@ -21,6 +21,23 @@ export interface ChangelogEntry {
 
 export const changelog: ChangelogEntry[] = [
   {
+    version: '0.37.0',
+    date: '2026-03-12',
+    changes: {
+      added: [
+        'Added a muted animated paths backdrop to the new-chat screen with reduced-motion handling so the empty-state view feels more alive without competing with the greeting, controls, or composer (Fixes #134)',
+        'Added grouped sidebar conversation status sections with per-chat status indicators for in-progress, waiting-for-input, needs-attention, and done states so parallel work is easier to track within each workspace or sandbox (Fixes #143)',
+      ],
+      changed: [
+        'Archive confirmation now happens inline in the sidebar row with striped warning styling and bottom-left toast feedback instead of a modal confirmation prompt (Fixes #145)',
+      ],
+      fixed: [
+        'Conversation-level failure state now persists per chat so sidebar status grouping continues to show failed conversations under needs attention after switching to another chat (Fixes #143)',
+        'macOS window docking now relies on native drag regions in the titlebar/header path and disables renderer-driven drag/maximize handling on Mac so edge docking gestures work again (Fixes #146)',
+      ],
+    },
+  },
+  {
     version: '0.36.0',
     date: '2026-03-10',
     changes: {
