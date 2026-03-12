@@ -1,3 +1,18 @@
+## [0.37.1] - 2026-03-12
+
+### Highlights
+- Updates now download to your normal Downloads folder and can restart immediately or automatically after the current AI turn finishes.
+- macOS updater installs are safer: Jelico now avoids wrong-architecture downloads and no longer replaces the existing app until the new copy is fully staged.
+- The light-theme context meter ring is easier to read without changing the overall accent language.
+
+### Fixed
+- **Safer macOS Updates** — Intel Macs no longer get pointed at Apple Silicon DMG installers, and a failed macOS update no longer risks removing the currently installed app before the replacement is ready.
+- **Safer Windows and Linux Update Apply Flow** — Downloaded installers now use platform-specific apply helpers with better fallback relaunch behavior instead of relying on a generic open-file handoff.
+- **Context Meter Contrast** — The unfilled context ring now stays readable in light mode while keeping the same accent-driven look.
+
+### Changed
+- **Update Restart Flow** — Jelico now saves update installers to your default Downloads folder, uses the same restart decision flow in both the app banner and Settings, and can wait until the current AI turn finishes before restarting to install.
+
 ## [0.37.0] - 2026-03-12
 
 ### Highlights

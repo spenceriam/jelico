@@ -72,6 +72,7 @@ function resetStoreState() {
     lastChecked: null,
     lastDownloadedTo: null,
     downloadedVersion: null,
+    scheduledApplyVersion: null,
     dismissedAvailableVersion: null,
     dismissedApplyVersion: null,
     launchedApplyVersion: null,
@@ -136,6 +137,7 @@ test('downloadUpdate marks downloaded version and persists dismissal keys correc
   const state = useUpdateStore.getState()
   assert.equal(state.lastDownloadedTo, 'C:/tmp/Jelico-0.36.0.exe')
   assert.equal(state.downloadedVersion, '0.36.0')
+  assert.equal(state.scheduledApplyVersion, null)
   assert.equal(state.dismissedApplyVersion, null)
   assert.equal(state.launchedApplyVersion, null)
   assert.equal(state.dismissedAvailableVersion, '0.36.0')
@@ -150,6 +152,18 @@ test('applyDownloadedUpdate returns error when no downloaded path exists', async
   const result = await useUpdateStore.getState().applyDownloadedUpdate()
   assert.equal(result, null)
   assert.match(useUpdateStore.getState().error || '', /No downloaded update file is available yet/i)
+})
+
+test('scheduleApplyAfterTurn stores and clears the queued restart version', () => {
+  useUpdateStore.setState({
+    downloadedVersion: '0.36.0',
+  })
+
+  useUpdateStore.getState().scheduleApplyAfterTurn()
+  assert.equal(useUpdateStore.getState().scheduledApplyVersion, '0.36.0')
+
+  useUpdateStore.getState().clearScheduledApply()
+  assert.equal(useUpdateStore.getState().scheduledApplyVersion, null)
 })
 
 test('applyDownloadedUpdate persists launched installer state after launch succeeds', async () => {
@@ -211,6 +225,7 @@ test('applyDownloadedUpdate clears stale downloaded state when installer is miss
   })
   assert.equal(useUpdateStore.getState().lastDownloadedTo, null)
   assert.equal(useUpdateStore.getState().downloadedVersion, null)
+  assert.equal(useUpdateStore.getState().scheduledApplyVersion, null)
   assert.equal(useUpdateStore.getState().launchedApplyVersion, null)
   assert.equal(localStorage.getItem(DOWNLOADED_PATH_KEY), null)
   assert.equal(localStorage.getItem(DOWNLOADED_VERSION_KEY), null)
@@ -310,6 +325,7 @@ test('getUpdateBannerVisibility falls back to the available banner after the dow
 test('checkForUpdates clears stale downloaded state after version advances', async () => {
   useUpdateStore.setState({
     downloadedVersion: '0.36.0',
+    scheduledApplyVersion: '0.36.0',
     lastDownloadedTo: 'C:/tmp/Jelico-0.36.0.exe',
     dismissedApplyVersion: '0.36.0',
     launchedApplyVersion: '0.36.0',
@@ -335,6 +351,7 @@ test('checkForUpdates clears stale downloaded state after version advances', asy
   assert.ok(result)
   assert.equal(useUpdateStore.getState().downloadedVersion, null)
   assert.equal(useUpdateStore.getState().lastDownloadedTo, null)
+  assert.equal(useUpdateStore.getState().scheduledApplyVersion, null)
   assert.equal(useUpdateStore.getState().dismissedApplyVersion, null)
   assert.equal(useUpdateStore.getState().launchedApplyVersion, null)
   assert.equal(localStorage.getItem(DOWNLOADED_VERSION_KEY), null)
@@ -346,6 +363,7 @@ test('checkForUpdates clears stale downloaded state after version advances', asy
 test('checkForUpdates clears downloaded state after the downloaded version is installed', async () => {
   useUpdateStore.setState({
     downloadedVersion: '0.36.0',
+    scheduledApplyVersion: '0.36.0',
     lastDownloadedTo: 'C:/tmp/Jelico-0.36.0.exe',
     dismissedApplyVersion: '0.36.0',
     launchedApplyVersion: '0.36.0',
@@ -371,6 +389,7 @@ test('checkForUpdates clears downloaded state after the downloaded version is in
   assert.ok(result)
   assert.equal(useUpdateStore.getState().downloadedVersion, null)
   assert.equal(useUpdateStore.getState().lastDownloadedTo, null)
+  assert.equal(useUpdateStore.getState().scheduledApplyVersion, null)
   assert.equal(useUpdateStore.getState().dismissedApplyVersion, null)
   assert.equal(useUpdateStore.getState().launchedApplyVersion, null)
   assert.equal(localStorage.getItem(DOWNLOADED_VERSION_KEY), null)

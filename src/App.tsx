@@ -8,6 +8,7 @@ import { useWorkspaceStore, initWorkspaceStore } from './stores/workspaces'
 import { usePermissionStore } from './stores/permissions'
 import { useThemeStore } from './stores/theme'
 import { getUpdateBannerVisibility, useUpdateStore } from './stores/updates'
+import { maybeAutoApplyScheduledUpdate, runApplyDownloadedUpdateFlow, runDownloadAndApplyFlow } from './lib/updateFlow'
 import { Sidebar } from './components/Layout/Sidebar'
 import { Header } from './components/Layout/Header'
 import { ChatArea } from './components/Chat/ChatArea'
@@ -88,6 +89,7 @@ export default function App() {
     downloadProgress: updateDownloadProgress,
     lastDownloadedTo,
     downloadedVersion,
+    scheduledApplyVersion,
     dismissedAvailableVersion,
     dismissedApplyVersion,
     launchedApplyVersion,
@@ -95,8 +97,7 @@ export default function App() {
     startListening,
     loadCurrentVersion,
     checkForUpdates,
-    downloadUpdate,
-    applyDownloadedUpdate,
+    clearScheduledApply,
     dismissAvailablePrompt,
     dismissApplyPrompt,
   } = useUpdateStore()
@@ -224,6 +225,14 @@ export default function App() {
       window.clearInterval(backgroundInterval)
     }
   }, [checkForUpdates, loadCurrentVersion, startListening])
+
+  useEffect(() => {
+    if (isStreaming || !scheduledApplyVersion) return
+
+    maybeAutoApplyScheduledUpdate().catch((error) => {
+      console.error('Failed to auto-apply the scheduled update:', error)
+    })
+  }, [isStreaming, scheduledApplyVersion])
 
   const stopWindowDrag = useCallback(() => {
     const dragSession = windowDragRef.current
@@ -463,8 +472,24 @@ export default function App() {
 
   const handleApplyNow = async () => {
     if (isUpdateApplying) return
-    await applyDownloadedUpdate()
+    await runApplyDownloadedUpdateFlow()
   }
+
+  const handleDownloadAndApply = async () => {
+    if (isUpdateDownloading || isUpdateApplying) return
+    await runDownloadAndApplyFlow()
+  }
+
+  const handleDismissApply = () => {
+    clearScheduledApply()
+    dismissApplyPrompt(downloadedVersion || latestAvailableVersion || null)
+  }
+
+  const isApplyScheduled = Boolean(
+    scheduledApplyVersion
+      && downloadedVersion
+      && scheduledApplyVersion === downloadedVersion
+  )
 
   return (
     <div
@@ -588,10 +613,14 @@ export default function App() {
               <>
                 <div>
                   <div className="text-sm font-medium text-text-primary">
-                    Update {downloadedVersion || latestAvailableVersion} is ready
+                    {isApplyScheduled && isStreaming
+                      ? `Update ${downloadedVersion || latestAvailableVersion} will install after this turn`
+                      : `Update ${downloadedVersion || latestAvailableVersion} is ready to install`}
                   </div>
                   <div className="text-xs text-text-muted mt-1 break-all">
-                    Downloaded to: {lastDownloadedTo}
+                    {isApplyScheduled && isStreaming
+                      ? 'Jelico will restart automatically as soon as the current AI turn finishes.'
+                      : `Downloaded to: ${lastDownloadedTo}`}
                   </div>
                   {showAvailableBanner && latestAvailableVersion && downloadedVersion && downloadedVersion !== latestAvailableVersion && (
                     <div className="mt-2 flex items-start justify-between gap-2 rounded-lg border border-warning/30 bg-warning/10 px-3 py-2">
@@ -620,10 +649,14 @@ export default function App() {
                     className="flex items-center gap-2 px-3 py-2 rounded-lg bg-accent text-accent-foreground hover:bg-accent-bright transition-colors disabled:opacity-50"
                   >
                     <RefreshCw className={`w-4 h-4 ${isUpdateApplying ? 'animate-spin' : ''}`} />
-                    {isUpdateApplying ? 'Applying...' : 'Apply now'}
+                    {isUpdateApplying
+                      ? 'Applying...'
+                      : isApplyScheduled && isStreaming
+                        ? 'Change restart timing'
+                        : 'Restart and install'}
                   </button>
                   <button
-                    onClick={() => dismissApplyPrompt(downloadedVersion || latestAvailableVersion || null)}
+                    onClick={handleDismissApply}
                     className="px-3 py-2 rounded-lg border border-border bg-bg-surface text-text-primary hover:bg-bg-hover hover:border-border-strong transition-colors"
                   >
                     Later
@@ -652,7 +685,7 @@ export default function App() {
                       Jelico {latestAvailableVersion} is available
                     </div>
                     <div className="text-xs text-text-muted mt-1">
-                      Download and install when you&apos;re ready.
+                      Download it to your default Downloads folder, then restart when you&apos;re ready.
                     </div>
                   </div>
                   <button
@@ -682,12 +715,12 @@ export default function App() {
 
                 <div className="flex flex-wrap gap-2">
                   <button
-                    onClick={() => downloadUpdate()}
-                    disabled={isUpdateDownloading}
+                    onClick={handleDownloadAndApply}
+                    disabled={isUpdateDownloading || isUpdateApplying}
                     className="flex items-center gap-2 px-3 py-2 rounded-lg bg-accent text-accent-foreground hover:bg-accent-bright transition-colors disabled:opacity-50"
                   >
                     <Download className="w-4 h-4" />
-                    {isUpdateDownloading ? 'Downloading...' : 'Download update'}
+                    {isUpdateDownloading ? 'Downloading...' : 'Download and apply'}
                   </button>
                   {updateInfo?.releaseUrl && (
                     <button
