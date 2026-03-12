@@ -15,7 +15,7 @@ import { hasIncompleteToolEvidence } from './chatInterruption'
 import {
   getNextProcessableQueuedMessageIndex,
   getPersistableQueuedMessages,
-  promoteQueuedMessageToFront,
+  markQueuedMessageAsPriority,
   getQueuePanelAnchor,
   getQueuePanelConversationKey,
   getQueuedCountForConversation,
@@ -123,6 +123,7 @@ export interface QueuedMessage {
   providerId: string
   model: string
   conversationId?: string | null
+  sendNowRequestedAt?: number | null
 }
 
 interface PendingQueuedEdit extends QueuePanelPendingEdit<QueuedMessage> {}
@@ -269,6 +270,7 @@ function toPersistedQueuedMessage(queuedMessage: QueuedMessage): QueuedMessageDa
     providerId: queuedMessage.providerId,
     model: queuedMessage.model,
     conversationId: queuedMessage.conversationId ?? null,
+    sendNowRequestedAt: queuedMessage.sendNowRequestedAt ?? null,
   }
 }
 
@@ -280,6 +282,7 @@ function fromPersistedQueuedMessage(queuedMessage: QueuedMessageData): QueuedMes
     providerId: queuedMessage.providerId,
     model: queuedMessage.model,
     conversationId: queuedMessage.conversationId ?? null,
+    sendNowRequestedAt: queuedMessage.sendNowRequestedAt ?? null,
   }
 }
 
@@ -2430,8 +2433,9 @@ export const useChatStore = create<ChatStore>((set, get) => ({
     const blockedConversationIds = getBlockedQueuedConversationIds(conversationStreams)
 
     if (targetConversationId && blockedConversationIds.has(targetConversationId)) {
+      const requestedAt = Date.now()
       set((state) => {
-        const nextQueue = promoteQueuedMessageToFront(state.messageQueue, queuedMessage.id)
+        const nextQueue = markQueuedMessageAsPriority(state.messageQueue, queuedMessage.id, requestedAt)
         if (nextQueue === state.messageQueue) return {}
 
         return {

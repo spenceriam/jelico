@@ -327,6 +327,7 @@ interface QueuedMessageData {
   providerId: string
   model: string
   conversationId?: string | null
+  sendNowRequestedAt?: number | null
 }
 
 interface MessageUsageData {

@@ -8,6 +8,10 @@ export interface QueuePanelOrderedMessageLike extends QueuePanelMessageLike {
   id: string
 }
 
+export interface QueuePanelPriorityMessageLike extends QueuePanelOrderedMessageLike {
+  sendNowRequestedAt?: number | null
+}
+
 export interface QueuePanelAttachmentLike {
   name?: string
 }
@@ -97,17 +101,50 @@ export function insertQueuedMessageAtAnchor<T extends QueuePanelOrderedMessageLi
   return [...withoutMessage, queuedMessage]
 }
 
-export function promoteQueuedMessageToFront<T extends QueuePanelOrderedMessageLike>(
+export function markQueuedMessageAsPriority<T extends QueuePanelPriorityMessageLike>(
   messageQueue: T[],
-  targetId: string
+  targetId: string,
+  requestedAt: number
 ): T[] {
-  const targetIndex = messageQueue.findIndex((message) => message.id === targetId)
-  if (targetIndex <= 0) return messageQueue
+  if (!messageQueue.some((message) => message.id === targetId)) {
+    return messageQueue
+  }
 
-  const nextQueue = [...messageQueue]
-  const [queuedMessage] = nextQueue.splice(targetIndex, 1)
-  nextQueue.unshift(queuedMessage)
-  return nextQueue
+  let changed = false
+
+  const nextQueue = messageQueue.map((message) => {
+    const isTarget = message.id === targetId
+    const nextRequestedAt = isTarget ? requestedAt : undefined
+    const currentRequestedAt = message.sendNowRequestedAt ?? undefined
+    if (currentRequestedAt === nextRequestedAt) {
+      return message
+    }
+    changed = true
+    return {
+      ...message,
+      sendNowRequestedAt: nextRequestedAt,
+    }
+  })
+
+  return changed ? nextQueue : messageQueue
+}
+
+export function getPriorityQueuedMessageIndex<T extends QueuePanelPriorityMessageLike>(
+  messageQueue: T[]
+): number {
+  let selectedIndex = -1
+  let selectedRequestedAt = -Infinity
+
+  for (let index = 0; index < messageQueue.length; index += 1) {
+    const requestedAt = messageQueue[index].sendNowRequestedAt
+    if (typeof requestedAt !== 'number') continue
+    if (requestedAt >= selectedRequestedAt) {
+      selectedRequestedAt = requestedAt
+      selectedIndex = index
+    }
+  }
+
+  return selectedIndex
 }
 
 export function mergeHydratedQueuedMessages<T extends QueuePanelOrderedMessageLike>(
@@ -155,10 +192,23 @@ export function getVisibleQueuedMessages<T extends QueuePanelOrderedMessageLike>
   return messageQueue.filter((message) => message.id !== pendingEdit.queuedMessage.id)
 }
 
-export function getNextProcessableQueuedMessageIndex<T extends QueuePanelMessageLike>(
+export function getNextProcessableQueuedMessageIndex<T extends QueuePanelPriorityMessageLike>(
   messageQueue: T[],
   blockedConversationIds: Set<string>
 ): number {
+  const priorityIndex = getPriorityQueuedMessageIndex(messageQueue)
+  if (priorityIndex !== -1) {
+    const prioritizedMessage = messageQueue[priorityIndex]
+    if (
+      prioritizedMessage.conversationId != null &&
+      blockedConversationIds.has(prioritizedMessage.conversationId)
+    ) {
+      return -1
+    }
+
+    return priorityIndex
+  }
+
   return messageQueue.findIndex((message) => (
     message.conversationId == null || !blockedConversationIds.has(message.conversationId)
   ))

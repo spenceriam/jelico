@@ -676,6 +676,7 @@ export const queueDb = {
       provider_id: queuedMessage.provider_id,
       model: queuedMessage.model,
       conversation_id: queuedMessage.conversation_id || null,
+      send_now_requested_at: queuedMessage.send_now_requested_at ?? null,
     }))
     saveDb()
   },
@@ -789,6 +790,7 @@ interface QueuedMessageRow {
   provider_id: string
   model: string
   conversation_id: string | null
+  send_now_requested_at?: number | null
 }
 
 interface WorkspaceRow {

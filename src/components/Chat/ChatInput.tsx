@@ -873,7 +873,8 @@ export function ChatInput({
   }, [activeConversationId, conversationStreams, isConversationCompacting])
 
   const hasDraftToSend = input.trim().length > 0 || attachments.length > 0
-  const submitButtonDisabled = disabled || !hasDraftToSend
+  const canSaveQueuedEditWithoutProvider = Boolean(isEditingQueuedMessageForActiveConversation)
+  const submitButtonDisabled = !hasDraftToSend || (disabled && !canSaveQueuedEditWithoutProvider)
   const showQueueSubmit = Boolean(isStreaming && hasDraftToSend)
   const showSubmitButton = !isStreaming || showQueueSubmit
   const isQueueDocked = !centered && queuedCount > 0

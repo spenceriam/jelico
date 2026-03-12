@@ -30,6 +30,7 @@ export const changelog: ChangelogEntry[] = [
       ],
       changed: [
         'Queued-message rows now use richer wrapped previews, clearer hover/tooltips, scan-friendly alternating surfaces, queue-state sharing across both new-chat and active-chat composer layouts, and a non-interrupting send action that promotes a queued item to the next runnable turn instead of force-stopping the current stream',
+        'Queued send-now prioritization is now persisted and enforced ahead of all other queued work until that selected message becomes runnable, so "send next" remains true even when other conversations still have idle queued items',
       ],
       fixed: [
         'Queueing a new message during an active response now always auto-expands the queued messages panel for the active conversation instead of leaving new entries hidden in a collapsed state (Fixes #135)',
@@ -42,6 +43,7 @@ export const changelog: ChangelogEntry[] = [
         'Saving a queued-message edit now restores the draft text and attachments that were already in the composer before edit mode, instead of clearing that unsent work after the queue item is updated',
         'Queued-message edits now refuse to submit from a different conversation if the user switches chats before queued-edit cleanup finishes, preventing stale edit state from routing prompts into the wrong conversation during navigation races',
         'Queued-message reloads now keep the hidden pending edit out of the visible queue list, so refreshing conversations mid-edit does not duplicate the same queued item in both the editor and the queue panel',
+        'Queued-message edit saves now stay available even when the global provider/model selector is temporarily unset, so queue edits are not blocked by unrelated composer configuration state',
         'Inline editing for the last user prompt now stays disabled for the full assistant streaming window instead of only after streamed content becomes visible, so prompt history cannot be changed while a response is already in flight',
         'Removing the final unsent composer attachment now clears the cached draft attachment state immediately, so deleted files do not reappear after switching conversations',
         'Regenerate now preserves attachments from the preceding user message instead of silently dropping them on resend',

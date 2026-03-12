@@ -2,8 +2,9 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import {
   getNextProcessableQueuedMessageIndex,
+  getPriorityQueuedMessageIndex,
   getPersistableQueuedMessages,
-  promoteQueuedMessageToFront,
+  markQueuedMessageAsPriority,
   getQueuePanelAnchor,
   getQueuePanelExpandedByConversation,
   getQueuePanelConversationKey,
@@ -129,17 +130,51 @@ test('re-inserts an edited queued message before its original next sibling when 
   assert.deepEqual(reordered.map((message) => message.id), ['a', 'c', 'd'])
 })
 
-test('promotes a queued message to the front without changing the rest of the order', () => {
-  const reordered = promoteQueuedMessageToFront(
+test('marks only the selected queued message as send-now priority', () => {
+  const prioritized = markQueuedMessageAsPriority(
     [
-      { id: 'a', conversationId: 'conv-1' },
+      { id: 'a', conversationId: 'conv-1', sendNowRequestedAt: 1 },
       { id: 'b', conversationId: 'conv-2' },
       { id: 'c', conversationId: 'conv-1' },
     ],
-    'c'
+    'c',
+    5
   )
 
-  assert.deepEqual(reordered.map((message) => message.id), ['c', 'a', 'b'])
+  assert.deepEqual(
+    prioritized.map((message) => ({
+      id: message.id,
+      sendNowRequestedAt: message.sendNowRequestedAt ?? null,
+    })),
+    [
+      { id: 'a', sendNowRequestedAt: null },
+      { id: 'b', sendNowRequestedAt: null },
+      { id: 'c', sendNowRequestedAt: 5 },
+    ]
+  )
+})
+
+test('finds the newest prioritized queued message', () => {
+  const priorityIndex = getPriorityQueuedMessageIndex(
+    [
+      { id: 'a', conversationId: 'conv-1', sendNowRequestedAt: 10 },
+      { id: 'b', conversationId: 'conv-2', sendNowRequestedAt: 12 },
+      { id: 'c', conversationId: 'conv-1' },
+    ]
+  )
+
+  assert.equal(priorityIndex, 1)
+})
+
+test('leaves queue priority unchanged when the target item is already gone', () => {
+  const originalQueue = [
+    { id: 'a', conversationId: 'conv-1', sendNowRequestedAt: 10 },
+    { id: 'b', conversationId: 'conv-2' },
+  ]
+
+  const prioritized = markQueuedMessageAsPriority(originalQueue, 'missing', 50)
+
+  assert.equal(prioritized, originalQueue)
 })
 
 test('re-inserts an edited queued message after its original previous sibling when the next one is gone', () => {
@@ -173,6 +208,32 @@ test('finds the first queued message whose conversation is not blocked', () => {
     [
       { id: 'a', conversationId: 'conv-1' },
       { id: 'b', conversationId: 'conv-2' },
+      { id: 'c', conversationId: null },
+    ],
+    new Set(['conv-1'])
+  )
+
+  assert.equal(nextIndex, 1)
+})
+
+test('blocks later queue work until a prioritized blocked conversation becomes runnable', () => {
+  const nextIndex = getNextProcessableQueuedMessageIndex(
+    [
+      { id: 'a', conversationId: 'conv-1', sendNowRequestedAt: 20 },
+      { id: 'b', conversationId: 'conv-2' },
+      { id: 'c', conversationId: null },
+    ],
+    new Set(['conv-1'])
+  )
+
+  assert.equal(nextIndex, -1)
+})
+
+test('runs the prioritized queued message first once it becomes runnable', () => {
+  const nextIndex = getNextProcessableQueuedMessageIndex(
+    [
+      { id: 'a', conversationId: 'conv-1' },
+      { id: 'b', conversationId: 'conv-2', sendNowRequestedAt: 20 },
       { id: 'c', conversationId: null },
     ],
     new Set(['conv-1'])

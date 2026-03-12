@@ -14,6 +14,7 @@ function toQueuedMessageApi(row: {
   provider_id: string
   model: string
   conversation_id: string | null
+  send_now_requested_at?: number | null
 }) {
   return {
     id: row.id,
@@ -22,6 +23,7 @@ function toQueuedMessageApi(row: {
     providerId: row.provider_id,
     model: row.model,
     conversationId: row.conversation_id,
+    sendNowRequestedAt: row.send_now_requested_at ?? null,
   }
 }
 
@@ -43,6 +45,7 @@ export function registerQueueHandlers() {
     providerId: string
     model: string
     conversationId?: string | null
+    sendNowRequestedAt?: number | null
   }>) => {
     queueDb.replaceAll(queuedMessages.map((queuedMessage) => ({
       id: queuedMessage.id,
@@ -51,6 +54,7 @@ export function registerQueueHandlers() {
       provider_id: queuedMessage.providerId,
       model: queuedMessage.model,
       conversation_id: queuedMessage.conversationId || null,
+      send_now_requested_at: queuedMessage.sendNowRequestedAt ?? null,
     })))
 
     return { success: true }
