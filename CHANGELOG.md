@@ -7,7 +7,7 @@
 
 ### Fixed
 - **Safer macOS Updates** — Intel Macs no longer get pointed at Apple Silicon DMG installers, updates now target the running app bundle location instead of assuming `/Applications`, and a failed macOS update no longer risks removing the currently installed app before the replacement is ready.
-- **Safer Windows and Linux Update Apply Flow** — Downloaded installers now use platform-specific apply helpers with better fallback relaunch behavior, including opening Linux packages for manual install if privileged install attempts fail.
+- **Safer Windows and Linux Update Apply Flow** — Downloaded installers now use platform-specific apply helpers with better fallback relaunch behavior, preserve legacy user-chosen installer files, and open Linux packages for manual install if privileged install attempts fail.
 - **Context Meter Contrast** — The unfilled context ring now stays readable in light mode while keeping the same accent-driven look.
 
 ### Changed

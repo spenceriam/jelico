@@ -461,11 +461,6 @@ async function getDownloadedUpdatePathState(): Promise<DownloadedUpdatePathState
   return downloadedUpdatePathLoadPromise
 }
 
-async function getDownloadedUpdatePath(): Promise<string | null> {
-  const state = await getDownloadedUpdatePathState()
-  return state.path
-}
-
 function shellSingleQuote(value: string): string {
   return `'${value.replace(/'/g, `'\\''`)}'`
 }
@@ -495,7 +490,7 @@ function getLinuxAppImageTargetPath(): string {
   return path.join(app.getPath('home'), '.local', 'bin', `${app.getName()}.AppImage`)
 }
 
-async function spawnMacApplyHelper(downloadedPath: string): Promise<void> {
+async function spawnMacApplyHelper(downloadedPath: string, managedByApp: boolean): Promise<void> {
   const fallbackAppPath = getCurrentMacAppBundlePath() ?? ''
   const statePath = getLastDownloadedUpdateStatePath() ?? ''
   const script = `#!/bin/sh
@@ -503,6 +498,7 @@ set -eu
 
 APP_PID=${process.pid}
 DOWNLOADED_PATH=${shellSingleQuote(downloadedPath)}
+DELETE_DOWNLOADED=${managedByApp ? '1' : '0'}
 STATE_PATH=${shellSingleQuote(statePath)}
 FALLBACK_APP=${shellSingleQuote(fallbackAppPath)}
 SCRIPT_PATH="$0"
@@ -550,6 +546,17 @@ cleanup_temp() {
 cleanup_script() {
   rm -f "$SCRIPT_PATH" >/dev/null 2>&1 || true
   rmdir "$(dirname "$SCRIPT_PATH")" >/dev/null 2>&1 || true
+}
+
+cleanup_managed_download() {
+  if [ "$DELETE_DOWNLOADED" != "1" ]; then
+    return 0
+  fi
+
+  if [ -n "$STATE_PATH" ]; then
+    rm -f "$STATE_PATH" >/dev/null 2>&1 || true
+  fi
+  rm -f "$DOWNLOADED_PATH" >/dev/null 2>&1 || true
 }
 
 restore_backup() {
@@ -608,10 +615,7 @@ apply_update() {
   STAGE_DIR=""
 
   cleanup_mount
-  if [ -n "$STATE_PATH" ]; then
-    rm -f "$STATE_PATH" >/dev/null 2>&1 || true
-  fi
-  rm -f "$DOWNLOADED_PATH" >/dev/null 2>&1 || true
+  cleanup_managed_download
   cleanup_temp
   cleanup_script
   open "$TARGET_APP" >/dev/null 2>&1 &
@@ -637,7 +641,7 @@ fi
   child.unref()
 }
 
-async function spawnWindowsApplyHelper(downloadedPath: string): Promise<void> {
+async function spawnWindowsApplyHelper(downloadedPath: string, managedByApp: boolean): Promise<void> {
   const installerExtension = path.extname(downloadedPath).toLowerCase()
   const installDir = path.dirname(process.execPath)
   const currentExePath = process.execPath
@@ -645,6 +649,7 @@ async function spawnWindowsApplyHelper(downloadedPath: string): Promise<void> {
   const script = `$ErrorActionPreference = 'Stop'
 $AppPid = ${process.pid}
 $InstallerPath = '${escapePowerShellLiteral(downloadedPath)}'
+$DeleteDownloaded = ${managedByApp ? '$true' : '$false'}
 $InstallerExtension = '${escapePowerShellLiteral(installerExtension)}'
 $InstallDir = '${escapePowerShellLiteral(installDir)}'
 $AppExePath = '${escapePowerShellLiteral(currentExePath)}'
@@ -676,9 +681,11 @@ try {
     throw "Installer exited with code $($process.ExitCode)."
   }
 
-  Remove-Item -LiteralPath $InstallerPath -Force -ErrorAction SilentlyContinue
-  if ($StatePath) {
-    Remove-Item -LiteralPath $StatePath -Force -ErrorAction SilentlyContinue
+  if ($DeleteDownloaded) {
+    Remove-Item -LiteralPath $InstallerPath -Force -ErrorAction SilentlyContinue
+    if ($StatePath) {
+      Remove-Item -LiteralPath $StatePath -Force -ErrorAction SilentlyContinue
+    }
   }
 
   if (Test-Path -LiteralPath $AppExePath) {
@@ -711,7 +718,7 @@ try {
   child.unref()
 }
 
-async function spawnLinuxApplyHelper(downloadedPath: string): Promise<void> {
+async function spawnLinuxApplyHelper(downloadedPath: string, managedByApp: boolean): Promise<void> {
   const statePath = getLastDownloadedUpdateStatePath() ?? ''
   const appExecPath = process.execPath
   const appImageTargetPath = getLinuxAppImageTargetPath()
@@ -720,6 +727,7 @@ set -eu
 
 APP_PID=${process.pid}
 DOWNLOADED_PATH=${shellSingleQuote(downloadedPath)}
+DELETE_DOWNLOADED=${managedByApp ? '1' : '0'}
 APPIMAGE_TARGET=${shellSingleQuote(appImageTargetPath)}
 APP_EXEC=${shellSingleQuote(appExecPath)}
 FALLBACK_EXEC=${shellSingleQuote(appExecPath)}
@@ -747,6 +755,25 @@ open_manual_package() {
   xdg-open "$DOWNLOADED_PATH" >/dev/null 2>&1 || true
 }
 
+cleanup_managed_state() {
+  if [ "$DELETE_DOWNLOADED" != "1" ]; then
+    return 0
+  fi
+
+  if [ -n "$STATE_PATH" ]; then
+    rm -f "$STATE_PATH" >/dev/null 2>&1 || true
+  fi
+}
+
+cleanup_managed_download() {
+  if [ "$DELETE_DOWNLOADED" != "1" ]; then
+    return 0
+  fi
+
+  rm -f "$DOWNLOADED_PATH" >/dev/null 2>&1 || true
+  cleanup_managed_state
+}
+
 apply_update() {
   case "$DOWNLOADED_PATH" in
     *.AppImage|*.appimage)
@@ -758,23 +785,22 @@ apply_update() {
       fi
 
       if [ "$DOWNLOADED_PATH" != "$TARGET_PATH" ]; then
-        mv -f "$DOWNLOADED_PATH" "$TARGET_PATH" || return 1
+        if [ "$DELETE_DOWNLOADED" = "1" ]; then
+          mv -f "$DOWNLOADED_PATH" "$TARGET_PATH" || return 1
+        else
+          cp -f "$DOWNLOADED_PATH" "$TARGET_PATH" || return 1
+        fi
       fi
 
       chmod +x "$TARGET_PATH" || return 1
-      if [ -n "$STATE_PATH" ]; then
-        rm -f "$STATE_PATH" >/dev/null 2>&1 || true
-      fi
+      cleanup_managed_state
       "$TARGET_PATH" >/dev/null 2>&1 &
       return 0
       ;;
     *.deb)
       if command -v pkexec >/dev/null 2>&1; then
         if pkexec dpkg -i "$DOWNLOADED_PATH"; then
-          rm -f "$DOWNLOADED_PATH" >/dev/null 2>&1 || true
-          if [ -n "$STATE_PATH" ]; then
-            rm -f "$STATE_PATH" >/dev/null 2>&1 || true
-          fi
+          cleanup_managed_download
           "$APP_EXEC" >/dev/null 2>&1 &
           return 0
         fi
@@ -786,10 +812,7 @@ apply_update() {
     *.rpm)
       if command -v pkexec >/dev/null 2>&1; then
         if pkexec rpm -Uvh --replacepkgs "$DOWNLOADED_PATH"; then
-          rm -f "$DOWNLOADED_PATH" >/dev/null 2>&1 || true
-          if [ -n "$STATE_PATH" ]; then
-            rm -f "$STATE_PATH" >/dev/null 2>&1 || true
-          fi
+          cleanup_managed_download
           "$APP_EXEC" >/dev/null 2>&1 &
           return 0
         fi
@@ -821,22 +844,23 @@ cleanup_script
   child.unref()
 }
 
-async function spawnApplyHelper(downloadedPath: string): Promise<void> {
+async function spawnApplyHelper(downloadedPath: string, managedByApp: boolean): Promise<void> {
   if (process.platform === 'darwin') {
-    await spawnMacApplyHelper(downloadedPath)
+    await spawnMacApplyHelper(downloadedPath, managedByApp)
     return
   }
 
   if (process.platform === 'win32') {
-    await spawnWindowsApplyHelper(downloadedPath)
+    await spawnWindowsApplyHelper(downloadedPath, managedByApp)
     return
   }
 
-  await spawnLinuxApplyHelper(downloadedPath)
+  await spawnLinuxApplyHelper(downloadedPath, managedByApp)
 }
 
 export async function applyDownloadedUpdate(): Promise<UpdateApplyResult> {
-  const resolvedPath = await getDownloadedUpdatePath()
+  const downloadedState = await getDownloadedUpdatePathState()
+  const resolvedPath = downloadedState.path
   if (!resolvedPath) {
     return { success: false, error: 'No downloaded update file is available.' }
   }
@@ -870,7 +894,7 @@ export async function applyDownloadedUpdate(): Promise<UpdateApplyResult> {
   }
 
   try {
-    await spawnApplyHelper(resolvedPath)
+    await spawnApplyHelper(resolvedPath, downloadedState.managedByApp)
   } catch (error) {
     return {
       success: false,

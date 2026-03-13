@@ -685,8 +685,8 @@ todo_write({ tasks: [
 
 - **Phase 1-7 Complete**: Core functionality, UI, artifacts, memory, soul system
 - **Phase 8 Complete**: Onboarding flow, backup/restore, versioning
-- **Current Focus**: Testing, polish, user feedback integration, release hardening, and updater/restart UX stabilization across cross-platform installer handling, custom macOS install targets, multi-conversation restart scheduling, and light-theme readability
-- **Next Planned Release (0.37.1)**: Patch release planned from the current PR branch with Downloads-folder update downloads, safer macOS bundle replacement in the running app location, platform-specific Windows/Linux installer helpers, restart scheduling after all active AI turns finish, and stronger context-indicator contrast in light mode.
+- **Current Focus**: Testing, polish, user feedback integration, release hardening, and updater/restart UX stabilization across cross-platform installer handling, custom macOS install targets, legacy user-managed installer preservation, multi-conversation restart scheduling, and light-theme readability
+- **Next Planned Release (0.37.1)**: Patch release planned from the current PR branch with Downloads-folder update downloads, safer macOS bundle replacement in the running app location, platform-specific Windows/Linux installer helpers that preserve legacy user-managed installers, restart scheduling after all active AI turns finish, and stronger context-indicator contrast in light mode.
 - **Latest Public Release (0.36.0)**: Minor release focused on durable queued-message management, reload-safe queue hydration, persisted queue prioritization/editing, and direct latest-prompt edit/regenerate flow improvements.
 - **Public Release History**:
   - `0.36.0` - Durable queued-message management, reload-safe queue hydration, persisted queue prioritization, and direct latest-prompt edit/regenerate improvements.
