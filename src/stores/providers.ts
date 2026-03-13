@@ -1,4 +1,5 @@
 import { create } from 'zustand'
+import { sanitizeReasoningEffort } from '../lib/reasoning'
 
 interface ProviderConfig {
   id: string
@@ -8,6 +9,7 @@ interface ProviderConfig {
   defaultModel: string
   hiddenFromSelector?: boolean
   capabilityProfiles?: Record<string, unknown> | null
+  defaultReasoningEffort?: ReasoningEffort | null
   isDefault: boolean
   createdAt: number
   updatedAt: number
@@ -20,6 +22,7 @@ interface ProviderInput {
   defaultModel: string
   hiddenFromSelector?: boolean
   capabilityProfiles?: Record<string, unknown> | null
+  defaultReasoningEffort?: ReasoningEffort | null
   isDefault?: boolean
   apiKey?: string
 }
@@ -28,6 +31,7 @@ interface ProviderStore {
   providers: ProviderConfig[]
   activeProviderId: string | null
   activeModel: string | null
+  activeReasoningEffort: ReasoningEffort | null
   isLoading: boolean
   error: string | null
 
@@ -36,9 +40,11 @@ interface ProviderStore {
   addProvider: (input: ProviderInput) => Promise<ProviderConfig>
   updateProvider: (id: string, updates: Partial<ProviderInput>) => Promise<void>
   deleteProvider: (id: string) => Promise<void>
+  reorderProviders: (ids: string[]) => Promise<void>
   setActiveProvider: (id: string) => Promise<void>
   setActiveModel: (model: string) => Promise<void>
-  setActiveSelection: (providerId: string, model: string) => void
+  setActiveReasoningEffort: (effort: ReasoningEffort | null) => void
+  setActiveSelection: (providerId: string, model: string, reasoningEffort?: ReasoningEffort | null) => void
   testConnection: (id: string) => Promise<{ ok: boolean; message: string; status?: number }>
   getModels: (type: string, baseUrl?: string) => Promise<Array<{ id: string; name: string }>>
 }
@@ -47,6 +53,7 @@ export const useProviderStore = create<ProviderStore>((set, get) => ({
   providers: [],
   activeProviderId: null,
   activeModel: null,
+  activeReasoningEffort: null,
   isLoading: false,
   error: null,
 
@@ -64,6 +71,7 @@ export const useProviderStore = create<ProviderStore>((set, get) => ({
         providers,
         activeProviderId: selectedProvider?.id || null,
         activeModel: selectedProvider?.defaultModel || null,
+        activeReasoningEffort: selectedProvider?.defaultReasoningEffort || null,
         isLoading: false,
       })
     } catch (error: any) {
@@ -86,11 +94,13 @@ export const useProviderStore = create<ProviderStore>((set, get) => ({
       const selectedProvider = currentActive || defaultProvider || firstVisibleProvider || null
       const activeProviderId = selectedProvider?.id || null
       const activeModel = selectedProvider?.defaultModel || null
+      const activeReasoningEffort = selectedProvider?.defaultReasoningEffort || null
 
       set({
         providers,
         activeProviderId,
         activeModel,
+        activeReasoningEffort,
         isLoading: false,
       })
       return provider
@@ -105,18 +115,22 @@ export const useProviderStore = create<ProviderStore>((set, get) => ({
     try {
       await window.jelico.providers.update(id, updates)
       const providers = await window.jelico.providers.list()
-      let { activeProviderId, activeModel } = get()
+      let { activeProviderId, activeModel, activeReasoningEffort } = get()
       const activeProvider = providers.find(p => p.id === activeProviderId)
 
       if (!activeProvider || activeProvider.hiddenFromSelector || !activeProvider.defaultModel?.trim()) {
         const fallback = providers.find(p => !p.hiddenFromSelector && !!p.defaultModel?.trim()) || null
         activeProviderId = fallback?.id || null
         activeModel = fallback?.defaultModel || null
+        activeReasoningEffort = fallback?.defaultReasoningEffort || null
       } else if (activeModel !== activeProvider.defaultModel && updates.defaultModel !== undefined && activeProvider.id === id) {
         activeModel = activeProvider.defaultModel
+        activeReasoningEffort = activeProvider.defaultReasoningEffort || null
+      } else if (updates.defaultReasoningEffort !== undefined && activeProvider.id === id) {
+        activeReasoningEffort = activeProvider.defaultReasoningEffort || null
       }
 
-      set({ providers, activeProviderId, activeModel, isLoading: false })
+      set({ providers, activeProviderId, activeModel, activeReasoningEffort, isLoading: false })
     } catch (error: any) {
       set({ error: error.message, isLoading: false })
       throw error
@@ -130,13 +144,14 @@ export const useProviderStore = create<ProviderStore>((set, get) => ({
       const providers = await window.jelico.providers.list()
 
       // Update active provider if needed
-      let { activeProviderId, activeModel } = get()
+      let { activeProviderId, activeModel, activeReasoningEffort } = get()
       if (activeProviderId === id) {
         const defaultProvider = providers.find(p => p.isDefault && !p.hiddenFromSelector && !!p.defaultModel?.trim())
         const firstVisibleProvider = providers.find(p => !p.hiddenFromSelector && !!p.defaultModel?.trim())
         const fallback = defaultProvider || firstVisibleProvider || null
         activeProviderId = fallback?.id || null
         activeModel = fallback?.defaultModel || null
+        activeReasoningEffort = fallback?.defaultReasoningEffort || null
       } else {
         const activeProvider = providers.find(p => p.id === activeProviderId)
         if (!activeProvider || activeProvider.hiddenFromSelector || !activeProvider.defaultModel?.trim()) {
@@ -145,12 +160,28 @@ export const useProviderStore = create<ProviderStore>((set, get) => ({
           const fallback = defaultProvider || firstVisibleProvider || null
           activeProviderId = fallback?.id || null
           activeModel = fallback?.defaultModel || null
+          activeReasoningEffort = fallback?.defaultReasoningEffort || null
         } else {
           activeModel = activeProvider.defaultModel
+          activeReasoningEffort = activeProvider.defaultReasoningEffort || null
         }
       }
 
-      set({ providers, activeProviderId, activeModel, isLoading: false })
+      set({ providers, activeProviderId, activeModel, activeReasoningEffort, isLoading: false })
+    } catch (error: any) {
+      set({ error: error.message, isLoading: false })
+      throw error
+    }
+  },
+
+  reorderProviders: async (ids) => {
+    set({ isLoading: true, error: null })
+    try {
+      const providers = await window.jelico.providers.reorder(ids)
+      set({
+        providers,
+        isLoading: false,
+      })
     } catch (error: any) {
       set({ error: error.message, isLoading: false })
       throw error
@@ -168,6 +199,7 @@ export const useProviderStore = create<ProviderStore>((set, get) => ({
     set({
       activeProviderId: id,
       activeModel: provider.defaultModel,
+      activeReasoningEffort: provider.defaultReasoningEffort || null,
       error: null,
     })
 
@@ -182,11 +214,16 @@ export const useProviderStore = create<ProviderStore>((set, get) => ({
   },
 
   setActiveModel: async (model) => {
-    const { activeProviderId } = get()
+    const { activeProviderId, providers, activeReasoningEffort } = get()
     if (!activeProviderId || !model) return
+    const activeProvider = providers.find((provider) => provider.id === activeProviderId) || null
 
     // Update state immediately
-    set({ activeModel: model, error: null })
+    set({
+      activeModel: model,
+      activeReasoningEffort: sanitizeReasoningEffort(activeProvider?.type || '', model, activeReasoningEffort),
+      error: null,
+    })
 
     // Persist to database
     try {
@@ -198,11 +235,26 @@ export const useProviderStore = create<ProviderStore>((set, get) => ({
     }
   },
 
-  setActiveSelection: (providerId, model) => {
+  setActiveReasoningEffort: (effort) => {
+    const { activeProviderId, activeModel, providers } = get()
+    const activeProvider = providers.find((provider) => provider.id === activeProviderId) || null
+    set({
+      activeReasoningEffort: sanitizeReasoningEffort(activeProvider?.type || '', activeModel, effort),
+      error: null,
+    })
+  },
+
+  setActiveSelection: (providerId, model, reasoningEffort) => {
     if (!providerId || !model) return
+    const provider = get().providers.find((entry) => entry.id === providerId) || null
     set({
       activeProviderId: providerId,
       activeModel: model,
+      activeReasoningEffort: sanitizeReasoningEffort(
+        provider?.type || '',
+        model,
+        reasoningEffort !== undefined ? reasoningEffort : provider?.defaultReasoningEffort || null
+      ),
       error: null,
     })
   },

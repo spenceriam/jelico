@@ -76,7 +76,7 @@ The Soul/Memory system should make Jelico increasingly personalized - it learns 
 ## Project overview
 Jelico is an AI Productivity Desktop built with Electron, React, TypeScript, and Vite. It provides a frictionless AI assistant experience with multi-provider support (Anthropic, OpenAI, Google), workspace management, conversation persistence, and a soul/memory system that learns user patterns and preferences over time.
 
-**Current Version:** 0.37.2 (working branch version; not yet a public release)
+**Current Version:** 0.38.0 (working branch version; not yet a public release)
 
 **License:** GNU General Public License v3.0 (GPL-3.0-or-later)
 - See LICENSE file in project root
@@ -685,10 +685,11 @@ todo_write({ tasks: [
 
 - **Phase 1-7 Complete**: Core functionality, UI, artifacts, memory, soul system
 - **Phase 8 Complete**: Onboarding flow, backup/restore, versioning
-- **Current Focus**: Testing, polish, user feedback integration, release hardening, updater/restart UX stabilization across cross-platform installer handling and restart scheduling, and light-theme consistency across sidebar statuses and new-chat backgrounds.
-- **Next Planned Release (0.37.2)**: Patch release planned from the current PR branch to restore light-mode visibility for the new-chat wave backdrop and the sidebar's color-coded conversation status sections introduced in 0.37.0 while carrying forward the 0.37.1 updater/apply hardening already on main.
-- **Latest Public Release (0.37.1)**: Patch release focused on safer updater apply/restart behavior across Downloads-folder installs, custom macOS app targets, preserved legacy installer files, and improved light-theme context-indicator contrast.
+- **Current Focus**: Testing, polish, user feedback integration, release hardening across updater/restart UX, and broader provider setup/model-selection workflows for multi-provider reasoning and metadata visibility.
+- **Next Planned Release (0.38.0)**: Minor release planned from the current PR branch to add API-driven provider setup/editing, supported reasoning-effort defaults and overrides, expanded hosted/local provider presets, and drag-reorderable provider metadata rows in Settings.
+- **Latest Public Release (0.37.2)**: Patch release focused on restoring light-mode visibility for the new-chat animated backdrop and the sidebar's color-coded conversation status sections.
 - **Public Release History**:
+  - `0.37.2` - Restored light-mode visibility for the animated new-chat backdrop and sidebar conversation status tinting.
   - `0.37.1` - Safer updater apply/restart flows across custom macOS install targets, legacy installer preservation, and light-theme context-indicator readability.
   - `0.37.0` - Animated new-chat backdrop, grouped sidebar conversation statuses, inline archive confirmation/toasts, and macOS-native docking behavior.
   - `0.36.0` - Durable queued-message management, reload-safe queue hydration, persisted queue prioritization, and direct latest-prompt edit/regenerate improvements.

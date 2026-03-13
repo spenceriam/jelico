@@ -12,6 +12,7 @@ import { ChatInput } from './ChatInput'
 import { ModeSelector } from '../ModeSelector/ModeSelector'
 import { WorkspaceSelector } from '../Workspace/WorkspaceSelector'
 import { ModelSelector } from '../Model/ModelSelector'
+import { ReasoningSelector } from '../Model/ReasoningSelector'
 import { ShimmerText, BrailleLoader } from '../StatusIndicators'
 import { TodoPanel } from '../Todo/TodoPanel'
 import { MutedPathsBackground } from './MutedPathsBackground'
@@ -1292,6 +1293,7 @@ function NewChatView({ disabled, isStreaming }: NewChatViewProps) {
           </label>
         )}
         <ModelSelector compact />
+        <ReasoningSelector compact />
         <button
           onClick={() => openSettings()}
           className="p-2 text-text-muted hover:text-text-primary hover:bg-bg-surface rounded-md transition-colors"

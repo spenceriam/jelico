@@ -77,6 +77,9 @@ function loadDb(): void {
           if (provider.capability_profiles === undefined) {
             provider.capability_profiles = null
           }
+          if (provider.default_reasoning_effort === undefined) {
+            provider.default_reasoning_effort = null
+          }
         })
       }
       // Conversation archive migration: legacy rows had no archived_at field.
@@ -84,6 +87,9 @@ function loadDb(): void {
         db.conversations.forEach((conversation: any) => {
           if (conversation.archived_at === undefined) {
             conversation.archived_at = null
+          }
+          if (conversation.reasoning_effort === undefined) {
+            conversation.reasoning_effort = null
           }
         })
       }
@@ -342,6 +348,7 @@ export const providerDb = {
       default_model: provider.defaultModel,
       hidden_from_selector: provider.hiddenFromSelector ? 1 : 0,
       capability_profiles: provider.capabilityProfiles || null,
+      default_reasoning_effort: provider.defaultReasoningEffort || null,
       is_default: isDefault ? 1 : 0,
       created_at: now,
       updated_at: now,
@@ -369,11 +376,41 @@ export const providerDb = {
     if (updates.defaultModel !== undefined) provider.default_model = updates.defaultModel
     if (updates.hiddenFromSelector !== undefined) provider.hidden_from_selector = updates.hiddenFromSelector ? 1 : 0
     if (updates.capabilityProfiles !== undefined) provider.capability_profiles = updates.capabilityProfiles || null
+    if (updates.defaultReasoningEffort !== undefined) provider.default_reasoning_effort = updates.defaultReasoningEffort || null
     if (updates.isDefault !== undefined) provider.is_default = updates.isDefault ? 1 : 0
     provider.updated_at = now
 
     saveDb()
     return provider
+  },
+
+  reorder(ids: string[]): ProviderRow[] {
+    if (!Array.isArray(ids) || ids.length === 0) {
+      return [...db.providers]
+    }
+
+    const providerById = new Map(db.providers.map((provider) => [provider.id, provider]))
+    const nextProviders: ProviderRow[] = []
+    const seen = new Set<string>()
+
+    for (const id of ids) {
+      const provider = providerById.get(id)
+      if (!provider || seen.has(id)) continue
+      nextProviders.push(provider)
+      seen.add(id)
+    }
+
+    for (const provider of db.providers) {
+      if (seen.has(provider.id)) continue
+      nextProviders.push(provider)
+    }
+
+    if (nextProviders.length === db.providers.length) {
+      db.providers = nextProviders
+      saveDb()
+    }
+
+    return [...db.providers]
   },
 
   delete(id: string): void {
@@ -436,6 +473,7 @@ export const conversationDb = {
       workspace_id: conv.workspaceId || null,
       model: conv.model,
       provider_id: conv.providerId,
+      reasoning_effort: conv.reasoningEffort || null,
       archived_at: null,
       created_at: now,
       updated_at: now,
@@ -469,6 +507,15 @@ export const conversationDb = {
     if (conv) {
       conv.provider_id = providerId
       conv.model = model
+      conv.updated_at = Date.now()
+      saveDb()
+    }
+  },
+
+  updateReasoningEffort(id: string, reasoningEffort: string | null): void {
+    const conv = db.conversations.find(c => c.id === id)
+    if (conv) {
+      conv.reasoning_effort = reasoningEffort || null
       conv.updated_at = Date.now()
       saveDb()
     }
@@ -691,6 +738,7 @@ interface ProviderRow {
   default_model: string
   hidden_from_selector: number
   capability_profiles?: Record<string, unknown> | null
+  default_reasoning_effort: string | null
   is_default: number
   created_at: number
   updated_at: number
@@ -703,6 +751,7 @@ interface ProviderInput {
   defaultModel: string
   hiddenFromSelector?: boolean
   capabilityProfiles?: Record<string, unknown>
+  defaultReasoningEffort?: string | null
   isDefault?: boolean
 }
 
@@ -712,6 +761,7 @@ interface ConversationRow {
   workspace_id: string | null
   model: string
   provider_id: string
+  reasoning_effort: string | null
   archived_at: number | null
   created_at: number
   updated_at: number
@@ -721,6 +771,7 @@ interface ConversationInput {
   title: string
   model: string
   providerId: string
+  reasoningEffort?: string | null
   workspaceId?: string
 }
 

@@ -90,7 +90,11 @@ export function ModelSelector({ compact = false }: ModelSelectorProps) {
       try {
         const conversation = await window.jelico.conversations.get(activeConversationId)
         if (cancelled || !conversation?.providerId || !conversation?.model) return
-        setActiveSelection(conversation.providerId, conversation.model)
+        setActiveSelection(
+          conversation.providerId,
+          conversation.model,
+          conversation.reasoningEffort ?? null
+        )
       } catch (syncError) {
         console.warn('[ModelSelector] Failed to sync conversation provider/model:', syncError)
       }
@@ -113,10 +117,13 @@ export function ModelSelector({ compact = false }: ModelSelectorProps) {
     setUpdatingSelection(selectionKey)
 
     try {
-      setActiveSelection(providerId, model)
+      const provider = providers.find((entry) => entry.id === providerId) || null
+      const reasoningEffort = provider?.defaultReasoningEffort || null
+      setActiveSelection(providerId, model, reasoningEffort)
 
       if (activeConversationId) {
         await window.jelico.conversations.updateModelProvider(activeConversationId, providerId, model)
+        await window.jelico.conversations.updateReasoningEffort(activeConversationId, reasoningEffort)
         await switchConversationModel(activeConversationId, providerId, model)
         addSystemNotification({
           type: 'model_changed',

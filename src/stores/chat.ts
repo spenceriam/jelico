@@ -9,6 +9,7 @@ import { useContextStore, estimateTokens } from './context'
 import { useTodoStore } from './todos'
 import { useClarificationStore } from './clarification'
 import { useDecisionPromptStore } from './decisionPrompt'
+import { useProviderStore } from './providers'
 import { notifyUserEvent } from '../lib/notifications'
 import { createInlineToolProtocolFilter } from '../lib/inlineToolProtocol'
 import { hasIncompleteToolEvidence } from './chatInterruption'
@@ -108,6 +109,7 @@ interface Conversation {
   workspaceId?: string
   model: string
   providerId: string
+  reasoningEffort?: ReasoningEffort | null
   mode?: AgentMode
   archivedAt?: number | null
   createdAt: number
@@ -938,6 +940,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
         title: 'New chat',
         model,
         providerId,
+        reasoningEffort: useProviderStore.getState().activeReasoningEffort,
         workspaceId: targetWorkspaceId || undefined,
       })
       const conversations = await window.jelico.conversations.list()
@@ -1019,6 +1022,13 @@ export const useChatStore = create<ChatStore>((set, get) => ({
       useTodoStore.getState().hydrateConversationFromMessages(id, loadedMessages)
       useTodoStore.getState().setConversationId(id)
       useClarificationStore.getState().setConversationId(id)
+      if (conversation?.providerId && conversation?.model) {
+        useProviderStore.getState().setActiveSelection(
+          conversation.providerId,
+          conversation.model,
+          conversation.reasoningEffort ?? null
+        )
+      }
 
       const activeStreamState = get().conversationStreams[id]
       const pendingCheckpoint = getPendingStreamCheckpoint(id)
@@ -1396,6 +1406,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
       channelId = window.jelico.ai.stream({
         providerId,
         model,
+        reasoningEffort: useProviderStore.getState().activeReasoningEffort,
         mode: finalMode,
         messages: aiMessages,
         workspacePath: activeWorkspace?.path,

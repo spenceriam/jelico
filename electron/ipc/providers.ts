@@ -2,24 +2,18 @@ import { ipcMain } from 'electron'
 import { providerDb } from '../services/database'
 import { keychainService } from '../services/keychain'
 import {
+  findModelMetadataTarget,
+  findOpenAIContextFallback,
+  findOpenAIOutputFallback,
+  getCompatibleAuthHeaderCandidates,
+} from '../lib/providerModelLimits'
+import {
   getModelCatalogStatus,
   initializeModelCatalog,
   lookupModelsDevContextLimit,
+  lookupModelsDevOutputLimit,
   refreshModelCatalog,
 } from '../services/modelCatalog'
-
-// OpenAI family context sizes for fallback
-const OPENAI_FAMILY_CONTEXT: Record<string, number> = {
-  'gpt-4o': 128000,
-  'gpt-4o-mini': 128000,
-  'gpt-4-turbo': 128000,
-  'gpt-4': 8192,
-  'gpt-4-32k': 32768,
-  'gpt-3.5-turbo': 16385,
-  'o1': 200000,
-  'o1-mini': 128000,
-  'o3-mini': 200000,
-}
 
 // Build models endpoint URL from base URL
 function buildModelsEndpoint(baseUrl?: string | null): string {
@@ -94,12 +88,21 @@ function extractContextSize(model: any): number | null {
   return null
 }
 
-// Find OpenAI family fallback by model ID
-function findOpenAIFamilyFallback(modelId: string): number | null {
-  const normalized = modelId.toLowerCase()
-  if (OPENAI_FAMILY_CONTEXT[normalized]) return OPENAI_FAMILY_CONTEXT[normalized]
-  for (const [key, size] of Object.entries(OPENAI_FAMILY_CONTEXT)) {
-    if (normalized.includes(key)) return size
+function extractOutputSize(model: any): number | null {
+  const candidates = [
+    model?.output_token_limit,
+    model?.outputTokenLimit,
+    model?.max_output_tokens,
+    model?.maxOutputTokens,
+    model?.limits?.output,
+    model?.limits?.output_tokens,
+    model?.metadata?.output_tokens,
+    model?.top_provider?.max_completion_tokens,
+    model?.top_provider?.max_output_tokens,
+  ]
+  for (const value of candidates) {
+    const n = Number(value)
+    if (Number.isFinite(n) && n > 0) return n
   }
   return null
 }
@@ -112,33 +115,67 @@ async function resolveContextSizeFromModelsEndpoint(
 ): Promise<number | null> {
   const endpoints = buildCompatibleModelsEndpoints(baseUrl)
   for (const endpoint of endpoints) {
-    try {
-      const response = await fetch(endpoint, {
-        headers: {
-          Accept: 'application/json',
-          ...(apiKey ? { Authorization: `Bearer ${apiKey}` } : {}),
-        },
-      })
-      if (!response.ok) continue
+    for (const authHeaders of getCompatibleAuthHeaderCandidates(apiKey)) {
+      try {
+        const response = await fetch(endpoint, {
+          headers: {
+            Accept: 'application/json',
+            ...authHeaders,
+          },
+        })
+        if (!response.ok) continue
 
-      const payload = await response.json()
-      const models: any[] = Array.isArray(payload?.data)
-        ? payload.data
-        : Array.isArray(payload?.models)
-          ? payload.models
-          : []
+        const payload = await response.json()
+        const models: any[] = Array.isArray(payload?.data)
+          ? payload.data
+          : Array.isArray(payload?.models)
+            ? payload.models
+            : []
 
-      const normalizedId = modelId.toLowerCase()
-      const shortId = normalizedId.split('/').pop() || normalizedId
-      const target = models.find((m) => {
-        const id = String(m?.id || m?.name || '').toLowerCase()
-        return id === normalizedId || id === shortId || id.endsWith(`/${shortId}`)
-      })
-      if (!target) continue
+        const target = findModelMetadataTarget(models, modelId)
+        if (!target) continue
 
-      return extractContextSize(target)
-    } catch {
-      // Try next endpoint candidate.
+        return extractContextSize(target)
+      } catch {
+        // Try next auth-header or endpoint candidate.
+      }
+    }
+  }
+
+  return null
+}
+
+async function resolveOutputSizeFromModelsEndpoint(
+  modelId: string,
+  baseUrl?: string | null,
+  apiKey?: string | null
+): Promise<number | null> {
+  const endpoints = buildCompatibleModelsEndpoints(baseUrl)
+  for (const endpoint of endpoints) {
+    for (const authHeaders of getCompatibleAuthHeaderCandidates(apiKey)) {
+      try {
+        const response = await fetch(endpoint, {
+          headers: {
+            Accept: 'application/json',
+            ...authHeaders,
+          },
+        })
+        if (!response.ok) continue
+
+        const payload = await response.json()
+        const models: any[] = Array.isArray(payload?.data)
+          ? payload.data
+          : Array.isArray(payload?.models)
+            ? payload.models
+            : []
+
+        const target = findModelMetadataTarget(models, modelId)
+        if (!target) continue
+
+        return extractOutputSize(target)
+      } catch {
+        // Try next auth-header or endpoint candidate.
+      }
     }
   }
 
@@ -147,20 +184,9 @@ async function resolveContextSizeFromModelsEndpoint(
 
 // Fallback models only used when API fetch fails
 const FALLBACK_MODELS: Record<string, Array<{ id: string; name: string }>> = {
-  anthropic: [
-    { id: 'claude-sonnet-4-20250514', name: 'Claude Sonnet 4' },
-    { id: 'claude-opus-4-20250514', name: 'Claude Opus 4' },
-    { id: 'claude-3-5-haiku-20241022', name: 'Claude 3.5 Haiku' },
-  ],
-  openai: [
-    { id: 'gpt-4o', name: 'GPT-4o' },
-    { id: 'gpt-4-turbo', name: 'GPT-4 Turbo' },
-    { id: 'gpt-3.5-turbo', name: 'GPT-3.5 Turbo' },
-  ],
-  google: [
-    { id: 'gemini-1.5-pro', name: 'Gemini 1.5 Pro' },
-    { id: 'gemini-1.5-flash', name: 'Gemini 1.5 Flash' },
-  ],
+  anthropic: [],
+  openai: [],
+  google: [],
   openrouter: [],
   ollama: [],
   custom: [],
@@ -290,6 +316,7 @@ function toApiFormat(row: any) {
     defaultModel: row.default_model,
     hiddenFromSelector: row.hidden_from_selector === 1,
     capabilityProfiles: row.capability_profiles || null,
+    defaultReasoningEffort: row.default_reasoning_effort || null,
     isDefault: row.is_default === 1,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
@@ -298,13 +325,7 @@ function toApiFormat(row: any) {
 
 async function fetchCompatibleModels(apiKey: string | null, baseUrl?: string): Promise<Array<{ id: string; name: string }>> {
   const endpoints = buildCompatibleModelsEndpoints(baseUrl)
-  const authHeaderCandidates: Array<Record<string, string>> = apiKey
-    ? [
-        { Authorization: `Bearer ${apiKey}` },
-        { 'x-api-key': apiKey, 'anthropic-version': '2023-06-01' },
-        { 'x-api-key': apiKey },
-      ]
-    : [{}]
+  const authHeaderCandidates = getCompatibleAuthHeaderCandidates(apiKey)
 
   for (const endpoint of endpoints) {
     for (const authHeaders of authHeaderCandidates) {
@@ -574,6 +595,7 @@ export function registerProviderHandlers() {
       baseUrl: input.baseUrl,
       defaultModel: input.defaultModel,
       capabilityProfiles: input.capabilityProfiles,
+      defaultReasoningEffort: input.defaultReasoningEffort,
       isDefault: input.isDefault,
     })
 
@@ -590,6 +612,7 @@ export function registerProviderHandlers() {
     const provider = providerDb.update(id, {
       ...updates,
       capabilityProfiles: updates.capabilityProfiles,
+      defaultReasoningEffort: updates.defaultReasoningEffort,
     })
 
     // Update API key if provided
@@ -608,6 +631,11 @@ export function registerProviderHandlers() {
   ipcMain.handle('providers:delete', async (_, id: string) => {
     await keychainService.deleteApiKey(id)
     providerDb.delete(id)
+  })
+
+  ipcMain.handle('providers:reorder', async (_, ids: string[]) => {
+    const providers = providerDb.reorder(ids)
+    return providers.map(toApiFormat)
   })
 
   // Test provider connection
@@ -730,19 +758,19 @@ export function registerProviderHandlers() {
         if (apiKey) {
           return await fetchAnthropicModels(apiKey)
         }
-        return FALLBACK_MODELS.anthropic
+        return []
 
       case 'openai':
         if (apiKey) {
           return await fetchOpenAIModels(apiKey, baseUrl)
         }
-        return FALLBACK_MODELS.openai
+        return []
 
       case 'google':
         if (apiKey) {
           return await fetchGoogleModels(apiKey)
         }
-        return FALLBACK_MODELS.google
+        return []
 
       case 'ollama':
         try {
@@ -808,15 +836,15 @@ export function registerProviderHandlers() {
     switch (type) {
       case 'anthropic':
         if (apiKey) return await fetchAnthropicModels(apiKey)
-        return FALLBACK_MODELS.anthropic
+        return []
 
       case 'openai':
         if (apiKey) return await fetchOpenAIModels(apiKey, baseUrl)
-        return FALLBACK_MODELS.openai
+        return []
 
       case 'google':
         if (apiKey) return await fetchGoogleModels(apiKey)
-        return FALLBACK_MODELS.google
+        return []
 
       case 'openrouter':
         if (apiKey) {
@@ -862,6 +890,115 @@ export function registerProviderHandlers() {
   ipcMain.handle('providers:refreshModelCatalog', async () => {
     await refreshModelCatalog(true)
     return getModelCatalogStatus()
+  })
+
+  ipcMain.handle('providers:getModelLimits', async (_, providerId: string, modelId: string) => {
+    try {
+      const provider = providerDb.get(providerId)
+      if (!provider || !modelId) {
+        return { contextWindow: null, maxOutputTokens: null }
+      }
+
+      const apiKey = await keychainService.getApiKey(providerId)
+      const baseUrl = provider.base_url
+
+      await refreshModelCatalog(false)
+
+      let contextWindow = lookupModelsDevContextLimit(provider.type, modelId, {
+        baseUrl,
+        providerName: provider.name,
+      })
+
+      let maxOutputTokens = lookupModelsDevOutputLimit(provider.type, modelId, {
+        baseUrl,
+        providerName: provider.name,
+      })
+
+      switch (provider.type) {
+        case 'openai':
+        case 'openai-compatible':
+        case 'custom':
+        case 'local':
+        case 'anthropic-compatible':
+        case 'minimax': {
+          if (!contextWindow) {
+            contextWindow = await resolveContextSizeFromModelsEndpoint(modelId, baseUrl, apiKey)
+          }
+          if (!maxOutputTokens) {
+            maxOutputTokens = await resolveOutputSizeFromModelsEndpoint(modelId, baseUrl, apiKey)
+          }
+          if (!contextWindow && provider.type === 'openai') {
+            contextWindow = findOpenAIContextFallback(modelId)
+          }
+          if (!maxOutputTokens && provider.type === 'openai') {
+            maxOutputTokens = findOpenAIOutputFallback(modelId)
+          }
+          break
+        }
+
+        case 'google': {
+          if ((!contextWindow || !maxOutputTokens) && apiKey) {
+            const response = await fetch(
+              `https://generativelanguage.googleapis.com/v1/models/${modelId}?key=${apiKey}`
+            )
+            if (response.ok) {
+              const data = await response.json()
+              contextWindow = contextWindow || Number(data.inputTokenLimit) || null
+              maxOutputTokens = maxOutputTokens || Number(data.outputTokenLimit) || null
+            }
+          }
+          break
+        }
+
+        case 'openrouter': {
+          if ((!contextWindow || !maxOutputTokens) && apiKey) {
+            const response = await fetch('https://openrouter.ai/api/v1/models', {
+              headers: { Authorization: `Bearer ${apiKey}` },
+            })
+            if (response.ok) {
+              const data = await response.json()
+              const model = (data.data || []).find((entry: any) => entry.id === modelId)
+              contextWindow = contextWindow || Number(model?.context_length) || null
+              maxOutputTokens =
+                maxOutputTokens ||
+                Number(model?.top_provider?.max_completion_tokens) ||
+                Number(model?.top_provider?.max_output_tokens) ||
+                null
+            }
+          }
+          break
+        }
+
+        case 'ollama': {
+          if (!contextWindow) {
+            const url = baseUrl || 'http://localhost:11434'
+            const response = await fetch(`${url}/api/show`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ name: modelId }),
+            })
+            if (response.ok) {
+              const data = await response.json()
+              const params = data.parameters || ''
+              const match = params.match(/num_ctx\s+(\d+)/)
+              contextWindow = match ? parseInt(match[1], 10) : Number(data.model_info?.context_length) || null
+            }
+          }
+          break
+        }
+
+        default:
+          break
+      }
+
+      return {
+        contextWindow: contextWindow && Number.isFinite(contextWindow) ? Math.round(contextWindow) : null,
+        maxOutputTokens: maxOutputTokens && Number.isFinite(maxOutputTokens) ? Math.round(maxOutputTokens) : null,
+      }
+    } catch (error) {
+      console.error('[Providers] Failed to get model limits:', error)
+      return { contextWindow: null, maxOutputTokens: null }
+    }
   })
 
   // Get context window size for a specific model from the provider's API
@@ -912,27 +1049,7 @@ export function registerProviderHandlers() {
           // OpenAI doesn't expose context length in their API directly
           // We need to use known values or query a different endpoint
           // For now, use known values for common models
-          const knownSizes: Record<string, number> = {
-            'gpt-4o': 128000,
-            'gpt-4o-mini': 128000,
-            'gpt-4-turbo': 128000,
-            'gpt-4-turbo-preview': 128000,
-            'gpt-4': 8192,
-            'gpt-4-32k': 32768,
-            'gpt-3.5-turbo': 16385,
-            'gpt-3.5-turbo-16k': 16385,
-            'o1': 200000,
-            'o1-mini': 128000,
-            'o1-preview': 128000,
-            'o3-mini': 200000,
-          }
-          // Check exact match first
-          if (knownSizes[modelId]) return knownSizes[modelId]
-          // Check partial match
-          for (const [key, size] of Object.entries(knownSizes)) {
-            if (modelId.includes(key)) return size
-          }
-          return 128000 // Default for newer models
+          return findOpenAIContextFallback(modelId) || 128000
         }
 
         case 'google': {

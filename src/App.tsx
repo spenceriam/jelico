@@ -584,8 +584,8 @@ export default function App() {
 
       {/* Provider setup modal (for adding additional providers) */}
       {providerSetupOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-          <div className="bg-bg-surface rounded-lg shadow-xl max-w-lg w-full mx-4 max-h-[90vh] overflow-auto">
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50">
+          <div className="bg-bg-surface rounded-lg shadow-xl max-w-2xl w-full mx-4 max-h-[90vh] overflow-auto">
             <ProviderSetup
               isModal
               onComplete={() => {

@@ -7,6 +7,7 @@ import { useUpdateStore } from '../../stores/updates'
 import { useWorkspaceStore } from '../../stores/workspaces'
 import { WorkspaceSelector } from '../Workspace/WorkspaceSelector'
 import { ModelSelector } from '../Model/ModelSelector'
+import { ReasoningSelector } from '../Model/ReasoningSelector'
 import { ContextIndicator } from './ContextIndicator'
 
 export function Header() {
@@ -41,6 +42,7 @@ export function Header() {
       >
         <WorkspaceSelector />
         <ModelSelector />
+        <ReasoningSelector />
         <ContextIndicator />
         {activeBranch && (
           <div
