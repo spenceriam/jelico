@@ -407,7 +407,7 @@ export function ProviderConfigForm({
             ))}
           </select>
           <p className="form-hint">
-            Set a default reasoning effort for supported OpenAI reasoning models.
+            Set a default reasoning level for supported models on this provider.
           </p>
         </div>
       )}

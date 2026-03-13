@@ -67,10 +67,15 @@ export function Settings({ onClose }: SettingsProps) {
     setActiveSelection,
     setActiveReasoningEffort,
     activeProviderId,
+    activeModel,
+    activeReasoningEffort,
   } = useProviderStore()
   const { openProviderSetup, settingsTab } = useUIStore()
-  const { activeConversationId, addSystemNotification } = useChatStore((state) => ({
+  const { activeConversationId, activeConversation, addSystemNotification } = useChatStore((state) => ({
     activeConversationId: state.activeConversationId,
+    activeConversation: state.activeConversationId
+      ? state.conversations.find((conversation) => conversation.id === state.activeConversationId) || null
+      : null,
     addSystemNotification: state.addSystemNotification,
   }))
   const switchConversationModel = useContextStore((state) => state.switchConversationModel)
@@ -331,6 +336,8 @@ export function Settings({ onClose }: SettingsProps) {
     const normalizedReasoningEffort = supportedReasoningEfforts.includes(editReasoningEffortValue as ReasoningEffort)
       ? editReasoningEffortValue
       : ''
+    const nextDefaultReasoningEffort = normalizedReasoningEffort || null
+    const currentDefaultReasoningEffort = currentProvider.defaultReasoningEffort || null
     const trimmedCapabilityProfiles = editCapabilityProfilesValue.trim()
     let parsedCapabilityProfiles: Record<string, unknown> | null = null
 
@@ -353,44 +360,79 @@ export function Settings({ onClose }: SettingsProps) {
       resolvedName !== currentProvider.name ||
       trimmedBaseUrl !== normalizedCurrentBaseUrl ||
       trimmedModel !== currentProvider.defaultModel ||
-      (normalizedReasoningEffort || null) !== (currentProvider.defaultReasoningEffort || null) ||
+      nextDefaultReasoningEffort !== currentDefaultReasoningEffort ||
       stringifyCapabilityProfiles(currentCapabilityProfiles) !== stringifyCapabilityProfiles(parsedCapabilityProfiles)
 
     const keyChanged = !!editApiKeyValue.trim()
+    const defaultModelChanged = trimmedModel !== currentProvider.defaultModel
+    const defaultReasoningChanged = nextDefaultReasoningEffort !== currentDefaultReasoningEffort
+    const isEditingActiveProvider = editingProviderId === activeProviderId
+    const isEditingActiveConversationProvider =
+      !!activeConversationId &&
+      !!activeConversation &&
+      activeConversation.providerId === editingProviderId
+    const shouldSyncActiveModelSelection =
+      isEditingActiveProvider &&
+      defaultModelChanged &&
+      activeModel === currentProvider.defaultModel
+    const shouldSyncActiveReasoningSelection =
+      isEditingActiveProvider &&
+      defaultReasoningChanged &&
+      (activeReasoningEffort || null) === currentDefaultReasoningEffort
+    const shouldSyncConversationModel =
+      isEditingActiveConversationProvider &&
+      defaultModelChanged &&
+      !!trimmedModel &&
+      activeConversation?.model === currentProvider.defaultModel
+    const shouldSyncConversationReasoning =
+      isEditingActiveConversationProvider &&
+      defaultReasoningChanged &&
+      (activeConversation?.reasoningEffort || null) === currentDefaultReasoningEffort
 
     if (providerChanged) {
       await updateProvider(editingProviderId, {
         name: resolvedName,
         baseUrl: trimmedBaseUrl,
         defaultModel: trimmedModel,
-        defaultReasoningEffort: normalizedReasoningEffort || null,
+        defaultReasoningEffort: nextDefaultReasoningEffort,
         capabilityProfiles: parsedCapabilityProfiles,
       })
     }
 
-    // Update active model if this is the active provider
-    if (providerChanged && editingProviderId === activeProviderId && trimmedModel !== currentProvider.defaultModel) {
+    if (providerChanged && shouldSyncActiveModelSelection) {
       await setActiveModel(trimmedModel)
     }
-    if (providerChanged && editingProviderId === activeProviderId) {
-      setActiveReasoningEffort(normalizedReasoningEffort || null)
-      if (activeConversationId && trimmedModel) {
+
+    if (providerChanged && shouldSyncActiveReasoningSelection) {
+      setActiveReasoningEffort(nextDefaultReasoningEffort)
+    }
+
+    if (providerChanged && isEditingActiveConversationProvider && activeConversationId) {
+      const modelName = `${resolvedName} / ${trimmedModel}`
+
+      if (shouldSyncConversationModel || shouldSyncConversationReasoning) {
         try {
-          await window.jelico.conversations.updateModelProvider(
-            activeConversationId,
-            editingProviderId,
-            trimmedModel
-          )
-          await window.jelico.conversations.updateReasoningEffort(
-            activeConversationId,
-            normalizedReasoningEffort || null
-          )
-          await switchConversationModel(activeConversationId, editingProviderId, trimmedModel)
-          addSystemNotification({
-            type: 'model_changed',
-            conversationId: activeConversationId,
-            modelName: `${resolvedName} / ${trimmedModel}`,
-          })
+          if (shouldSyncConversationModel) {
+            await window.jelico.conversations.updateModelProvider(
+              activeConversationId,
+              editingProviderId,
+              trimmedModel
+            )
+          }
+          if (shouldSyncConversationReasoning) {
+            await window.jelico.conversations.updateReasoningEffort(
+              activeConversationId,
+              nextDefaultReasoningEffort
+            )
+          }
+          if (shouldSyncConversationModel) {
+            await switchConversationModel(activeConversationId, editingProviderId, trimmedModel)
+            addSystemNotification({
+              type: 'model_changed',
+              conversationId: activeConversationId,
+              modelName,
+            })
+          }
         } catch (error) {
           console.warn('[Settings] Failed to sync active conversation after provider edit:', error)
         }

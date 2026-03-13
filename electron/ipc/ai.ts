@@ -69,6 +69,7 @@ import {
   isMeaningfulTurnToolResult,
   type IncompleteToolStart,
 } from '../lib/turnToolSemantics'
+import { buildReasoningProviderOptions, sanitizeReasoningEffort } from '../../src/lib/reasoning'
 
 // Start orphan cleanup on module load
 startOrphanCleanup()
@@ -77,51 +78,6 @@ startOrphanCleanup()
 const activeStreams = new Map<string, AbortController>()
 // Track effective mode per active stream so runtime mode changes can affect tool policy.
 const streamRuntimeModes = new Map<string, AgentMode>()
-
-function matchesReasoningModelFamily(normalizedModel: string, family: string): boolean {
-  return (
-    normalizedModel === family ||
-    normalizedModel.startsWith(`${family}-`) ||
-    normalizedModel.endsWith(`/${family}`) ||
-    normalizedModel.includes(`/${family}-`) ||
-    normalizedModel.endsWith(`:${family}`) ||
-    normalizedModel.includes(`:${family}-`)
-  )
-}
-
-function getSupportedReasoningEffortsForRequest(providerType: string, modelId?: string | null): string[] {
-  const normalizedProvider = String(providerType || '').trim().toLowerCase()
-  const normalizedModel = String(modelId || '').trim().toLowerCase()
-
-  if (!normalizedModel || normalizedProvider !== 'openai') return []
-
-  const isReasoningModel =
-    normalizedModel.startsWith('gpt-5') ||
-    normalizedModel.startsWith('o1') ||
-    normalizedModel.startsWith('o3') ||
-    normalizedModel.includes('codex')
-
-  if (!isReasoningModel) return []
-
-  if (matchesReasoningModelFamily(normalizedModel, 'gpt-5.1-codex-max')) {
-    return ['none', 'medium', 'high', 'xhigh']
-  }
-
-  if (normalizedModel.includes('gpt-5.1')) {
-    return ['none', 'low', 'medium', 'high']
-  }
-
-  return ['minimal', 'low', 'medium', 'high']
-}
-
-function sanitizeReasoningEffortForRequest(
-  providerType: string,
-  modelId?: string | null,
-  effort?: string | null
-): string | null {
-  if (!effort) return null
-  return getSupportedReasoningEffortsForRequest(providerType, modelId).includes(effort) ? effort : null
-}
 
 // Track pending clarification requests (requestId -> resolver)
 interface PendingClarification {
@@ -4147,19 +4103,12 @@ If you find yourself frequently hitting limits, suggest breaking the task into m
       // Retry loop for transient errors
       let lastError: any = null
       const streamMaxTokens = await resolveProviderMaxOutputTokens(providerConfig, modelId)
-      const validatedReasoningEffort = sanitizeReasoningEffortForRequest(
+      const validatedReasoningEffort = sanitizeReasoningEffort(
         providerConfig.type,
         modelId,
         params.reasoningEffort
       )
-      const providerOptions =
-        providerConfig.type === 'openai' && validatedReasoningEffort
-          ? {
-              openai: {
-                reasoningEffort: validatedReasoningEffort,
-              },
-            }
-          : undefined
+      const providerOptions = buildReasoningProviderOptions(providerConfig.type, modelId, validatedReasoningEffort)
       if (DEBUG_API_REQUESTS) {
         console.log('\n[AI] ========== STREAM START ==========')
         console.log('[AI] Model:', modelId)

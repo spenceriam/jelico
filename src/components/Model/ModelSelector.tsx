@@ -1,5 +1,6 @@
 import { ChevronDown, Loader2, Settings } from 'lucide-react'
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { useChatStore } from '../../stores/chat'
 import { useContextStore } from '../../stores/context'
 import { useProviderStore } from '../../stores/providers'
@@ -8,6 +9,9 @@ import { useUIStore } from '../../stores/ui'
 interface ModelSelectorProps {
   compact?: boolean
 }
+
+const MODEL_SELECTOR_MENU_WIDTH_PX = 352
+const MODEL_SELECTOR_MENU_MARGIN_PX = 12
 
 function getProviderEndpointHint(baseUrl?: string): string {
   if (!baseUrl) return ''
@@ -32,6 +36,9 @@ export function ModelSelector({ compact = false }: ModelSelectorProps) {
   const [updatingSelection, setUpdatingSelection] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const dropdownRef = useRef<HTMLDivElement>(null)
+  const buttonRef = useRef<HTMLButtonElement>(null)
+  const menuRef = useRef<HTMLDivElement>(null)
+  const [menuPosition, setMenuPosition] = useState<{ top: number; left: number } | null>(null)
 
   const isSwitchLocked = Boolean(isStreaming && activeConversationId)
 
@@ -70,16 +77,49 @@ export function ModelSelector({ compact = false }: ModelSelectorProps) {
     })
   }, [visibleProviders, activeProviderId, activeModel])
 
+  const updateMenuPosition = useCallback(() => {
+    if (!buttonRef.current || typeof window === 'undefined') return
+
+    const rect = buttonRef.current.getBoundingClientRect()
+    const menuWidth = menuRef.current?.offsetWidth || MODEL_SELECTOR_MENU_WIDTH_PX
+    const unclampedLeft = rect.left + (rect.width / 2) - (menuWidth / 2)
+    const left = Math.min(
+      Math.max(unclampedLeft, MODEL_SELECTOR_MENU_MARGIN_PX),
+      window.innerWidth - menuWidth - MODEL_SELECTOR_MENU_MARGIN_PX
+    )
+
+    setMenuPosition({
+      top: rect.bottom + 4,
+      left,
+    })
+  }, [])
+
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
-      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
-        setDropdownOpen(false)
-      }
+      const target = event.target as Node
+      if (dropdownRef.current?.contains(target)) return
+      if (menuRef.current?.contains(target)) return
+      setDropdownOpen(false)
     }
 
     document.addEventListener('mousedown', handleClickOutside)
     return () => document.removeEventListener('mousedown', handleClickOutside)
   }, [])
+
+  useLayoutEffect(() => {
+    if (!dropdownOpen) return
+
+    updateMenuPosition()
+
+    const handleViewportChange = () => updateMenuPosition()
+    window.addEventListener('resize', handleViewportChange)
+    window.addEventListener('scroll', handleViewportChange, true)
+
+    return () => {
+      window.removeEventListener('resize', handleViewportChange)
+      window.removeEventListener('scroll', handleViewportChange, true)
+    }
+  }, [dropdownOpen, updateMenuPosition])
 
   // Keep active selector in sync with the currently open conversation.
   useEffect(() => {
@@ -143,6 +183,7 @@ export function ModelSelector({ compact = false }: ModelSelectorProps) {
   return (
     <div className="relative" ref={dropdownRef}>
       <button
+        ref={buttonRef}
         onClick={() => setDropdownOpen((open) => !open)}
         className={`flex items-center gap-[0.4em] ${
           compact ? 'px-[0.85em] py-[0.45em] text-sm' : 'px-[0.9em] py-[0.45em] text-sm'
@@ -154,9 +195,11 @@ export function ModelSelector({ compact = false }: ModelSelectorProps) {
         <ChevronDown className="w-[0.8em] h-[0.8em] text-text-muted" />
       </button>
 
-      {dropdownOpen && (
+      {dropdownOpen && typeof document !== 'undefined' && createPortal(
         <div
-          className="absolute top-full mt-1 left-1/2 -translate-x-1/2 w-[22rem] bg-bg-elevated border border-border rounded-lg shadow-lg overflow-hidden z-50 max-h-[70vh] overflow-y-auto"
+          ref={menuRef}
+          className="fixed w-[22rem] bg-bg-elevated border border-border rounded-lg shadow-lg overflow-hidden z-[130] max-h-[70vh] overflow-y-auto"
+          style={menuPosition ? { top: menuPosition.top, left: menuPosition.left } : { top: -9999, left: -9999 }}
         >
           <div className="px-3 py-2 border-b border-border bg-bg-surface flex items-center justify-between">
             <div className="text-xs uppercase tracking-wider text-text-muted">Provider / Model</div>
@@ -224,7 +267,8 @@ export function ModelSelector({ compact = false }: ModelSelectorProps) {
               )
             })
           )}
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   )

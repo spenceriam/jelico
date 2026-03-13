@@ -1,4 +1,4 @@
-import { ChevronDown } from 'lucide-react'
+import { Brain, ChevronDown } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { getSupportedReasoningEfforts, REASONING_EFFORT_LABELS, type ReasoningEffort } from '../../lib/reasoning'
 import { useChatStore } from '../../stores/chat'
@@ -6,9 +6,17 @@ import { useProviderStore } from '../../stores/providers'
 
 interface ReasoningSelectorProps {
   compact?: boolean
+  menuDirection?: 'up' | 'down'
+  menuAlign?: 'left' | 'center' | 'right'
+  variant?: 'default' | 'composer'
 }
 
-export function ReasoningSelector({ compact = false }: ReasoningSelectorProps) {
+export function ReasoningSelector({
+  compact = false,
+  menuDirection = 'down',
+  menuAlign = 'center',
+  variant = 'default',
+}: ReasoningSelectorProps) {
   const {
     providers,
     activeProviderId,
@@ -60,7 +68,7 @@ export function ReasoningSelector({ compact = false }: ReasoningSelectorProps) {
   const isSwitchLocked = Boolean(isStreaming && activeConversationId)
 
   const options: Array<{ value: ReasoningEffort | null; label: string }> = [
-    { value: null, label: 'Auto' },
+    { value: null, label: 'Default' },
     ...reasoningEfforts.map((effort) => ({
       value: effort,
       label: REASONING_EFFORT_LABELS[effort],
@@ -68,8 +76,21 @@ export function ReasoningSelector({ compact = false }: ReasoningSelectorProps) {
   ]
 
   const displayLabel = activeReasoningEffort
-    ? `Reasoning: ${REASONING_EFFORT_LABELS[activeReasoningEffort]}`
-    : 'Reasoning: Auto'
+    ? REASONING_EFFORT_LABELS[activeReasoningEffort]
+    : 'Default'
+  const dropdownPositionClass = menuDirection === 'up' ? 'bottom-full mb-1' : 'top-full mt-1'
+  const dropdownAlignClass = menuAlign === 'right'
+    ? 'right-0'
+    : menuAlign === 'left'
+      ? 'left-0'
+      : 'left-1/2 -translate-x-1/2'
+  const buttonClass = variant === 'composer'
+    ? `flex h-[2.2em] items-center justify-center gap-[0.42em] rounded-lg border border-accent bg-bg-elevated px-[0.72em] py-[0.42em] text-sm leading-tight text-text-secondary hover:text-text-primary ${
+        dropdownOpen ? 'text-text-primary' : ''
+      }`
+    : `flex items-center gap-[0.4em] ${
+        compact ? 'px-[0.85em] py-[0.45em] text-sm' : 'px-[0.9em] py-[0.45em] text-sm'
+      } leading-tight text-text-secondary hover:text-text-primary bg-bg-elevated rounded-lg transition-colors`
 
   const handleSelect = async (effort: ReasoningEffort | null) => {
     if (isSwitchLocked) return
@@ -91,34 +112,31 @@ export function ReasoningSelector({ compact = false }: ReasoningSelectorProps) {
   }
 
   return (
-    <div className="relative" ref={dropdownRef}>
+    <div className={`relative w-fit ${dropdownOpen ? 'z-[110]' : ''}`} ref={dropdownRef}>
       <button
         onClick={() => setDropdownOpen((open) => !open)}
-        className={`flex items-center gap-[0.4em] ${
-          compact ? 'px-[0.85em] py-[0.45em] text-sm' : 'px-[0.9em] py-[0.45em] text-sm'
-        } leading-tight text-text-secondary hover:text-text-primary bg-bg-elevated rounded-lg transition-colors`}
-        title="Adjust reasoning effort"
+        className={buttonClass}
+        title="Adjust reasoning level"
       >
-        <span className="flex-1 min-w-0 whitespace-normal break-all text-left leading-tight">
+        <Brain className={`flex-shrink-0 ${variant === 'composer' ? 'h-[0.95em] w-[0.95em]' : 'h-[0.9em] w-[0.9em]'} text-accent`} />
+        <span className={`flex-1 min-w-0 truncate whitespace-nowrap leading-tight ${variant === 'composer' ? 'text-center' : 'text-left'}`}>
           {displayLabel}
         </span>
-        <ChevronDown className="w-[0.8em] h-[0.8em] text-text-muted" />
+        <ChevronDown className="w-[0.8em] h-[0.8em] flex-shrink-0 text-text-muted" />
       </button>
 
       {dropdownOpen && (
-        <div className="absolute top-full mt-1 left-1/2 -translate-x-1/2 min-w-[12rem] bg-bg-elevated border border-border rounded-lg shadow-lg overflow-hidden z-50">
-          <div className="px-3 py-2 border-b border-border bg-bg-surface text-xs uppercase tracking-wider text-text-muted">
-            Reasoning Effort
-          </div>
-
+        <div
+          className={`absolute ${dropdownPositionClass} ${dropdownAlignClass} ${variant === 'composer' ? 'w-full min-w-0' : 'min-w-[12rem]'} bg-bg-elevated border border-border rounded-lg shadow-lg overflow-hidden z-[115]`}
+        >
           {isSwitchLocked && (
-            <div className="px-3 py-2 text-xs text-text-muted border-b border-border-subtle">
+            <div className="px-3 py-2 text-center text-xs text-text-muted border-b border-border-subtle">
               Reasoning changes are available after the current response completes.
             </div>
           )}
 
           {error && (
-            <div className="px-3 py-2 text-xs text-error border-b border-border-subtle">
+            <div className="px-3 py-2 text-center text-xs text-error border-b border-border-subtle">
               {error}
             </div>
           )}
@@ -132,13 +150,13 @@ export function ReasoningSelector({ compact = false }: ReasoningSelectorProps) {
                   void handleSelect(option.value)
                 }}
                 disabled={isSwitchLocked}
-                className={`w-full px-3 py-2 text-left hover:bg-bg-hover transition-colors disabled:opacity-70 disabled:cursor-not-allowed ${
+                className={`relative w-full px-3 py-2 text-center hover:bg-bg-hover transition-colors disabled:opacity-70 disabled:cursor-not-allowed ${
                   isActive ? 'text-accent' : 'text-text-primary'
                 }`}
               >
-                <div className="flex items-center justify-between gap-2">
+                <div className="flex items-center justify-center gap-2">
                   <span>{option.label}</span>
-                  <span className="text-sm">{isActive ? '✓' : null}</span>
+                  <span className="absolute right-3 text-sm">{isActive ? '✓' : null}</span>
                 </div>
               </button>
             )

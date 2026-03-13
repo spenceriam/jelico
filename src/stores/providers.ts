@@ -1,5 +1,13 @@
 import { create } from 'zustand'
-import { sanitizeReasoningEffort } from '../lib/reasoning'
+import { sanitizeReasoningEffort, type ReasoningEffort } from '../lib/reasoning'
+
+const LAST_PROVIDER_SELECTION_STORAGE_KEY = 'jelico:last-provider-selection'
+
+interface ProviderSelectionSnapshot {
+  providerId: string
+  model: string
+  reasoningEffort: ReasoningEffort | null
+}
 
 interface ProviderConfig {
   id: string
@@ -49,6 +57,98 @@ interface ProviderStore {
   getModels: (type: string, baseUrl?: string) => Promise<Array<{ id: string; name: string }>>
 }
 
+function canUseLocalStorage(): boolean {
+  return typeof window !== 'undefined' && typeof window.localStorage !== 'undefined'
+}
+
+function loadPersistedProviderSelection(): ProviderSelectionSnapshot | null {
+  if (!canUseLocalStorage()) return null
+
+  try {
+    const raw = window.localStorage.getItem(LAST_PROVIDER_SELECTION_STORAGE_KEY)
+    if (!raw) return null
+    const parsed = JSON.parse(raw) as Partial<ProviderSelectionSnapshot>
+    if (typeof parsed.providerId !== 'string' || typeof parsed.model !== 'string') return null
+    return {
+      providerId: parsed.providerId,
+      model: parsed.model,
+      reasoningEffort: parsed.reasoningEffort ?? null,
+    }
+  } catch {
+    return null
+  }
+}
+
+function persistProviderSelection(selection: ProviderSelectionSnapshot | null): void {
+  if (!canUseLocalStorage()) return
+
+  try {
+    if (!selection) {
+      window.localStorage.removeItem(LAST_PROVIDER_SELECTION_STORAGE_KEY)
+      return
+    }
+
+    window.localStorage.setItem(LAST_PROVIDER_SELECTION_STORAGE_KEY, JSON.stringify(selection))
+  } catch {
+    // Ignore localStorage persistence failures.
+  }
+}
+
+function normalizeSelectionSnapshot(
+  providers: ProviderConfig[],
+  selection?: ProviderSelectionSnapshot | null
+): ProviderSelectionSnapshot | null {
+  if (!selection?.providerId || !selection.model?.trim()) return null
+
+  const provider = providers.find(
+    (entry) => entry.id === selection.providerId && !entry.hiddenFromSelector && !!entry.defaultModel?.trim()
+  )
+
+  if (!provider) return null
+
+  return {
+    providerId: provider.id,
+    model: selection.model.trim(),
+    reasoningEffort: sanitizeReasoningEffort(
+      provider.type,
+      selection.model.trim(),
+      selection.reasoningEffort ?? provider.defaultReasoningEffort ?? null
+    ),
+  }
+}
+
+function resolveActiveSelection(
+  providers: ProviderConfig[],
+  ...preferredSelections: Array<ProviderSelectionSnapshot | null | undefined>
+): ProviderSelectionSnapshot | null {
+  for (const selection of preferredSelections) {
+    const normalized = normalizeSelectionSnapshot(providers, selection)
+    if (normalized) return normalized
+  }
+
+  const defaultProvider = providers.find((provider) => provider.isDefault && !provider.hiddenFromSelector && !!provider.defaultModel?.trim())
+  const firstVisibleProvider = providers.find((provider) => !provider.hiddenFromSelector && !!provider.defaultModel?.trim())
+  const fallbackProvider = defaultProvider || firstVisibleProvider || null
+
+  if (!fallbackProvider) return null
+
+  return {
+    providerId: fallbackProvider.id,
+    model: fallbackProvider.defaultModel,
+    reasoningEffort: fallbackProvider.defaultReasoningEffort || null,
+  }
+}
+
+function getCurrentSelectionSnapshot(state: ProviderStore): ProviderSelectionSnapshot | null {
+  if (!state.activeProviderId || !state.activeModel) return null
+
+  return {
+    providerId: state.activeProviderId,
+    model: state.activeModel,
+    reasoningEffort: state.activeReasoningEffort,
+  }
+}
+
 export const useProviderStore = create<ProviderStore>((set, get) => ({
   providers: [],
   activeProviderId: null,
@@ -61,19 +161,20 @@ export const useProviderStore = create<ProviderStore>((set, get) => ({
     set({ isLoading: true, error: null })
     try {
       const providers = await window.jelico.providers.list()
-      const currentActive = providers.find(
-        p => p.id === get().activeProviderId && !p.hiddenFromSelector && !!p.defaultModel?.trim()
+      const selectedSelection = resolveActiveSelection(
+        providers,
+        getCurrentSelectionSnapshot(get()),
+        loadPersistedProviderSelection()
       )
-      const defaultProvider = providers.find(p => p.isDefault && !p.hiddenFromSelector && !!p.defaultModel?.trim())
-      const firstVisibleProvider = providers.find(p => !p.hiddenFromSelector && !!p.defaultModel?.trim())
-      const selectedProvider = currentActive || defaultProvider || firstVisibleProvider || null
+
       set({
         providers,
-        activeProviderId: selectedProvider?.id || null,
-        activeModel: selectedProvider?.defaultModel || null,
-        activeReasoningEffort: selectedProvider?.defaultReasoningEffort || null,
+        activeProviderId: selectedSelection?.providerId || null,
+        activeModel: selectedSelection?.model || null,
+        activeReasoningEffort: selectedSelection?.reasoningEffort || null,
         isLoading: false,
       })
+      persistProviderSelection(selectedSelection)
     } catch (error: any) {
       set({ error: error.message, isLoading: false })
     }
@@ -84,25 +185,20 @@ export const useProviderStore = create<ProviderStore>((set, get) => ({
     try {
       const provider = await window.jelico.providers.create(input)
       const providers = await window.jelico.providers.list()
-
-      // If this is the first/default provider, set it as active
-      const currentActive = providers.find(
-        p => p.id === get().activeProviderId && !p.hiddenFromSelector && !!p.defaultModel?.trim()
+      const activeSelection = resolveActiveSelection(
+        providers,
+        getCurrentSelectionSnapshot(get()),
+        loadPersistedProviderSelection()
       )
-      const defaultProvider = providers.find(p => p.isDefault && !p.hiddenFromSelector && !!p.defaultModel?.trim())
-      const firstVisibleProvider = providers.find(p => !p.hiddenFromSelector && !!p.defaultModel?.trim())
-      const selectedProvider = currentActive || defaultProvider || firstVisibleProvider || null
-      const activeProviderId = selectedProvider?.id || null
-      const activeModel = selectedProvider?.defaultModel || null
-      const activeReasoningEffort = selectedProvider?.defaultReasoningEffort || null
 
       set({
         providers,
-        activeProviderId,
-        activeModel,
-        activeReasoningEffort,
+        activeProviderId: activeSelection?.providerId || null,
+        activeModel: activeSelection?.model || null,
+        activeReasoningEffort: activeSelection?.reasoningEffort || null,
         isLoading: false,
       })
+      persistProviderSelection(activeSelection)
       return provider
     } catch (error: any) {
       set({ error: error.message, isLoading: false })
@@ -131,6 +227,12 @@ export const useProviderStore = create<ProviderStore>((set, get) => ({
       }
 
       set({ providers, activeProviderId, activeModel, activeReasoningEffort, isLoading: false })
+      persistProviderSelection(resolveActiveSelection(
+        providers,
+        activeProviderId && activeModel
+          ? { providerId: activeProviderId, model: activeModel, reasoningEffort: activeReasoningEffort }
+          : null
+      ))
     } catch (error: any) {
       set({ error: error.message, isLoading: false })
       throw error
@@ -168,6 +270,12 @@ export const useProviderStore = create<ProviderStore>((set, get) => ({
       }
 
       set({ providers, activeProviderId, activeModel, activeReasoningEffort, isLoading: false })
+      persistProviderSelection(resolveActiveSelection(
+        providers,
+        activeProviderId && activeModel
+          ? { providerId: activeProviderId, model: activeModel, reasoningEffort: activeReasoningEffort }
+          : null
+      ))
     } catch (error: any) {
       set({ error: error.message, isLoading: false })
       throw error
@@ -178,10 +286,18 @@ export const useProviderStore = create<ProviderStore>((set, get) => ({
     set({ isLoading: true, error: null })
     try {
       const providers = await window.jelico.providers.reorder(ids)
+      const activeSelection = resolveActiveSelection(
+        providers,
+        getCurrentSelectionSnapshot(get())
+      )
       set({
         providers,
+        activeProviderId: activeSelection?.providerId || null,
+        activeModel: activeSelection?.model || null,
+        activeReasoningEffort: activeSelection?.reasoningEffort || null,
         isLoading: false,
       })
+      persistProviderSelection(activeSelection)
     } catch (error: any) {
       set({ error: error.message, isLoading: false })
       throw error
@@ -201,6 +317,11 @@ export const useProviderStore = create<ProviderStore>((set, get) => ({
       activeModel: provider.defaultModel,
       activeReasoningEffort: provider.defaultReasoningEffort || null,
       error: null,
+    })
+    persistProviderSelection({
+      providerId: id,
+      model: provider.defaultModel,
+      reasoningEffort: provider.defaultReasoningEffort || null,
     })
 
     // Persist to database
@@ -224,6 +345,15 @@ export const useProviderStore = create<ProviderStore>((set, get) => ({
       activeReasoningEffort: sanitizeReasoningEffort(activeProvider?.type || '', model, activeReasoningEffort),
       error: null,
     })
+    persistProviderSelection(
+      activeProvider
+        ? {
+            providerId: activeProviderId,
+            model,
+            reasoningEffort: sanitizeReasoningEffort(activeProvider.type, model, activeReasoningEffort),
+          }
+        : null
+    )
 
     // Persist to database
     try {
@@ -238,25 +368,45 @@ export const useProviderStore = create<ProviderStore>((set, get) => ({
   setActiveReasoningEffort: (effort) => {
     const { activeProviderId, activeModel, providers } = get()
     const activeProvider = providers.find((provider) => provider.id === activeProviderId) || null
+    const nextReasoningEffort = sanitizeReasoningEffort(activeProvider?.type || '', activeModel, effort)
     set({
-      activeReasoningEffort: sanitizeReasoningEffort(activeProvider?.type || '', activeModel, effort),
+      activeReasoningEffort: nextReasoningEffort,
       error: null,
     })
+    persistProviderSelection(
+      activeProvider && activeProviderId && activeModel
+        ? {
+            providerId: activeProviderId,
+            model: activeModel,
+            reasoningEffort: nextReasoningEffort,
+          }
+        : null
+    )
   },
 
   setActiveSelection: (providerId, model, reasoningEffort) => {
     if (!providerId || !model) return
     const provider = get().providers.find((entry) => entry.id === providerId) || null
+    const nextReasoningEffort = sanitizeReasoningEffort(
+      provider?.type || '',
+      model,
+      reasoningEffort !== undefined ? reasoningEffort : provider?.defaultReasoningEffort || null
+    )
     set({
       activeProviderId: providerId,
       activeModel: model,
-      activeReasoningEffort: sanitizeReasoningEffort(
-        provider?.type || '',
-        model,
-        reasoningEffort !== undefined ? reasoningEffort : provider?.defaultReasoningEffort || null
-      ),
+      activeReasoningEffort: nextReasoningEffort,
       error: null,
     })
+    persistProviderSelection(
+      provider
+        ? {
+            providerId,
+            model,
+            reasoningEffort: nextReasoningEffort,
+          }
+        : null
+    )
   },
 
   testConnection: async (id) => {

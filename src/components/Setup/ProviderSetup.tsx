@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { ArrowLeft, X, Lock } from 'lucide-react'
+import { ArrowLeft, ExternalLink, X, Lock } from 'lucide-react'
 import type { ReasoningEffort } from '../../lib/reasoning'
 import { useProviderStore } from '../../stores/providers'
 import { ProviderConfigForm } from './ProviderConfigForm'
@@ -10,12 +10,14 @@ interface ProviderOption {
   type: 'anthropic' | 'openai' | 'google' | 'ollama' | 'openrouter' | 'custom' | 'local' | 'zai' | 'zai-china' | 'zai-coding' | 'zai-coding-china' | 'minimax' | 'openai-compatible' | 'anthropic-compatible'
   group: 'Hosted APIs' | 'Local APIs' | 'Custom Endpoints'
   name: string
-  description: string
+  cardTitle: string
+  summary: string
   icon: string
   defaultModel: string
   defaultBaseUrl?: string
   defaultProviderName?: string
   apiKeyUrl?: string
+  docsUrl?: string
 }
 
 const PROVIDER_TYPES: ProviderOption[] = [
@@ -24,165 +26,196 @@ const PROVIDER_TYPES: ProviderOption[] = [
     type: 'anthropic' as const,
     group: 'Hosted APIs',
     name: 'Anthropic',
-    description: 'Claude API',
+    cardTitle: 'Anthropic API',
+    summary: 'Claude models with Haiku, Sonnet, and Opus tiers.',
     icon: 'A',
     defaultModel: '',
     apiKeyUrl: 'console.anthropic.com',
+    docsUrl: 'https://platform.claude.com/docs/en/api/overview',
   },
   {
     id: 'openai',
     type: 'openai' as const,
     group: 'Hosted APIs',
     name: 'OpenAI',
-    description: 'OpenAI API',
+    cardTitle: 'OpenAI API',
+    summary: 'GPT and codex models for chat, reasoning, and tool use.',
     icon: '\u2B21', // hexagon
     defaultModel: '',
     apiKeyUrl: 'platform.openai.com',
+    docsUrl: 'https://developers.openai.com/api/docs/models',
   },
   {
     id: 'google',
     type: 'google' as const,
     group: 'Hosted APIs',
-    name: 'Google',
-    description: 'Gemini API',
+    name: 'Google Gemini',
+    cardTitle: 'Google Gemini API',
+    summary: 'Gemini 3 models with multimodal, thinking, and long context support.',
     icon: 'G',
     defaultModel: '',
     apiKeyUrl: 'aistudio.google.com',
+    docsUrl: 'https://ai.google.dev/gemini-api/docs/quickstart',
   },
   {
     id: 'openrouter',
     type: 'openrouter' as const,
     group: 'Hosted APIs',
     name: 'OpenRouter',
-    description: 'Marketplace models',
+    cardTitle: 'OpenRouter API',
+    summary: 'One API for 300+ models across many providers.',
     icon: '\u25C8', // diamond
     defaultModel: '',
     apiKeyUrl: 'openrouter.ai',
-  },
-  {
-    id: 'nvidia',
-    type: 'openai-compatible' as const,
-    group: 'Hosted APIs',
-    name: 'NVIDIA NIM',
-    description: 'Build API',
-    icon: 'N',
-    defaultModel: '',
-    defaultBaseUrl: 'https://integrate.api.nvidia.com/v1',
-    defaultProviderName: 'NVIDIA NIM',
-    apiKeyUrl: 'build.nvidia.com',
-  },
-  {
-    id: 'cerebras',
-    type: 'openai-compatible' as const,
-    group: 'Hosted APIs',
-    name: 'Cerebras',
-    description: 'Inference API',
-    icon: 'C',
-    defaultModel: '',
-    defaultBaseUrl: 'https://api.cerebras.ai/v1',
-    defaultProviderName: 'Cerebras',
-    apiKeyUrl: 'inference-docs.cerebras.ai',
-  },
-  {
-    id: 'alibaba-qwen',
-    type: 'openai-compatible' as const,
-    group: 'Hosted APIs',
-    name: 'Alibaba Qwen',
-    description: 'DashScope compatible',
-    icon: 'Q',
-    defaultModel: '',
-    defaultBaseUrl: 'https://dashscope-intl.aliyuncs.com/compatible-mode/v1',
-    defaultProviderName: 'Alibaba Qwen',
-    apiKeyUrl: 'dashscope.console.aliyun.com',
-  },
-  {
-    id: 'nous-research',
-    type: 'openai-compatible' as const,
-    group: 'Hosted APIs',
-    name: 'Nous Research',
-    description: 'Hermes models',
-    icon: 'N',
-    defaultModel: '',
-    defaultProviderName: 'Nous Research',
-    apiKeyUrl: 'shadow.nousresearch.com',
-  },
-  {
-    id: 'kwai-kat',
-    type: 'openai-compatible' as const,
-    group: 'Hosted APIs',
-    name: 'KwaiKat',
-    description: 'Kat Coder',
-    icon: 'K',
-    defaultModel: '',
-    defaultProviderName: 'KwaiKat',
-    apiKeyUrl: 'streamlake.ai',
+    docsUrl: 'https://openrouter.ai/docs/quickstart',
   },
   {
     id: 'zai',
     type: 'zai' as const,
     group: 'Hosted APIs',
     name: 'Z.ai',
-    description: 'Global API',
+    cardTitle: 'Z.ai API',
+    summary: 'General GLM chat and multimodal endpoints from Z.ai.',
     icon: 'Z',
     defaultModel: 'glm-4.7',
+    docsUrl: 'https://docs.z.ai/',
   },
   {
     id: 'zai-china',
     type: 'zai-china' as const,
     group: 'Hosted APIs',
     name: 'Z.ai China',
-    description: 'CN API',
+    cardTitle: 'Z.ai API China',
+    summary: 'China-region access to Z.ai general GLM API endpoints.',
     icon: 'Z',
     defaultModel: 'glm-4.7',
+    docsUrl: 'https://docs.z.ai/',
   },
   {
     id: 'zai-coding',
     type: 'zai-coding' as const,
     group: 'Hosted APIs',
-    name: 'Z.ai Coding',
-    description: 'Global Coding',
+    name: 'Z.ai Coding Plan',
+    cardTitle: 'Z.ai Coding Plan',
+    summary: 'Dedicated GLM coding endpoint for coding-plan access.',
     icon: 'Z',
     defaultModel: 'glm-4.7',
+    docsUrl: 'https://docs.z.ai/devpack/overview',
   },
   {
     id: 'zai-coding-china',
     type: 'zai-coding-china' as const,
     group: 'Hosted APIs',
-    name: 'Z.ai Coding CN',
-    description: 'CN Coding',
+    name: 'Z.ai Coding Plan China',
+    cardTitle: 'Z.ai Coding Plan China',
+    summary: 'China-region coding-plan endpoint for GLM coding tools.',
     icon: 'Z',
     defaultModel: 'glm-4.7',
+    docsUrl: 'https://docs.z.ai/devpack/overview',
   },
   {
     id: 'minimax-api',
     type: 'openai-compatible' as const,
     group: 'Hosted APIs',
     name: 'MiniMax API',
-    description: 'Official API',
+    cardTitle: 'MiniMax API',
+    summary: 'M2.5 text plus speech, image, video, and music APIs.',
     icon: 'M',
     defaultModel: '',
     defaultBaseUrl: 'https://api.minimax.io/v1',
     defaultProviderName: 'MiniMax API',
     apiKeyUrl: 'platform.minimax.io',
+    docsUrl: 'https://platform.minimax.io/docs/api-reference/api-overview',
   },
   {
     id: 'minimax-coding-plan',
     type: 'anthropic-compatible' as const,
     group: 'Hosted APIs',
     name: 'MiniMax Coding Plan',
-    description: 'Anthropic Compatible',
+    cardTitle: 'MiniMax Coding Plan',
+    summary: 'Anthropic-compatible coding access for MiniMax M2.5.',
     icon: 'M',
     defaultModel: '',
     defaultBaseUrl: 'https://api.minimax.io/anthropic/v1',
     defaultProviderName: 'MiniMax Coding Plan',
     apiKeyUrl: 'platform.minimax.io',
+    docsUrl: 'https://platform.minimax.io/docs/coding-plan/quickstart',
+  },
+  {
+    id: 'nous-research',
+    type: 'openai-compatible' as const,
+    group: 'Hosted APIs',
+    name: 'Nous Research',
+    cardTitle: 'Nous Research API',
+    summary: 'Hermes and Forge-powered reasoning APIs from Nous Research.',
+    icon: 'N',
+    defaultModel: '',
+    defaultProviderName: 'Nous Research',
+    apiKeyUrl: 'shadow.nousresearch.com',
+    docsUrl: 'https://shadow-portal.nousresearch.com/api-docs',
+  },
+  {
+    id: 'cerebras',
+    type: 'openai-compatible' as const,
+    group: 'Hosted APIs',
+    name: 'Cerebras',
+    cardTitle: 'Cerebras API',
+    summary: 'Fast hosted inference for open models like GLM and GPT-OSS.',
+    icon: 'C',
+    defaultModel: '',
+    defaultBaseUrl: 'https://api.cerebras.ai/v1',
+    defaultProviderName: 'Cerebras',
+    apiKeyUrl: 'inference-docs.cerebras.ai',
+    docsUrl: 'https://inference-docs.cerebras.ai/introduction',
+  },
+  {
+    id: 'kwai-kat',
+    type: 'openai-compatible' as const,
+    group: 'Hosted APIs',
+    name: 'KwaiKat',
+    cardTitle: 'KwaiKat API',
+    summary: 'Kat Coder endpoints aimed at coding-focused workflows.',
+    icon: 'K',
+    defaultModel: '',
+    defaultProviderName: 'KwaiKat',
+    apiKeyUrl: 'streamlake.ai',
+    docsUrl: 'https://streamlake.ai',
+  },
+  {
+    id: 'alibaba-qwen',
+    type: 'openai-compatible' as const,
+    group: 'Hosted APIs',
+    name: 'Alibaba Qwen',
+    cardTitle: 'Alibaba API',
+    summary: 'DashScope access to Qwen models over compatible endpoints.',
+    icon: 'Q',
+    defaultModel: '',
+    defaultBaseUrl: 'https://dashscope-intl.aliyuncs.com/compatible-mode/v1',
+    defaultProviderName: 'Alibaba Qwen',
+    apiKeyUrl: 'dashscope.console.aliyun.com',
+    docsUrl: 'https://www.alibabacloud.com/help/en/model-studio/regions/',
+  },
+  {
+    id: 'nvidia',
+    type: 'openai-compatible' as const,
+    group: 'Hosted APIs',
+    name: 'NVIDIA NIM',
+    cardTitle: 'NVIDIA NIM API',
+    summary: 'Hosted NVIDIA and partner models through NIM endpoints.',
+    icon: 'N',
+    defaultModel: '',
+    defaultBaseUrl: 'https://integrate.api.nvidia.com/v1',
+    defaultProviderName: 'NVIDIA NIM',
+    apiKeyUrl: 'build.nvidia.com',
+    docsUrl: 'https://docs.nvidia.com/nim/',
   },
   {
     id: 'lm-studio',
     type: 'local' as const,
     group: 'Local APIs',
     name: 'LM Studio',
-    description: 'Local OpenAI API',
+    cardTitle: 'LM Studio API',
+    summary: 'Local OpenAI-compatible server for models on your machine.',
     icon: 'L',
     defaultModel: '',
     defaultBaseUrl: 'http://127.0.0.1:1234/v1',
@@ -193,7 +226,8 @@ const PROVIDER_TYPES: ProviderOption[] = [
     type: 'ollama' as const,
     group: 'Local APIs',
     name: 'Ollama',
-    description: 'Local LLMs',
+    cardTitle: 'Ollama API',
+    summary: 'Run and serve local models from a simple local endpoint.',
     icon: 'O',
     defaultModel: '',
   },
@@ -202,7 +236,8 @@ const PROVIDER_TYPES: ProviderOption[] = [
     type: 'local' as const,
     group: 'Local APIs',
     name: 'Custom Local',
-    description: 'Self-hosted OpenAI API',
+    cardTitle: 'Custom Local API',
+    summary: 'Bring your own self-hosted OpenAI-compatible server.',
     icon: 'H',
     defaultModel: '',
     defaultBaseUrl: 'http://localhost:8080/v1',
@@ -213,7 +248,8 @@ const PROVIDER_TYPES: ProviderOption[] = [
     type: 'openai-compatible' as const,
     group: 'Custom Endpoints',
     name: 'OpenAI Compatible',
-    description: 'Custom Endpoint',
+    cardTitle: 'OpenAI Compatible',
+    summary: 'Custom endpoint',
     icon: '\u2699', // gear
     defaultModel: '',
   },
@@ -222,7 +258,8 @@ const PROVIDER_TYPES: ProviderOption[] = [
     type: 'anthropic-compatible' as const,
     group: 'Custom Endpoints',
     name: 'Anthropic Compatible',
-    description: 'Custom Endpoint',
+    cardTitle: 'Anthropic Compatible',
+    summary: 'Custom endpoint',
     icon: '\u2699', // gear
     defaultModel: '',
   },
@@ -231,7 +268,8 @@ const PROVIDER_TYPES: ProviderOption[] = [
     type: 'custom' as const,
     group: 'Custom Endpoints',
     name: 'Custom',
-    description: 'Generic endpoint',
+    cardTitle: 'Custom',
+    summary: 'Generic endpoint',
     icon: '+',
     defaultModel: '',
   },
@@ -283,17 +321,18 @@ export function ProviderSetup({ isModal, onComplete, onCancel }: ProviderSetupPr
   if (!selectedType) {
     return (
       <div className={`${isModal ? '' : 'min-h-screen'} bg-bg-void flex items-center justify-center p-10`}>
-        <div className="w-full max-w-[720px] animate-fade-in">
+        <div className="relative w-full max-w-[1080px] animate-fade-in">
           {isModal && onCancel && (
             <button
               onClick={onCancel}
-              className="absolute top-4 right-4 p-2 text-text-muted hover:text-text-primary transition-colors"
+              className="absolute top-4 right-5 z-10 rounded-md p-2 text-text-muted hover:bg-bg-surface hover:text-text-primary transition-colors"
+              aria-label="Close add provider"
             >
               <X className="w-5 h-5" />
             </button>
           )}
 
-          <div className="text-center">
+          <div className="text-center pr-12">
             {!isModal && (
               <JelicoLogo className="welcome-logo" />
             )}
@@ -311,37 +350,51 @@ export function ProviderSetup({ isModal, onComplete, onCancel }: ProviderSetupPr
             )}
           </div>
 
-          <div className="space-y-6 mb-8 text-left">
+          <div className="space-y-7 mb-8 text-left">
             {(['Hosted APIs', 'Local APIs', 'Custom Endpoints'] as const).map((group) => {
               const groupProviders = PROVIDER_TYPES.filter((provider) => provider.group === group)
               if (groupProviders.length === 0) return null
 
               return (
-                <div key={group} className="space-y-2">
+                <div key={group} className="space-y-3">
                   <div className="text-xs uppercase tracking-[0.18em] text-text-muted px-1">
                     {group}
                   </div>
-                  <div className="space-y-2">
+                  <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
                     {groupProviders.map((provider) => (
-                      <button
+                      <div
                         key={provider.id}
-                        onClick={() => setSelectedType(provider)}
-                        className="w-full rounded-xl border border-border bg-bg-elevated px-4 py-3 text-left hover:border-accent/40 hover:bg-bg-surface transition-colors"
+                        className="group relative"
                       >
-                        <div className="flex items-center gap-3">
-                          <div className={`provider-icon provider-icon-${provider.type} flex-shrink-0`}>
-                            {provider.icon}
-                          </div>
-                          <div className="min-w-0">
+                        <button
+                          type="button"
+                          onClick={() => setSelectedType(provider)}
+                          aria-label={`Select ${provider.cardTitle}`}
+                          className="absolute inset-0 rounded-xl border border-border bg-bg-elevated transition-colors group-hover:border-accent/40 group-hover:bg-bg-surface focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/40"
+                        />
+                        <div className="relative z-10 flex min-h-[8.5rem] flex-col items-center justify-center gap-3 px-5 py-5 text-center pointer-events-none">
+                          <div className="min-w-0 space-y-1">
                             <div className="text-sm font-medium text-text-primary">
-                              {provider.name}
+                              {provider.cardTitle}
                             </div>
-                            <div className="text-xs text-text-muted mt-0.5">
-                              {provider.description}
+                            <div className="text-xs text-text-muted leading-5">
+                              {provider.summary}
                             </div>
                           </div>
+                          {provider.docsUrl && (
+                            <a
+                              href={provider.docsUrl}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              onClick={(event) => event.stopPropagation()}
+                              className="pointer-events-auto inline-flex items-center gap-1 text-xs font-medium text-accent hover:text-accent-bright transition-colors"
+                            >
+                              Docs
+                              <ExternalLink className="w-3.5 h-3.5" />
+                            </a>
+                          )}
                         </div>
-                      </button>
+                      </div>
                     ))}
                   </div>
                 </div>
@@ -365,7 +418,7 @@ export function ProviderSetup({ isModal, onComplete, onCancel }: ProviderSetupPr
             <ArrowLeft className="w-4 h-4" />
           </button>
           <h2 className="font-display text-2xl font-normal text-text-primary">
-            {selectedType.name} Setup
+            {selectedType.cardTitle} Setup
           </h2>
         </div>
 
