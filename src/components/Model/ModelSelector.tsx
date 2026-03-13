@@ -30,6 +30,7 @@ export function ModelSelector({ compact = false }: ModelSelectorProps) {
     isStreaming: state.isStreaming,
     addSystemNotification: state.addSystemNotification,
   }))
+  const setConversationModelSelection = useChatStore((state) => state.setConversationModelSelection)
   const switchConversationModel = useContextStore((state) => state.switchConversationModel)
 
   const [dropdownOpen, setDropdownOpen] = useState(false)
@@ -165,6 +166,7 @@ export function ModelSelector({ compact = false }: ModelSelectorProps) {
         await window.jelico.conversations.updateModelProvider(activeConversationId, providerId, model)
         await window.jelico.conversations.updateReasoningEffort(activeConversationId, reasoningEffort)
         await switchConversationModel(activeConversationId, providerId, model)
+        setConversationModelSelection(activeConversationId, providerId, model, reasoningEffort)
         addSystemNotification({
           type: 'model_changed',
           conversationId: activeConversationId,

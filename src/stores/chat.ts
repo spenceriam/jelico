@@ -244,6 +244,12 @@ interface ChatStore {
   addSystemNotification: (notification: Omit<SystemNotification, 'id' | 'timestamp'>) => void
   clearSystemNotifications: () => void
   setConversationWorkspaceId: (id: string, workspaceId: string | null) => void
+  setConversationModelSelection: (
+    id: string,
+    providerId: string,
+    model: string,
+    reasoningEffort: ReasoningEffort | null
+  ) => void
   setConversationReasoningEffort: (id: string, reasoningEffort: ReasoningEffort | null) => void
   getRegenerateArtifactImpact: () => { artifacts: Array<{ id: string; title: string; type: string }> }
 }
@@ -2968,6 +2974,13 @@ export const useChatStore = create<ChatStore>((set, get) => ({
     set((state) => ({
       conversations: state.conversations.map((conv) =>
         conv.id === id ? { ...conv, workspaceId: workspaceId || undefined } : conv
+      ),
+    }))
+  },
+  setConversationModelSelection: (id, providerId, model, reasoningEffort) => {
+    set((state) => ({
+      conversations: state.conversations.map((conv) =>
+        conv.id === id ? { ...conv, providerId, model, reasoningEffort } : conv
       ),
     }))
   },
