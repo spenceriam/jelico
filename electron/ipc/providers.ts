@@ -1106,7 +1106,7 @@ export function registerProviderHandlers() {
           const resolved = await resolveContextSizeFromModelsEndpoint(modelId, baseUrl, apiKey)
           if (resolved) return resolved
           // Fallback to OpenAI family patterns
-          return findOpenAIFamilyFallback(modelId)
+          return findOpenAIContextFallback(modelId)
         }
 
         default:

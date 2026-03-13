@@ -71,12 +71,20 @@ export function Settings({ onClose }: SettingsProps) {
     activeReasoningEffort,
   } = useProviderStore()
   const { openProviderSetup, settingsTab } = useUIStore()
-  const { activeConversationId, activeConversation, addSystemNotification } = useChatStore((state) => ({
+  const {
+    activeConversationId,
+    activeConversation,
+    addSystemNotification,
+    setConversationModelSelection,
+    setConversationReasoningEffort,
+  } = useChatStore((state) => ({
     activeConversationId: state.activeConversationId,
     activeConversation: state.activeConversationId
       ? state.conversations.find((conversation) => conversation.id === state.activeConversationId) || null
       : null,
     addSystemNotification: state.addSystemNotification,
+    setConversationModelSelection: state.setConversationModelSelection,
+    setConversationReasoningEffort: state.setConversationReasoningEffort,
   }))
   const switchConversationModel = useContextStore((state) => state.switchConversationModel)
   const { loadSkills } = useSkillStore()
@@ -424,6 +432,18 @@ export function Settings({ onClose }: SettingsProps) {
               activeConversationId,
               nextDefaultReasoningEffort
             )
+          }
+          if (shouldSyncConversationModel) {
+            setConversationModelSelection(
+              activeConversationId,
+              editingProviderId,
+              trimmedModel,
+              shouldSyncConversationReasoning
+                ? nextDefaultReasoningEffort
+                : (activeConversation?.reasoningEffort || null)
+            )
+          } else if (shouldSyncConversationReasoning) {
+            setConversationReasoningEffort(activeConversationId, nextDefaultReasoningEffort)
           }
           if (shouldSyncConversationModel) {
             await switchConversationModel(activeConversationId, editingProviderId, trimmedModel)
