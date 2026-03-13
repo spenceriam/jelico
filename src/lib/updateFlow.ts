@@ -2,6 +2,12 @@ import { useChatStore } from '../stores/chat'
 import { useDecisionPromptStore } from '../stores/decisionPrompt'
 import { useUpdateStore } from '../stores/updates'
 
+export function hasAnyStreamingConversation(): boolean {
+  const { conversationStreams, isStreaming } = useChatStore.getState()
+  if (isStreaming) return true
+  return Object.values(conversationStreams).some((streamState) => streamState.isStreaming)
+}
+
 function getDownloadedUpdateVersion(): string | null {
   const { downloadedVersion, info } = useUpdateStore.getState()
   return downloadedVersion ?? info?.latestVersion ?? null
@@ -27,11 +33,11 @@ async function promptForImmediateRestart(version: string): Promise<boolean> {
 async function promptForRestartAfterTurn(version: string): Promise<boolean> {
   const { request } = useDecisionPromptStore.getState()
   const result = await request({
-    title: `Finish updating to Jelico ${version} after this turn?`,
-    message: 'Jelico can wait for the current AI turn to finish, then restart automatically and apply the update.',
-    detail: 'Choose Later to keep the downloaded update ready without interrupting the current response.',
+    title: `Finish updating to Jelico ${version} after active turns finish?`,
+    message: 'Jelico can wait for all active AI turns to finish, then restart automatically and apply the update.',
+    detail: 'Choose Later to keep the downloaded update ready without interrupting any in-flight response.',
     options: [
-      { label: 'Restart after turn', value: 'after-turn', variant: 'primary' },
+      { label: 'Restart after turns', value: 'after-turn', variant: 'primary' },
       { label: 'Later', value: 'later', variant: 'secondary' },
     ],
     defaultValue: 'after-turn',
@@ -65,7 +71,7 @@ export async function runApplyDownloadedUpdateFlow(): Promise<void> {
     return
   }
 
-  if (useChatStore.getState().isStreaming) {
+  if (hasAnyStreamingConversation()) {
     const shouldSchedule = await promptForRestartAfterTurn(version)
     if (shouldSchedule) {
       useUpdateStore.getState().scheduleApplyAfterTurn(version)
@@ -86,7 +92,7 @@ export async function runApplyDownloadedUpdateFlow(): Promise<void> {
 
 export async function maybeAutoApplyScheduledUpdate(): Promise<void> {
   const updateState = useUpdateStore.getState()
-  if (updateState.isApplying || useChatStore.getState().isStreaming) return
+  if (updateState.isApplying || hasAnyStreamingConversation()) return
 
   const version = getDownloadedUpdateVersion()
   if (!updateState.scheduledApplyVersion) return

@@ -8,7 +8,12 @@ import { useWorkspaceStore, initWorkspaceStore } from './stores/workspaces'
 import { usePermissionStore } from './stores/permissions'
 import { useThemeStore } from './stores/theme'
 import { getUpdateBannerVisibility, useUpdateStore } from './stores/updates'
-import { maybeAutoApplyScheduledUpdate, runApplyDownloadedUpdateFlow, runDownloadAndApplyFlow } from './lib/updateFlow'
+import {
+  hasAnyStreamingConversation,
+  maybeAutoApplyScheduledUpdate,
+  runApplyDownloadedUpdateFlow,
+  runDownloadAndApplyFlow,
+} from './lib/updateFlow'
 import { Sidebar } from './components/Layout/Sidebar'
 import { Header } from './components/Layout/Header'
 import { ChatArea } from './components/Chat/ChatArea'
@@ -65,7 +70,7 @@ export default function App() {
   const isMacPlatform = navigator.platform.toUpperCase().includes('MAC')
   const macDragRegionStyle = isMacPlatform ? ({ WebkitAppRegion: 'drag' } as CSSProperties) : {}
   const { providers, loadProviders, isLoading } = useProviderStore()
-  const { loadConversations, activeConversationId, messages, isStreaming } = useChatStore()
+  const { loadConversations, activeConversationId, messages, isStreaming, conversationStreams } = useChatStore()
   const {
     settingsOpen,
     closeSettings,
@@ -227,12 +232,12 @@ export default function App() {
   }, [checkForUpdates, loadCurrentVersion, startListening])
 
   useEffect(() => {
-    if (isStreaming || !scheduledApplyVersion) return
+    if (hasAnyStreamingConversation() || !scheduledApplyVersion) return
 
     maybeAutoApplyScheduledUpdate().catch((error) => {
       console.error('Failed to auto-apply the scheduled update:', error)
     })
-  }, [isStreaming, scheduledApplyVersion])
+  }, [conversationStreams, isStreaming, scheduledApplyVersion])
 
   const stopWindowDrag = useCallback(() => {
     const dragSession = windowDragRef.current
@@ -490,6 +495,7 @@ export default function App() {
       && downloadedVersion
       && scheduledApplyVersion === downloadedVersion
   )
+  const hasStreamingConversation = hasAnyStreamingConversation()
 
   return (
     <div
@@ -613,13 +619,13 @@ export default function App() {
               <>
                 <div>
                   <div className="text-sm font-medium text-text-primary">
-                    {isApplyScheduled && isStreaming
-                      ? `Update ${downloadedVersion || latestAvailableVersion} will install after this turn`
+                    {isApplyScheduled && hasStreamingConversation
+                      ? `Update ${downloadedVersion || latestAvailableVersion} will install after active turns finish`
                       : `Update ${downloadedVersion || latestAvailableVersion} is ready to install`}
                   </div>
                   <div className="text-xs text-text-muted mt-1 break-all">
-                    {isApplyScheduled && isStreaming
-                      ? 'Jelico will restart automatically as soon as the current AI turn finishes.'
+                    {isApplyScheduled && hasStreamingConversation
+                      ? 'Jelico will restart automatically as soon as all active AI turns finish.'
                       : `Downloaded to: ${lastDownloadedTo}`}
                   </div>
                   {showAvailableBanner && latestAvailableVersion && downloadedVersion && downloadedVersion !== latestAvailableVersion && (
@@ -649,9 +655,9 @@ export default function App() {
                     className="flex items-center gap-2 px-3 py-2 rounded-lg bg-accent text-accent-foreground hover:bg-accent-bright transition-colors disabled:opacity-50"
                   >
                     <RefreshCw className={`w-4 h-4 ${isUpdateApplying ? 'animate-spin' : ''}`} />
-                    {isUpdateApplying
-                      ? 'Applying...'
-                      : isApplyScheduled && isStreaming
+                      {isUpdateApplying
+                        ? 'Applying...'
+                      : isApplyScheduled && hasStreamingConversation
                         ? 'Change restart timing'
                         : 'Restart and install'}
                   </button>

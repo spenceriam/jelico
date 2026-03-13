@@ -511,6 +511,7 @@ EXTRACT_DIR=""
 STAGE_DIR=""
 BACKUP_APP=""
 TARGET_APP=""
+TARGET_DIR=""
 
 wait_for_exit() {
   while kill -0 "$APP_PID" 2>/dev/null; do
@@ -576,10 +577,16 @@ apply_update() {
     return 1
   fi
 
-  TARGET_APP="/Applications/$(basename "$SOURCE_APP")"
-  STAGE_DIR="$(mktemp -d /Applications/.jelico-update-stage.XXXXXX)" || return 1
+  if [ -n "$FALLBACK_APP" ]; then
+    TARGET_APP="$FALLBACK_APP"
+  else
+    TARGET_APP="/Applications/$(basename "$SOURCE_APP")"
+  fi
+  TARGET_DIR="$(dirname "$TARGET_APP")"
+  mkdir -p "$TARGET_DIR" || return 1
+  STAGE_DIR="$(mktemp -d "$TARGET_DIR/.jelico-update-stage.XXXXXX")" || return 1
   STAGED_APP="$STAGE_DIR/$(basename "$SOURCE_APP")"
-  BACKUP_APP="/Applications/.$(basename "$SOURCE_APP" .app).jelico-backup-$APP_PID.app"
+  BACKUP_APP="$TARGET_DIR/.$(basename "$SOURCE_APP" .app).jelico-backup-$APP_PID.app"
 
   ditto "$SOURCE_APP" "$STAGED_APP" || return 1
 

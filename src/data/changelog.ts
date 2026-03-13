@@ -22,14 +22,14 @@ export interface ChangelogEntry {
 export const changelog: ChangelogEntry[] = [
   {
     version: '0.37.1',
-    date: '2026-03-12',
+    date: '2026-03-13',
     changes: {
       changed: [
-        'Update download/apply UX now saves installers to the system Downloads folder, uses a shared restart decision flow between the app banner and Settings, and can schedule automatic apply after the current AI turn finishes (Fixes #149, Fixes #150)',
+        'Update download/apply UX now saves installers to the system Downloads folder, uses a shared restart decision flow between the app banner and Settings, and schedules automatic apply only after all active AI turns finish (Fixes #149, Fixes #150)',
       ],
       fixed: [
-        'macOS update asset selection now avoids incompatible architecture-tagged DMG choices and stages bundle replacement through a backup/restore flow so failed installs do not remove the working app (Fixes #149)',
-        'Windows and Linux downloaded updates now use detached platform-specific apply helpers with safer fallback relaunch behavior instead of generic file opening (Fixes #150)',
+        'macOS update asset selection now avoids incompatible architecture-tagged DMG choices and derives the install target from the running app bundle path while staging replacement through a backup/restore flow so failed installs do not remove the working app (Fixes #149)',
+        'Windows and Linux downloaded updates now use detached platform-specific apply helpers with safer fallback relaunch behavior, including opening Linux packages for manual install when privileged package installs fail (Fixes #150)',
         'Context usage ring track contrast now uses accent-derived theme-specific tones so the unfilled meter remains readable in light mode (Fixes #154)',
       ],
     },

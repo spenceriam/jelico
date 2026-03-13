@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { Check, Brain, Sparkles, Package, Download, RefreshCw, ArrowUpRight, Bell } from 'lucide-react'
-import { runApplyDownloadedUpdateFlow, runDownloadAndApplyFlow } from '../../lib/updateFlow'
+import { hasAnyStreamingConversation, runApplyDownloadedUpdateFlow, runDownloadAndApplyFlow } from '../../lib/updateFlow'
 import { useChatStore } from '../../stores/chat'
 import { useUpdateStore } from '../../stores/updates'
 import type { AgentMode } from '../../lib/modes'
@@ -68,6 +68,7 @@ export function GeneralSettings() {
     downloadedVersion &&
     scheduledApplyVersion === downloadedVersion
   )
+  const hasStreamingConversation = hasAnyStreamingConversation()
   const versionStatus = (() => {
     if (!info) return null
 
@@ -316,9 +317,9 @@ export function GeneralSettings() {
                 <div className="text-xs text-text-muted break-all">
                   Downloaded to: {lastDownloadedTo}
                 </div>
-                {isApplyScheduled && (
+                {isApplyScheduled && hasStreamingConversation && (
                   <div className="text-xs text-accent">
-                    Restart is scheduled automatically after the current AI turn finishes.
+                    Restart is scheduled automatically after all active AI turns finish.
                   </div>
                 )}
                 {canApplyDownloadedUpdate && (
@@ -328,7 +329,7 @@ export function GeneralSettings() {
                       className="flex items-center gap-2 px-3 py-2 rounded-lg bg-accent text-accent-foreground hover:bg-accent-bright transition-colors"
                     >
                       <Download className="w-4 h-4" />
-                      {isApplyScheduled ? 'Change restart timing' : 'Restart and install'}
+                      {isApplyScheduled && hasStreamingConversation ? 'Change restart timing' : 'Restart and install'}
                     </button>
                     <button
                       onClick={() => {
