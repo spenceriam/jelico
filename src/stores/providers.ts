@@ -209,6 +209,16 @@ export const useProviderStore = create<ProviderStore>((set, get) => ({
   updateProvider: async (id, updates) => {
     set({ isLoading: true, error: null })
     try {
+      const {
+        providers: existingProviders,
+        activeProviderId: currentActiveProviderId,
+        activeModel: currentActiveModel,
+        activeReasoningEffort: currentActiveReasoningEffort,
+      } = get()
+      const previousActiveProvider = existingProviders.find((provider) => provider.id === currentActiveProviderId) || null
+      const previousDefaultModel = previousActiveProvider?.defaultModel?.trim() || null
+      const previousDefaultReasoningEffort = previousActiveProvider?.defaultReasoningEffort || null
+
       await window.jelico.providers.update(id, updates)
       const providers = await window.jelico.providers.list()
       let { activeProviderId, activeModel, activeReasoningEffort } = get()
@@ -219,10 +229,23 @@ export const useProviderStore = create<ProviderStore>((set, get) => ({
         activeProviderId = fallback?.id || null
         activeModel = fallback?.defaultModel || null
         activeReasoningEffort = fallback?.defaultReasoningEffort || null
-      } else if (activeModel !== activeProvider.defaultModel && updates.defaultModel !== undefined && activeProvider.id === id) {
+      } else if (
+        updates.defaultModel !== undefined &&
+        activeProvider.id === id &&
+        currentActiveProviderId === id &&
+        currentActiveModel === previousDefaultModel &&
+        activeProvider.defaultModel !== previousDefaultModel
+      ) {
         activeModel = activeProvider.defaultModel
         activeReasoningEffort = activeProvider.defaultReasoningEffort || null
-      } else if (updates.defaultReasoningEffort !== undefined && activeProvider.id === id) {
+      } else if (
+        updates.defaultReasoningEffort !== undefined &&
+        activeProvider.id === id &&
+        currentActiveProviderId === id &&
+        currentActiveModel === activeModel &&
+        (currentActiveReasoningEffort || null) === previousDefaultReasoningEffort &&
+        (activeProvider.defaultReasoningEffort || null) !== previousDefaultReasoningEffort
+      ) {
         activeReasoningEffort = activeProvider.defaultReasoningEffort || null
       }
 

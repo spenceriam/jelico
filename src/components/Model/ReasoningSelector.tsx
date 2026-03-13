@@ -24,9 +24,10 @@ export function ReasoningSelector({
     activeReasoningEffort,
     setActiveReasoningEffort,
   } = useProviderStore()
-  const { activeConversationId, isStreaming } = useChatStore((state) => ({
+  const { activeConversationId, isStreaming, setConversationReasoningEffort } = useChatStore((state) => ({
     activeConversationId: state.activeConversationId,
     isStreaming: state.isStreaming,
+    setConversationReasoningEffort: state.setConversationReasoningEffort,
   }))
 
   const [dropdownOpen, setDropdownOpen] = useState(false)
@@ -105,6 +106,7 @@ export function ReasoningSelector({
 
     try {
       await window.jelico.conversations.updateReasoningEffort(activeConversationId, effort)
+      setConversationReasoningEffort(activeConversationId, effort)
       setDropdownOpen(false)
     } catch (selectionError: any) {
       setError(selectionError?.message || 'Failed to switch reasoning level')
