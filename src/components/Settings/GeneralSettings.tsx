@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { Check, Brain, Sparkles, Package, Download, RefreshCw, ArrowUpRight, Bell } from 'lucide-react'
+import { hasAnyStreamingConversation, runApplyDownloadedUpdateFlow, runDownloadAndApplyFlow } from '../../lib/updateFlow'
 import { useChatStore } from '../../stores/chat'
 import { useUpdateStore } from '../../stores/updates'
 import type { AgentMode } from '../../lib/modes'
@@ -48,12 +49,12 @@ export function GeneralSettings() {
     downloadProgress,
     lastDownloadedTo,
     downloadedVersion,
+    scheduledApplyVersion,
     dismissedApplyVersion,
     launchedApplyVersion,
     error,
     checkForUpdates,
-    downloadUpdate,
-    applyDownloadedUpdate,
+    clearScheduledApply,
     dismissApplyPrompt,
   } = useUpdateStore()
   const canApplyDownloadedUpdate = Boolean(
@@ -62,6 +63,12 @@ export function GeneralSettings() {
     dismissedApplyVersion !== downloadedVersion &&
     launchedApplyVersion !== downloadedVersion
   )
+  const isApplyScheduled = Boolean(
+    scheduledApplyVersion &&
+    downloadedVersion &&
+    scheduledApplyVersion === downloadedVersion
+  )
+  const hasStreamingConversation = hasAnyStreamingConversation()
   const versionStatus = (() => {
     if (!info) return null
 
@@ -269,12 +276,12 @@ export function GeneralSettings() {
 
               {info?.isUpdateAvailable && (
                 <button
-                  onClick={() => downloadUpdate()}
+                  onClick={() => runDownloadAndApplyFlow()}
                   disabled={isDownloading}
                   className="flex items-center gap-2 px-3 py-2 rounded-lg bg-accent text-accent-foreground hover:bg-accent-bright transition-colors disabled:opacity-50"
                 >
                   <Download className="w-4 h-4" />
-                  {isDownloading ? 'Downloading...' : 'Download update'}
+                  {isDownloading ? 'Downloading...' : 'Download and apply'}
                 </button>
               )}
 
@@ -310,17 +317,25 @@ export function GeneralSettings() {
                 <div className="text-xs text-text-muted break-all">
                   Downloaded to: {lastDownloadedTo}
                 </div>
+                {isApplyScheduled && hasStreamingConversation && (
+                  <div className="text-xs text-accent">
+                    Restart is scheduled automatically after all active AI turns finish.
+                  </div>
+                )}
                 {canApplyDownloadedUpdate && (
                   <div className="flex flex-wrap gap-2">
                     <button
-                      onClick={() => applyDownloadedUpdate()}
+                      onClick={() => runApplyDownloadedUpdateFlow()}
                       className="flex items-center gap-2 px-3 py-2 rounded-lg bg-accent text-accent-foreground hover:bg-accent-bright transition-colors"
                     >
                       <Download className="w-4 h-4" />
-                      Apply now
+                      {isApplyScheduled && hasStreamingConversation ? 'Change restart timing' : 'Restart and install'}
                     </button>
                     <button
-                      onClick={() => dismissApplyPrompt(downloadedVersion)}
+                      onClick={() => {
+                        clearScheduledApply()
+                        dismissApplyPrompt(downloadedVersion)
+                      }}
                       className="px-3 py-2 rounded-lg border border-border text-text-secondary hover:text-text-primary hover:border-border-strong transition-colors"
                     >
                       Later

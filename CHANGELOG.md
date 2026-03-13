@@ -11,6 +11,21 @@
 ### Changed
 - **Backdrop Motion Treatment** — The new-chat background now uses the intended mirrored floating-path animation while staying understated and respecting reduced-motion settings.
 
+## [0.37.1] - 2026-03-13
+
+### Highlights
+- Updates now download to your normal Downloads folder and can restart immediately or automatically after all active AI turns finish.
+- macOS updater installs are safer: Jelico now avoids wrong-architecture downloads, respects custom app bundle locations, and no longer replaces the existing app until the new copy is fully staged.
+- The light-theme context meter ring is easier to read without changing the overall accent language.
+
+### Fixed
+- **Safer macOS Updates** — Intel Macs no longer get pointed at Apple Silicon DMG installers, updates now target the running app bundle location instead of assuming `/Applications`, and a failed macOS update no longer risks removing the currently installed app before the replacement is ready.
+- **Safer Windows and Linux Update Apply Flow** — Downloaded installers now use platform-specific apply helpers with better fallback relaunch behavior, preserve legacy user-chosen installer files, and open Linux packages for manual install if privileged install attempts fail.
+- **Context Meter Contrast** — The unfilled context ring now stays readable in light mode while keeping the same accent-driven look.
+
+### Changed
+- **Update Restart Flow** — Jelico now saves update installers to your default Downloads folder, uses the same restart decision flow in both the app banner and Settings, and waits for all active AI turns to finish before restarting to install.
+
 ## [0.37.0] - 2026-03-12
 
 ### Highlights

@@ -64,7 +64,7 @@ Jelico is a local-first AI desktop assistant. A native app where you chat with A
 
 The Soul/Memory system should make Jelico increasingly personalized - it learns YOUR coding style, YOUR preferences, YOUR common mistakes. Every conversation teaches it to help YOU better.
 
-**Current Status:** Soul/Memory systems exist but need verification that they're properly injected into AI prompts. Current stabilization work is focused on response/tool ordering UX, readable streamed output assembly, conversation-status accuracy in the sidebar, streamlined archive flows, macOS shell/window behavior, and stronger conversation/composer state recovery after edge-case interactions.
+**Current Status:** Soul/Memory systems exist but need verification that they're properly injected into AI prompts. Current stabilization work is focused on response/tool ordering UX, readable streamed output assembly, safer cross-platform updater apply/restart flows across custom install paths and multi-conversation turns, and stronger conversation/composer state recovery after edge-case interactions.
 
 ## Setup commands
 - Install dependencies: `npm install`
@@ -685,10 +685,12 @@ todo_write({ tasks: [
 
 - **Phase 1-7 Complete**: Core functionality, UI, artifacts, memory, soul system
 - **Phase 8 Complete**: Onboarding flow, backup/restore, versioning
-- **Current Focus**: Testing, polish, user feedback integration, release hardening, and sidebar/shell UX stabilization across conversation status tracking, archive flows, and macOS window ergonomics
-- **Next Planned Release (0.37.2)**: Patch release planned from the current PR branch to restore light-mode visibility for the new-chat wave backdrop and the sidebar's color-coded conversation status sections introduced in 0.37.0.
-- **Latest Public Release (0.36.0)**: Minor release focused on durable queued-message management, reload-safe queue hydration, persisted queue prioritization/editing, and direct latest-prompt edit/regenerate flow improvements.
+- **Current Focus**: Testing, polish, user feedback integration, release hardening, updater/restart UX stabilization across cross-platform installer handling and restart scheduling, and light-theme consistency across sidebar statuses and new-chat backgrounds.
+- **Next Planned Release (0.37.2)**: Patch release planned from the current PR branch to restore light-mode visibility for the new-chat wave backdrop and the sidebar's color-coded conversation status sections introduced in 0.37.0 while carrying forward the 0.37.1 updater/apply hardening already on main.
+- **Latest Public Release (0.37.1)**: Patch release focused on safer updater apply/restart behavior across Downloads-folder installs, custom macOS app targets, preserved legacy installer files, and improved light-theme context-indicator contrast.
 - **Public Release History**:
+  - `0.37.1` - Safer updater apply/restart flows across custom macOS install targets, legacy installer preservation, and light-theme context-indicator readability.
+  - `0.37.0` - Animated new-chat backdrop, grouped sidebar conversation statuses, inline archive confirmation/toasts, and macOS-native docking behavior.
   - `0.36.0` - Durable queued-message management, reload-safe queue hydration, persisted queue prioritization, and direct latest-prompt edit/regenerate improvements.
   - `0.35.2` - Provider-specific Kimi capability resolution through models.dev metadata for compatible coding endpoints.
   - `0.35.1` - Improved interrupted tool attribution and deterministic completion-sensitive retry behavior for partial artifact/file mutation turns.

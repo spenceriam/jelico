@@ -117,6 +117,7 @@ interface UpdatesState {
   lastChecked: number | null
   lastDownloadedTo: string | null
   downloadedVersion: string | null
+  scheduledApplyVersion: string | null
   dismissedAvailableVersion: string | null
   dismissedApplyVersion: string | null
   launchedApplyVersion: string | null
@@ -125,6 +126,8 @@ interface UpdatesState {
   checkForUpdates: (options?: { force?: boolean; silent?: boolean }) => Promise<UpdateInfo | null>
   downloadUpdate: () => Promise<UpdateDownloadResult | null>
   applyDownloadedUpdate: () => Promise<UpdateApplyResult | null>
+  scheduleApplyAfterTurn: (version?: string | null) => void
+  clearScheduledApply: () => void
   dismissAvailablePrompt: (version?: string | null) => void
   dismissApplyPrompt: (version?: string | null) => void
   startListening: () => () => void
@@ -182,6 +185,7 @@ export const useUpdateStore = create<UpdatesState>((set, get) => ({
   lastChecked: null,
   lastDownloadedTo: readStoredValue(DOWNLOADED_PATH_KEY),
   downloadedVersion: readStoredValue(DOWNLOADED_VERSION_KEY),
+  scheduledApplyVersion: null,
   dismissedAvailableVersion: readStoredValue(AVAILABLE_DISMISS_KEY),
   dismissedApplyVersion: readStoredValue(APPLY_DISMISS_KEY),
   launchedApplyVersion: readStoredValue(APPLY_LAUNCHED_KEY),
@@ -224,6 +228,7 @@ export const useUpdateStore = create<UpdatesState>((set, get) => ({
           ? {
               lastDownloadedTo: null,
               downloadedVersion: null,
+              scheduledApplyVersion: null,
               dismissedApplyVersion: null,
               launchedApplyVersion: null,
             }
@@ -287,6 +292,7 @@ export const useUpdateStore = create<UpdatesState>((set, get) => ({
           ? {
               lastDownloadedTo: null,
               downloadedVersion: null,
+              scheduledApplyVersion: null,
               dismissedApplyVersion: null,
               launchedApplyVersion: null,
             }
@@ -322,6 +328,7 @@ export const useUpdateStore = create<UpdatesState>((set, get) => ({
         set({
           lastDownloadedTo: result.savedTo,
           downloadedVersion: latestVersion,
+          scheduledApplyVersion: null,
           dismissedApplyVersion: null,
           launchedApplyVersion: null,
           dismissedAvailableVersion: latestVersion,
@@ -358,7 +365,13 @@ export const useUpdateStore = create<UpdatesState>((set, get) => ({
         set({
           error: resolvedError,
           ...(shouldClearDownloadedState
-            ? { lastDownloadedTo: null, downloadedVersion: null, dismissedApplyVersion: null, launchedApplyVersion: null }
+            ? {
+                lastDownloadedTo: null,
+                downloadedVersion: null,
+                scheduledApplyVersion: null,
+                dismissedApplyVersion: null,
+                launchedApplyVersion: null,
+              }
             : {}),
         })
         if (shouldClearDownloadedState) {
@@ -381,6 +394,15 @@ export const useUpdateStore = create<UpdatesState>((set, get) => ({
     } finally {
       set({ isApplying: false })
     }
+  },
+
+  scheduleApplyAfterTurn: (version) => {
+    const resolvedVersion = version ?? get().downloadedVersion ?? get().info?.latestVersion ?? null
+    set({ scheduledApplyVersion: resolvedVersion })
+  },
+
+  clearScheduledApply: () => {
+    set({ scheduledApplyVersion: null })
   },
 
   dismissAvailablePrompt: (version) => {
