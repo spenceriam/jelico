@@ -11,6 +11,11 @@ const RELEASES_API_URL = `https://api.github.com/repos/${OWNER}/${REPO}/releases
 const USER_AGENT = 'Jelico'
 const LAST_DOWNLOADED_UPDATE_STATE_FILE = 'last-downloaded-update.json'
 
+interface DownloadedUpdatePathState {
+  path: string | null
+  managedByApp: boolean
+}
+
 function getLastDownloadedUpdateStatePath(): string | null {
   try {
     return path.join(app.getPath('userData'), LAST_DOWNLOADED_UPDATE_STATE_FILE)
@@ -19,27 +24,33 @@ function getLastDownloadedUpdateStatePath(): string | null {
   }
 }
 
-async function readPersistedDownloadedUpdatePath(): Promise<string | null> {
+async function readPersistedDownloadedUpdateState(): Promise<DownloadedUpdatePathState> {
   const statePath = getLastDownloadedUpdateStatePath()
-  if (!statePath) return null
+  if (!statePath) {
+    return { path: null, managedByApp: false }
+  }
 
   try {
     const raw = await fs.readFile(statePath, 'utf-8')
-    const parsed = JSON.parse(raw) as { path?: unknown } | null
+    const parsed = JSON.parse(raw) as { path?: unknown; managedByApp?: unknown } | null
     const savedPath = typeof parsed?.path === 'string' ? parsed.path.trim() : ''
-    return savedPath.length > 0 ? savedPath : null
+    const pathValue = savedPath.length > 0 ? savedPath : null
+    return {
+      path: pathValue,
+      managedByApp: pathValue ? parsed?.managedByApp === true : false,
+    }
   } catch {
-    return null
+    return { path: null, managedByApp: false }
   }
 }
 
-async function persistDownloadedUpdatePath(filePath: string | null): Promise<void> {
+async function persistDownloadedUpdatePath(filePath: string | null, managedByApp = false): Promise<void> {
   const statePath = getLastDownloadedUpdateStatePath()
   if (!statePath) return
 
   try {
     if (filePath) {
-      await fs.writeFile(statePath, JSON.stringify({ path: filePath }), 'utf-8')
+      await fs.writeFile(statePath, JSON.stringify({ path: filePath, managedByApp }), 'utf-8')
     } else {
       await fs.unlink(statePath)
     }
@@ -48,9 +59,12 @@ async function persistDownloadedUpdatePath(filePath: string | null): Promise<voi
   }
 }
 
-function setDownloadedUpdatePathState(filePath: string | null): void {
+function setDownloadedUpdatePathState(filePath: string | null, managedByApp = false): void {
   downloadedUpdatePathRevision += 1
-  lastDownloadedUpdatePath = filePath
+  lastDownloadedUpdatePathState = {
+    path: filePath,
+    managedByApp: filePath ? managedByApp : false,
+  }
   downloadedUpdatePathLoadPromise = null
   hasLoadedDownloadedUpdatePath = true
 }
@@ -64,9 +78,12 @@ export async function clearDownloadedUpdateState(): Promise<void> {
   await clearDownloadedUpdatePathState()
 }
 
-let lastDownloadedUpdatePath: string | null = null
+let lastDownloadedUpdatePathState: DownloadedUpdatePathState = {
+  path: null,
+  managedByApp: false,
+}
 let hasLoadedDownloadedUpdatePath = false
-let downloadedUpdatePathLoadPromise: Promise<string | null> | null = null
+let downloadedUpdatePathLoadPromise: Promise<DownloadedUpdatePathState> | null = null
 let downloadedUpdatePathRevision = 0
 
 export interface UpdateAssetInfo {
@@ -394,13 +411,17 @@ export async function downloadLatestUpdate(
   const destinationPath = await getUniqueDownloadPath(defaultPath)
 
   try {
-    const previousPath = await getDownloadedUpdatePath()
+    const previousState = await getDownloadedUpdatePathState()
     await downloadFile(updateInfo.recommendedAsset.url, destinationPath, onProgress)
-    if (previousPath && previousPath !== destinationPath) {
-      await removeFileIfExists(previousPath)
+    if (
+      previousState.managedByApp &&
+      previousState.path &&
+      previousState.path !== destinationPath
+    ) {
+      await removeFileIfExists(previousState.path)
     }
-    setDownloadedUpdatePathState(destinationPath)
-    await persistDownloadedUpdatePath(destinationPath)
+    setDownloadedUpdatePathState(destinationPath, true)
+    await persistDownloadedUpdatePath(destinationPath, true)
     return { savedTo: destinationPath }
   } catch (error) {
     try {
@@ -412,21 +433,20 @@ export async function downloadLatestUpdate(
   }
 }
 
-async function getDownloadedUpdatePath(): Promise<string | null> {
-  if (lastDownloadedUpdatePath) return lastDownloadedUpdatePath
-  if (hasLoadedDownloadedUpdatePath) return null
+async function getDownloadedUpdatePathState(): Promise<DownloadedUpdatePathState> {
+  if (hasLoadedDownloadedUpdatePath) return lastDownloadedUpdatePathState
 
   if (!downloadedUpdatePathLoadPromise) {
     const loadRevision = downloadedUpdatePathRevision
     const pendingLoad = (async () => {
-      const persisted = await readPersistedDownloadedUpdatePath()
+      const persisted = await readPersistedDownloadedUpdateState()
       if (loadRevision !== downloadedUpdatePathRevision) {
-        return lastDownloadedUpdatePath
+        return lastDownloadedUpdatePathState
       }
 
       hasLoadedDownloadedUpdatePath = true
-      lastDownloadedUpdatePath = persisted
-      return lastDownloadedUpdatePath
+      lastDownloadedUpdatePathState = persisted
+      return lastDownloadedUpdatePathState
     })()
 
     const trackedLoad = pendingLoad.finally(() => {
@@ -439,6 +459,11 @@ async function getDownloadedUpdatePath(): Promise<string | null> {
   }
 
   return downloadedUpdatePathLoadPromise
+}
+
+async function getDownloadedUpdatePath(): Promise<string | null> {
+  const state = await getDownloadedUpdatePathState()
+  return state.path
 }
 
 function shellSingleQuote(value: string): string {
@@ -711,6 +736,10 @@ start_fallback() {
   fi
 }
 
+open_manual_package() {
+  xdg-open "$DOWNLOADED_PATH" >/dev/null 2>&1 || true
+}
+
 apply_update() {
   case "$DOWNLOADED_PATH" in
     *.AppImage|*.appimage)
@@ -734,30 +763,32 @@ apply_update() {
       ;;
     *.deb)
       if command -v pkexec >/dev/null 2>&1; then
-        pkexec dpkg -i "$DOWNLOADED_PATH" || return 1
-        rm -f "$DOWNLOADED_PATH" >/dev/null 2>&1 || true
-        if [ -n "$STATE_PATH" ]; then
-          rm -f "$STATE_PATH" >/dev/null 2>&1 || true
+        if pkexec dpkg -i "$DOWNLOADED_PATH"; then
+          rm -f "$DOWNLOADED_PATH" >/dev/null 2>&1 || true
+          if [ -n "$STATE_PATH" ]; then
+            rm -f "$STATE_PATH" >/dev/null 2>&1 || true
+          fi
+          "$APP_EXEC" >/dev/null 2>&1 &
+          return 0
         fi
-        "$APP_EXEC" >/dev/null 2>&1 &
-        return 0
       fi
 
-      xdg-open "$DOWNLOADED_PATH" >/dev/null 2>&1 || true
+      open_manual_package
       return 1
       ;;
     *.rpm)
       if command -v pkexec >/dev/null 2>&1; then
-        pkexec rpm -Uvh --replacepkgs "$DOWNLOADED_PATH" || return 1
-        rm -f "$DOWNLOADED_PATH" >/dev/null 2>&1 || true
-        if [ -n "$STATE_PATH" ]; then
-          rm -f "$STATE_PATH" >/dev/null 2>&1 || true
+        if pkexec rpm -Uvh --replacepkgs "$DOWNLOADED_PATH"; then
+          rm -f "$DOWNLOADED_PATH" >/dev/null 2>&1 || true
+          if [ -n "$STATE_PATH" ]; then
+            rm -f "$STATE_PATH" >/dev/null 2>&1 || true
+          fi
+          "$APP_EXEC" >/dev/null 2>&1 &
+          return 0
         fi
-        "$APP_EXEC" >/dev/null 2>&1 &
-        return 0
       fi
 
-      xdg-open "$DOWNLOADED_PATH" >/dev/null 2>&1 || true
+      open_manual_package
       return 1
       ;;
     *)
