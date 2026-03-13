@@ -1,3 +1,16 @@
+## [0.37.2] - 2026-03-13
+
+### Highlights
+- Light mode once again shows the subtle new-chat background lines across the full empty-chat canvas.
+- Light-mode sidebar status groups are color-coded again so In Progress, Waiting for Input, Needs Attention, and Done do not blend into the same surface tone.
+
+### Fixed
+- **New Chat Waves in Light Mode** — The muted background wave animation now appears in light mode and spans the full new-chat area instead of only the centered content region.
+- **Sidebar Status Color Coding in Light Mode** — Conversation rows in light mode now keep distinct status tinting again so active, waiting, attention, and done chats are easy to scan at a glance.
+
+### Changed
+- **Backdrop Motion Treatment** — The new-chat background now uses the intended mirrored floating-path animation while staying understated and respecting reduced-motion settings.
+
 ## [0.37.0] - 2026-03-12
 
 ### Highlights

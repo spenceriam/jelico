@@ -543,6 +543,7 @@ export function ChatArea() {
         style={chatCanvasStyle}
         data-window-toggle="ignore"
       >
+        <MutedPathsBackground />
         <div className="flex-1 flex items-center justify-center py-6">
           <div className={welcomeContainerClass}>
             <div className={welcomeContentWidthClass}>
@@ -1234,11 +1235,7 @@ function NewChatView({ disabled, isStreaming }: NewChatViewProps) {
   const displayGreeting = buildGreeting(greetingData.greeting, userName, isQuestion)
 
   return (
-    <div className="relative text-center animate-fade-in space-y-8">
-      <div className="pointer-events-none absolute inset-0 overflow-hidden" aria-hidden="true">
-        <MutedPathsBackground />
-      </div>
-
+    <div className="relative z-10 text-center animate-fade-in space-y-8">
       {/* Welcome banner */}
       <img
         src={welcomeBannerUrl}

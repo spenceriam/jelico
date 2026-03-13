@@ -1,6 +1,6 @@
 {
   "name": "jelico",
-  "version": "0.37.0",
+  "version": "0.37.2",
   "description": "AI Productivity Desktop - Get stuff done. Frictionlessly.",
   "main": "dist-electron/main.js",
   "scripts": {
@@ -50,6 +50,7 @@
     "agent-browser": "^0.16.3",
     "ai": "^6.0.56",
     "diff": "^8.0.3",
+    "framer-motion": "^12.36.0",
     "glob": "^10.3.10",
     "lucide-react": "^0.344.0",
     "mermaid": "^11.12.2",
