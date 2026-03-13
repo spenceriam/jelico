@@ -21,6 +21,19 @@ export interface ChangelogEntry {
 
 export const changelog: ChangelogEntry[] = [
   {
+    version: '0.37.2',
+    date: '2026-03-13',
+    changes: {
+      changed: [
+        'The new-chat backdrop now uses the intended mirrored floating-path animation while keeping the effect muted and reduced-motion friendly',
+      ],
+      fixed: [
+        'Light theme new-chat backgrounds now render the muted animated path field across the full empty-state canvas instead of losing the effect outside dark mode or clipping it to the centered content column (Fixes #167)',
+        'Light theme sidebar conversation rows now preserve distinct in-progress, waiting-for-input, needs-attention, and done status tinting so grouped status sections remain visually differentiated again (Fixes #167)',
+      ],
+    },
+  },
+  {
     version: '0.37.1',
     date: '2026-03-13',
     changes: {

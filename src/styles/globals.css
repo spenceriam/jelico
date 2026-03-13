@@ -522,29 +522,37 @@
   background-image: linear-gradient(
     135deg,
     transparent 0%,
-    color-mix(in srgb, var(--accent-dim) 8%, transparent) 22%,
-    color-mix(in srgb, var(--accent-dim) 18%, transparent) 42%,
-    color-mix(in srgb, var(--accent) 28%, transparent) 50%,
-    color-mix(in srgb, var(--accent-dim) 18%, transparent) 58%,
-    color-mix(in srgb, var(--accent-dim) 8%, transparent) 78%,
+    color-mix(in srgb, var(--accent-dim) 11%, transparent) 22%,
+    color-mix(in srgb, var(--accent-dim) 22%, transparent) 42%,
+    color-mix(in srgb, var(--accent) 34%, transparent) 50%,
+    color-mix(in srgb, var(--accent-dim) 22%, transparent) 58%,
+    color-mix(in srgb, var(--accent-dim) 11%, transparent) 78%,
     transparent 100%
   );
 }
 
 :root.light .sidebar-conversation-status-in_progress {
-  background-color: color-mix(in srgb, var(--accent) 7%, white 93%);
+  background-color: color-mix(in srgb, var(--accent) 16%, var(--bg-elevated) 84%);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 18%, transparent);
 }
 
 :root.light .sidebar-conversation-status-waiting {
-  background-color: color-mix(in srgb, var(--warning) 13%, white 87%);
+  background-color: color-mix(in srgb, var(--warning) 21%, var(--bg-elevated) 79%);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--warning) 22%, transparent);
 }
 
 :root.light .sidebar-conversation-status-error {
-  background-color: color-mix(in srgb, var(--error) 12%, white 88%);
+  background-color: color-mix(in srgb, var(--error) 19%, var(--bg-elevated) 81%);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--error) 20%, transparent);
 }
 
 :root.light .sidebar-conversation-status-done {
-  background-color: color-mix(in srgb, var(--success) 12%, white 88%);
+  background-color: color-mix(in srgb, var(--success) 20%, var(--bg-elevated) 80%);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--success) 20%, transparent);
+}
+
+:root.light .sidebar-conversation-status-dot {
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--bg-void) 55%, transparent);
 }
 
 :root.light .sidebar-conversation-archive-confirm {
@@ -610,77 +618,11 @@
   );
 }
 
-.new-chat-paths {
-  position: absolute;
-  inset: -14% -10%;
-  overflow: hidden;
-  pointer-events: none;
-  color: color-mix(in srgb, var(--accent) 74%, transparent);
-  opacity: 0.46;
-  mask-image: radial-gradient(circle at center, black 24%, black 70%, transparent 96%);
-}
-
-.new-chat-paths svg {
-  width: 100%;
-  height: 100%;
-  animation: muted-paths-float 20s ease-in-out infinite;
-}
-
-.new-chat-paths path {
-  fill: none;
-  stroke: currentColor;
-  stroke-width: 1.2;
-  stroke-linecap: round;
-  stroke-linejoin: round;
-  stroke-opacity: 0.3;
-  stroke-dasharray: 18 24 146 24;
-  animation: muted-paths-drift 20s linear infinite;
-}
-
-.new-chat-paths path:nth-child(odd) {
-  stroke-opacity: 0.18;
-  stroke-dasharray: 12 18 118 22;
-}
-
-.new-chat-paths__glow {
-  position: absolute;
-  width: 36rem;
-  height: 36rem;
-  border-radius: 999px;
-  filter: blur(72px);
-  opacity: 0.12;
-  background: radial-gradient(circle, color-mix(in srgb, var(--accent) 38%, transparent) 0%, transparent 68%);
-}
-
-.new-chat-paths__glow--top {
-  top: 6%;
-  right: 8%;
-}
-
-.new-chat-paths__glow--bottom {
-  bottom: 0;
-  left: 4%;
-}
-
-:root.light .new-chat-paths {
-  color: color-mix(in srgb, var(--accent) 60%, white 40%);
-  opacity: 0.58;
-}
-
-:root.light .new-chat-paths__glow {
-  opacity: 0.18;
-}
-
 @media (prefers-reduced-motion: reduce) {
   .sidebar-conversation-processing,
   .tool-call-pill-processing {
     animation: none;
     background-size: 100% 100%;
-  }
-
-  .new-chat-paths svg,
-  .new-chat-paths path {
-    animation: none;
   }
 }
 
