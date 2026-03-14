@@ -94,7 +94,7 @@ function persistProviderSelection(selection: ProviderSelectionSnapshot | null): 
   }
 }
 
-function normalizeSelectionSnapshot(
+export function normalizeSelectionSnapshot(
   providers: ProviderConfig[],
   selection?: ProviderSelectionSnapshot | null
 ): ProviderSelectionSnapshot | null {
@@ -112,12 +112,12 @@ function normalizeSelectionSnapshot(
     reasoningEffort: sanitizeReasoningEffort(
       provider.type,
       selection.model.trim(),
-      selection.reasoningEffort ?? provider.defaultReasoningEffort ?? null
+      selection.reasoningEffort
     ),
   }
 }
 
-function resolveActiveSelection(
+export function resolveActiveSelection(
   providers: ProviderConfig[],
   ...preferredSelections: Array<ProviderSelectionSnapshot | null | undefined>
 ): ProviderSelectionSnapshot | null {
@@ -267,38 +267,20 @@ export const useProviderStore = create<ProviderStore>((set, get) => ({
     try {
       await window.jelico.providers.delete(id)
       const providers = await window.jelico.providers.list()
-
-      // Update active provider if needed
-      let { activeProviderId, activeModel, activeReasoningEffort } = get()
-      if (activeProviderId === id) {
-        const defaultProvider = providers.find(p => p.isDefault && !p.hiddenFromSelector && !!p.defaultModel?.trim())
-        const firstVisibleProvider = providers.find(p => !p.hiddenFromSelector && !!p.defaultModel?.trim())
-        const fallback = defaultProvider || firstVisibleProvider || null
-        activeProviderId = fallback?.id || null
-        activeModel = fallback?.defaultModel || null
-        activeReasoningEffort = fallback?.defaultReasoningEffort || null
-      } else {
-        const activeProvider = providers.find(p => p.id === activeProviderId)
-        if (!activeProvider || activeProvider.hiddenFromSelector || !activeProvider.defaultModel?.trim()) {
-          const defaultProvider = providers.find(p => p.isDefault && !p.hiddenFromSelector && !!p.defaultModel?.trim())
-          const firstVisibleProvider = providers.find(p => !p.hiddenFromSelector && !!p.defaultModel?.trim())
-          const fallback = defaultProvider || firstVisibleProvider || null
-          activeProviderId = fallback?.id || null
-          activeModel = fallback?.defaultModel || null
-          activeReasoningEffort = fallback?.defaultReasoningEffort || null
-        } else {
-          activeModel = activeProvider.defaultModel
-          activeReasoningEffort = activeProvider.defaultReasoningEffort || null
-        }
-      }
-
-      set({ providers, activeProviderId, activeModel, activeReasoningEffort, isLoading: false })
-      persistProviderSelection(resolveActiveSelection(
+      const activeSelection = resolveActiveSelection(
         providers,
-        activeProviderId && activeModel
-          ? { providerId: activeProviderId, model: activeModel, reasoningEffort: activeReasoningEffort }
-          : null
-      ))
+        getCurrentSelectionSnapshot(get()),
+        loadPersistedProviderSelection()
+      )
+
+      set({
+        providers,
+        activeProviderId: activeSelection?.providerId || null,
+        activeModel: activeSelection?.model || null,
+        activeReasoningEffort: activeSelection?.reasoningEffort ?? null,
+        isLoading: false,
+      })
+      persistProviderSelection(activeSelection)
     } catch (error: any) {
       set({ error: error.message, isLoading: false })
       throw error

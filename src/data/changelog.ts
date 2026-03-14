@@ -38,6 +38,7 @@ export const changelog: ChangelogEntry[] = [
         'OpenAI-style reasoning controls now remain available for prefixed compatible model IDs such as `openai/gpt-5.1` and `openai/o3`, so reasoning-capable models are not misclassified when providers namespace their catalog entries',
         'Queued or forced sends now use the target conversation\'s saved reasoning override instead of the currently active chat\'s selector state, keeping per-conversation reasoning reproducible across background turns and retries',
         'Conversations using the Default reasoning option now inherit the current provider-level default for both active and queued sends, so background turns no longer fall back to raw API defaults when no per-chat override is set',
+        'Restoring or re-normalizing provider selections now preserves explicit Default reasoning choices, and deleting unrelated providers no longer resets the active chat\'s model or reasoning override back to provider defaults',
       ],
     },
   },
