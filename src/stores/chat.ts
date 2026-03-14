@@ -9,8 +9,10 @@ import { useContextStore, estimateTokens } from './context'
 import { useTodoStore } from './todos'
 import { useClarificationStore } from './clarification'
 import { useDecisionPromptStore } from './decisionPrompt'
+import { useProviderStore } from './providers'
 import { notifyUserEvent } from '../lib/notifications'
 import { createInlineToolProtocolFilter } from '../lib/inlineToolProtocol'
+import { resolveStreamReasoningEffort } from '../lib/conversationReasoning'
 import { hasIncompleteToolEvidence } from './chatInterruption'
 import {
   getNextProcessableQueuedMessageIndex,
@@ -108,6 +110,7 @@ interface Conversation {
   workspaceId?: string
   model: string
   providerId: string
+  reasoningEffort?: ReasoningEffort | null
   mode?: AgentMode
   archivedAt?: number | null
   createdAt: number
@@ -242,6 +245,13 @@ interface ChatStore {
   addSystemNotification: (notification: Omit<SystemNotification, 'id' | 'timestamp'>) => void
   clearSystemNotifications: () => void
   setConversationWorkspaceId: (id: string, workspaceId: string | null) => void
+  setConversationModelSelection: (
+    id: string,
+    providerId: string,
+    model: string,
+    reasoningEffort: ReasoningEffort | null
+  ) => void
+  setConversationReasoningEffort: (id: string, reasoningEffort: ReasoningEffort | null) => void
   getRegenerateArtifactImpact: () => { artifacts: Array<{ id: string; title: string; type: string }> }
 }
 
@@ -938,6 +948,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
         title: 'New chat',
         model,
         providerId,
+        reasoningEffort: useProviderStore.getState().activeReasoningEffort,
         workspaceId: targetWorkspaceId || undefined,
       })
       const conversations = await window.jelico.conversations.list()
@@ -1019,6 +1030,13 @@ export const useChatStore = create<ChatStore>((set, get) => ({
       useTodoStore.getState().hydrateConversationFromMessages(id, loadedMessages)
       useTodoStore.getState().setConversationId(id)
       useClarificationStore.getState().setConversationId(id)
+      if (conversation?.providerId && conversation?.model) {
+        useProviderStore.getState().setActiveSelection(
+          conversation.providerId,
+          conversation.model,
+          conversation.reasoningEffort ?? null
+        )
+      }
 
       const activeStreamState = get().conversationStreams[id]
       const pendingCheckpoint = getPendingStreamCheckpoint(id)
@@ -1206,10 +1224,16 @@ export const useChatStore = create<ChatStore>((set, get) => ({
     const activeWorkspace = workspaceState.workspaces.find(
       (workspace) => workspace.id === workspaceState.activeWorkspaceId
     )
+    const providerState = useProviderStore.getState()
+    const targetProvider = providerState.providers.find((provider) => provider.id === providerId) || null
 
+    let targetConversation = get().conversations.find(
+      (conversation) => conversation.id === targetConversationId
+    ) || null
     let contextMessages = messages
     if (targetConversationId !== activeConversationId) {
       const conversation = await window.jelico.conversations.get(targetConversationId)
+      targetConversation = conversation || targetConversation
       contextMessages = conversation?.messages || []
     }
 
@@ -1393,9 +1417,20 @@ export const useChatStore = create<ChatStore>((set, get) => ({
     // Start streaming with mode, workspace, and artifact context
     let channelId: string
     try {
+      const streamReasoningEffort = resolveStreamReasoningEffort({
+        activeConversationId,
+        targetConversationId,
+        providerType: targetProvider?.type || '',
+        modelId: model,
+        activeReasoningEffort: providerState.activeReasoningEffort,
+        targetProviderDefaultReasoningEffort: targetProvider?.defaultReasoningEffort ?? null,
+        targetConversationReasoningEffort: targetConversation?.reasoningEffort ?? null,
+      })
+
       channelId = window.jelico.ai.stream({
         providerId,
         model,
+        reasoningEffort: streamReasoningEffort,
         mode: finalMode,
         messages: aiMessages,
         workspacePath: activeWorkspace?.path,
@@ -2956,6 +2991,20 @@ export const useChatStore = create<ChatStore>((set, get) => ({
     set((state) => ({
       conversations: state.conversations.map((conv) =>
         conv.id === id ? { ...conv, workspaceId: workspaceId || undefined } : conv
+      ),
+    }))
+  },
+  setConversationModelSelection: (id, providerId, model, reasoningEffort) => {
+    set((state) => ({
+      conversations: state.conversations.map((conv) =>
+        conv.id === id ? { ...conv, providerId, model, reasoningEffort } : conv
+      ),
+    }))
+  },
+  setConversationReasoningEffort: (id, reasoningEffort) => {
+    set((state) => ({
+      conversations: state.conversations.map((conv) =>
+        conv.id === id ? { ...conv, reasoningEffort } : conv
       ),
     }))
   },

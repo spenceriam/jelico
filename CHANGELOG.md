@@ -1,3 +1,26 @@
+## [0.38.0] - 2026-03-13
+
+### Highlights
+- You can now set up more hosted and local providers from dedicated presets and live model lists instead of typing everything manually.
+- Provider cards in Settings now show model context and output limits, and you can drag them into your preferred order.
+- Supported OpenAI reasoning models now let you save a default reasoning level per provider and override it per conversation.
+
+### New
+- **Expanded Provider Setup** — Jelico now includes clearer presets for NVIDIA NIM, Cerebras, Alibaba Qwen, Nous Research, KwaiKat, LM Studio, local servers, and custom endpoints.
+- **Reasoning Effort Control** — Supported OpenAI reasoning models now let you choose a provider default reasoning level and adjust it per conversation from the header controls.
+
+### Fixed
+- **Provider Limits Reliability** — Compatible providers now fill in context and max-output metadata more reliably even when an endpoint expects a different auth header or catalog metadata is missing.
+- **Reasoning Compatibility Guardrails** — Unsupported Extra High reasoning options are no longer sent to incompatible OpenAI models.
+- **Prefixed Reasoning Model Detection** — Reasoning controls now stay available for compatible model IDs like `openai/gpt-5.1` and `openai/o3` instead of disappearing when a provider prefixes the model name.
+- **Conversation-Specific Reasoning Sends** — Queued and background sends now keep the saved reasoning level for the conversation being sent, so another open chat cannot accidentally change how that turn runs.
+- **Default Reasoning Inheritance** — Chats left on the `Default` reasoning option now inherit the provider’s configured default during both active and queued sends instead of silently dropping back to whatever the upstream API chooses.
+- **Reasoning Selection Stability** — Explicit `Default` reasoning choices now stay `Default` when provider selections are restored, and deleting an unrelated provider no longer resets the active chat’s selected model or reasoning level.
+
+### Changed
+- **Live Model Discovery** — Provider setup and editing now pull model lists from provider APIs and compatible endpoints instead of relying on bundled model lists.
+- **Provider Settings Overview** — Settings now keeps its context when you add another provider, shows model limits inline on each provider row, and lets you reorder providers by dragging them.
+
 ## [0.37.2] - 2026-03-13
 
 ### Highlights

@@ -1262,7 +1262,7 @@ function NewChatView({ disabled, isStreaming }: NewChatViewProps) {
       </div>
 
       {/* Workspace, Model selector, and Settings */}
-      <div className="relative z-10 flex justify-center items-center gap-3">
+      <div className="relative z-30 flex justify-center items-center gap-3">
         <WorkspaceSelector />
         {canShowWorktreeCheckbox && (
           <label
@@ -1312,7 +1312,7 @@ function NewChatView({ disabled, isStreaming }: NewChatViewProps) {
       )}
 
       {/* Chat input */}
-      <div className="relative z-10 pt-4">
+      <div className="relative z-40 pt-4">
         <ChatInput
           disabled={disabled}
           isStreaming={isStreaming}

@@ -21,6 +21,28 @@ export interface ChangelogEntry {
 
 export const changelog: ChangelogEntry[] = [
   {
+    version: '0.38.0',
+    date: '2026-03-13',
+    changes: {
+      added: [
+        'Provider setup now includes dedicated presets for NVIDIA NIM, Cerebras, Alibaba Qwen, Nous Research, KwaiKat, LM Studio, local servers, and custom endpoints so multi-provider onboarding covers more hosted and self-hosted options out of the box (Fixes #132)',
+        'Supported OpenAI reasoning models now expose provider-level default reasoning effort and per-conversation reasoning selection beside the model picker (Fixes #144)',
+      ],
+      changed: [
+        'Provider setup and Settings editing now fetch live model lists from provider APIs and compatible endpoints instead of relying on baked-in Anthropic, OpenAI, and Google model lists, and returning from Add Provider preserves the Settings context (Fixes #132, Fixes #144)',
+        'Provider rows in Settings now show context-window and max-output metadata inline and support drag reordering so preferred providers are easier to scan and prioritize (Fixes #159)',
+      ],
+      fixed: [
+        'Compatible provider limit lookups now retry Bearer and x-api-key auth variants, and native OpenAI fallbacks now include max-output limits so Settings metadata stays populated when catalog data is missing',
+        'Reasoning effort selections are now validated against the active OpenAI model before requests are sent, preventing unsupported Extra High selections from reaching incompatible codex-branded models',
+        'OpenAI-style reasoning controls now remain available for prefixed compatible model IDs such as `openai/gpt-5.1` and `openai/o3`, so reasoning-capable models are not misclassified when providers namespace their catalog entries',
+        'Queued or forced sends now use the target conversation\'s saved reasoning override instead of the currently active chat\'s selector state, keeping per-conversation reasoning reproducible across background turns and retries',
+        'Conversations using the Default reasoning option now inherit the current provider-level default for both active and queued sends, so background turns no longer fall back to raw API defaults when no per-chat override is set',
+        'Restoring or re-normalizing provider selections now preserves explicit Default reasoning choices, and deleting unrelated providers no longer resets the active chat\'s model or reasoning override back to provider defaults',
+      ],
+    },
+  },
+  {
     version: '0.37.2',
     date: '2026-03-13',
     changes: {

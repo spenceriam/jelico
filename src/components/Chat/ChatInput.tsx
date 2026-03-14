@@ -5,6 +5,7 @@ import { useChatStore, type MessageAttachment, type QueuedMessage } from '../../
 import { useProviderStore } from '../../stores/providers'
 import { useContextStore } from '../../stores/context'
 import { getQueuePanelConversationKey, getQueuedMessagePreview } from '../../lib/chatQueuePanel'
+import { ReasoningSelector } from '../Model/ReasoningSelector'
 // Speech-to-text disabled - WASM crashes on Windows ARM64
 // import { speechClient } from '../../lib/speechClient'
 
@@ -1076,7 +1077,7 @@ export function ChatInput({
         <div className="mx-3 border-t border-border-subtle" />
 
         {/* Bottom controls + guidance row */}
-        <div className="grid grid-cols-[8.25em_minmax(0,1fr)_8.25em] items-center gap-2 px-[0.75em] py-[0.6em]">
+        <div className="grid grid-cols-[2.5rem_minmax(0,1fr)_auto] items-center gap-3 px-[0.75em] py-[0.6em]">
           <div className="flex items-center justify-start">
             <button
               onClick={openFilePicker}
@@ -1088,7 +1089,7 @@ export function ChatInput({
           </div>
 
           <div
-            className="min-w-0 text-center text-sm text-text-primary whitespace-nowrap overflow-hidden text-ellipsis px-1"
+            className="min-w-0 text-center text-[13px] text-text-primary whitespace-nowrap overflow-hidden text-ellipsis px-1 sm:px-2"
           >
             <span>Enter to submit · Shift+Enter for new line</span>
             <span className="mx-2 text-text-muted">|</span>
@@ -1096,7 +1097,9 @@ export function ChatInput({
           </div>
 
           {/* Right side - Send button */}
-          <div className="flex items-center justify-end gap-1.5">
+          <div className="flex min-w-max items-center justify-end gap-2">
+            <ReasoningSelector compact menuDirection="up" menuAlign="right" variant="composer" />
+
             {/* Speech-to-text disabled - WASM crashes on Windows ARM64, will revisit later */}
 
             {/* Stop button */}
