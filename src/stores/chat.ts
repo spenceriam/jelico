@@ -1224,6 +1224,8 @@ export const useChatStore = create<ChatStore>((set, get) => ({
     const activeWorkspace = workspaceState.workspaces.find(
       (workspace) => workspace.id === workspaceState.activeWorkspaceId
     )
+    const providerState = useProviderStore.getState()
+    const targetProvider = providerState.providers.find((provider) => provider.id === providerId) || null
 
     let targetConversation = get().conversations.find(
       (conversation) => conversation.id === targetConversationId
@@ -1418,7 +1420,10 @@ export const useChatStore = create<ChatStore>((set, get) => ({
       const streamReasoningEffort = resolveStreamReasoningEffort({
         activeConversationId,
         targetConversationId,
-        activeReasoningEffort: useProviderStore.getState().activeReasoningEffort,
+        providerType: targetProvider?.type || '',
+        modelId: model,
+        activeReasoningEffort: providerState.activeReasoningEffort,
+        targetProviderDefaultReasoningEffort: targetProvider?.defaultReasoningEffort ?? null,
         targetConversationReasoningEffort: targetConversation?.reasoningEffort ?? null,
       })
 

@@ -686,7 +686,7 @@ todo_write({ tasks: [
 - **Phase 1-7 Complete**: Core functionality, UI, artifacts, memory, soul system
 - **Phase 8 Complete**: Onboarding flow, backup/restore, versioning
 - **Current Focus**: Testing, polish, user feedback integration, release hardening across updater/restart UX, and broader provider setup/model-selection workflows for multi-provider reasoning, conversation-scoped overrides, and metadata visibility.
-- **Next Planned Release (0.38.0)**: Minor release planned from the current PR branch to add API-driven provider setup/editing, supported reasoning-effort defaults and overrides, expanded hosted/local provider presets, drag-reorderable provider metadata rows in Settings, and follow-up reliability fixes for prefixed reasoning-model IDs and per-conversation reasoning routing.
+- **Next Planned Release (0.38.0)**: Minor release planned from the current PR branch to add API-driven provider setup/editing, supported reasoning-effort defaults and overrides, expanded hosted/local provider presets, drag-reorderable provider metadata rows in Settings, and follow-up reliability fixes for prefixed reasoning-model IDs, per-conversation reasoning routing, and provider-default inheritance on `Default` reasoning chats.
 - **Latest Public Release (0.37.2)**: Patch release focused on restoring light-mode visibility for the new-chat animated backdrop and the sidebar's color-coded conversation status sections.
 - **Public Release History**:
   - `0.37.2` - Restored light-mode visibility for the animated new-chat backdrop and sidebar conversation status tinting.

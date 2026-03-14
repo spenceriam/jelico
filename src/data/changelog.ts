@@ -37,6 +37,7 @@ export const changelog: ChangelogEntry[] = [
         'Reasoning effort selections are now validated against the active OpenAI model before requests are sent, preventing unsupported Extra High selections from reaching incompatible codex-branded models',
         'OpenAI-style reasoning controls now remain available for prefixed compatible model IDs such as `openai/gpt-5.1` and `openai/o3`, so reasoning-capable models are not misclassified when providers namespace their catalog entries',
         'Queued or forced sends now use the target conversation\'s saved reasoning override instead of the currently active chat\'s selector state, keeping per-conversation reasoning reproducible across background turns and retries',
+        'Conversations using the Default reasoning option now inherit the current provider-level default for both active and queued sends, so background turns no longer fall back to raw API defaults when no per-chat override is set',
       ],
     },
   },

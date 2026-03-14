@@ -7,7 +7,10 @@ test('resolveStreamReasoningEffort uses the active selector for the active conve
     resolveStreamReasoningEffort({
       activeConversationId: 'conversation-active',
       targetConversationId: 'conversation-active',
+      providerType: 'openai',
+      modelId: 'gpt-5.1',
       activeReasoningEffort: 'high',
+      targetProviderDefaultReasoningEffort: 'low',
       targetConversationReasoningEffort: 'low',
     }),
     'high'
@@ -19,21 +22,42 @@ test('resolveStreamReasoningEffort uses the target conversation override for bac
     resolveStreamReasoningEffort({
       activeConversationId: 'conversation-active',
       targetConversationId: 'conversation-queued',
+      providerType: 'openai',
+      modelId: 'gpt-5.1',
       activeReasoningEffort: 'high',
+      targetProviderDefaultReasoningEffort: 'medium',
       targetConversationReasoningEffort: 'low',
     }),
     'low'
   )
 })
 
-test('resolveStreamReasoningEffort preserves default reasoning for background sends without overrides', () => {
+test('resolveStreamReasoningEffort falls back to the provider default for active conversations using Default', () => {
+  assert.equal(
+    resolveStreamReasoningEffort({
+      activeConversationId: 'conversation-active',
+      targetConversationId: 'conversation-active',
+      providerType: 'openai',
+      modelId: 'gpt-5.1',
+      activeReasoningEffort: null,
+      targetProviderDefaultReasoningEffort: 'medium',
+      targetConversationReasoningEffort: 'low',
+    }),
+    'medium'
+  )
+})
+
+test('resolveStreamReasoningEffort falls back to the provider default for background sends without overrides', () => {
   assert.equal(
     resolveStreamReasoningEffort({
       activeConversationId: 'conversation-active',
       targetConversationId: 'conversation-queued',
+      providerType: 'openai',
+      modelId: 'gpt-5.1',
       activeReasoningEffort: 'high',
+      targetProviderDefaultReasoningEffort: 'medium',
       targetConversationReasoningEffort: null,
     }),
-    null
+    'medium'
   )
 })

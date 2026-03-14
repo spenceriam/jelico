@@ -14,6 +14,7 @@
 - **Reasoning Compatibility Guardrails** — Unsupported Extra High reasoning options are no longer sent to incompatible OpenAI models.
 - **Prefixed Reasoning Model Detection** — Reasoning controls now stay available for compatible model IDs like `openai/gpt-5.1` and `openai/o3` instead of disappearing when a provider prefixes the model name.
 - **Conversation-Specific Reasoning Sends** — Queued and background sends now keep the saved reasoning level for the conversation being sent, so another open chat cannot accidentally change how that turn runs.
+- **Default Reasoning Inheritance** — Chats left on the `Default` reasoning option now inherit the provider’s configured default during both active and queued sends instead of silently dropping back to whatever the upstream API chooses.
 
 ### Changed
 - **Live Model Discovery** — Provider setup and editing now pull model lists from provider APIs and compatible endpoints instead of relying on bundled model lists.
