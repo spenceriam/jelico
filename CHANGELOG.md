@@ -12,6 +12,8 @@
 ### Fixed
 - **Provider Limits Reliability** — Compatible providers now fill in context and max-output metadata more reliably even when an endpoint expects a different auth header or catalog metadata is missing.
 - **Reasoning Compatibility Guardrails** — Unsupported Extra High reasoning options are no longer sent to incompatible OpenAI models.
+- **Prefixed Reasoning Model Detection** — Reasoning controls now stay available for compatible model IDs like `openai/gpt-5.1` and `openai/o3` instead of disappearing when a provider prefixes the model name.
+- **Conversation-Specific Reasoning Sends** — Queued and background sends now keep the saved reasoning level for the conversation being sent, so another open chat cannot accidentally change how that turn runs.
 
 ### Changed
 - **Live Model Discovery** — Provider setup and editing now pull model lists from provider APIs and compatible endpoints instead of relying on bundled model lists.

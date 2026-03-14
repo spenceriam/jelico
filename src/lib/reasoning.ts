@@ -18,14 +18,8 @@ export const REASONING_EFFORT_LABELS: Record<ReasoningEffort, string> = {
 }
 
 function matchesModelFamily(normalizedModel: string, family: string): boolean {
-  return (
-    normalizedModel === family ||
-    normalizedModel.startsWith(`${family}-`) ||
-    normalizedModel.endsWith(`/${family}`) ||
-    normalizedModel.includes(`/${family}-`) ||
-    normalizedModel.endsWith(`:${family}`) ||
-    normalizedModel.includes(`:${family}-`)
-  )
+  const escapedFamily = family.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+  return new RegExp(`(?:^|[/:])${escapedFamily}(?:$|[-.:])`).test(normalizedModel)
 }
 
 const OPENAI_STYLE_PROVIDER_TYPES = new Set([
@@ -62,9 +56,9 @@ export function getSupportedReasoningEfforts(providerType: string, modelId?: str
   switch (providerKind) {
     case 'openai': {
       const isReasoningModel =
-        normalizedModel.startsWith('gpt-5') ||
-        normalizedModel.startsWith('o1') ||
-        normalizedModel.startsWith('o3') ||
+        matchesModelFamily(normalizedModel, 'gpt-5') ||
+        matchesModelFamily(normalizedModel, 'o1') ||
+        matchesModelFamily(normalizedModel, 'o3') ||
         normalizedModel.includes('codex')
 
       if (!isReasoningModel) return []

@@ -35,6 +35,8 @@ export const changelog: ChangelogEntry[] = [
       fixed: [
         'Compatible provider limit lookups now retry Bearer and x-api-key auth variants, and native OpenAI fallbacks now include max-output limits so Settings metadata stays populated when catalog data is missing',
         'Reasoning effort selections are now validated against the active OpenAI model before requests are sent, preventing unsupported Extra High selections from reaching incompatible codex-branded models',
+        'OpenAI-style reasoning controls now remain available for prefixed compatible model IDs such as `openai/gpt-5.1` and `openai/o3`, so reasoning-capable models are not misclassified when providers namespace their catalog entries',
+        'Queued or forced sends now use the target conversation\'s saved reasoning override instead of the currently active chat\'s selector state, keeping per-conversation reasoning reproducible across background turns and retries',
       ],
     },
   },

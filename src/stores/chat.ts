@@ -12,6 +12,7 @@ import { useDecisionPromptStore } from './decisionPrompt'
 import { useProviderStore } from './providers'
 import { notifyUserEvent } from '../lib/notifications'
 import { createInlineToolProtocolFilter } from '../lib/inlineToolProtocol'
+import { resolveStreamReasoningEffort } from '../lib/conversationReasoning'
 import { hasIncompleteToolEvidence } from './chatInterruption'
 import {
   getNextProcessableQueuedMessageIndex,
@@ -1224,9 +1225,13 @@ export const useChatStore = create<ChatStore>((set, get) => ({
       (workspace) => workspace.id === workspaceState.activeWorkspaceId
     )
 
+    let targetConversation = get().conversations.find(
+      (conversation) => conversation.id === targetConversationId
+    ) || null
     let contextMessages = messages
     if (targetConversationId !== activeConversationId) {
       const conversation = await window.jelico.conversations.get(targetConversationId)
+      targetConversation = conversation || targetConversation
       contextMessages = conversation?.messages || []
     }
 
@@ -1410,10 +1415,17 @@ export const useChatStore = create<ChatStore>((set, get) => ({
     // Start streaming with mode, workspace, and artifact context
     let channelId: string
     try {
+      const streamReasoningEffort = resolveStreamReasoningEffort({
+        activeConversationId,
+        targetConversationId,
+        activeReasoningEffort: useProviderStore.getState().activeReasoningEffort,
+        targetConversationReasoningEffort: targetConversation?.reasoningEffort ?? null,
+      })
+
       channelId = window.jelico.ai.stream({
         providerId,
         model,
-        reasoningEffort: useProviderStore.getState().activeReasoningEffort,
+        reasoningEffort: streamReasoningEffort,
         mode: finalMode,
         messages: aiMessages,
         workspacePath: activeWorkspace?.path,

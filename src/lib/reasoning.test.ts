@@ -11,6 +11,21 @@ test('gpt-5.1 reasoning efforts exclude minimal', () => {
   ])
 })
 
+test('prefixed openai reasoning model ids remain reasoning-capable', () => {
+  assert.deepEqual(getSupportedReasoningEfforts('openrouter', 'openai/gpt-5.1'), [
+    'none',
+    'low',
+    'medium',
+    'high',
+  ])
+  assert.deepEqual(getSupportedReasoningEfforts('openai-compatible', 'openai/o3'), [
+    'minimal',
+    'low',
+    'medium',
+    'high',
+  ])
+})
+
 test('gpt-5.1-codex-max exposes only documented extra-high options', () => {
   assert.deepEqual(getSupportedReasoningEfforts('openai', 'openai/gpt-5.1-codex-max-2025-11-13'), [
     'none',
