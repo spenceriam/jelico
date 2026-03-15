@@ -685,10 +685,11 @@ todo_write({ tasks: [
 
 - **Phase 1-7 Complete**: Core functionality, UI, artifacts, memory, soul system
 - **Phase 8 Complete**: Onboarding flow, backup/restore, versioning
-- **Current Focus**: Testing, polish, user feedback integration, release hardening across updater/restart UX, and broader provider setup/model-selection workflows for multi-provider reasoning, conversation-scoped overrides, and metadata visibility.
-- **Next Planned Release (0.38.0)**: Minor release planned from the current PR branch to add API-driven provider setup/editing, supported reasoning-effort defaults and overrides, expanded hosted/local provider presets, drag-reorderable provider metadata rows in Settings, and follow-up reliability fixes for prefixed reasoning-model IDs, per-conversation reasoning routing, provider-default inheritance on `Default` reasoning chats, and provider-selection stability during restore/delete flows.
-- **Latest Public Release (0.37.2)**: Patch release focused on restoring light-mode visibility for the new-chat animated backdrop and the sidebar's color-coded conversation status sections.
+- **Current Focus**: Testing, polish, user feedback integration, release hardening across updater/restart UX, broader provider setup/model-selection workflows for multi-provider reasoning, conversation-scoped overrides, and metadata visibility, plus compatible-provider request-shape hardening so generic OpenAI/Anthropic-compatible backends do not inherit unsupported payload caps from unrelated models.dev entries.
+- **Next Planned Release (0.38.1)**: Patch release planned on top of `0.38.0` to keep generic compatible providers from sending unsupported streamed chat payload caps while preserving provider-specific models.dev matches for known endpoints such as MiniMax coding-plan models.
+- **Latest Public Release (0.38.0)**: Minor release focused on expanded provider setup presets, live model discovery, inline provider metadata visibility, provider-level reasoning defaults, and conversation-scoped reasoning overrides.
 - **Public Release History**:
+  - `0.38.0` - Expanded provider setup presets, live model discovery, drag-reorderable provider metadata, and provider/conversation reasoning controls.
   - `0.37.2` - Restored light-mode visibility for the animated new-chat backdrop and sidebar conversation status tinting.
   - `0.37.1` - Safer updater apply/restart flows across custom macOS install targets, legacy installer preservation, and light-theme context-indicator readability.
   - `0.37.0` - Animated new-chat backdrop, grouped sidebar conversation statuses, inline archive confirmation/toasts, and macOS-native docking behavior.

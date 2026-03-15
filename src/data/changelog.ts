@@ -21,6 +21,15 @@ export interface ChangelogEntry {
 
 export const changelog: ChangelogEntry[] = [
   {
+    version: '0.38.1',
+    date: '2026-03-14',
+    changes: {
+      fixed: [
+        'Generic compatible providers no longer inherit foreign models.dev output-token limits by model name alone, so streamed chat turns avoid sending unsupported `max_tokens` caps to backends like Nous Research while still preserving provider-specific matches such as MiniMax coding-plan models (Fixes #171)',
+      ],
+    },
+  },
+  {
     version: '0.38.0',
     date: '2026-03-13',
     changes: {
