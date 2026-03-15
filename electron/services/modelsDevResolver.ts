@@ -419,6 +419,21 @@ function lookupGlobalIndex<T>(target: Map<string, T>, modelId: string): T | null
   return target.get(normalizedModelId) ?? target.get(shortId) ?? null
 }
 
+function shouldAllowGlobalOutputLimitFallback(
+  providerType: string,
+): boolean {
+  const normalizedType = normalize(providerType)
+  switch (normalizedType) {
+    case 'openai-compatible':
+    case 'anthropic-compatible':
+    case 'custom':
+    case 'local':
+      return false
+    default:
+      return true
+  }
+}
+
 export function lookupModelsDevContextLimitInIndexes(
   indexes: ModelsDevIndexes,
   providerType: string,
@@ -462,6 +477,10 @@ export function lookupModelsDevOutputLimitInIndexes(
 
     const aliasMatch = lookupInProviderIndex(indexes.providerModelOutputIndex, providerKey, aliasModelId)
     if (aliasMatch) return aliasMatch
+  }
+
+  if (!shouldAllowGlobalOutputLimitFallback(providerType)) {
+    return null
   }
 
   return lookupGlobalIndex(indexes.globalModelOutputIndex, modelId)

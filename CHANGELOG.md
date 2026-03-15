@@ -1,3 +1,12 @@
+## [0.38.1] - 2026-03-14
+
+### Highlights
+- Generic compatible providers no longer borrow a different vendor's large output-token cap just because the model name matches a models.dev entry.
+- Streamed chat turns on providers like Nous Research now avoid the unsupported request shape that caused simple prompts to fail before any response text appeared.
+
+### Fixed
+- **Compatible Provider Output Caps** — Jelico now skips foreign models.dev output-limit guesses for generic compatible providers unless the provider itself matches by name or endpoint, so unsupported `max_tokens` values are no longer injected into normal streamed chats.
+
 ## [0.38.0] - 2026-03-13
 
 ### Highlights
