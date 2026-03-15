@@ -7,6 +7,7 @@ on:
 
 permissions:
   actions: write
+  contents: read
 
 concurrency:
   group: cache-cleanup
@@ -23,7 +24,7 @@ jobs:
           script: |
             const owner = context.repo.owner;
             const repo = context.repo.repo;
-            const retentionMs = 60 * 60 * 1000;
+            const retentionMs = 8 * 60 * 60 * 1000;
             const cutoffMs = Date.now() - retentionMs;
 
             // Fetch all caches (paginate auto-unwraps actions_caches)
@@ -48,8 +49,10 @@ jobs:
               const createdOld =
                 !Number.isNaN(createdAt) && createdAt < cutoffMs;
 
-              const ref = (cache.ref ?? '').replace(/^refs\/heads\//, '');
-              const branchGone = ref !== '' && !activeBranches.has(ref);
+              const rawRef = cache.ref ?? '';
+              const isBranchRef = rawRef.startsWith('refs/heads/');
+              const ref = rawRef.replace(/^refs\/heads\//, '');
+              const branchGone = isBranchRef && !activeBranches.has(ref);
 
               if (!createdOld && !branchGone) {
                 continue;
@@ -90,7 +93,7 @@ jobs:
                   String(caches.length),
                 ],
                 [
-                  { data: 'Deleted (age > 1 hour)', header: true },
+                  { data: 'Deleted (age > 8 hours)', header: true },
                   String(deletedAge),
                 ],
                 [
@@ -103,7 +106,7 @@ jobs:
                 ],
                 [
                   { data: 'Retention window', header: true },
-                  '1 hour (by creation time)',
+                  '8 hours (by creation time)',
                 ],
               ])
               .write();
