@@ -26,6 +26,8 @@ function getStatusDisplay(status: TodoStatus): { icon: string; className: string
     case 'cancelled':
       return { icon: '—', className: 'text-text-muted' }
   }
+
+  return { icon: '○', className: 'text-text-muted' }
 }
 
 // Individual todo item row

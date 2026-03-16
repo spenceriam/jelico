@@ -1,3 +1,15 @@
+## [0.38.2] - 2026-03-16
+
+### Highlights
+- Research and planning turns now show the full todo-plan preview in chat instead of cutting each step off with ellipses.
+- Todo completion is more reliable across models and providers, so the last task no longer gets stuck incomplete just because a backend returned a slightly different status word.
+- In-progress conversations in the sidebar shimmer again in both dark and light themes, making active chats easier to spot at a glance.
+
+### Fixed
+- **Full Plan Preview Text** — Todo-plan previews now keep the full visible text for each listed step instead of truncating every line before it reaches chat.
+- **Cross-Provider Todo Completion** — Todo status handling now accepts equivalent completion/progress words from different models and providers, so the existing todo panel reflects the actual completed state more reliably.
+- **Sidebar Processing Shimmer** — Conversation rows marked In Progress now restore the animated shimmer treatment in both dark and light mode.
+
 ## [0.38.1] - 2026-03-14
 
 ### Highlights

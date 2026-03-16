@@ -21,6 +21,17 @@ export interface ChangelogEntry {
 
 export const changelog: ChangelogEntry[] = [
   {
+    version: '0.38.2',
+    date: '2026-03-16',
+    changes: {
+      fixed: [
+        'Todo plan previews now stream full step text in chat instead of truncating each line with ellipses, so multi-step research and planning turns remain readable from the first response block (Fixes #164)',
+        'Todo completion now normalizes provider- and model-emitted status aliases such as `completed`, `finished`, and `working`, and preserves status-change history during updates so the final task reliably marks complete across providers and reloads (Fixes #165)',
+        'Sidebar conversation rows once again apply the in-progress shimmer treatment in both dark and light themes, restoring active-chat visibility inside grouped status sections (Fixes #168)',
+      ],
+    },
+  },
+  {
     version: '0.38.1',
     date: '2026-03-14',
     changes: {

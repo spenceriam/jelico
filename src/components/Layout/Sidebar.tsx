@@ -576,6 +576,7 @@ export function Sidebar() {
                           const isArchiveConfirming = archiveConfirmConversationId === conv.id
                           const conversationStatus = conversationStatusById.get(conv.id) || 'done'
                           const conversationStatusMeta = getConversationSidebarStatusMeta(conversationStatus)
+                          const isConversationProcessing = conversationStatus === 'in_progress'
 
                           return (
                             <div key={conv.id} className="mb-1 last:mb-0">
@@ -600,6 +601,7 @@ export function Sidebar() {
                                     ? 'text-text-secondary hover:text-text-primary border-l-2 border-transparent cursor-pointer'
                                     : ''}
                                   ${!isArchiveConfirming ? `sidebar-conversation-status-${conversationStatus}` : ''}
+                                  ${!isArchiveConfirming && isConversationProcessing ? 'sidebar-conversation-processing' : ''}
                                 `}
                               >
                                 {hasExpandableContent ? (
