@@ -76,7 +76,7 @@ The Soul/Memory system should make Jelico increasingly personalized - it learns 
 ## Project overview
 Jelico is an AI Productivity Desktop built with Electron, React, TypeScript, and Vite. It provides a frictionless AI assistant experience with multi-provider support (Anthropic, OpenAI, Google), workspace management, conversation persistence, and a soul/memory system that learns user patterns and preferences over time.
 
-**Current Version:** 0.38.1 (working branch version; not yet a public release)
+**Current Version:** 0.38.2 (working branch version; not yet a public release)
 
 **License:** GNU General Public License v3.0 (GPL-3.0-or-later)
 - See LICENSE file in project root
@@ -685,10 +685,11 @@ todo_write({ tasks: [
 
 - **Phase 1-7 Complete**: Core functionality, UI, artifacts, memory, soul system
 - **Phase 8 Complete**: Onboarding flow, backup/restore, versioning
-- **Current Focus**: Testing, polish, user feedback integration, release hardening across updater/restart UX, broader provider setup/model-selection workflows for multi-provider reasoning, conversation-scoped overrides, and metadata visibility, plus compatible-provider request-shape hardening so generic OpenAI/Anthropic-compatible backends do not inherit unsupported payload caps from unrelated models.dev entries.
-- **Next Planned Release (0.38.1)**: Patch release planned on top of `0.38.0` to keep generic compatible providers from sending unsupported streamed chat payload caps while preserving provider-specific models.dev matches for known endpoints such as MiniMax coding-plan models.
-- **Latest Public Release (0.38.0)**: Minor release focused on expanded provider setup presets, live model discovery, inline provider metadata visibility, provider-level reasoning defaults, and conversation-scoped reasoning overrides.
+- **Current Focus**: Testing, polish, user feedback integration, stronger provider/model consistency for task-tracker UX, and continued release hardening across updater/restart flows, conversation state recovery, and broader multi-provider reasoning controls.
+- **Next Planned Release (0.38.2)**: Patch release planned on top of `0.38.1` to restore full todo-plan previews in chat, make todo completion resilient to provider/model status wording differences, and bring back the sidebar in-progress shimmer treatment in both themes.
+- **Latest Public Release (0.38.1)**: Patch release focused on compatible-provider streamed chat payload caps and provider-specific models.dev limit matching.
 - **Public Release History**:
+  - `0.38.1` - Prevented generic compatible providers from sending unsupported foreign output-token caps while preserving provider-specific models.dev matches.
   - `0.38.0` - Expanded provider setup presets, live model discovery, drag-reorderable provider metadata, and provider/conversation reasoning controls.
   - `0.37.2` - Restored light-mode visibility for the animated new-chat backdrop and sidebar conversation status tinting.
   - `0.37.1` - Safer updater apply/restart flows across custom macOS install targets, legacy installer preservation, and light-theme context-indicator readability.

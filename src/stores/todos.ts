@@ -11,8 +11,13 @@
  */
 
 import { create } from 'zustand'
+import {
+  normalizeHistoryEntries,
+  normalizeTodoStatus,
+  type TodoStatus,
+} from '../lib/todoStatus'
 
-export type TodoStatus = 'pending' | 'in_progress' | 'done' | 'failed' | 'cancelled' | 'blocked'
+export type { TodoStatus } from '../lib/todoStatus'
 
 export interface TodoHistoryEntry {
   status: TodoStatus
@@ -33,6 +38,8 @@ export interface TodoItem {
   updatedAt: number
 }
 
+export type TodoUpdate = Partial<Pick<TodoItem, 'text' | 'status' | 'owner' | 'dependencies' | 'blockedReason' | 'history'>>
+
 interface TodoState {
   // State
   todos: TodoItem[]
@@ -44,7 +51,7 @@ interface TodoState {
   setTodos: (conversationId: string, todos: Omit<TodoItem, 'createdAt' | 'updatedAt'>[]) => Promise<void>
   updateTodo: (
     id: string,
-    updates: Partial<Pick<TodoItem, 'text' | 'status' | 'owner' | 'dependencies' | 'blockedReason' | 'history'>>,
+    updates: TodoUpdate,
     conversationId?: string
   ) => Promise<void>
   getTodo: (id: string) => TodoItem | undefined
@@ -75,11 +82,13 @@ function rowToTodo(row: any): TodoItem {
   return {
     id: row.id,
     text: row.text,
-    status: row.status,
+    status: normalizeTodoStatus(row.status),
     owner: row.owner ?? null,
     dependencies: Array.isArray(row.dependencies) ? row.dependencies : [],
     blockedReason: row.blocked_reason ?? null,
-    history: Array.isArray(row.history) ? row.history : [],
+    history: normalizeHistoryEntries(
+      Array.isArray(row.history) ? (row.history as TodoHistoryEntry[]) : []
+    ),
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   }
@@ -97,6 +106,34 @@ function hasHistoryChanged(
   const nextLength = nextHistory?.length ?? 0
   if (existingLength !== nextLength) return true
   return JSON.stringify(existingHistory || []) !== JSON.stringify(nextHistory || [])
+}
+
+export function buildUpdatedTodo(todo: TodoItem, updates: TodoUpdate, now: number): TodoItem {
+  const nextStatus = normalizeTodoStatus(updates.status ?? todo.status)
+  const previousHistory = normalizeHistoryEntries(todo.history)
+  const explicitHistory = updates.history !== undefined
+    ? normalizeHistoryEntries(updates.history)
+    : undefined
+  const statusChanged = updates.status !== undefined && nextStatus !== todo.status
+
+  return {
+    ...todo,
+    ...updates,
+    updatedAt: now,
+    status: nextStatus,
+    history: explicitHistory ?? (
+      statusChanged
+        ? [
+            ...previousHistory,
+            {
+              status: nextStatus,
+              at: now,
+              actor: updates.owner || todo.owner || 'main',
+            },
+          ]
+        : previousHistory
+    ),
+  }
 }
 
 export const useTodoStore = create<TodoState>((set, get) => ({
@@ -129,8 +166,14 @@ export const useTodoStore = create<TodoState>((set, get) => ({
     const now = Date.now()
     const currentTodos = get().todos
 
+    const normalizedInputTodos = todos.map((todo) => ({
+      ...todo,
+      status: normalizeTodoStatus(todo.status),
+      history: normalizeHistoryEntries(todo.history),
+    }))
+
     // Preserve timestamps for existing todos, add new ones
-    const updatedTodos = todos.map(todo => {
+    const updatedTodos = normalizedInputTodos.map(todo => {
       const existing = currentTodos.find(t => t.id === todo.id)
       if (existing) {
         // Update existing: keep createdAt, update updatedAt if changed
@@ -188,25 +231,27 @@ export const useTodoStore = create<TodoState>((set, get) => ({
 
     const now = Date.now()
     const currentTodos = get().todos
-    const updatedTodos = currentTodos.map(todo =>
-      todo.id === id
-        ? { ...todo, ...updates, updatedAt: now }
-        : todo
-    )
+    const updatedTodos = currentTodos.map((todo) => {
+      if (todo.id !== id) return todo
+      return buildUpdatedTodo(todo, updates, now)
+    })
 
     // Update local state
     set({ todos: updatedTodos })
 
     // Persist to database
     try {
-      await window.jelico.todos.update(targetConversationId, id, {
-        text: updates.text,
-        status: updates.status,
-        owner: updates.owner,
-        dependencies: updates.dependencies,
-        blocked_reason: updates.blockedReason,
-        history: updates.history,
-      })
+      const updatedTodo = updatedTodos.find((todo) => todo.id === id)
+      if (updatedTodo) {
+        await window.jelico.todos.update(targetConversationId, id, {
+          text: updatedTodo.text,
+          status: updatedTodo.status,
+          owner: updatedTodo.owner || undefined,
+          dependencies: updatedTodo.dependencies || [],
+          blocked_reason: updatedTodo.blockedReason || null,
+          history: updatedTodo.history || [],
+        })
+      }
     } catch (error) {
       console.error('[TodoStore] Failed to update todo:', error)
     }
@@ -298,7 +343,6 @@ export const useTodoStore = create<TodoState>((set, get) => ({
       console.error('[TodoStore] Failed to check existing todos:', error)
     }
 
-    const validStatuses = new Set<TodoStatus>(['pending', 'in_progress', 'done', 'failed', 'cancelled', 'blocked'])
     let recoveredTasks: Array<{
       id: string
       text: string
@@ -325,10 +369,7 @@ export const useTodoStore = create<TodoState>((set, get) => ({
               ? taskRecord.id
               : String(index + 1)
             const text = typeof taskRecord.text === 'string' ? taskRecord.text : ''
-            const rawStatus = typeof taskRecord.status === 'string' ? taskRecord.status : 'pending'
-            const status = validStatuses.has(rawStatus as TodoStatus)
-              ? (rawStatus as TodoStatus)
-              : 'pending'
+            const status = normalizeTodoStatus(typeof taskRecord.status === 'string' ? taskRecord.status : undefined)
             const dependencies = Array.isArray(taskRecord.dependencies)
               ? taskRecord.dependencies.map((dep) => String(dep))
               : []
@@ -342,7 +383,9 @@ export const useTodoStore = create<TodoState>((set, get) => ({
               blockedReason: typeof taskRecord.blockedReason === 'string'
                 ? taskRecord.blockedReason
                 : (typeof taskRecord.blocked_reason === 'string' ? taskRecord.blocked_reason : null),
-              history: Array.isArray(taskRecord.history) ? taskRecord.history as TodoHistoryEntry[] : [],
+              history: normalizeHistoryEntries(
+                Array.isArray(taskRecord.history) ? (taskRecord.history as TodoHistoryEntry[]) : []
+              ),
             }
           })
           .filter((task): task is {

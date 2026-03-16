@@ -4257,7 +4257,7 @@ If you find yourself frequently hitting limits, suggest breaking the task into m
             const previewCount = Math.min(taskTexts.length, 20)
             const lines = taskTexts
               .slice(0, previewCount)
-              .map((task, idx) => `${idx + 1}. ${truncateSnippet(task, 84)}`)
+              .map((task, idx) => `${idx + 1}. ${task}`)
 
             const extraCount = taskTexts.length - previewCount
             const extraLine = extraCount > 0
