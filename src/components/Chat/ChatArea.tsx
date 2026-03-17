@@ -1312,7 +1312,7 @@ function NewChatView({ disabled, isStreaming }: NewChatViewProps) {
       )}
 
       {/* Chat input */}
-      <div className="relative z-40 pt-4">
+      <div className="relative pt-4">
         <ChatInput
           disabled={disabled}
           isStreaming={isStreaming}

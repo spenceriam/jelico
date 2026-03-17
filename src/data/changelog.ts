@@ -21,6 +21,15 @@ export interface ChangelogEntry {
 
 export const changelog: ChangelogEntry[] = [
   {
+    version: '0.39.1',
+    date: '2026-03-17',
+    changes: {
+      fixed: [
+        'The new-chat composer no longer creates a higher stacking layer than workspace and selector menus, so dropdowns and other popup surfaces stay visible and match the existing-chat prompt behavior (Fixes #184)',
+      ],
+    },
+  },
+  {
     version: '0.39.0',
     date: '2026-03-17',
     changes: {
