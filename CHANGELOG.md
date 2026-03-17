@@ -1,4 +1,4 @@
-## [0.36.0] - 2026-03-17
+## [0.39.0] - 2026-03-17
 
 ### Highlights
 - Jelico can now use built-in and custom skills from `SKILL.md` files and pull in the ones that match your request automatically.
