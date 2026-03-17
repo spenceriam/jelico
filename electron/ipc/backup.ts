@@ -33,7 +33,7 @@ export function registerBackupHandlers() {
     }
 
     try {
-      fs.writeFileSync(result.filePath, JSON.stringify(collectBackupPayload(), null, 2))
+      fs.writeFileSync(result.filePath, JSON.stringify(collectBackupPayload({ tolerateMalformedJson: true }), null, 2))
       return { success: true, filePath: result.filePath }
     } catch (error) {
       return { success: false, error: error instanceof Error ? error.message : 'Export failed' }

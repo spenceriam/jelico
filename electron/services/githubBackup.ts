@@ -258,7 +258,7 @@ export async function runGithubBackup(trigger: GithubBackupTrigger): Promise<{ s
       const target = parseRepoUrl(config.repoUrl)
       const metadata = await getRepositoryMetadata(target, token)
       const branch = metadata.default_branch
-      const payload = collectBackupPayload()
+      const payload = collectBackupPayload({ tolerateMalformedJson: true })
       const timestamp = new Date().toISOString().replace(/[:]/g, '-')
       const chunkBasePath = `jelico-backups/chunks/${timestamp}`
       const { manifest, chunkFiles } = createGithubChunkedBackupFiles(payload, chunkBasePath)
