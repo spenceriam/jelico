@@ -6,6 +6,7 @@ import { useUIStore } from './stores/ui'
 import { useArtifactStore } from './stores/artifacts'
 import { useWorkspaceStore, initWorkspaceStore } from './stores/workspaces'
 import { usePermissionStore } from './stores/permissions'
+import { useSkillStore } from './stores/skills'
 import { useThemeStore } from './stores/theme'
 import { getUpdateBannerVisibility, useUpdateStore } from './stores/updates'
 import {
@@ -86,6 +87,7 @@ export default function App() {
   const { canvasOpen } = useArtifactStore()
   const { loadWorkspaces } = useWorkspaceStore()
   const { clearOncePermissions, loadPermissions } = usePermissionStore()
+  const { loadSkills } = useSkillStore()
   const { loadFromStorage: loadTheme } = useThemeStore()
   const {
     info: updateInfo,
@@ -137,6 +139,7 @@ export default function App() {
     loadConversations()
     initWorkspaceStore() // Restore active workspace from localStorage
     loadWorkspaces()
+    void loadSkills()
 
     // Clear "allow once" permissions from previous session
     clearOncePermissions()
@@ -154,7 +157,7 @@ export default function App() {
         setCanvasWidth(Math.min(maxCanvasWidth, Math.max(MIN_CANVAS_WIDTH, width)))
       }
     }
-  }, [getMaxCanvasWidth])
+  }, [getMaxCanvasWidth, loadSkills])
 
   useEffect(() => {
     const updateCanvasBounds = () => {

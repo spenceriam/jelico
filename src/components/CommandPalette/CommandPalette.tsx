@@ -5,7 +5,6 @@ import {
   Settings,
   Archive,
   FolderOpen,
-  Zap,
   Bot,
   GitBranch,
   PanelRight,
@@ -15,10 +14,10 @@ import {
 import { useChatStore } from '../../stores/chat'
 import { useWorkspaceStore } from '../../stores/workspaces'
 import { useArtifactStore } from '../../stores/artifacts'
-import { useSkillStore } from '../../stores/skills'
 import { useUIStore } from '../../stores/ui'
 import { usePermissionStore } from '../../stores/permissions'
 import { modes } from '../../lib/modes'
+import { ShelvingUnitIcon } from '../Brand/ShelvingUnitIcon'
 
 interface Command {
   id: string
@@ -27,7 +26,7 @@ interface Command {
   icon: React.ComponentType<{ className?: string }>
   action: () => void
   keywords?: string[]
-  category: 'permissions' | 'chat' | 'workspace' | 'mode' | 'skill' | 'navigation' | 'action'
+  category: 'permissions' | 'chat' | 'workspace' | 'mode' | 'navigation' | 'action'
 }
 
 interface CommandPaletteProps {
@@ -43,7 +42,6 @@ export function CommandPalette({ isOpen, onClose }: CommandPaletteProps) {
   const { setActiveConversation, conversations, setMode } = useChatStore()
   const { workspaces, selectFolder, setActiveWorkspace } = useWorkspaceStore()
   const { toggleCanvas, canvasOpen } = useArtifactStore()
-  const { skills } = useSkillStore()
   const { openSettings, openProviderSetup } = useUIStore()
   const { allowAllSession, setAllowAllSession, loadAllowAllSession } = usePermissionStore()
 
@@ -108,26 +106,6 @@ export function CommandPalette({ isOpen, onClose }: CommandPaletteProps) {
       })
     })
 
-    // Skill commands
-    skills.forEach((skill) => {
-      cmds.push({
-        id: `skill-${skill.id}`,
-        name: skill.name,
-        description: skill.description,
-        icon: Zap,
-        category: 'skill',
-        keywords: skill.shortcut ? [skill.shortcut] : undefined,
-        action: () => {
-          // Focus the chat input and insert skill shortcut
-          const input = document.querySelector('textarea')
-          if (input && skill.shortcut) {
-            ;(input as HTMLTextAreaElement).value = skill.shortcut + ' '
-            ;(input as HTMLTextAreaElement).focus()
-          }
-        },
-      })
-    })
-
     // Workspace commands
     cmds.push({
       id: 'open-folder',
@@ -173,8 +151,8 @@ export function CommandPalette({ isOpen, onClose }: CommandPaletteProps) {
     cmds.push({
       id: 'settings-skills',
       name: 'Manage Skills',
-      description: 'Configure AI skills',
-      icon: Zap,
+      description: 'Configure assistant skills',
+      icon: ShelvingUnitIcon,
       category: 'navigation',
       action: () => openSettings('skills'),
     })
@@ -212,7 +190,6 @@ export function CommandPalette({ isOpen, onClose }: CommandPaletteProps) {
   }, [
     allowAllSession,
     conversations,
-    skills,
     workspaces,
     canvasOpen,
     setActiveConversation,
@@ -254,7 +231,6 @@ export function CommandPalette({ isOpen, onClose }: CommandPaletteProps) {
     permissions: 'Permissions',
     chat: 'Chat',
     mode: 'Modes',
-    skill: 'Skills',
     workspace: 'Workspaces',
     navigation: 'Navigation',
     action: 'Actions',

@@ -64,7 +64,7 @@ Jelico is a local-first AI desktop assistant. A native app where you chat with A
 
 The Soul/Memory system should make Jelico increasingly personalized - it learns YOUR coding style, YOUR preferences, YOUR common mistakes. Every conversation teaches it to help YOU better.
 
-**Current Status:** Soul/Memory systems exist but need verification that they're properly injected into AI prompts. Current stabilization work is focused on response/tool ordering UX, readable streamed output assembly, safer cross-platform updater apply/restart flows across custom install paths and multi-conversation turns, and stronger conversation/composer state recovery after edge-case interactions.
+**Current Status:** Skills now ship as first-class `SKILL.md` assets, soul/memory learnings are injected with scoped task relevance, and GitHub backup/restore is available for local data and managed files. Current stabilization work is focused on validating those flows alongside response/tool ordering UX, safer cross-platform updater apply/restart behavior, stronger provider/model consistency, and conversation/composer recovery after edge-case interactions.
 
 ## Setup commands
 - Install dependencies: `npm install`
@@ -76,7 +76,7 @@ The Soul/Memory system should make Jelico increasingly personalized - it learns 
 ## Project overview
 Jelico is an AI Productivity Desktop built with Electron, React, TypeScript, and Vite. It provides a frictionless AI assistant experience with multi-provider support (Anthropic, OpenAI, Google), workspace management, conversation persistence, and a soul/memory system that learns user patterns and preferences over time.
 
-**Current Version:** 0.38.2 (working branch version; not yet a public release)
+**Current Version:** 0.39.0 (release branch version; not yet a public release)
 
 **License:** GNU General Public License v3.0 (GPL-3.0-or-later)
 - See LICENSE file in project root
@@ -685,10 +685,11 @@ todo_write({ tasks: [
 
 - **Phase 1-7 Complete**: Core functionality, UI, artifacts, memory, soul system
 - **Phase 8 Complete**: Onboarding flow, backup/restore, versioning
-- **Current Focus**: Testing, polish, user feedback integration, stronger provider/model consistency for task-tracker UX, and continued release hardening across updater/restart flows, conversation state recovery, and broader multi-provider reasoning controls.
-- **Next Planned Release (0.38.2)**: Patch release planned on top of `0.38.1` to restore full todo-plan previews in chat, make todo completion resilient to provider/model status wording differences, and bring back the sidebar in-progress shimmer treatment in both themes.
-- **Latest Public Release (0.38.1)**: Patch release focused on compatible-provider streamed chat payload caps and provider-specific models.dev limit matching.
+- **Current Focus**: Testing, polish, user feedback integration, runtime validation, stronger provider/model consistency, and release hardening across skills/memory/backup flows, updater/restart behavior, and conversation state recovery.
+- **Next Planned Release (0.39.0)**: Minor release planned on top of `0.38.2` with first-class skills, contextual soul/memory learning, and GitHub-backed backup/restore coverage for local Jelico data.
+- **Latest Public Release (0.38.2)**: Patch release focused on full todo-plan previews in chat, resilient cross-provider todo completion, and restored sidebar in-progress shimmer treatment.
 - **Public Release History**:
+  - `0.38.2` - Restored full todo-plan previews in chat, normalized cross-provider todo completion, and brought back the sidebar in-progress shimmer treatment.
   - `0.38.1` - Prevented generic compatible providers from sending unsupported foreign output-token caps while preserving provider-specific models.dev matches.
   - `0.38.0` - Expanded provider setup presets, live model discovery, drag-reorderable provider metadata, and provider/conversation reasoning controls.
   - `0.37.2` - Restored light-mode visibility for the animated new-chat backdrop and sidebar conversation status tinting.

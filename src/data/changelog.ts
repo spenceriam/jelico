@@ -21,6 +21,24 @@ export interface ChangelogEntry {
 
 export const changelog: ChangelogEntry[] = [
   {
+    version: '0.39.0',
+    date: '2026-03-17',
+    changes: {
+      added: [
+        'Added a first-class skills system backed by shared `SKILL.md` definitions, built-in skill browsing, and custom-skill storage/import flows so relevant skills can be injected directly into AI prompts (Fixes #156)',
+        'Added contextual soul and memory learning capture with scope-aware prompt injection, remembered-context surfacing, and lightweight toast feedback for newly captured learnings (Fixes #157)',
+        'Added GitHub backup configuration with manual, on-change, and scheduled uploads plus restore support for database, soul data, artifacts, sandbox files, and custom skills (Fixes #158)',
+      ],
+      changed: [
+        'Skills, soul learnings, and remembered memories are now ranked against the current task so scoped context stays relevant without disappearing across adjacent work types',
+      ],
+      fixed: [
+        'GitHub and local backup restore now validate payload structure, constrain restored files to Jelico-managed paths, and create a local safety snapshot before overwriting backup-managed data (Fixes #158)',
+        'Repeated learning toasts now only fire for genuinely new captures instead of reappearing for previously known patterns (Fixes #157)',
+      ],
+    },
+  },
+  {
     version: '0.38.2',
     date: '2026-03-16',
     changes: {

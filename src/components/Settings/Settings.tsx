@@ -1,10 +1,11 @@
 import { useState, useEffect, useRef } from 'react'
-import { X, Plus, Trash2, Check, AlertCircle, AlertTriangle, Settings as SettingsIcon, Archive, Zap, Database, Edit2, Loader2, Search, HardDrive, Eye, EyeOff, Shield, User, Palette, GripVertical } from 'lucide-react'
+import { X, Plus, Trash2, Check, AlertCircle, AlertTriangle, Settings as SettingsIcon, Archive, Database, Edit2, Loader2, Search, HardDrive, Eye, EyeOff, Shield, User, Palette, GripVertical } from 'lucide-react'
 import { useProviderStore } from '../../stores/providers'
 import { useUIStore } from '../../stores/ui'
 import { useChatStore } from '../../stores/chat'
 import { useContextStore } from '../../stores/context'
 import { SkillManager } from '../Skills/SkillManager'
+import { ShelvingUnitIcon } from '../Brand/ShelvingUnitIcon'
 import { useSkillStore } from '../../stores/skills'
 import { BackupSettings } from './BackupSettings'
 import { GeneralSettings } from './GeneralSettings'
@@ -124,7 +125,7 @@ export function Settings({ onClose }: SettingsProps) {
   const supportedReasoningEfforts = getSupportedReasoningEfforts(editingProvider?.type || '', editModelValue)
 
   useEffect(() => {
-    loadSkills()
+    void loadSkills()
   }, [])
 
   useEffect(() => {
@@ -705,7 +706,7 @@ export function Settings({ onClose }: SettingsProps) {
                 : 'border-transparent text-text-muted hover:text-text-primary'
             }`}
           >
-            <Zap className="w-4 h-4" />
+            <ShelvingUnitIcon className="w-4 h-4" />
             Skills
           </button>
           {/* Microphone tab disabled - WASM crashes on Windows ARM64 */}

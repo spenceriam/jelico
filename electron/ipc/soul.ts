@@ -16,6 +16,7 @@ import {
   analyzeConversation,
   type PatternCategory,
   type SoulPattern,
+  type SoulAnalysisMetadata,
 } from '../services/soul.js'
 
 export function registerSoulHandlers() {
@@ -85,10 +86,7 @@ export function registerSoulHandlers() {
   })
 
   // Analyze a conversation for patterns
-  ipcMain.handle('soul:analyzeConversation', (_, messages: Array<{ role: string; content: string }>, metadata?: {
-    wasSuccessful?: boolean
-    userFeedback?: string
-  }) => {
+  ipcMain.handle('soul:analyzeConversation', (_, messages: Array<{ role: string; content: string }>, metadata?: SoulAnalysisMetadata) => {
     return analyzeConversation(messages, metadata)
   })
 }

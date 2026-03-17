@@ -1,4 +1,5 @@
 import { create } from 'zustand'
+import { useToastStore } from './toasts'
 
 export type PermissionAction = 'allow_always' | 'allow_once' | 'deny'
 
@@ -151,6 +152,12 @@ export const usePermissionStore = create<PermissionStore>((set, get) => ({
         permission,
         workspaceId: pendingRequest.workspaceId,
       })
+
+      useToastStore.getState().addToast({
+        variant: 'success',
+        title: 'Permission remembered',
+        description: 'Jelico will reuse this permission in the current project.',
+      })
     }
 
     // Resolve the pending request
@@ -222,6 +229,12 @@ export const usePermissionStore = create<PermissionStore>((set, get) => ({
           actionPattern: getRememberedActionPattern(mainProcessRequest.toolName, mainProcessRequest.action),
           permission,
           workspaceId: mainProcessRequest.workspaceId,
+        })
+
+        useToastStore.getState().addToast({
+          variant: 'success',
+          title: 'Permission remembered',
+          description: 'Jelico will reuse this permission in the current project.',
         })
       }
     } catch (error) {

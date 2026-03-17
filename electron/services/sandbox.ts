@@ -1,6 +1,7 @@
 import { app } from 'electron'
 import * as fs from 'fs'
 import * as path from 'path'
+import { notifyGithubBackupDataChanged } from './githubBackup.js'
 
 // Sandbox directory for file generation when no workspace is selected
 const SANDBOX_DIR = 'sandbox'
@@ -76,6 +77,7 @@ export function writeSandboxFile(
   }
 
   fs.writeFileSync(fullPath, content, 'utf-8')
+  notifyGithubBackupDataChanged()
   return fullPath
 }
 
@@ -99,6 +101,7 @@ export function deleteSandboxFile(conversationId: string, relativePath: string):
   }
 
   fs.unlinkSync(fullPath)
+  notifyGithubBackupDataChanged()
   return true
 }
 
@@ -107,6 +110,7 @@ export function clearConversationSandbox(conversationId: string): void {
 
   if (fs.existsSync(conversationPath)) {
     fs.rmSync(conversationPath, { recursive: true, force: true })
+    notifyGithubBackupDataChanged()
   }
 }
 

@@ -19,6 +19,7 @@
 import { app } from 'electron'
 import * as fs from 'fs'
 import * as path from 'path'
+import { notifyGithubBackupDataChanged } from './githubBackup.js'
 
 const ARTIFACTS_DIR = 'artifacts'
 const JELICO_DIR = '.jelico'
@@ -263,6 +264,7 @@ export function writeArtifactFile(
   }
 
   fs.writeFileSync(filePath, content, 'utf-8')
+  notifyGithubBackupDataChanged()
   return filePath
 }
 
@@ -287,6 +289,7 @@ export function deleteArtifactFile(filePath: string): boolean {
   try {
     if (fs.existsSync(filePath)) {
       fs.unlinkSync(filePath)
+      notifyGithubBackupDataChanged()
       return true
     }
   } catch (error) {
@@ -304,6 +307,7 @@ export function deleteConversationArtifacts(conversationId: string): void {
   try {
     if (fs.existsSync(conversationPath)) {
       fs.rmSync(conversationPath, { recursive: true, force: true })
+      notifyGithubBackupDataChanged()
     }
   } catch (error) {
     console.error(`[ArtifactFiles] Error deleting conversation artifacts: ${conversationId}`, error)

@@ -11,6 +11,7 @@ import {
   artifactFileExists,
   sanitizeFilename,
 } from './artifactFiles'
+import { notifyGithubBackupDataChanged } from './githubBackup.js'
 
 // Simple JSON file-based storage for Phase 1
 // More reliable than sql.js with Electron bundling
@@ -121,6 +122,7 @@ function loadDb(): void {
 function saveDb(): void {
   try {
     fs.writeFileSync(getDbPath(), JSON.stringify(db, null, 2))
+    notifyGithubBackupDataChanged()
   } catch (err) {
     console.error('Failed to save database:', err)
   }
