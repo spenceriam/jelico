@@ -110,16 +110,13 @@ export function collectBackupPayload(options?: { tolerateMalformedJson?: boolean
     version: 1,
     exportedAt: Date.now(),
     appVersion: app.getVersion(),
+    files,
     database: readJsonIfPresent(getDatabasePath(), {
       tolerateParseErrors: options?.tolerateMalformedJson,
     }),
     soul: readJsonIfPresent(getSoulPath(), {
       tolerateParseErrors: options?.tolerateMalformedJson,
     }),
-  }
-
-  if (Object.keys(files).length > 0) {
-    payload.files = files
   }
 
   return payload
@@ -152,14 +149,12 @@ export function applyBackupPayload(payloadInput: BackupPayload | unknown): {
     fs.writeFileSync(soulPath, JSON.stringify(payload.soul, null, 2))
   }
 
-  if (payload.files) {
-    restoreFiles(payload.files)
-  }
+  restoreFiles(payload.files || {})
 
   return {
     database: Boolean(payload.database),
     soul: Boolean(payload.soul),
-    filesRestored: payload.files ? Object.keys(payload.files).length : 0,
+    filesRestored: Object.keys(payload.files || {}).length,
   }
 }
 

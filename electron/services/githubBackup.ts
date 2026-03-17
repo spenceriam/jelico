@@ -31,6 +31,7 @@ const DEFAULT_SCHEDULE_HOURS = 24
 let scheduleTimer: NodeJS.Timeout | null = null
 let changeTimer: NodeJS.Timeout | null = null
 let activeBackupPromise: Promise<{ success: boolean; backupPath?: string; error?: string }> | null = null
+let pendingOnChangeBackup = false
 
 function getConfigPath(): string {
   return path.join(app.getPath('userData'), CONFIG_FILE)
@@ -218,6 +219,9 @@ export async function saveGithubBackupSettings(input: {
 
 export async function runGithubBackup(trigger: GithubBackupTrigger): Promise<{ success: boolean; backupPath?: string; error?: string }> {
   if (activeBackupPromise) {
+    if (trigger === 'on_change') {
+      pendingOnChangeBackup = true
+    }
     return activeBackupPromise
   }
 
@@ -265,6 +269,10 @@ export async function runGithubBackup(trigger: GithubBackupTrigger): Promise<{ s
       return { success: false, error: message }
     } finally {
       activeBackupPromise = null
+      if (pendingOnChangeBackup) {
+        pendingOnChangeBackup = false
+        void runGithubBackup('on_change')
+      }
     }
   })()
 
