@@ -221,17 +221,17 @@ export async function runGithubBackup(trigger: GithubBackupTrigger): Promise<{ s
     return activeBackupPromise
   }
 
+  const config = loadConfig()
+  const token = await keychainService.getApiKey(TOKEN_KEY)
+
+  if (!config.repoUrl) {
+    return { success: false, error: 'Configure a GitHub repository first.' }
+  }
+  if (!token) {
+    return { success: false, error: 'Add a GitHub personal access token first.' }
+  }
+
   activeBackupPromise = (async () => {
-    const config = loadConfig()
-    const token = await keychainService.getApiKey(TOKEN_KEY)
-
-    if (!config.repoUrl) {
-      return { success: false, error: 'Configure a GitHub repository first.' }
-    }
-    if (!token) {
-      return { success: false, error: 'Add a GitHub personal access token first.' }
-    }
-
     try {
       const target = parseRepoUrl(config.repoUrl)
       const metadata = await getRepositoryMetadata(target, token)

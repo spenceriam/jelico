@@ -13,6 +13,7 @@ import { notifyUserEvent } from '../lib/notifications'
 import { createInlineToolProtocolFilter } from '../lib/inlineToolProtocol'
 import { resolveStreamReasoningEffort } from '../lib/conversationReasoning'
 import { hasIncompleteToolEvidence } from './chatInterruption'
+import { buildSoulLearningMessages } from './chatLearning'
 import { useToastStore } from './toasts'
 import {
   getNextProcessableQueuedMessageIndex,
@@ -2024,19 +2025,26 @@ export const useChatStore = create<ChatStore>((set, get) => ({
         const targetConversation = get().conversations.find(
           (conversation) => conversation.id === targetConversationId
         )
-        const recentLearningMessages = [...updatedMessages, messageWithTools]
-          .slice(-8)
-          .map((message) => ({
+        const recentLearningMessages = buildSoulLearningMessages(
+          updatedMessages.map((message) => ({
             role: message.role,
             content: message.content,
-          }))
+          })),
+          {
+            role: messageWithTools.role,
+            content: messageWithTools.content,
+          },
+          _isRegenerate
+        )
 
         try {
-          const analysis = await window.jelico.soul.analyzeConversation(recentLearningMessages, {
-            workspaceId: targetConversation?.workspaceId,
-            conversationId: targetConversationId,
-            latestUserText: content,
-          })
+          const analysis = recentLearningMessages.length > 0
+            ? await window.jelico.soul.analyzeConversation(recentLearningMessages, {
+              workspaceId: targetConversation?.workspaceId,
+              conversationId: targetConversationId,
+              latestUserText: content,
+            })
+            : { captured: [] }
 
           analysis.captured?.slice(0, 2).forEach((entry) => {
             useToastStore.getState().addToast({
