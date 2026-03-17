@@ -4,6 +4,7 @@ import * as path from 'path'
 import { v4 as uuid } from 'uuid'
 import { memoryDb } from './database.js'
 import { notifyGithubBackupDataChanged } from './githubBackup.js'
+import { mergeTaskTypes, normalizeTaskTypes } from './soulTaskTypes.js'
 
 export type PatternCategory =
   | 'coding_style'
@@ -170,11 +171,6 @@ function normalizeLearnedText(value: string): string {
   return value.replace(/\s+/g, ' ').trim()
 }
 
-function normalizeTaskTypes(taskTypes: unknown): string[] {
-  if (!Array.isArray(taskTypes)) return []
-  return [...new Set(taskTypes.filter((value): value is string => typeof value === 'string' && value.trim().length > 0))]
-}
-
 function buildMemoryKey(prefix: string, statement: string): string {
   return `${prefix}:${normalizeLearnedText(statement).toLowerCase().slice(0, 120)}`
 }
@@ -327,6 +323,7 @@ function recordMemory(
 ) : boolean {
   const key = buildMemoryKey(category, statement)
   const existing = memoryDb.getByKey(scope, getScopeId(scope, workspaceId, conversationId), key)
+  const mergedTaskTypes = mergeTaskTypes(extractMemoryTaskTypes(existing?.value), taskTypes)
 
   memoryDb.create({
     scope,
@@ -335,7 +332,7 @@ function recordMemory(
     key,
     value: {
       statement,
-      taskTypes,
+      taskTypes: mergedTaskTypes,
     },
     confidence,
     source: 'explicit',
