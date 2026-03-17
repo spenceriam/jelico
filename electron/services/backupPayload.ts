@@ -149,7 +149,9 @@ export function applyBackupPayload(payloadInput: BackupPayload | unknown): {
     fs.writeFileSync(soulPath, JSON.stringify(payload.soul, null, 2))
   }
 
-  restoreFiles(payload.files || {})
+  if (payload.files !== undefined) {
+    restoreFiles(payload.files)
+  }
 
   return {
     database: Boolean(payload.database),

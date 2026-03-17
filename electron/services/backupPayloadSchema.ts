@@ -85,6 +85,7 @@ export function validateBackupPayload(payload: unknown): BackupPayload {
   }
 
   const files = payload.files
+  const hasFilesSection = files !== undefined
   const normalizedFiles: Record<string, string> = {}
   if (files !== undefined) {
     if (!isPlainObject(files)) {
@@ -101,7 +102,7 @@ export function validateBackupPayload(payload: unknown): BackupPayload {
 
   const hasRestorableSection = payload.database !== undefined ||
     payload.soul !== undefined ||
-    Object.keys(normalizedFiles).length > 0
+    hasFilesSection
 
   if (!hasRestorableSection) {
     throw new Error('Backup payload does not contain any restorable data')
@@ -113,6 +114,6 @@ export function validateBackupPayload(payload: unknown): BackupPayload {
     appVersion: typeof payload.appVersion === 'string' ? payload.appVersion : 'unknown',
     database: payload.database,
     soul: payload.soul,
-    ...(Object.keys(normalizedFiles).length > 0 ? { files: normalizedFiles } : {}),
+    ...(hasFilesSection ? { files: normalizedFiles } : {}),
   }
 }

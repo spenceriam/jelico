@@ -44,6 +44,17 @@ test('validateBackupPayload requires metadata and normalizes file keys', () => {
   })
 })
 
+test('validateBackupPayload preserves an explicit empty files snapshot', () => {
+  const payload = validateBackupPayload({
+    version: 1,
+    exportedAt: 1234,
+    appVersion: '0.39.0',
+    files: {},
+  })
+
+  assert.deepEqual(payload.files, {})
+})
+
 test('validateBackupPayload rejects malformed content before restore', () => {
   assert.throws(() => validateBackupPayload(null), /Invalid backup format/)
   assert.throws(() => validateBackupPayload({
