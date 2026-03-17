@@ -182,6 +182,16 @@ export function normalizeSkillTags(tags: string[]): string[] {
   return [...new Set(tags.map((tag) => normalizeText(tag).toLowerCase()).filter(Boolean))]
 }
 
+function escapeRegex(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+}
+
+function matchesSkillTag(request: string, tag: string): boolean {
+  const escapedTag = escapeRegex(tag)
+  const boundaryPattern = new RegExp(`(^|[^a-z0-9+#])${escapedTag}(?=$|[^a-z0-9+#])`, 'i')
+  return boundaryPattern.test(request)
+}
+
 export function serializeSkillContent(draft: SkillDraft): string {
   const normalizedDraft: SkillDraft = {
     ...draft,
@@ -340,13 +350,13 @@ export function createLegacySkillDraft(input: LegacySkillInput): SkillDraft {
 }
 
 function scoreIntentMatch(skill: SkillRecord, request: string): number {
-  const normalizedRequest = request.toLowerCase()
+  const normalizedRequest = normalizeText(request).toLowerCase()
   if (!normalizedRequest.trim()) return 0
 
   let score = 0
 
   for (const tag of skill.tags) {
-    if (normalizedRequest.includes(tag)) {
+    if (matchesSkillTag(normalizedRequest, tag)) {
       score += 4
     }
   }

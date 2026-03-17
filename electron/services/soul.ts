@@ -323,7 +323,7 @@ function recordMemory(
 ) : boolean {
   const key = buildMemoryKey(category, statement)
   const existing = memoryDb.getByKey(scope, getScopeId(scope, workspaceId, conversationId), key)
-  const mergedTaskTypes = mergeTaskTypes(extractMemoryTaskTypes(existing?.value), taskTypes)
+  const mergedTaskTypes = mergeTaskTypes(getMemoryTaskTypes(existing?.value), taskTypes)
 
   memoryDb.create({
     scope,
