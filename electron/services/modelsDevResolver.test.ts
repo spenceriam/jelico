@@ -39,6 +39,25 @@ const indexes = buildModelsDevIndexes({
       },
     },
   },
+  nebius: {
+    id: 'nebius',
+    name: 'Nebius',
+    api: 'https://api.studio.nebius.com/v1',
+    models: {
+      'NousResearch/Hermes-4-405B': {
+        id: 'NousResearch/Hermes-4-405B',
+        name: 'Hermes 4 405B',
+        reasoning: true,
+        tool_call: true,
+        release_date: '2026-03',
+        last_updated: '2026-03',
+        limit: {
+          context: 262144,
+          output: 131072,
+        },
+      },
+    },
+  },
 })
 
 test('provider-specific model ids can resolve to preferred provider models', () => {
@@ -94,5 +113,29 @@ test('compatible provider base URLs can anchor provider-specific names to models
       providerName: 'Kimi For Coding',
     }),
     32768
+  )
+})
+
+test('generic compatible providers do not inherit foreign global output limits without a provider match', () => {
+  const options = {
+    baseUrl: 'https://inference-api.nousresearch.com/v1',
+    providerName: 'Nous Research',
+  }
+
+  assert.equal(
+    lookupModelsDevOutputLimitInIndexes(indexes, 'openai-compatible', 'Hermes-4-405B', options),
+    null
+  )
+
+  const metadata = lookupModelsDevModelMetadataInIndexes(
+    indexes,
+    'openai-compatible',
+    'Hermes-4-405B',
+    options
+  )
+  assert.equal(metadata?.providerKey, 'nebius')
+  assert.equal(
+    lookupModelsDevContextLimitInIndexes(indexes, 'openai-compatible', 'Hermes-4-405B', options),
+    262144
   )
 })

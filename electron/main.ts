@@ -11,6 +11,7 @@ import { registerArtifactHandlers } from './ipc/artifacts'
 import { registerSandboxHandlers } from './ipc/sandbox'
 import { registerMemoryHandlers } from './ipc/memory'
 import { registerPermissionHandlers } from './ipc/permissions'
+import { registerQueueHandlers } from './ipc/queue'
 import { registerTodoHandlers } from './ipc/todos'
 import { registerSoulHandlers } from './ipc/soul'
 import { registerBackupHandlers } from './ipc/backup'
@@ -398,6 +399,7 @@ if (gotSingleInstanceLock) {
     registerSandboxHandlers()
     registerMemoryHandlers()
     registerPermissionHandlers()
+    registerQueueHandlers()
     registerTodoHandlers()
     registerSoulHandlers()
     registerBackupHandlers()

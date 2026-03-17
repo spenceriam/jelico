@@ -71,6 +71,7 @@ import {
   isMeaningfulTurnToolResult,
   type IncompleteToolStart,
 } from '../lib/turnToolSemantics'
+import { buildReasoningProviderOptions, sanitizeReasoningEffort } from '../../src/lib/reasoning'
 
 // Start orphan cleanup on module load
 startOrphanCleanup()
@@ -4136,11 +4137,18 @@ If you find yourself frequently hitting limits, suggest breaking the task into m
       // Retry loop for transient errors
       let lastError: any = null
       const streamMaxTokens = await resolveProviderMaxOutputTokens(providerConfig, modelId)
+      const validatedReasoningEffort = sanitizeReasoningEffort(
+        providerConfig.type,
+        modelId,
+        params.reasoningEffort
+      )
+      const providerOptions = buildReasoningProviderOptions(providerConfig.type, modelId, validatedReasoningEffort)
       if (DEBUG_API_REQUESTS) {
         console.log('\n[AI] ========== STREAM START ==========')
         console.log('[AI] Model:', modelId)
         console.log('[AI] Mode:', mode)
         console.log('[AI] Provider type:', providerConfig.type)
+        console.log('[AI] Reasoning effort:', validatedReasoningEffort ?? '(provider default)')
         console.log('[AI] Capability profile:', modelCapabilityProfile)
         console.log('[AI] Max output tokens:', streamMaxTokens ?? '(provider default)')
         console.log('[AI] Tool count:', Object.keys(tools).length)
@@ -4184,6 +4192,7 @@ If you find yourself frequently hitting limits, suggest breaking the task into m
             messages,
             tools,
             toolChoice: 'auto',
+            providerOptions,
             maxOutputTokens: streamMaxTokens,
             stopWhen: stepCountIs(MAX_TOOL_STEPS),
             abortSignal: abortController.signal,
@@ -4282,7 +4291,7 @@ If you find yourself frequently hitting limits, suggest breaking the task into m
             const previewCount = Math.min(taskTexts.length, 20)
             const lines = taskTexts
               .slice(0, previewCount)
-              .map((task, idx) => `${idx + 1}. ${truncateSnippet(task, 84)}`)
+              .map((task, idx) => `${idx + 1}. ${task}`)
 
             const extraCount = taskTexts.length - previewCount
             const extraLine = extraCount > 0

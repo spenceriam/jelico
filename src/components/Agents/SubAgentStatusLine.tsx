@@ -16,7 +16,9 @@ export function SubAgentStatusLine() {
 
   // Only show running agents for the current conversation
   const runningAgents = agents.filter(
-    (a) => a.status === 'running' && a.conversationId === activeConversationId
+    (a) =>
+      (a.status === 'running' || a.status === 'waiting_for_input') &&
+      a.conversationId === activeConversationId
   )
 
   if (runningAgents.length === 0) return null

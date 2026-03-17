@@ -9,10 +9,13 @@ contextBridge.exposeInMainWorld('jelico', {
     create: (provider: any) => ipcRenderer.invoke('providers:create', provider),
     update: (id: string, updates: any) => ipcRenderer.invoke('providers:update', id, updates),
     delete: (id: string) => ipcRenderer.invoke('providers:delete', id),
+    reorder: (ids: string[]) => ipcRenderer.invoke('providers:reorder', ids),
     test: (id: string) => ipcRenderer.invoke('providers:test', id),
     previewModels: (type: string, apiKey: string, baseUrl?: string) =>
       ipcRenderer.invoke('providers:previewModels', type, apiKey, baseUrl),
     fetchOpenRouterModels: (apiKey: string) => ipcRenderer.invoke('providers:fetchOpenRouterModels', apiKey),
+    getModelLimits: (providerId: string, modelId: string) =>
+      ipcRenderer.invoke('providers:getModelLimits', providerId, modelId),
     getModelContextSize: (providerId: string, modelId: string) =>
       ipcRenderer.invoke('providers:getModelContextSize', providerId, modelId),
   },
@@ -34,12 +37,18 @@ contextBridge.exposeInMainWorld('jelico', {
       ipcRenderer.invoke('conversations:updateWorkspaceId', id, workspaceId),
     updateModelProvider: (id: string, providerId: string, model: string) =>
       ipcRenderer.invoke('conversations:updateModelProvider', id, providerId, model),
+    updateReasoningEffort: (id: string, reasoningEffort: string | null) =>
+      ipcRenderer.invoke('conversations:updateReasoningEffort', id, reasoningEffort),
     transferToWorkspace: (id: string, workspaceId: string | null) =>
       ipcRenderer.invoke('conversations:transferToWorkspace', id, workspaceId),
     getArtifactCount: (id: string) => ipcRenderer.invoke('conversations:getArtifactCount', id),
     archive: (id: string) => ipcRenderer.invoke('conversations:archive', id),
     restore: (id: string) => ipcRenderer.invoke('conversations:restore', id),
     delete: (id: string) => ipcRenderer.invoke('conversations:delete', id),
+  },
+  queue: {
+    list: () => ipcRenderer.invoke('queue:list'),
+    replaceAll: (queuedMessages: any[]) => ipcRenderer.invoke('queue:replaceAll', queuedMessages),
   },
   workspaces: {
     list: () => ipcRenderer.invoke('workspaces:list'),

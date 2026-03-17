@@ -8,10 +8,25 @@ import { useContextStore, estimateTokens } from './context'
 import { useTodoStore } from './todos'
 import { useClarificationStore } from './clarification'
 import { useDecisionPromptStore } from './decisionPrompt'
+import { useProviderStore } from './providers'
 import { notifyUserEvent } from '../lib/notifications'
 import { createInlineToolProtocolFilter } from '../lib/inlineToolProtocol'
+import { resolveStreamReasoningEffort } from '../lib/conversationReasoning'
 import { hasIncompleteToolEvidence } from './chatInterruption'
 import { useToastStore } from './toasts'
+import {
+  getNextProcessableQueuedMessageIndex,
+  getPersistableQueuedMessages,
+  markQueuedMessageAsPriority,
+  getQueuePanelAnchor,
+  getQueuePanelConversationKey,
+  getQueuedCountForConversation,
+  getVisibleQueuedMessages,
+  insertQueuedMessageAtAnchor,
+  mergeHydratedQueuedMessages,
+  type QueuePanelAnchor,
+  type QueuePanelPendingEdit,
+} from '../lib/chatQueuePanel'
 
 export interface MessageUsage {
   promptTokens: number
@@ -95,6 +110,7 @@ interface Conversation {
   workspaceId?: string
   model: string
   providerId: string
+  reasoningEffort?: ReasoningEffort | null
   mode?: AgentMode
   archivedAt?: number | null
   createdAt: number
@@ -103,13 +119,17 @@ interface Conversation {
 }
 
 // Message queue for queuing messages while streaming
-interface QueuedMessage {
+export interface QueuedMessage {
+  id: string
   content: string
   attachments?: MessageAttachment[]
   providerId: string
   model: string
   conversationId?: string | null
+  sendNowRequestedAt?: number | null
 }
+
+interface PendingQueuedEdit extends QueuePanelPendingEdit<QueuedMessage> {}
 
 // System notifications that appear inline in chat
 export type SystemNotificationType =
@@ -168,6 +188,7 @@ interface ChatStore {
   messages: Message[]
   conversationStreams: Record<string, ConversationStreamState>
   interruptedConversations: Record<string, InterruptedConversationState>
+  conversationErrors: Record<string, string>
   isStreaming: boolean
   streamingContent: string
   streamingToolCalls: ToolCall[]
@@ -181,6 +202,11 @@ interface ChatStore {
   modeTransitioning: boolean
   modeSwitchReason: string | null
   messageQueue: QueuedMessage[]
+  pendingQueuedEdit: PendingQueuedEdit | null
+  hasHydratedQueuedMessages: boolean
+  queueMutationVersion: number
+  preHydrationDeletedQueuedMessageIds: Record<string, true>
+  queuePanelExpandedByConversation: Record<string, boolean>
   lastCompletedTool: { name: string; args: Record<string, unknown>; completedAt: number } | null
   // Status display queue for graceful UX - ensures each status shows for minimum time
   statusDisplayQueue: StatusDisplayItem[]
@@ -197,7 +223,14 @@ interface ChatStore {
   createConversation: (providerId: string, model: string, initialMessageHint?: string) => Promise<string>
   setActiveConversation: (id: string | null) => Promise<void>
   sendMessage: (content: string, providerId: string, model: string, attachments?: MessageAttachment[]) => Promise<void>
+  updateExistingMessage: (messageId: string, updates: { content: string; attachments?: MessageAttachment[] }) => Promise<Message | null>
   queueMessage: (content: string, providerId: string, model: string, attachments?: MessageAttachment[], conversationId?: string | null) => void
+  setQueuePanelExpanded: (conversationId: string | null | undefined, expanded: boolean) => void
+  startQueuedMessageEdit: (queueIndex: number) => PendingQueuedEdit | null
+  cancelQueuedMessageEdit: () => void
+  commitQueuedMessageEdit: (queuedMessage: QueuedMessage) => void
+  removeQueuedMessage: (queueIndex: number) => void
+  restoreQueuedMessage: (queuedMessage: QueuedMessage, anchor: QueuePanelAnchor) => void
   processQueue: () => Promise<void>
   sendQueuedNow: (queueIndex: number) => Promise<boolean>
   stopStreaming: () => Promise<void>
@@ -212,6 +245,13 @@ interface ChatStore {
   addSystemNotification: (notification: Omit<SystemNotification, 'id' | 'timestamp'>) => void
   clearSystemNotifications: () => void
   setConversationWorkspaceId: (id: string, workspaceId: string | null) => void
+  setConversationModelSelection: (
+    id: string,
+    providerId: string,
+    model: string,
+    reasoningEffort: ReasoningEffort | null
+  ) => void
+  setConversationReasoningEffort: (id: string, reasoningEffort: ReasoningEffort | null) => void
   getRegenerateArtifactImpact: () => { artifacts: Array<{ id: string; title: string; type: string }> }
 }
 
@@ -223,6 +263,8 @@ const WORKTREE_MENTION_COOLDOWN_MS = 5 * 60 * 1000
 const worktreeGuidanceByConversation = new Map<string, { planningShown: boolean; lastMentionAt: number }>()
 const DEFAULT_MODE_PREFERENCE_KEY = 'defaultMode'
 const AGENT_MODES: AgentMode[] = ['auto', 'execute', 'plan', 'explore', 'review']
+const createQueuedMessageId = () => `queued-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`
+let persistQueuedMessagesPromise: Promise<void> = Promise.resolve()
 const FULL_EXECUTE_CONFIRM_MESSAGE = [
   'Enable Full Execute?',
   '',
@@ -230,6 +272,134 @@ const FULL_EXECUTE_CONFIRM_MESSAGE = [
   'Use this only in environments you trust (for example, a sandbox, VM, or disposable workspace).',
   'You are responsible for actions taken in this mode.',
 ].join('\n')
+
+function toPersistedQueuedMessage(queuedMessage: QueuedMessage): QueuedMessageData {
+  return {
+    id: queuedMessage.id,
+    content: queuedMessage.content,
+    attachments: queuedMessage.attachments,
+    providerId: queuedMessage.providerId,
+    model: queuedMessage.model,
+    conversationId: queuedMessage.conversationId ?? null,
+    sendNowRequestedAt: queuedMessage.sendNowRequestedAt ?? null,
+  }
+}
+
+function fromPersistedQueuedMessage(queuedMessage: QueuedMessageData): QueuedMessage {
+  return {
+    id: queuedMessage.id,
+    content: queuedMessage.content,
+    attachments: queuedMessage.attachments,
+    providerId: queuedMessage.providerId,
+    model: queuedMessage.model,
+    conversationId: queuedMessage.conversationId ?? null,
+    sendNowRequestedAt: queuedMessage.sendNowRequestedAt ?? null,
+  }
+}
+
+function filterQueuedMessagesByConversationIds(
+  messageQueue: QueuedMessage[],
+  conversationIds: Set<string>
+): QueuedMessage[] {
+  return messageQueue.filter((queuedMessage) => (
+    queuedMessage.conversationId == null || conversationIds.has(queuedMessage.conversationId)
+  ))
+}
+
+function syncQueuePanelExpandedByConversation(
+  currentExpandedByConversation: Record<string, boolean>,
+  messageQueue: QueuedMessage[]
+): Record<string, boolean> {
+  return messageQueue.reduce<Record<string, boolean>>((nextExpandedByConversation, queuedMessage) => {
+    const queueKey = getQueuePanelConversationKey(queuedMessage.conversationId)
+    nextExpandedByConversation[queueKey] = currentExpandedByConversation[queueKey] ?? true
+    return nextExpandedByConversation
+  }, {})
+}
+
+function getQueuedMessageTargetConversationId(
+  queuedMessage: QueuedMessage,
+  fallbackConversationId: string | null
+): string | null {
+  return queuedMessage.conversationId ?? fallbackConversationId
+}
+
+function getBlockedQueuedConversationIds(
+  conversationStreams: Record<string, ConversationStreamState>
+): Set<string> {
+  const blockedConversationIds = new Set<string>()
+
+  for (const [conversationId, streamState] of Object.entries(conversationStreams)) {
+    if (streamState.isStreaming) {
+      blockedConversationIds.add(conversationId)
+    }
+  }
+
+  const { compactingConversations } = useContextStore.getState()
+  for (const [conversationId, isCompacting] of Object.entries(compactingConversations)) {
+    if (isCompacting) {
+      blockedConversationIds.add(conversationId)
+    }
+  }
+
+  return blockedConversationIds
+}
+
+async function loadKnownConversationIds(): Promise<Set<string>> {
+  const [conversations, archivedConversations] = await Promise.all([
+    window.jelico.conversations.list(),
+    window.jelico.conversations.listArchived(),
+  ])
+
+  return new Set([
+    ...conversations.map((conversation) => conversation.id),
+    ...archivedConversations.map((conversation) => conversation.id),
+  ])
+}
+
+function persistQueuedMessages(messageQueue: QueuedMessage[], shouldMergePersistedQueue = false): void {
+  if (typeof window === 'undefined' || !window.jelico?.queue) return
+
+  persistQueuedMessagesPromise = persistQueuedMessagesPromise
+    .catch(() => undefined)
+    .then(async () => {
+      let nextQueue = messageQueue
+      if (shouldMergePersistedQueue) {
+        const persistedQueuedMessages = await loadPersistedQueuedMessages()
+        if (persistedQueuedMessages === null) {
+          return
+        }
+
+        const { preHydrationDeletedQueuedMessageIds } = useChatStore.getState()
+        nextQueue = mergeHydratedQueuedMessages(
+          persistedQueuedMessages,
+          messageQueue,
+          Object.keys(preHydrationDeletedQueuedMessageIds)
+        )
+      }
+
+      const conversationIds = await loadKnownConversationIds()
+      nextQueue = filterQueuedMessagesByConversationIds(nextQueue, conversationIds)
+
+      const queuedMessages = nextQueue.map(toPersistedQueuedMessage)
+      await window.jelico.queue.replaceAll(queuedMessages)
+    })
+    .catch((error) => {
+      console.error('[Chat Store] Failed to persist queued messages:', error)
+    })
+}
+
+async function loadPersistedQueuedMessages(): Promise<QueuedMessage[] | null> {
+  if (typeof window === 'undefined' || !window.jelico?.queue) return []
+
+  try {
+    const queuedMessages = await window.jelico.queue.list()
+    return queuedMessages.map(fromPersistedQueuedMessage)
+  } catch (error) {
+    console.error('[Chat Store] Failed to load queued messages:', error)
+    return null
+  }
+}
 
 function isAgentMode(value: unknown): value is AgentMode {
   return typeof value === 'string' && AGENT_MODES.includes(value as AgentMode)
@@ -618,6 +788,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
   messages: [],
   conversationStreams: {},
   interruptedConversations: {},
+  conversationErrors: {},
   modeTransitioning: false,
   modeSwitchReason: null,
   lastCompletedTool: null,
@@ -631,6 +802,11 @@ export const useChatStore = create<ChatStore>((set, get) => ({
   error: null,
   mode: 'auto' as AgentMode,
   messageQueue: [],
+  pendingQueuedEdit: null,
+  hasHydratedQueuedMessages: false,
+  queueMutationVersion: 0,
+  preHydrationDeletedQueuedMessageIds: {},
+  queuePanelExpandedByConversation: {},
   statusDisplayQueue: [],
   toolInputProgress: null,
   isReasoning: false,
@@ -640,8 +816,58 @@ export const useChatStore = create<ChatStore>((set, get) => ({
   loadConversations: async () => {
     set({ isLoading: true })
     try {
-      const conversations = await window.jelico.conversations.list()
-      set({ conversations, isLoading: false })
+      let queueMutationVersionForSnapshot = get().queueMutationVersion
+      let [conversations, conversationIds, persistedQueuedMessages] = await Promise.all([
+        window.jelico.conversations.list(),
+        loadKnownConversationIds(),
+        loadPersistedQueuedMessages(),
+      ])
+
+      if (get().queueMutationVersion !== queueMutationVersionForSnapshot) {
+        await persistQueuedMessagesPromise.catch(() => undefined)
+        queueMutationVersionForSnapshot = get().queueMutationVersion
+        ;[conversations, conversationIds, persistedQueuedMessages] = await Promise.all([
+          window.jelico.conversations.list(),
+          loadKnownConversationIds(),
+          loadPersistedQueuedMessages(),
+        ])
+      }
+
+      const queueMutationVersionBeforeApply = get().queueMutationVersion
+
+      set((state) => {
+        const shouldApplyPersistedQueue = queueMutationVersionBeforeApply === queueMutationVersionForSnapshot
+        const pendingQueuedEdit = state.pendingQueuedEdit && (
+          state.pendingQueuedEdit.queuedMessage.conversationId == null ||
+          conversationIds.has(state.pendingQueuedEdit.queuedMessage.conversationId)
+        )
+          ? state.pendingQueuedEdit
+          : null
+        const nextQueuedMessages = shouldApplyPersistedQueue
+          ? (persistedQueuedMessages ?? state.messageQueue)
+          : state.messageQueue
+        const messageQueue = filterQueuedMessagesByConversationIds(
+          getVisibleQueuedMessages(nextQueuedMessages, pendingQueuedEdit),
+          conversationIds
+        )
+
+        return {
+          conversations,
+          messageQueue,
+          pendingQueuedEdit,
+          hasHydratedQueuedMessages: shouldApplyPersistedQueue && persistedQueuedMessages !== null
+            ? true
+            : state.hasHydratedQueuedMessages,
+          preHydrationDeletedQueuedMessageIds: shouldApplyPersistedQueue && persistedQueuedMessages !== null
+            ? {}
+            : state.preHydrationDeletedQueuedMessageIds,
+          queuePanelExpandedByConversation: syncQueuePanelExpandedByConversation(
+            state.queuePanelExpandedByConversation,
+            messageQueue
+          ),
+          isLoading: false,
+        }
+      })
     } catch (error: any) {
       set({ error: error.message, isLoading: false })
     }
@@ -722,6 +948,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
         title: 'New chat',
         model,
         providerId,
+        reasoningEffort: useProviderStore.getState().activeReasoningEffort,
         workspaceId: targetWorkspaceId || undefined,
       })
       const conversations = await window.jelico.conversations.list()
@@ -729,6 +956,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
         conversations,
         activeConversationId: conversation.id,
         messages: [],
+        error: null,
       })
       useTodoStore.getState().setConversationId(conversation.id)
       useClarificationStore.getState().setConversationId(conversation.id)
@@ -793,6 +1021,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
           activeConversationId: id,
           messages: loadedMessages,
           isLoading: false,
+          error: state.conversationErrors[id] || null,
           modeTransitioning: false,
           modeSwitchReason: null,
           ...projectStreamStateToActiveFields(streamState),
@@ -801,6 +1030,13 @@ export const useChatStore = create<ChatStore>((set, get) => ({
       useTodoStore.getState().hydrateConversationFromMessages(id, loadedMessages)
       useTodoStore.getState().setConversationId(id)
       useClarificationStore.getState().setConversationId(id)
+      if (conversation?.providerId && conversation?.model) {
+        useProviderStore.getState().setActiveSelection(
+          conversation.providerId,
+          conversation.model,
+          conversation.reasoningEffort ?? null
+        )
+      }
 
       const activeStreamState = get().conversationStreams[id]
       const pendingCheckpoint = getPendingStreamCheckpoint(id)
@@ -928,6 +1164,15 @@ export const useChatStore = create<ChatStore>((set, get) => ({
     if (!conversationId) return
 
     const targetConversationId = conversationId
+    set((state) => {
+      const nextConversationErrors = { ...state.conversationErrors }
+      delete nextConversationErrors[targetConversationId]
+      return {
+        conversationErrors: nextConversationErrors,
+        error: state.activeConversationId === targetConversationId ? null : state.error,
+      }
+    })
+
     // Clean up stale running rows from previous turns before starting a new stream.
     // This is especially important for legacy agents that were created before parentId linkage.
     useAgentStore.getState().cancelRunningAgentsByConversation(targetConversationId)
@@ -968,10 +1213,16 @@ export const useChatStore = create<ChatStore>((set, get) => ({
     const activeWorkspace = workspaceState.workspaces.find(
       (workspace) => workspace.id === workspaceState.activeWorkspaceId
     )
+    const providerState = useProviderStore.getState()
+    const targetProvider = providerState.providers.find((provider) => provider.id === providerId) || null
 
+    let targetConversation = get().conversations.find(
+      (conversation) => conversation.id === targetConversationId
+    ) || null
     let contextMessages = messages
     if (targetConversationId !== activeConversationId) {
       const conversation = await window.jelico.conversations.get(targetConversationId)
+      targetConversation = conversation || targetConversation
       contextMessages = conversation?.messages || []
     }
 
@@ -1155,9 +1406,20 @@ export const useChatStore = create<ChatStore>((set, get) => ({
     // Start streaming with mode, workspace, and artifact context
     let channelId: string
     try {
+      const streamReasoningEffort = resolveStreamReasoningEffort({
+        activeConversationId,
+        targetConversationId,
+        providerType: targetProvider?.type || '',
+        modelId: model,
+        activeReasoningEffort: providerState.activeReasoningEffort,
+        targetProviderDefaultReasoningEffort: targetProvider?.defaultReasoningEffort ?? null,
+        targetConversationReasoningEffort: targetConversation?.reasoningEffort ?? null,
+      })
+
       channelId = window.jelico.ai.stream({
         providerId,
         model,
+        reasoningEffort: streamReasoningEffort,
         mode: finalMode,
         messages: aiMessages,
         workspacePath: activeWorkspace?.path,
@@ -1168,7 +1430,14 @@ export const useChatStore = create<ChatStore>((set, get) => ({
       console.error('[Chat Store] Failed to start stream:', error)
       clearPendingStreamCheckpoint(targetConversationId)
       clearConversationStreamState()
-      set({ error: error?.message || 'Failed to start AI stream' })
+      const message = error?.message || 'Failed to start AI stream'
+      set((state) => ({
+        conversationErrors: {
+          ...state.conversationErrors,
+          [targetConversationId]: message,
+        },
+        error: state.activeConversationId === targetConversationId ? message : state.error,
+      }))
       return
     }
     streamChannelByConversation.set(targetConversationId, channelId)
@@ -1519,13 +1788,22 @@ export const useChatStore = create<ChatStore>((set, get) => ({
         result: update.result,
         error: update.error,
         toolCalls: mappedToolCalls,
-        completedAt: update.status === 'completed' || update.status === 'failed' ? Date.now() : undefined,
+        completedAt:
+          update.status === 'completed' ||
+          update.status === 'failed' ||
+          update.status === 'cancelled'
+            ? Date.now()
+            : undefined,
         latestUpdate: update.latestUpdate,  // Self-reported status from agent
       })
 
       // Clear streaming preview when sub-agent completes or fails
       // This handles cases where the sub-agent finishes without creating an artifact
-      if (update.status === 'completed' || update.status === 'failed') {
+      if (
+        update.status === 'completed' ||
+        update.status === 'failed' ||
+        update.status === 'cancelled'
+      ) {
         useArtifactStore.getState().clearStreamingPreview()
       }
     })
@@ -1711,6 +1989,8 @@ export const useChatStore = create<ChatStore>((set, get) => ({
           const nextMessages = state.activeConversationId === targetConversationId
             ? [...state.messages, messageWithTools]
             : state.messages
+          const nextConversationErrors = { ...state.conversationErrors }
+          delete nextConversationErrors[targetConversationId]
 
           const { [targetConversationId]: _removed, ...restStreams } = state.conversationStreams
           const nextInterruptedConversations = hasIncompleteToolCalls
@@ -1729,10 +2009,13 @@ export const useChatStore = create<ChatStore>((set, get) => ({
             messages: nextMessages,
             conversationStreams: restStreams,
             interruptedConversations: nextInterruptedConversations,
+            conversationErrors: nextConversationErrors,
           }
 
           if (state.activeConversationId === targetConversationId) {
-            Object.assign(updates, projectStreamStateToActiveFields(createEmptyConversationStreamState()))
+            Object.assign(updates, projectStreamStateToActiveFields(createEmptyConversationStreamState()), {
+              error: null,
+            })
           }
 
           return updates as Partial<ChatStore>
@@ -1757,9 +2040,9 @@ export const useChatStore = create<ChatStore>((set, get) => ({
 
           analysis.captured?.slice(0, 2).forEach((entry) => {
             useToastStore.getState().addToast({
-              tone: 'success',
+              variant: 'success',
               title: 'Remembered for next time',
-              message: entry.message,
+              description: entry.message,
             })
           })
         } catch (learningError) {
@@ -1783,7 +2066,14 @@ export const useChatStore = create<ChatStore>((set, get) => ({
             },
           }))
         }
-        set({ error: `Failed to save message: ${error}` })
+        const message = `Failed to save message: ${error}`
+        set((state) => ({
+          conversationErrors: {
+            ...state.conversationErrors,
+            [targetConversationId]: message,
+          },
+          error: state.activeConversationId === targetConversationId ? message : state.error,
+        }))
       }
 
       // Add system notification for created artifacts
@@ -1930,7 +2220,11 @@ export const useChatStore = create<ChatStore>((set, get) => ({
               },
             }
             : restInterrupted,
-          error,
+          conversationErrors: {
+            ...state.conversationErrors,
+            [targetConversationId]: error,
+          },
+          error: state.activeConversationId === targetConversationId ? error : state.error,
         }
       })
 
@@ -1939,63 +2233,343 @@ export const useChatStore = create<ChatStore>((set, get) => ({
     })
   },
 
+  updateExistingMessage: async (messageId, updates) => {
+    try {
+      const updatedMessage = await window.jelico.conversations.updateMessage(messageId, {
+        content: updates.content,
+        attachments: updates.attachments,
+      })
+
+      if (!updatedMessage) return null
+
+      set((state) => ({
+        messages: state.messages.map((message) => (
+          message.id === messageId
+            ? {
+                ...message,
+                content: updatedMessage.content,
+                attachments: updatedMessage.attachments,
+                segments: updatedMessage.segments,
+                toolCalls: updatedMessage.toolCalls,
+                toolResults: updatedMessage.toolResults,
+                usage: updatedMessage.usage,
+              }
+            : message
+        )),
+      }))
+
+      const activeConversationId = get().activeConversationId
+      if (activeConversationId) {
+        const estimatedTokenCount = get().messages.reduce(
+          (sum, message) => sum + estimateTokens(message.content || ''),
+          0
+        )
+        useContextStore.getState().updateTokenCount(activeConversationId, estimatedTokenCount)
+      }
+
+      return updatedMessage
+    } catch (error: any) {
+      set({ error: error.message })
+      return null
+    }
+  },
+
   queueMessage: (content, providerId, model, attachments, conversationId) => {
+    const queuedMessage: QueuedMessage = {
+      id: createQueuedMessageId(),
+      content,
+      attachments,
+      providerId,
+      model,
+      conversationId,
+    }
+
+    set((state) => {
+      const queueKey = getQueuePanelConversationKey(conversationId)
+      return {
+        messageQueue: [...state.messageQueue, queuedMessage],
+        queueMutationVersion: state.queueMutationVersion + 1,
+        preHydrationDeletedQueuedMessageIds: Object.keys(state.preHydrationDeletedQueuedMessageIds).length > 0
+          ? Object.fromEntries(
+              Object.entries(state.preHydrationDeletedQueuedMessageIds)
+                .filter(([queuedMessageId]) => queuedMessageId !== queuedMessage.id)
+            )
+          : state.preHydrationDeletedQueuedMessageIds,
+        queuePanelExpandedByConversation: {
+          ...state.queuePanelExpandedByConversation,
+          [queueKey]: true,
+        },
+      }
+    })
+    const { hasHydratedQueuedMessages, messageQueue, pendingQueuedEdit } = get()
+    persistQueuedMessages(
+      getPersistableQueuedMessages(messageQueue, pendingQueuedEdit),
+      !hasHydratedQueuedMessages
+    )
+  },
+
+  setQueuePanelExpanded: (conversationId, expanded) => {
     set((state) => ({
-      messageQueue: [...state.messageQueue, { content, attachments, providerId, model, conversationId }],
+      queuePanelExpandedByConversation: {
+        ...state.queuePanelExpandedByConversation,
+        [getQueuePanelConversationKey(conversationId)]: expanded,
+      },
     }))
   },
 
-  processQueue: async () => {
-    const { messageQueue } = get()
-    if (messageQueue.length === 0) return
+  startQueuedMessageEdit: (queueIndex) => {
+    let pendingEdit: PendingQueuedEdit | null = null
 
-    // Take the first message from the queue
-    const [nextMessage, ...remaining] = messageQueue
-    set({ messageQueue: remaining })
+    set((state) => {
+      const queuedMessage = state.messageQueue[queueIndex]
+      if (!queuedMessage) return {}
 
-    // Send the queued message
-    await (get().sendMessage as any)(
-      nextMessage.content,
-      nextMessage.providerId,
-      nextMessage.model,
-      nextMessage.attachments,
-      false,
-      nextMessage.conversationId ?? null
+      const nextQueue = [...state.messageQueue]
+      nextQueue.splice(queueIndex, 1)
+      const queueKey = getQueuePanelConversationKey(queuedMessage.conversationId)
+      const remainingCount = getQueuedCountForConversation(nextQueue, queuedMessage.conversationId)
+
+      pendingEdit = {
+        queuedMessage,
+        anchor: getQueuePanelAnchor(state.messageQueue, queuedMessage.id),
+      }
+
+      return {
+        messageQueue: nextQueue,
+        pendingQueuedEdit: pendingEdit,
+        queueMutationVersion: state.queueMutationVersion + 1,
+        queuePanelExpandedByConversation: remainingCount === 0
+          ? {
+              ...state.queuePanelExpandedByConversation,
+              [queueKey]: false,
+            }
+          : state.queuePanelExpandedByConversation,
+      }
+    })
+
+    const { hasHydratedQueuedMessages, messageQueue, pendingQueuedEdit } = get()
+    persistQueuedMessages(
+      getPersistableQueuedMessages(messageQueue, pendingQueuedEdit),
+      !hasHydratedQueuedMessages
+    )
+
+    return pendingEdit
+  },
+
+  cancelQueuedMessageEdit: () => {
+    set((state) => {
+      if (!state.pendingQueuedEdit) return {}
+
+      const restoredQueue = insertQueuedMessageAtAnchor(
+        state.messageQueue,
+        state.pendingQueuedEdit.queuedMessage,
+        state.pendingQueuedEdit.anchor
+      )
+      const queueKey = getQueuePanelConversationKey(state.pendingQueuedEdit.queuedMessage.conversationId)
+
+      return {
+        messageQueue: restoredQueue,
+        pendingQueuedEdit: null,
+        queueMutationVersion: state.queueMutationVersion + 1,
+        preHydrationDeletedQueuedMessageIds: Object.keys(state.preHydrationDeletedQueuedMessageIds).length > 0
+          ? Object.fromEntries(
+              Object.entries(state.preHydrationDeletedQueuedMessageIds)
+                .filter(([queuedMessageId]) => queuedMessageId !== state.pendingQueuedEdit?.queuedMessage.id)
+            )
+          : state.preHydrationDeletedQueuedMessageIds,
+        queuePanelExpandedByConversation: {
+          ...state.queuePanelExpandedByConversation,
+          [queueKey]: true,
+        },
+      }
+    })
+
+    const { hasHydratedQueuedMessages, messageQueue, pendingQueuedEdit } = get()
+    persistQueuedMessages(
+      getPersistableQueuedMessages(messageQueue, pendingQueuedEdit),
+      !hasHydratedQueuedMessages
     )
   },
 
+  commitQueuedMessageEdit: (queuedMessage) => {
+    set((state) => {
+      if (!state.pendingQueuedEdit) return {}
+
+      const restoredQueue = insertQueuedMessageAtAnchor(
+        state.messageQueue,
+        queuedMessage,
+        state.pendingQueuedEdit.anchor
+      )
+      const queueKey = getQueuePanelConversationKey(queuedMessage.conversationId)
+
+      return {
+        messageQueue: restoredQueue,
+        pendingQueuedEdit: null,
+        queueMutationVersion: state.queueMutationVersion + 1,
+        preHydrationDeletedQueuedMessageIds: Object.keys(state.preHydrationDeletedQueuedMessageIds).length > 0
+          ? Object.fromEntries(
+              Object.entries(state.preHydrationDeletedQueuedMessageIds)
+                .filter(([queuedMessageId]) => queuedMessageId !== queuedMessage.id)
+            )
+          : state.preHydrationDeletedQueuedMessageIds,
+        queuePanelExpandedByConversation: {
+          ...state.queuePanelExpandedByConversation,
+          [queueKey]: true,
+        },
+      }
+    })
+
+    const { hasHydratedQueuedMessages, messageQueue, pendingQueuedEdit } = get()
+    persistQueuedMessages(
+      getPersistableQueuedMessages(messageQueue, pendingQueuedEdit),
+      !hasHydratedQueuedMessages
+    )
+  },
+
+  removeQueuedMessage: (queueIndex) => {
+    set((state) => {
+      const queuedMessage = state.messageQueue[queueIndex]
+      if (!queuedMessage) return {}
+
+      const nextQueue = [...state.messageQueue]
+      nextQueue.splice(queueIndex, 1)
+      const queueKey = getQueuePanelConversationKey(queuedMessage.conversationId)
+      const remainingCount = getQueuedCountForConversation(nextQueue, queuedMessage.conversationId)
+
+      return {
+        messageQueue: nextQueue,
+        queueMutationVersion: state.queueMutationVersion + 1,
+        preHydrationDeletedQueuedMessageIds: state.hasHydratedQueuedMessages
+          ? state.preHydrationDeletedQueuedMessageIds
+          : {
+              ...state.preHydrationDeletedQueuedMessageIds,
+              [queuedMessage.id]: true,
+            },
+        queuePanelExpandedByConversation: remainingCount === 0
+          ? {
+              ...state.queuePanelExpandedByConversation,
+              [queueKey]: false,
+            }
+          : state.queuePanelExpandedByConversation,
+      }
+    })
+    const { hasHydratedQueuedMessages, messageQueue, pendingQueuedEdit } = get()
+    persistQueuedMessages(
+      getPersistableQueuedMessages(messageQueue, pendingQueuedEdit),
+      !hasHydratedQueuedMessages
+    )
+  },
+
+  restoreQueuedMessage: (queuedMessage, anchor) => {
+    set((state) => {
+      const nextQueue = insertQueuedMessageAtAnchor(state.messageQueue, queuedMessage, anchor)
+      const queueKey = getQueuePanelConversationKey(queuedMessage.conversationId)
+      return {
+        messageQueue: nextQueue,
+        queueMutationVersion: state.queueMutationVersion + 1,
+        preHydrationDeletedQueuedMessageIds: Object.keys(state.preHydrationDeletedQueuedMessageIds).length > 0
+          ? Object.fromEntries(
+              Object.entries(state.preHydrationDeletedQueuedMessageIds)
+                .filter(([queuedMessageId]) => queuedMessageId !== queuedMessage.id)
+            )
+          : state.preHydrationDeletedQueuedMessageIds,
+        queuePanelExpandedByConversation: {
+          ...state.queuePanelExpandedByConversation,
+          [queueKey]: true,
+        },
+      }
+    })
+    const { hasHydratedQueuedMessages, messageQueue, pendingQueuedEdit } = get()
+    persistQueuedMessages(
+      getPersistableQueuedMessages(messageQueue, pendingQueuedEdit),
+      !hasHydratedQueuedMessages
+    )
+  },
+
+  processQueue: async () => {
+    const { messageQueue, conversationStreams } = get()
+    if (messageQueue.length === 0) return
+
+    const nextQueueIndex = getNextProcessableQueuedMessageIndex(
+      messageQueue,
+      getBlockedQueuedConversationIds(conversationStreams)
+    )
+    if (nextQueueIndex === -1) return
+
+    // Take the first processable message from the queue.
+    const nextMessage = messageQueue[nextQueueIndex]
+    const anchor = getQueuePanelAnchor(messageQueue, nextMessage.id)
+    get().removeQueuedMessage(nextQueueIndex)
+
+    try {
+      // Send the queued message
+      await (get().sendMessage as any)(
+        nextMessage.content,
+        nextMessage.providerId,
+        nextMessage.model,
+        nextMessage.attachments,
+        false,
+        nextMessage.conversationId ?? null
+      )
+    } catch (error: any) {
+      console.error('[Chat Store] Failed to process queued message:', error)
+      get().restoreQueuedMessage(nextMessage, anchor)
+      set({ error: error?.message || 'Failed to send queued message' })
+    }
+  },
+
   sendQueuedNow: async (queueIndex) => {
-    const { messageQueue, activeConversationId } = get()
+    const { messageQueue, activeConversationId, conversationStreams } = get()
     const queuedMessage = messageQueue[queueIndex]
     if (!queuedMessage) return false
 
-    // Remove selected message from queue first to avoid duplicate processing races.
-    set((state) => {
-      const nextQueue = [...state.messageQueue]
-      nextQueue.splice(queueIndex, 1)
-      return { messageQueue: nextQueue }
-    })
+    const targetConversationId = getQueuedMessageTargetConversationId(
+      queuedMessage,
+      activeConversationId ?? null
+    )
+    const blockedConversationIds = getBlockedQueuedConversationIds(conversationStreams)
 
-    const refreshedState = get()
-    const targetConversationId = queuedMessage.conversationId ?? refreshedState.activeConversationId ?? activeConversationId ?? null
-    const targetStreamState = targetConversationId ? refreshedState.conversationStreams[targetConversationId] : undefined
+    if (targetConversationId && blockedConversationIds.has(targetConversationId)) {
+      const requestedAt = Date.now()
+      set((state) => {
+        const nextQueue = markQueuedMessageAsPriority(state.messageQueue, queuedMessage.id, requestedAt)
+        if (nextQueue === state.messageQueue) return {}
 
-    // "Send now" means send this queued item immediately.
-    // If the target conversation is currently streaming, stop first so this message can run now.
-    if (targetConversationId && targetConversationId === refreshedState.activeConversationId && targetStreamState?.isStreaming) {
-      await refreshedState.stopStreaming()
+        return {
+          messageQueue: nextQueue,
+          queueMutationVersion: state.queueMutationVersion + 1,
+        }
+      })
+
+      const { hasHydratedQueuedMessages, messageQueue: updatedQueue, pendingQueuedEdit } = get()
+      persistQueuedMessages(
+        getPersistableQueuedMessages(updatedQueue, pendingQueuedEdit),
+        !hasHydratedQueuedMessages
+      )
+      return true
     }
 
-    await (get().sendMessage as any)(
-      queuedMessage.content,
-      queuedMessage.providerId,
-      queuedMessage.model,
-      queuedMessage.attachments,
-      false,
-      targetConversationId
-    )
+    // Remove selected message from queue first to avoid duplicate processing races.
+    const anchor = getQueuePanelAnchor(messageQueue, queuedMessage.id)
+    get().removeQueuedMessage(queueIndex)
 
-    return true
+    try {
+      await (get().sendMessage as any)(
+        queuedMessage.content,
+        queuedMessage.providerId,
+        queuedMessage.model,
+        queuedMessage.attachments,
+        false,
+        targetConversationId
+      )
+
+      return true
+    } catch (error: any) {
+      console.error('[Chat Store] Failed to send queued message immediately:', error)
+      get().restoreQueuedMessage(queuedMessage, anchor)
+      set({ error: error?.message || 'Failed to send queued message' })
+      return false
+    }
   },
 
   stopStreaming: async () => {
@@ -2076,9 +2650,20 @@ export const useChatStore = create<ChatStore>((set, get) => ({
     // Build context about active agents so the next turn knows what was happening
     const conversationAgents = useAgentStore.getState().getAgentsByConversation(activeConversationId)
     const activeAgentSummaries = conversationAgents
-      .filter(a => a.status === 'running' || a.status === 'pending' || a.status === 'completed')
+      .filter(
+        (a) =>
+          a.status === 'running' ||
+          a.status === 'pending' ||
+          a.status === 'waiting_for_input' ||
+          a.status === 'completed'
+      )
       .map(a => {
-        const statusLabel = a.status === 'completed' ? 'finished' : 'was in progress'
+        const statusLabel =
+          a.status === 'completed'
+            ? 'finished'
+            : a.status === 'waiting_for_input'
+              ? 'was waiting for input'
+              : 'was in progress'
         const errorNote = a.error ? ` (error: ${a.error})` : ''
         return `- ${a.displayName || a.name}: ${a.task.slice(0, 120)}${a.task.length > 120 ? '...' : ''} [${statusLabel}${errorNote}]`
       })
@@ -2139,11 +2724,13 @@ export const useChatStore = create<ChatStore>((set, get) => ({
       set((state) => {
         const { [id]: _removedStream, ...restStreams } = state.conversationStreams
         const { [id]: _removedInterrupted, ...restInterrupted } = state.interruptedConversations
+        const { [id]: _removedError, ...restErrors } = state.conversationErrors
         return {
           activeConversationId: null,
           messages: [],
           conversationStreams: restStreams,
           interruptedConversations: restInterrupted,
+          conversationErrors: restErrors,
           ...projectStreamStateToActiveFields(createEmptyConversationStreamState()),
           error: null,
         }
@@ -2175,15 +2762,18 @@ export const useChatStore = create<ChatStore>((set, get) => ({
         set((state) => {
           const { [id]: _removedStream, ...restStreams } = state.conversationStreams
           const { [id]: _removedInterrupted, ...restInterrupted } = state.interruptedConversations
+          const { [id]: _removedError, ...restErrors } = state.conversationErrors
           return {
             conversations,
             conversationStreams: restStreams,
             interruptedConversations: restInterrupted,
+            conversationErrors: restErrors,
           }
         })
       }
     } catch (error: any) {
       set({ error: error.message })
+      throw error
     }
   },
 
@@ -2237,7 +2827,19 @@ export const useChatStore = create<ChatStore>((set, get) => ({
     }, 2000)
   },
 
-  clearError: () => set({ error: null }),
+  clearError: () => set((state) => {
+    if (!state.activeConversationId) {
+      return { error: null }
+    }
+
+    const nextConversationErrors = { ...state.conversationErrors }
+    delete nextConversationErrors[state.activeConversationId]
+
+    return {
+      error: null,
+      conversationErrors: nextConversationErrors,
+    }
+  }),
 
   regenerateLastResponse: async (providerId, model) => {
     const { messages, activeConversationId, isStreaming } = get()
@@ -2276,7 +2878,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
 
     // Start streaming with existing messages (don't re-add user message)
     // The _isRegenerate flag tells sendMessage to skip adding user message
-    await (get().sendMessage as any)(lastUser.content, providerId, model, undefined, true)
+    await (get().sendMessage as any)(lastUser.content, providerId, model, lastUser.attachments, true)
   },
 
   getRegenerateArtifactImpact: () => {
@@ -2364,7 +2966,16 @@ export const useChatStore = create<ChatStore>((set, get) => ({
         targetConversationId
       )
     } catch (error: any) {
-      set({ error: error.message || String(error) })
+      const message = error.message || String(error)
+      set((state) => ({
+        conversationErrors: targetConversationId
+          ? {
+            ...state.conversationErrors,
+            [targetConversationId]: message,
+          }
+          : state.conversationErrors,
+        error: state.activeConversationId === targetConversationId ? message : state.error,
+      }))
     }
   },
 
@@ -2397,6 +3008,20 @@ export const useChatStore = create<ChatStore>((set, get) => ({
     set((state) => ({
       conversations: state.conversations.map((conv) =>
         conv.id === id ? { ...conv, workspaceId: workspaceId || undefined } : conv
+      ),
+    }))
+  },
+  setConversationModelSelection: (id, providerId, model, reasoningEffort) => {
+    set((state) => ({
+      conversations: state.conversations.map((conv) =>
+        conv.id === id ? { ...conv, providerId, model, reasoningEffort } : conv
+      ),
+    }))
+  },
+  setConversationReasoningEffort: (id, reasoningEffort) => {
+    set((state) => ({
+      conversations: state.conversations.map((conv) =>
+        conv.id === id ? { ...conv, reasoningEffort } : conv
       ),
     }))
   },

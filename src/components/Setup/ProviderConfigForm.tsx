@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo, useCallback } from 'react'
 import { Eye, EyeOff, Search, Loader2, RefreshCw } from 'lucide-react'
+import { getSupportedReasoningEfforts, REASONING_EFFORT_LABELS, type ReasoningEffort } from '../../lib/reasoning'
 
 const API_KEY_URLS: Record<string, string> = {
   anthropic: 'console.anthropic.com',
@@ -19,20 +20,9 @@ const API_KEY_URLS: Record<string, string> = {
 
 // Fallback models shown before API key is entered or when fetch fails
 const FALLBACK_MODELS: Record<string, Array<{ id: string; name: string }>> = {
-  anthropic: [
-    { id: 'claude-sonnet-4-20250514', name: 'Claude Sonnet 4' },
-    { id: 'claude-opus-4-20250514', name: 'Claude Opus 4' },
-    { id: 'claude-3-5-haiku-20241022', name: 'Claude 3.5 Haiku' },
-  ],
-  openai: [
-    { id: 'gpt-4o', name: 'GPT-4o' },
-    { id: 'gpt-4-turbo', name: 'GPT-4 Turbo' },
-    { id: 'gpt-3.5-turbo', name: 'GPT-3.5 Turbo' },
-  ],
-  google: [
-    { id: 'gemini-1.5-pro', name: 'Gemini 1.5 Pro' },
-    { id: 'gemini-1.5-flash', name: 'Gemini 1.5 Flash' },
-  ],
+  anthropic: [],
+  openai: [],
+  google: [],
   openrouter: [],
   ollama: [],
   custom: [],
@@ -107,6 +97,7 @@ interface ProviderConfigFormProps {
     name: string
     apiKey: string
     defaultModel: string
+    defaultReasoningEffort?: ReasoningEffort | null
     baseUrl?: string
   }) => void
   isLoading?: boolean
@@ -136,6 +127,7 @@ export function ProviderConfigForm({
   const [isLoadingModels, setIsLoadingModels] = useState(false)
   const [modelsFetched, setModelsFetched] = useState(false)
   const [modelSearch, setModelSearch] = useState('')
+  const [reasoningEffort, setReasoningEffort] = useState<ReasoningEffort | ''>('')
 
   const needsApiKey = type !== 'ollama' && type !== 'local'
   const needsBaseUrl = ['ollama', 'custom', 'openai-compatible', 'anthropic-compatible', 'local'].includes(type)
@@ -203,12 +195,25 @@ export function ProviderConfigForm({
     )
   }, [models, modelSearch])
 
+  const supportedReasoningEfforts = useMemo(
+    () => getSupportedReasoningEfforts(type, model),
+    [type, model]
+  )
+
+  useEffect(() => {
+    if (!reasoningEffort) return
+    if (!supportedReasoningEfforts.includes(reasoningEffort)) {
+      setReasoningEffort('')
+    }
+  }, [reasoningEffort, supportedReasoningEfforts])
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
     onSave({
       name: name || initialName || getDefaultName(type),
       apiKey,
       defaultModel: model,
+      defaultReasoningEffort: reasoningEffort || null,
       baseUrl: needsBaseUrl ? baseUrl : undefined,
     })
   }
@@ -307,11 +312,20 @@ export function ProviderConfigForm({
             <span>Loading models from API...</span>
           </div>
         ) : models.length === 0 ? (
-          <div className="text-sm text-text-muted">
-            {needsApiKey && !apiKey
-              ? 'Enter API key to load available models'
-              : 'No models found. Check your connection.'}
-          </div>
+          <>
+            <div className="text-sm text-text-muted mb-2">
+              {needsApiKey && !apiKey
+                ? 'Enter API key to load available models'
+                : 'No models were returned from the API. Enter a model ID manually.'}
+            </div>
+            <input
+              type="text"
+              value={model}
+              onChange={(e) => setModel(e.target.value)}
+              className="input input-mono"
+              placeholder="Enter model ID..."
+            />
+          </>
         ) : showSearchableList ? (
           <>
             {/* Search input for large model lists */}
@@ -376,6 +390,27 @@ export function ProviderConfigForm({
           </p>
         )}
       </div>
+
+      {supportedReasoningEfforts.length > 0 && (
+        <div>
+          <label className="label">Default Reasoning</label>
+          <select
+            value={reasoningEffort}
+            onChange={(e) => setReasoningEffort((e.target.value as ReasoningEffort | '') || '')}
+            className="input"
+          >
+            <option value="">API default</option>
+            {supportedReasoningEfforts.map((effort) => (
+              <option key={effort} value={effort}>
+                {REASONING_EFFORT_LABELS[effort]}
+              </option>
+            ))}
+          </select>
+          <p className="form-hint">
+            Set a default reasoning level for supported models on this provider.
+          </p>
+        </div>
+      )}
 
       <div className="flex items-center justify-end gap-3 pt-4">
         <button

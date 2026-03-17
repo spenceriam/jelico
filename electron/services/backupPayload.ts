@@ -153,10 +153,12 @@ export function getBackupStats() {
         providers: db.providers?.length || 0,
         conversations: db.conversations?.length || 0,
         messages: db.messages?.length || 0,
+        queuedMessages: db.queued_messages?.length || 0,
         workspaces: db.workspaces?.length || 0,
         artifacts: db.artifacts?.length || 0,
         memories: db.memories?.length || 0,
         permissions: db.permissions?.length || 0,
+        todos: db.todos?.length || 0,
       }
       stats.databaseSize = fs.statSync(dbPath).size
     } catch (error) {
@@ -193,6 +195,7 @@ export function clearAllLocalData(): void {
       providers: [],
       conversations: [],
       messages: [],
+      queued_messages: [],
       workspaces: [],
       artifacts: [],
       memories: [],

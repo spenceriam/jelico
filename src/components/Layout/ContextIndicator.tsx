@@ -9,6 +9,7 @@ import { AlertTriangle } from 'lucide-react'
 import { useChatStore } from '../../stores/chat'
 import { useContextStore } from '../../stores/context'
 import { useProviderStore } from '../../stores/providers'
+import { useThemeStore } from '../../stores/theme'
 import { useUIStore } from '../../stores/ui'
 import { BrailleLoader } from '../StatusIndicators'
 
@@ -16,6 +17,7 @@ export function ContextIndicator() {
   const { activeConversationId, messages, isStreaming } = useChatStore()
   const { getContextUsage, isConversationCompacting } = useContextStore()
   const { activeModel } = useProviderStore()
+  const { effectiveMode } = useThemeStore()
   const { showContextText, toggleContextText, appFontPt } = useUIStore()
 
   // Get context usage for current conversation
@@ -40,6 +42,8 @@ export function ContextIndicator() {
   const progress = Math.min(Math.max(contextUsage.percentage, 0), 1)
   const dashOffset = circumference * (1 - progress)
   const trackDashPattern = '0.22 1.7'
+  const trackToneClass = effectiveMode === 'light' ? 'text-accent-dim' : 'text-accent-bright'
+  const trackOpacity = effectiveMode === 'light' ? 0.42 : 0.34
   const compactCount = contextUsage.totalCompactions
   const hasCompactionHistory = compactCount > 0
   const lastCompactionBeforePercent =
@@ -102,8 +106,8 @@ export function ContextIndicator() {
             strokeWidth={trackStrokeWidth}
             strokeDasharray={trackDashPattern}
             strokeLinecap="round"
-            className="text-border-strong"
-            style={{ opacity: 0.86 }}
+            className={trackToneClass}
+            style={{ opacity: trackOpacity }}
           />
           <circle
             cx={circleSize / 2}

@@ -8,6 +8,7 @@ interface Window {
       create: (provider: ProviderInput) => Promise<ProviderConfig>
       update: (id: string, updates: Partial<ProviderInput>) => Promise<ProviderConfig>
       delete: (id: string) => Promise<void>
+      reorder: (ids: string[]) => Promise<ProviderConfig[]>
       test: (id: string) => Promise<{ ok: boolean; message: string; status?: number }>
       previewModels: (
         type: string,
@@ -15,6 +16,10 @@ interface Window {
         baseUrl?: string
       ) => Promise<OpenRouterModel[]>
       fetchOpenRouterModels: (apiKey: string) => Promise<OpenRouterModel[]>
+      getModelLimits: (
+        providerId: string,
+        modelId: string
+      ) => Promise<ModelLimits>
       getModelContextSize: (providerId: string, modelId: string) => Promise<number | null>
     }
     keychain: {
@@ -33,6 +38,7 @@ interface Window {
       updateTitle: (id: string, title: string) => Promise<void>
       updateWorkspaceId: (id: string, workspaceId: string | null) => Promise<Conversation | null>
       updateModelProvider: (id: string, providerId: string, model: string) => Promise<Conversation | null>
+      updateReasoningEffort: (id: string, reasoningEffort: string | null) => Promise<Conversation | null>
       transferToWorkspace: (id: string, workspaceId: string | null) => Promise<{
         success: boolean
         transferred: number
@@ -44,6 +50,10 @@ interface Window {
       archive: (id: string) => Promise<Conversation | null>
       restore: (id: string) => Promise<Conversation | null>
       delete: (id: string) => Promise<void>
+    }
+    queue: {
+      list: () => Promise<QueuedMessageData[]>
+      replaceAll: (queuedMessages: QueuedMessageData[]) => Promise<{ success: boolean }>
     }
     workspaces: {
       list: () => Promise<Workspace[]>
@@ -257,6 +267,8 @@ interface Window {
   }
 }
 
+type ReasoningEffort = 'none' | 'minimal' | 'low' | 'medium' | 'high' | 'xhigh'
+
 interface ProviderConfig {
   id: string
   type: 'anthropic' | 'openai' | 'google' | 'ollama' | 'openrouter' | 'custom' | 'local' | 'zai' | 'zai-china' | 'zai-coding' | 'zai-coding-china' | 'minimax' | 'openai-compatible' | 'anthropic-compatible'
@@ -265,6 +277,7 @@ interface ProviderConfig {
   defaultModel: string
   hiddenFromSelector?: boolean
   capabilityProfiles?: Record<string, unknown> | null
+  defaultReasoningEffort?: ReasoningEffort | null
   isDefault: boolean
   createdAt: number
   updatedAt: number
@@ -306,6 +319,7 @@ interface ProviderInput {
   defaultModel: string
   hiddenFromSelector?: boolean
   capabilityProfiles?: Record<string, unknown> | null
+  defaultReasoningEffort?: ReasoningEffort | null
   isDefault?: boolean
 }
 
@@ -315,6 +329,7 @@ interface Conversation {
   workspaceId?: string
   model: string
   providerId: string
+  reasoningEffort?: ReasoningEffort | null
   archivedAt?: number | null
   createdAt: number
   updatedAt: number
@@ -325,6 +340,7 @@ interface ConversationInput {
   title: string
   model: string
   providerId: string
+  reasoningEffort?: ReasoningEffort | null
   workspaceId?: string
 }
 
@@ -364,6 +380,16 @@ interface MessageInput {
   usage?: MessageUsageData
 }
 
+interface QueuedMessageData {
+  id: string
+  content: string
+  attachments?: MessageAttachmentData[]
+  providerId: string
+  model: string
+  conversationId?: string | null
+  sendNowRequestedAt?: number | null
+}
+
 interface MessageUsageData {
   promptTokens: number
   completionTokens: number
@@ -378,6 +404,7 @@ interface MessageUsageData {
 interface StreamParams {
   providerId: string
   model?: string
+  reasoningEffort?: ReasoningEffort | null
   mode?: 'auto' | 'explore' | 'execute' | 'plan' | 'review'
   messages: Array<{ role: string; content: string }>
   tools?: ToolDefinition[]
@@ -553,6 +580,11 @@ interface OpenRouterModel {
   name: string
   contextLength?: number
   pricing?: { prompt: string; completion: string }
+}
+
+interface ModelLimits {
+  contextWindow: number | null
+  maxOutputTokens: number | null
 }
 
 interface Workspace {

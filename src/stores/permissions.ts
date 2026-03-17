@@ -154,9 +154,9 @@ export const usePermissionStore = create<PermissionStore>((set, get) => ({
       })
 
       useToastStore.getState().addToast({
-        tone: 'success',
+        variant: 'success',
         title: 'Permission remembered',
-        message: 'Jelico will reuse this permission in the current project.',
+        description: 'Jelico will reuse this permission in the current project.',
       })
     }
 
@@ -232,9 +232,9 @@ export const usePermissionStore = create<PermissionStore>((set, get) => ({
         })
 
         useToastStore.getState().addToast({
-          tone: 'success',
+          variant: 'success',
           title: 'Permission remembered',
-          message: 'Jelico will reuse this permission in the current project.',
+          description: 'Jelico will reuse this permission in the current project.',
         })
       }
     } catch (error) {

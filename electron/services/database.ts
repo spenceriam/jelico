@@ -20,6 +20,7 @@ interface DbSchema {
   providers: ProviderRow[]
   conversations: ConversationRow[]
   messages: MessageRow[]
+  queued_messages: QueuedMessageRow[]
   workspaces: WorkspaceRow[]
   artifacts: ArtifactRow[]
   memories: MemoryRow[]
@@ -31,6 +32,7 @@ let db: DbSchema = {
   providers: [],
   conversations: [],
   messages: [],
+  queued_messages: [],
   workspaces: [],
   artifacts: [],
   memories: [],
@@ -49,6 +51,9 @@ function loadDb(): void {
       const content = fs.readFileSync(dbPath, 'utf-8')
       db = JSON.parse(content)
       // Ensure arrays exist for migration
+      if (!db.queued_messages) {
+        db.queued_messages = []
+      }
       if (!db.workspaces) {
         db.workspaces = []
       }
@@ -73,6 +78,9 @@ function loadDb(): void {
           if (provider.capability_profiles === undefined) {
             provider.capability_profiles = null
           }
+          if (provider.default_reasoning_effort === undefined) {
+            provider.default_reasoning_effort = null
+          }
         })
       }
       // Conversation archive migration: legacy rows had no archived_at field.
@@ -80,6 +88,9 @@ function loadDb(): void {
         db.conversations.forEach((conversation: any) => {
           if (conversation.archived_at === undefined) {
             conversation.archived_at = null
+          }
+          if (conversation.reasoning_effort === undefined) {
+            conversation.reasoning_effort = null
           }
         })
       }
@@ -94,7 +105,17 @@ function loadDb(): void {
     }
   } catch (err) {
     console.error('Failed to load database:', err)
-    db = { providers: [], conversations: [], messages: [], workspaces: [], artifacts: [], memories: [], permissions: [], todos: [] }
+    db = {
+      providers: [],
+      conversations: [],
+      messages: [],
+      queued_messages: [],
+      workspaces: [],
+      artifacts: [],
+      memories: [],
+      permissions: [],
+      todos: [],
+    }
   }
 }
 
@@ -329,6 +350,7 @@ export const providerDb = {
       default_model: provider.defaultModel,
       hidden_from_selector: provider.hiddenFromSelector ? 1 : 0,
       capability_profiles: provider.capabilityProfiles || null,
+      default_reasoning_effort: provider.defaultReasoningEffort || null,
       is_default: isDefault ? 1 : 0,
       created_at: now,
       updated_at: now,
@@ -356,11 +378,41 @@ export const providerDb = {
     if (updates.defaultModel !== undefined) provider.default_model = updates.defaultModel
     if (updates.hiddenFromSelector !== undefined) provider.hidden_from_selector = updates.hiddenFromSelector ? 1 : 0
     if (updates.capabilityProfiles !== undefined) provider.capability_profiles = updates.capabilityProfiles || null
+    if (updates.defaultReasoningEffort !== undefined) provider.default_reasoning_effort = updates.defaultReasoningEffort || null
     if (updates.isDefault !== undefined) provider.is_default = updates.isDefault ? 1 : 0
     provider.updated_at = now
 
     saveDb()
     return provider
+  },
+
+  reorder(ids: string[]): ProviderRow[] {
+    if (!Array.isArray(ids) || ids.length === 0) {
+      return [...db.providers]
+    }
+
+    const providerById = new Map(db.providers.map((provider) => [provider.id, provider]))
+    const nextProviders: ProviderRow[] = []
+    const seen = new Set<string>()
+
+    for (const id of ids) {
+      const provider = providerById.get(id)
+      if (!provider || seen.has(id)) continue
+      nextProviders.push(provider)
+      seen.add(id)
+    }
+
+    for (const provider of db.providers) {
+      if (seen.has(provider.id)) continue
+      nextProviders.push(provider)
+    }
+
+    if (nextProviders.length === db.providers.length) {
+      db.providers = nextProviders
+      saveDb()
+    }
+
+    return [...db.providers]
   },
 
   delete(id: string): void {
@@ -423,6 +475,7 @@ export const conversationDb = {
       workspace_id: conv.workspaceId || null,
       model: conv.model,
       provider_id: conv.providerId,
+      reasoning_effort: conv.reasoningEffort || null,
       archived_at: null,
       created_at: now,
       updated_at: now,
@@ -461,6 +514,15 @@ export const conversationDb = {
     }
   },
 
+  updateReasoningEffort(id: string, reasoningEffort: string | null): void {
+    const conv = db.conversations.find(c => c.id === id)
+    if (conv) {
+      conv.reasoning_effort = reasoningEffort || null
+      conv.updated_at = Date.now()
+      saveDb()
+    }
+  },
+
   touch(id: string): void {
     const conv = db.conversations.find(c => c.id === id)
     if (conv) {
@@ -488,6 +550,7 @@ export const conversationDb = {
   delete(id: string): void {
     // Delete messages first
     db.messages = db.messages.filter(m => m.conversation_id !== id)
+    db.queued_messages = db.queued_messages.filter(message => message.conversation_id !== id)
     // Delete conversation
     db.conversations = db.conversations.filter(c => c.id !== id)
     saveDb()
@@ -649,6 +712,25 @@ export const messageDb = {
   },
 }
 
+export const queueDb = {
+  list(): QueuedMessageRow[] {
+    return [...db.queued_messages]
+  },
+
+  replaceAll(queuedMessages: QueuedMessageRow[]): void {
+    db.queued_messages = queuedMessages.map((queuedMessage) => ({
+      id: queuedMessage.id,
+      content: queuedMessage.content,
+      attachments: Array.isArray(queuedMessage.attachments) ? queuedMessage.attachments : undefined,
+      provider_id: queuedMessage.provider_id,
+      model: queuedMessage.model,
+      conversation_id: queuedMessage.conversation_id || null,
+      send_now_requested_at: queuedMessage.send_now_requested_at ?? null,
+    }))
+    saveDb()
+  },
+}
+
 // Types
 interface ProviderRow {
   id: string
@@ -658,6 +740,7 @@ interface ProviderRow {
   default_model: string
   hidden_from_selector: number
   capability_profiles?: Record<string, unknown> | null
+  default_reasoning_effort: string | null
   is_default: number
   created_at: number
   updated_at: number
@@ -670,6 +753,7 @@ interface ProviderInput {
   defaultModel: string
   hiddenFromSelector?: boolean
   capabilityProfiles?: Record<string, unknown>
+  defaultReasoningEffort?: string | null
   isDefault?: boolean
 }
 
@@ -679,6 +763,7 @@ interface ConversationRow {
   workspace_id: string | null
   model: string
   provider_id: string
+  reasoning_effort: string | null
   archived_at: number | null
   created_at: number
   updated_at: number
@@ -688,6 +773,7 @@ interface ConversationInput {
   title: string
   model: string
   providerId: string
+  reasoningEffort?: string | null
   workspaceId?: string
 }
 
@@ -748,6 +834,16 @@ interface MessageInput {
   toolResults?: ToolResultRow[]
   attachments?: MessageAttachment[]
   usage?: MessageUsageRow
+}
+
+interface QueuedMessageRow {
+  id: string
+  content: string
+  attachments?: MessageAttachment[]
+  provider_id: string
+  model: string
+  conversation_id: string | null
+  send_now_requested_at?: number | null
 }
 
 interface WorkspaceRow {

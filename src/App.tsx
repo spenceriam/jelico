@@ -1,4 +1,4 @@
-import { useEffect, useCallback, useState, useRef } from 'react'
+import { useEffect, useCallback, useState, useRef, type CSSProperties } from 'react'
 import { ArrowUpRight, Download, PanelLeftClose, PanelLeftOpen, RefreshCw, X } from 'lucide-react'
 import { useProviderStore } from './stores/providers'
 import { useChatStore } from './stores/chat'
@@ -9,6 +9,12 @@ import { usePermissionStore } from './stores/permissions'
 import { useSkillStore } from './stores/skills'
 import { useThemeStore } from './stores/theme'
 import { getUpdateBannerVisibility, useUpdateStore } from './stores/updates'
+import {
+  hasAnyStreamingConversation,
+  maybeAutoApplyScheduledUpdate,
+  runApplyDownloadedUpdateFlow,
+  runDownloadAndApplyFlow,
+} from './lib/updateFlow'
 import { Sidebar } from './components/Layout/Sidebar'
 import { Header } from './components/Layout/Header'
 import { ChatArea } from './components/Chat/ChatArea'
@@ -20,8 +26,8 @@ import { ProviderSetup } from './components/Setup/ProviderSetup'
 import { Settings } from './components/Settings/Settings'
 import { PermissionDialog } from './components/Permissions/PermissionDialog'
 import { ClarificationPanel } from './components/Clarification/ClarificationPanel'
-import { ToastStack } from './components/StatusIndicators/ToastStack'
 import { WelcomeScreen, type OnboardingProfile } from './components/Onboarding/WelcomeScreen'
+import { ToastViewport } from './components/Feedback/ToastViewport'
 
 // Default and constraints for canvas panel width
 const DEFAULT_CANVAS_WIDTH = 500
@@ -62,8 +68,10 @@ interface FontShortcutState {
 }
 
 export default function App() {
+  const isMacPlatform = navigator.platform.toUpperCase().includes('MAC')
+  const macDragRegionStyle = isMacPlatform ? ({ WebkitAppRegion: 'drag' } as CSSProperties) : {}
   const { providers, loadProviders, isLoading } = useProviderStore()
-  const { loadConversations, activeConversationId, messages, isStreaming } = useChatStore()
+  const { loadConversations, activeConversationId, messages, isStreaming, conversationStreams } = useChatStore()
   const {
     settingsOpen,
     closeSettings,
@@ -88,6 +96,7 @@ export default function App() {
     downloadProgress: updateDownloadProgress,
     lastDownloadedTo,
     downloadedVersion,
+    scheduledApplyVersion,
     dismissedAvailableVersion,
     dismissedApplyVersion,
     launchedApplyVersion,
@@ -95,8 +104,7 @@ export default function App() {
     startListening,
     loadCurrentVersion,
     checkForUpdates,
-    downloadUpdate,
-    applyDownloadedUpdate,
+    clearScheduledApply,
     dismissAvailablePrompt,
     dismissApplyPrompt,
   } = useUpdateStore()
@@ -226,6 +234,14 @@ export default function App() {
     }
   }, [checkForUpdates, loadCurrentVersion, startListening])
 
+  useEffect(() => {
+    if (hasAnyStreamingConversation() || !scheduledApplyVersion) return
+
+    maybeAutoApplyScheduledUpdate().catch((error) => {
+      console.error('Failed to auto-apply the scheduled update:', error)
+    })
+  }, [conversationStreams, isStreaming, scheduledApplyVersion])
+
   const stopWindowDrag = useCallback(() => {
     const dragSession = windowDragRef.current
     if (!dragSession) return
@@ -245,6 +261,7 @@ export default function App() {
   }, [])
 
   const handleAppMouseDown = useCallback((event: React.MouseEvent<HTMLDivElement>) => {
+    if (isMacPlatform) return
     if (event.button !== 0) return
     if (event.detail > 1) return
 
@@ -315,20 +332,21 @@ export default function App() {
 
     document.addEventListener('mousemove', onMouseMove)
     document.addEventListener('mouseup', onMouseUp)
-  }, [isInteractiveTarget, isResizing, stopWindowDrag])
+  }, [isInteractiveTarget, isMacPlatform, isResizing, stopWindowDrag])
 
   useEffect(() => {
     return () => stopWindowDrag()
   }, [stopWindowDrag])
 
   const handleAppDoubleClick = useCallback((event: React.MouseEvent<HTMLDivElement>) => {
+    if (isMacPlatform) return
     if (isResizing) return
     const target = event.target as HTMLElement | null
     if (isInteractiveTarget(target)) return
     window.jelico.window.toggleMaximize().catch((error) => {
       console.error('Failed to toggle window maximize:', error)
     })
-  }, [isResizing, isInteractiveTarget])
+  }, [isInteractiveTarget, isMacPlatform, isResizing])
 
   const finishResize = useCallback(() => {
     const current = resizeRef.current
@@ -462,8 +480,25 @@ export default function App() {
 
   const handleApplyNow = async () => {
     if (isUpdateApplying) return
-    await applyDownloadedUpdate()
+    await runApplyDownloadedUpdateFlow()
   }
+
+  const handleDownloadAndApply = async () => {
+    if (isUpdateDownloading || isUpdateApplying) return
+    await runDownloadAndApplyFlow()
+  }
+
+  const handleDismissApply = () => {
+    clearScheduledApply()
+    dismissApplyPrompt(downloadedVersion || latestAvailableVersion || null)
+  }
+
+  const isApplyScheduled = Boolean(
+    scheduledApplyVersion
+      && downloadedVersion
+      && scheduledApplyVersion === downloadedVersion
+  )
+  const hasStreamingConversation = hasAnyStreamingConversation()
 
   return (
     <div
@@ -498,8 +533,11 @@ export default function App() {
       >
         {/* macOS titlebar safe-area fill for the main pane */}
         <div
-          className="pane-surface absolute top-0 left-0 right-0 pointer-events-none"
-          style={{ height: 'var(--titlebar-padding)' }}
+          className={`pane-surface absolute top-0 left-0 right-0 ${isMacPlatform ? '' : 'pointer-events-none'}`}
+          style={{
+            height: 'var(--titlebar-padding)',
+            ...macDragRegionStyle,
+          }}
           aria-hidden="true"
         />
 
@@ -549,8 +587,8 @@ export default function App() {
 
       {/* Provider setup modal (for adding additional providers) */}
       {providerSetupOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-          <div className="bg-bg-surface rounded-lg shadow-xl max-w-lg w-full mx-4 max-h-[90vh] overflow-auto">
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50">
+          <div className="bg-bg-surface rounded-lg shadow-xl w-[min(94vw,1120px)] max-h-[90vh] overflow-auto">
             <ProviderSetup
               isModal
               onComplete={() => {
@@ -562,6 +600,8 @@ export default function App() {
           </div>
         </div>
       )}
+
+      <ToastViewport />
 
       {/* Command palette */}
       <CommandPalette isOpen={commandPalette.isOpen} onClose={commandPalette.close} />
@@ -575,8 +615,6 @@ export default function App() {
       {/* App-level decision prompt dialog */}
       <DecisionPromptDialog />
 
-      <ToastStack />
-
       {(showApplyBanner || showAvailableBanner) && (
         <div className="fixed bottom-4 right-4 z-[70] w-[min(90vw,420px)]" data-window-toggle="ignore">
           <div className="rounded-xl border border-border bg-bg-elevated shadow-2xl p-4 space-y-3">
@@ -584,10 +622,14 @@ export default function App() {
               <>
                 <div>
                   <div className="text-sm font-medium text-text-primary">
-                    Update {downloadedVersion || latestAvailableVersion} is ready
+                    {isApplyScheduled && hasStreamingConversation
+                      ? `Update ${downloadedVersion || latestAvailableVersion} will install after active turns finish`
+                      : `Update ${downloadedVersion || latestAvailableVersion} is ready to install`}
                   </div>
                   <div className="text-xs text-text-muted mt-1 break-all">
-                    Downloaded to: {lastDownloadedTo}
+                    {isApplyScheduled && hasStreamingConversation
+                      ? 'Jelico will restart automatically as soon as all active AI turns finish.'
+                      : `Downloaded to: ${lastDownloadedTo}`}
                   </div>
                   {showAvailableBanner && latestAvailableVersion && downloadedVersion && downloadedVersion !== latestAvailableVersion && (
                     <div className="mt-2 flex items-start justify-between gap-2 rounded-lg border border-warning/30 bg-warning/10 px-3 py-2">
@@ -616,10 +658,14 @@ export default function App() {
                     className="flex items-center gap-2 px-3 py-2 rounded-lg bg-accent text-accent-foreground hover:bg-accent-bright transition-colors disabled:opacity-50"
                   >
                     <RefreshCw className={`w-4 h-4 ${isUpdateApplying ? 'animate-spin' : ''}`} />
-                    {isUpdateApplying ? 'Applying...' : 'Apply now'}
+                      {isUpdateApplying
+                        ? 'Applying...'
+                      : isApplyScheduled && hasStreamingConversation
+                        ? 'Change restart timing'
+                        : 'Restart and install'}
                   </button>
                   <button
-                    onClick={() => dismissApplyPrompt(downloadedVersion || latestAvailableVersion || null)}
+                    onClick={handleDismissApply}
                     className="px-3 py-2 rounded-lg border border-border bg-bg-surface text-text-primary hover:bg-bg-hover hover:border-border-strong transition-colors"
                   >
                     Later
@@ -648,7 +694,7 @@ export default function App() {
                       Jelico {latestAvailableVersion} is available
                     </div>
                     <div className="text-xs text-text-muted mt-1">
-                      Download and install when you&apos;re ready.
+                      Download it to your default Downloads folder, then restart when you&apos;re ready.
                     </div>
                   </div>
                   <button
@@ -678,12 +724,12 @@ export default function App() {
 
                 <div className="flex flex-wrap gap-2">
                   <button
-                    onClick={() => downloadUpdate()}
-                    disabled={isUpdateDownloading}
+                    onClick={handleDownloadAndApply}
+                    disabled={isUpdateDownloading || isUpdateApplying}
                     className="flex items-center gap-2 px-3 py-2 rounded-lg bg-accent text-accent-foreground hover:bg-accent-bright transition-colors disabled:opacity-50"
                   >
                     <Download className="w-4 h-4" />
-                    {isUpdateDownloading ? 'Downloading...' : 'Download update'}
+                    {isUpdateDownloading ? 'Downloading...' : 'Download and apply'}
                   </button>
                   {updateInfo?.releaseUrl && (
                     <button

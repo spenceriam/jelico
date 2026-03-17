@@ -14,6 +14,7 @@ import { WorkspaceSelector } from '../Workspace/WorkspaceSelector'
 import { ModelSelector } from '../Model/ModelSelector'
 import { ShimmerText, BrailleLoader } from '../StatusIndicators'
 import { TodoPanel } from '../Todo/TodoPanel'
+import { MutedPathsBackground } from './MutedPathsBackground'
 import welcomeBannerUrl from '../../assets/branding/jelico-banner.png'
 import { formatElapsedTime } from '../../utils/format'
 import { notifyUserEvent } from '../../lib/notifications'
@@ -538,10 +539,11 @@ export function ChatArea() {
   if (showNewChatUI) {
     return (
       <div
-        className="flex-1 flex flex-col min-h-0 chat-font-scale"
+        className="relative flex-1 flex flex-col min-h-0 chat-font-scale"
         style={chatCanvasStyle}
         data-window-toggle="ignore"
       >
+        <MutedPathsBackground />
         <div className="flex-1 flex items-center justify-center py-6">
           <div className={welcomeContainerClass}>
             <div className={welcomeContentWidthClass}>
@@ -572,6 +574,7 @@ export function ChatArea() {
           >
             <MessageList
               messages={messages}
+              isStreaming={isStreaming}
               streamingContent={isStreaming ? streamingContent : undefined}
               streamingStartedAt={isStreaming ? streamingStartTime : undefined}
               streamingToolCalls={isStreaming ? streamingToolCalls : undefined}
@@ -1232,17 +1235,17 @@ function NewChatView({ disabled, isStreaming }: NewChatViewProps) {
   const displayGreeting = buildGreeting(greetingData.greeting, userName, isQuestion)
 
   return (
-    <div className="text-center animate-fade-in space-y-8">
+    <div className="relative z-10 text-center animate-fade-in space-y-8">
       {/* Welcome banner */}
       <img
         src={welcomeBannerUrl}
         alt="Jelico"
         draggable={false}
-        className="h-[5.25rem] w-auto mx-auto object-contain"
+        className="relative z-10 h-[5.25rem] w-auto mx-auto object-contain"
       />
 
       {/* Dynamic greeting */}
-      <div>
+      <div className="relative z-10">
         <h1 className="font-display text-[32px] font-normal text-text-primary mb-3 tracking-tight">
           {displayGreeting}
         </h1>
@@ -1254,12 +1257,12 @@ function NewChatView({ disabled, isStreaming }: NewChatViewProps) {
       </div>
 
       {/* Mode selector */}
-      <div className="flex justify-center">
+      <div className="relative z-10 flex justify-center">
         <ModeSelector />
       </div>
 
       {/* Workspace, Model selector, and Settings */}
-      <div className="flex justify-center items-center gap-3">
+      <div className="relative z-30 flex justify-center items-center gap-3">
         <WorkspaceSelector />
         {canShowWorktreeCheckbox && (
           <label
@@ -1300,7 +1303,7 @@ function NewChatView({ disabled, isStreaming }: NewChatViewProps) {
 
       {/* Processing indicator - show during first message send */}
       {isStreaming && (
-        <div className="flex items-center justify-center gap-2 mb-4">
+        <div className="relative z-10 flex items-center justify-center gap-2 mb-4">
           <Loader2 className="w-4 h-4 text-accent animate-spin" />
           <ShimmerText className="text-sm">
             Starting conversation...
@@ -1309,7 +1312,7 @@ function NewChatView({ disabled, isStreaming }: NewChatViewProps) {
       )}
 
       {/* Chat input */}
-      <div className="pt-4">
+      <div className="relative z-40 pt-4">
         <ChatInput
           disabled={disabled}
           isStreaming={isStreaming}

@@ -64,7 +64,7 @@ Jelico is a local-first AI desktop assistant. A native app where you chat with A
 
 The Soul/Memory system should make Jelico increasingly personalized - it learns YOUR coding style, YOUR preferences, YOUR common mistakes. Every conversation teaches it to help YOU better.
 
-**Current Status:** Skills now ship as first-class `SKILL.md` assets, soul/memory learnings are injected with scoped task relevance, and GitHub backup/restore is available for local data and managed files. Current stabilization work is focused on runtime validation, release hardening, and merge-conflict readiness across active parallel branches.
+**Current Status:** Skills now ship as first-class `SKILL.md` assets, soul/memory learnings are injected with scoped task relevance, and GitHub backup/restore is available for local data and managed files. Current stabilization work is focused on validating those flows alongside response/tool ordering UX, safer cross-platform updater apply/restart behavior, stronger provider/model consistency, and conversation/composer recovery after edge-case interactions.
 
 ## Setup commands
 - Install dependencies: `npm install`
@@ -76,7 +76,7 @@ The Soul/Memory system should make Jelico increasingly personalized - it learns 
 ## Project overview
 Jelico is an AI Productivity Desktop built with Electron, React, TypeScript, and Vite. It provides a frictionless AI assistant experience with multi-provider support (Anthropic, OpenAI, Google), workspace management, conversation persistence, and a soul/memory system that learns user patterns and preferences over time.
 
-**Current Version:** 0.39.0
+**Current Version:** 0.39.0 (release branch version; not yet a public release)
 
 **License:** GNU General Public License v3.0 (GPL-3.0-or-later)
 - See LICENSE file in project root
@@ -685,8 +685,34 @@ todo_write({ tasks: [
 
 - **Phase 1-7 Complete**: Core functionality, UI, artifacts, memory, soul system
 - **Phase 8 Complete**: Onboarding flow, backup/restore, versioning
-- **Current Focus**: Runtime validation, polish, user feedback integration, and release hardening across skills, memory, backup, and workspace flows
-- **Latest Release (0.39.0)**: Minor release focused on first-class skills, contextual soul/memory learning, and GitHub-backed backup/restore coverage for local Jelico data
+- **Current Focus**: Testing, polish, user feedback integration, runtime validation, stronger provider/model consistency, and release hardening across skills/memory/backup flows, updater/restart behavior, and conversation state recovery.
+- **Next Planned Release (0.39.0)**: Minor release planned on top of `0.38.2` with first-class skills, contextual soul/memory learning, and GitHub-backed backup/restore coverage for local Jelico data.
+- **Latest Public Release (0.38.2)**: Patch release focused on full todo-plan previews in chat, resilient cross-provider todo completion, and restored sidebar in-progress shimmer treatment.
+- **Public Release History**:
+  - `0.38.2` - Restored full todo-plan previews in chat, normalized cross-provider todo completion, and brought back the sidebar in-progress shimmer treatment.
+  - `0.38.1` - Prevented generic compatible providers from sending unsupported foreign output-token caps while preserving provider-specific models.dev matches.
+  - `0.38.0` - Expanded provider setup presets, live model discovery, drag-reorderable provider metadata, and provider/conversation reasoning controls.
+  - `0.37.2` - Restored light-mode visibility for the animated new-chat backdrop and sidebar conversation status tinting.
+  - `0.37.1` - Safer updater apply/restart flows across custom macOS install targets, legacy installer preservation, and light-theme context-indicator readability.
+  - `0.37.0` - Animated new-chat backdrop, grouped sidebar conversation statuses, inline archive confirmation/toasts, and macOS-native docking behavior.
+  - `0.36.0` - Durable queued-message management, reload-safe queue hydration, persisted queue prioritization, and direct latest-prompt edit/regenerate improvements.
+  - `0.35.2` - Provider-specific Kimi capability resolution through models.dev metadata for compatible coding endpoints.
+  - `0.35.1` - Improved interrupted tool attribution and deterministic completion-sensitive retry behavior for partial artifact/file mutation turns.
+  - `0.35.0` - Chat archiving, proactive update prompts, artifact screenshot capture, grouped task-graph upgrades, and refreshed branding/worktree UX.
+  - `0.34.1` - Prompt focus reliability after modal/clarification flows and stronger prompt-box top padding for long drafts.
+  - `0.33.10` - Live workspace branch indicator refresh after successful in-chat `git checkout` and `git switch` commands.
+  - `0.33.8` - Accurate interrupted-tool labeling, preserved resumable checkpoints, and deterministic `resume`/`restart`/`continue` recovery.
+  - `0.33.7` - Fixed duplicate same-turn assistant restarts and improved review-only prompt classification.
+  - `0.33.6` - Restored chronological streaming order between assistant text and tool activity.
+  - `0.33.5` - Sandbox artifact revision continuity, duplicate-app-launch protection, and hidden window cleanup on exit.
+  - `0.33.4` - Smarter kickoff/planning text and improved streaming readability around tool execution.
+  - `0.33.3` - More reliable image attachment previews and better artifact thumbnail/update visibility.
+  - `0.33.2` - Removed duplicate final summaries and hardened deterministic end-of-turn fallback behavior.
+  - `0.10.1` - Added the header context indicator and fixed persisted context-usage restoration across restarts/regenerate flows.
+  - `0.10.0` - Introduced app-surface drag/maximize behavior and reduced accidental text selection during window interactions.
+  - `0.9.4` - Public packaged desktop release with standard multi-platform installer artifacts.
+  - `0.9.3` - Public packaged desktop release with standard multi-platform installer artifacts.
+  - `0.9.2` - First public deployment for target operating-system testing.
 
 ## Code style
 - TypeScript strict mode enabled

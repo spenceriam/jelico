@@ -9,6 +9,7 @@ function toConversationApi(row: any) {
     workspaceId: row.workspace_id,
     model: row.model,
     providerId: row.provider_id,
+    reasoningEffort: row.reasoning_effort || null,
     archivedAt: row.archived_at,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
@@ -56,6 +57,7 @@ export function registerConversationHandlers() {
       title: input.title,
       model: input.model,
       providerId: input.providerId,
+      reasoningEffort: input.reasoningEffort,
       workspaceId: input.workspaceId,
     })
     return toConversationApi(conversation)
@@ -111,6 +113,12 @@ export function registerConversationHandlers() {
   // Update conversation provider/model pair
   ipcMain.handle('conversations:updateModelProvider', async (_, id: string, providerId: string, model: string) => {
     conversationDb.updateModelProvider(id, providerId, model)
+    const conversation = conversationDb.get(id)
+    return conversation ? toConversationApi(conversation) : null
+  })
+
+  ipcMain.handle('conversations:updateReasoningEffort', async (_, id: string, reasoningEffort: string | null) => {
+    conversationDb.updateReasoningEffort(id, reasoningEffort)
     const conversation = conversationDb.get(id)
     return conversation ? toConversationApi(conversation) : null
   })

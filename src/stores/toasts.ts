@@ -1,65 +1,77 @@
 import { create } from 'zustand'
 
-export type ToastTone = 'info' | 'success'
+export type ToastVariant = 'success' | 'info' | 'warning' | 'error'
 
-export interface AppToast {
+export interface Toast {
   id: string
   title: string
-  message: string
-  tone: ToastTone
+  description?: string
+  variant: ToastVariant
+  durationMs: number
+  createdAt: number
 }
 
-const toastTimers = new Map<string, number>()
-const TOAST_DURATION_MS = 4200
-
-interface ToastStore {
-  toasts: AppToast[]
-  addToast: (toast: Omit<AppToast, 'id'>) => void
-  removeToast: (id: string) => void
+interface ToastState {
+  toasts: Toast[]
+  addToast: (input: {
+    title: string
+    description?: string
+    variant?: ToastVariant
+    durationMs?: number
+  }) => string
+  dismissToast: (id: string) => void
   clearToasts: () => void
 }
 
-export const useToastStore = create<ToastStore>((set) => ({
+const toastTimers = new Map<string, ReturnType<typeof setTimeout>>()
+
+function clearToastTimer(id: string) {
+  const timer = toastTimers.get(id)
+  if (!timer) return
+  clearTimeout(timer)
+  toastTimers.delete(id)
+}
+
+export const useToastStore = create<ToastState>((set) => ({
   toasts: [],
 
-  addToast: (toast) => {
+  addToast: ({ title, description, variant = 'info', durationMs = 3800 }) => {
     const id = `toast-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`
-
-    if (toastTimers.has(id)) {
-      window.clearTimeout(toastTimers.get(id))
+    const toast: Toast = {
+      id,
+      title,
+      description,
+      variant,
+      durationMs,
+      createdAt: Date.now(),
     }
 
     set((state) => ({
-      toasts: [...state.toasts, { id, ...toast }],
+      toasts: [...state.toasts, toast],
     }))
 
-    const timer = window.setTimeout(() => {
+    const timer = setTimeout(() => {
       set((state) => ({
         toasts: state.toasts.filter((entry) => entry.id !== id),
       }))
       toastTimers.delete(id)
-    }, TOAST_DURATION_MS)
+    }, durationMs)
 
     toastTimers.set(id, timer)
+    return id
   },
 
-  removeToast: (id) => {
-    const timer = toastTimers.get(id)
-    if (timer) {
-      window.clearTimeout(timer)
-      toastTimers.delete(id)
-    }
-
+  dismissToast: (id) => {
+    clearToastTimer(id)
     set((state) => ({
       toasts: state.toasts.filter((toast) => toast.id !== id),
     }))
   },
 
   clearToasts: () => {
-    for (const timer of toastTimers.values()) {
-      window.clearTimeout(timer)
+    for (const id of toastTimers.keys()) {
+      clearToastTimer(id)
     }
-    toastTimers.clear()
     set({ toasts: [] })
   },
 }))

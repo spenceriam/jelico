@@ -15,8 +15,128 @@
 - **Skills Management UI** — Skills settings now separate built-in skills from custom ones and use a clearer compact layout for browsing and editing.
 
 ### Fixed
-- **Restore Safety** — Backup restore now creates a local safety snapshot before overwriting backup-managed data.
+- **Restore Safety** — Backup restore now validates payloads, limits restored files to Jelico-managed paths, and creates a local safety snapshot before overwriting backup-managed data.
 - **Learning Toast Noise** — “Remembered for next time” notices now only appear when Jelico captures a genuinely new learning.
+
+## [0.38.2] - 2026-03-16
+
+### Highlights
+- Research and planning turns now show the full todo-plan preview in chat instead of cutting each step off with ellipses.
+- Todo completion is more reliable across models and providers, so the last task no longer gets stuck incomplete just because a backend returned a slightly different status word.
+- In-progress conversations in the sidebar shimmer again in both dark and light themes, making active chats easier to spot at a glance.
+
+### Fixed
+- **Full Plan Preview Text** — Todo-plan previews now keep the full visible text for each listed step instead of truncating every line before it reaches chat.
+- **Cross-Provider Todo Completion** — Todo status handling now accepts equivalent completion/progress words from different models and providers, so the existing todo panel reflects the actual completed state more reliably.
+- **Sidebar Processing Shimmer** — Conversation rows marked In Progress now restore the animated shimmer treatment in both dark and light mode.
+
+## [0.38.1] - 2026-03-14
+
+### Highlights
+- Generic compatible providers no longer borrow a different vendor's large output-token cap just because the model name matches a models.dev entry.
+- Streamed chat turns on providers like Nous Research now avoid the unsupported request shape that caused simple prompts to fail before any response text appeared.
+
+### Fixed
+- **Compatible Provider Output Caps** — Jelico now skips foreign models.dev output-limit guesses for generic compatible providers unless the provider itself matches by name or endpoint, so unsupported `max_tokens` values are no longer injected into normal streamed chats.
+
+## [0.38.0] - 2026-03-13
+
+### Highlights
+- You can now set up more hosted and local providers from dedicated presets and live model lists instead of typing everything manually.
+- Provider cards in Settings now show model context and output limits, and you can drag them into your preferred order.
+- Supported OpenAI reasoning models now let you save a default reasoning level per provider and override it per conversation.
+
+### New
+- **Expanded Provider Setup** — Jelico now includes clearer presets for NVIDIA NIM, Cerebras, Alibaba Qwen, Nous Research, KwaiKat, LM Studio, local servers, and custom endpoints.
+- **Reasoning Effort Control** — Supported OpenAI reasoning models now let you choose a provider default reasoning level and adjust it per conversation from the header controls.
+
+### Fixed
+- **Provider Limits Reliability** — Compatible providers now fill in context and max-output metadata more reliably even when an endpoint expects a different auth header or catalog metadata is missing.
+- **Reasoning Compatibility Guardrails** — Unsupported Extra High reasoning options are no longer sent to incompatible OpenAI models.
+- **Prefixed Reasoning Model Detection** — Reasoning controls now stay available for compatible model IDs like `openai/gpt-5.1` and `openai/o3` instead of disappearing when a provider prefixes the model name.
+- **Conversation-Specific Reasoning Sends** — Queued and background sends now keep the saved reasoning level for the conversation being sent, so another open chat cannot accidentally change how that turn runs.
+- **Default Reasoning Inheritance** — Chats left on the `Default` reasoning option now inherit the provider’s configured default during both active and queued sends instead of silently dropping back to whatever the upstream API chooses.
+- **Reasoning Selection Stability** — Explicit `Default` reasoning choices now stay `Default` when provider selections are restored, and deleting an unrelated provider no longer resets the active chat’s selected model or reasoning level.
+
+### Changed
+- **Live Model Discovery** — Provider setup and editing now pull model lists from provider APIs and compatible endpoints instead of relying on bundled model lists.
+- **Provider Settings Overview** — Settings now keeps its context when you add another provider, shows model limits inline on each provider row, and lets you reorder providers by dragging them.
+
+## [0.37.2] - 2026-03-13
+
+### Highlights
+- Light mode once again shows the subtle new-chat background lines across the full empty-chat canvas.
+- Light-mode sidebar status groups are color-coded again so In Progress, Waiting for Input, Needs Attention, and Done do not blend into the same surface tone.
+
+### Fixed
+- **New Chat Waves in Light Mode** — The muted background wave animation now appears in light mode and spans the full new-chat area instead of only the centered content region.
+- **Sidebar Status Color Coding in Light Mode** — Conversation rows in light mode now keep distinct status tinting again so active, waiting, attention, and done chats are easy to scan at a glance.
+
+### Changed
+- **Backdrop Motion Treatment** — The new-chat background now uses the intended mirrored floating-path animation while staying understated and respecting reduced-motion settings.
+
+## [0.37.1] - 2026-03-13
+
+### Highlights
+- Updates now download to your normal Downloads folder and can restart immediately or automatically after all active AI turns finish.
+- macOS updater installs are safer: Jelico now avoids wrong-architecture downloads, respects custom app bundle locations, and no longer replaces the existing app until the new copy is fully staged.
+- The light-theme context meter ring is easier to read without changing the overall accent language.
+
+### Fixed
+- **Safer macOS Updates** — Intel Macs no longer get pointed at Apple Silicon DMG installers, updates now target the running app bundle location instead of assuming `/Applications`, and a failed macOS update no longer risks removing the currently installed app before the replacement is ready.
+- **Safer Windows and Linux Update Apply Flow** — Downloaded installers now use platform-specific apply helpers with better fallback relaunch behavior, preserve legacy user-chosen installer files, and open Linux packages for manual install if privileged install attempts fail.
+- **Context Meter Contrast** — The unfilled context ring now stays readable in light mode while keeping the same accent-driven look.
+
+### Changed
+- **Update Restart Flow** — Jelico now saves update installers to your default Downloads folder, uses the same restart decision flow in both the app banner and Settings, and waits for all active AI turns to finish before restarting to install.
+
+## [0.37.0] - 2026-03-12
+
+### Highlights
+- The new chat screen now has a subtle animated paths backdrop that adds motion without distracting from the greeting, controls, or composer.
+- The sidebar now groups chats by status, keeps failed chats marked for attention, and uses inline archive confirmation with toast feedback.
+- macOS window docking now works with native drag behavior instead of the old custom drag handling.
+
+### New
+- **Animated New Chat Backdrop** — The empty new-chat screen now shows a muted looping paths animation that stays behind the existing layout and respects reduced-motion settings.
+- **Chat Status Sections** — Conversations are now grouped under In Progress, Waiting for Input, Needs Attention, and Done so it is easier to track multiple chats inside the same workspace or sandbox.
+
+### Fixed
+- **Sidebar Status Accuracy** — Conversations now stay in Waiting for Input when a sub-agent pauses for user input, and old failed sub-agents no longer leave later successful chats stuck under Needs Attention.
+- **macOS Docking** — Jelico now cooperates with macOS window docking gestures by using native drag regions in the titlebar and header.
+
+### Changed
+- **Archive Confirmation Flow** — Archiving a chat now uses an inline highlighted confirmation state in the sidebar row and a bottom-left toast after completion instead of a separate prompt dialog.
+
+## [0.36.0] - 2026-03-10
+
+### Highlights
+- Queued messages now open immediately when added, stay available after restart, and can be managed directly from the queue panel.
+- You can now edit or remove queued messages inline, or push one to run next without interrupting the current response.
+- The last prompt before the latest AI reply can now be edited directly inside its chat bubble and then regenerated from the updated text and attachments.
+
+### New
+- **Queue Message Controls** — Queued messages now have direct inline controls so you can send one immediately when the conversation is idle, prioritize it next while the current response finishes, edit it, or remove it without leaving the queue panel.
+- **Inline Prompt Editing Before Regenerate** — The latest user message before the most recent AI turn can now be edited in place inside the chat history, then reused for regenerate.
+
+### Fixed
+- **Collapsed Queue Visibility** — Adding a queued message during an active response now opens the queued-messages panel right away so new queued work is visible immediately.
+- **Queue Recovery After Restart** — Queued messages now survive app restarts, startup loading, and failed queue handoffs instead of disappearing.
+- **Queue Sync After Deletes** — Queued items for permanently deleted chats no longer come back from stale renderer state after a reload or later queue action, in-flight queue reloads no longer overwrite newer queued work after temporary load failures, and startup-time queue deletions no longer get silently restored from older disk state.
+- **Queue Recovery After Startup Read Failures** — If the app hits a temporary queue read error during startup, later queue changes no longer overwrite the saved queue with a partial in-memory snapshot.
+- **Queued Edit Durability** — Starting to edit a queued message no longer risks deleting it if the app reloads before you save or discard the edit.
+- **Queued Message Order** — Editing a queued message no longer changes the order that queued work runs when multiple conversations have interleaved items.
+- **Queued Edit Routing** — Editing a queued message now keeps the provider and model it was originally queued with instead of silently retargeting it to the current composer selection.
+- **Queued Edit Draft Recovery** — Saving a queued-message edit now returns you to the draft you were already composing instead of clearing it.
+- **Queued Edit Conversation Safety** — If you switch chats while a queued edit is still open, the stale edit can no longer be submitted into the wrong conversation during the transition.
+- **Queued Edit Reload Safety** — Reloading conversations while a queued message is being edited no longer makes that hidden queue item reappear in the visible queue panel mid-edit.
+- **Queued Edit Save Availability** — Saving an edited queued message no longer depends on the current global provider selection, so queue edits stay usable even if the provider picker is temporarily unset.
+- **Prompt Edit Streaming Safety** — The last prompt can no longer be edited while a response is actively starting, which avoids saving a different prompt than the one the assistant is already answering.
+- **Draft Attachment Removal** — Removing the last unsent attachment now stays removed when you switch chats and come back instead of unexpectedly reappearing in the draft.
+- **Regenerate Attachment Loss** — Regenerate now keeps the original prompt attachments instead of resending only the text.
+
+### Changed
+- **Queue Panel Polish** — Queued message previews now wrap naturally, use clearer action icons and tooltips, alternate row surfaces for easier scanning, stay consistent across new-chat and active-chat layouts, and let the queued send action reserve the very next runnable turn without stopping the active response.
 
 ## [0.35.3] - 2026-03-10
 

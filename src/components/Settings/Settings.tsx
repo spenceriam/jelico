@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
-import { X, Plus, Trash2, Check, AlertCircle, AlertTriangle, Settings as SettingsIcon, Archive, Database, Edit2, Loader2, Search, HardDrive, Eye, EyeOff, Shield, User, Palette } from 'lucide-react'
+import { X, Plus, Trash2, Check, AlertCircle, AlertTriangle, Settings as SettingsIcon, Archive, Database, Edit2, Loader2, Search, HardDrive, Eye, EyeOff, Shield, User, Palette, GripVertical } from 'lucide-react'
 import { useProviderStore } from '../../stores/providers'
 import { useUIStore } from '../../stores/ui'
 import { useChatStore } from '../../stores/chat'
@@ -13,6 +13,7 @@ import { PermissionsSettings } from './PermissionsSettings'
 import { ProfileSettings } from './ProfileSettings'
 import { AppearanceSettings } from './AppearanceSettings'
 import { ArchiveSettings } from './ArchiveSettings'
+import { getSupportedReasoningEfforts, REASONING_EFFORT_LABELS, type ReasoningEffort } from '../../lib/reasoning'
 // MicrophoneSettings disabled - WASM crashes on Windows ARM64, will revisit later
 // import { MicrophoneSettings } from './MicrophoneSettings'
 
@@ -22,7 +23,7 @@ interface SettingsProps {
   onClose: () => void
 }
 
-interface OpenRouterModel {
+interface ProviderModelOption {
   id: string
   name: string
 }
@@ -36,12 +37,55 @@ function stringifyCapabilityProfiles(value: Record<string, unknown> | null): str
   return JSON.stringify(value || null)
 }
 
+function formatTokenLimit(value: number | null | undefined): string {
+  if (!value || !Number.isFinite(value)) return 'Unknown'
+  if (value >= 1_000_000) return `${Math.round((value / 1_000_000) * 10) / 10}M`
+  if (value >= 1_000) return `${Math.round(value / 1_000)}K`
+  return String(value)
+}
+
+const DYNAMIC_PROVIDER_TYPES = new Set([
+  'anthropic',
+  'openai',
+  'google',
+  'openrouter',
+  'ollama',
+  'minimax',
+  'openai-compatible',
+  'anthropic-compatible',
+  'custom',
+  'local',
+])
+
 export function Settings({ onClose }: SettingsProps) {
-  const { providers, deleteProvider, testConnection, updateProvider, setActiveModel, setActiveSelection, activeProviderId } = useProviderStore()
+  const {
+    providers,
+    deleteProvider,
+    testConnection,
+    updateProvider,
+    reorderProviders,
+    setActiveModel,
+    setActiveSelection,
+    setActiveReasoningEffort,
+    activeProviderId,
+    activeModel,
+    activeReasoningEffort,
+  } = useProviderStore()
   const { openProviderSetup, settingsTab } = useUIStore()
-  const { activeConversationId, addSystemNotification } = useChatStore((state) => ({
+  const {
+    activeConversationId,
+    activeConversation,
+    addSystemNotification,
+    setConversationModelSelection,
+    setConversationReasoningEffort,
+  } = useChatStore((state) => ({
     activeConversationId: state.activeConversationId,
+    activeConversation: state.activeConversationId
+      ? state.conversations.find((conversation) => conversation.id === state.activeConversationId) || null
+      : null,
     addSystemNotification: state.addSystemNotification,
+    setConversationModelSelection: state.setConversationModelSelection,
+    setConversationReasoningEffort: state.setConversationReasoningEffort,
   }))
   const switchConversationModel = useContextStore((state) => state.switchConversationModel)
   const { loadSkills } = useSkillStore()
@@ -57,9 +101,14 @@ export function Settings({ onClose }: SettingsProps) {
   const [editNameValue, setEditNameValue] = useState('')
   const [editBaseUrlValue, setEditBaseUrlValue] = useState('')
   const [editModelValue, setEditModelValue] = useState('')
-  const [openRouterModels, setOpenRouterModels] = useState<OpenRouterModel[]>([])
+  const [editReasoningEffortValue, setEditReasoningEffortValue] = useState<ReasoningEffort | ''>('')
+  const [editableModels, setEditableModels] = useState<ProviderModelOption[]>([])
   const [loadingModels, setLoadingModels] = useState(false)
+  const [modelsFetched, setModelsFetched] = useState(false)
   const [modelSearch, setModelSearch] = useState('')
+  const [modelLimitsByProviderId, setModelLimitsByProviderId] = useState<Record<string, ModelLimits>>({})
+  const [draggedProviderId, setDraggedProviderId] = useState<string | null>(null)
+  const [dragOverProviderId, setDragOverProviderId] = useState<string | null>(null)
   const settingsContentRef = useRef<HTMLDivElement>(null)
   const providerCardRefs = useRef<Record<string, HTMLDivElement | null>>({})
 
@@ -71,6 +120,9 @@ export function Settings({ onClose }: SettingsProps) {
   const [currentApiKey, setCurrentApiKey] = useState<string | null>(null)
   const [loadingCurrentApiKey, setLoadingCurrentApiKey] = useState(false)
   const [invalidStoredApiKey, setInvalidStoredApiKey] = useState(false)
+
+  const editingProvider = providers.find((provider) => provider.id === editingProviderId) || null
+  const supportedReasoningEfforts = getSupportedReasoningEfforts(editingProvider?.type || '', editModelValue)
 
   useEffect(() => {
     void loadSkills()
@@ -84,6 +136,102 @@ export function Settings({ onClose }: SettingsProps) {
       testResultTimersRef.current = {}
     }
   }, [])
+
+  useEffect(() => {
+    let cancelled = false
+
+    const loadModelLimits = async () => {
+      const nextEntries = await Promise.all(
+        providers.map(async (provider) => {
+          if (!provider.defaultModel?.trim()) {
+            return [provider.id, { contextWindow: null, maxOutputTokens: null }] as const
+          }
+
+          try {
+            const limits = await window.jelico.providers.getModelLimits(provider.id, provider.defaultModel)
+            return [provider.id, limits] as const
+          } catch {
+            return [provider.id, { contextWindow: null, maxOutputTokens: null }] as const
+          }
+        })
+      )
+
+      if (!cancelled) {
+        setModelLimitsByProviderId(Object.fromEntries(nextEntries))
+      }
+    }
+
+    void loadModelLimits()
+    return () => {
+      cancelled = true
+    }
+  }, [providers])
+
+  useEffect(() => {
+    if (!editingProviderId || !editingProvider) return
+
+    if (editReasoningEffortValue && !supportedReasoningEfforts.includes(editReasoningEffortValue)) {
+      setEditReasoningEffortValue('')
+    }
+  }, [editingProviderId, editingProvider, editReasoningEffortValue, supportedReasoningEfforts])
+
+  useEffect(() => {
+    if (!editingProviderId || !editingProvider) return
+    if (!DYNAMIC_PROVIDER_TYPES.has(editingProvider.type)) {
+      setEditableModels([])
+      setModelsFetched(false)
+      setLoadingModels(false)
+      return
+    }
+
+    const effectiveApiKey = editApiKeyValue.trim() || currentApiKey || ''
+    const effectiveBaseUrl = editBaseUrlValue.trim() || editingProvider.baseUrl || undefined
+    const needsApiKey = editingProvider.type !== 'ollama' && editingProvider.type !== 'local'
+
+    if (needsApiKey && !effectiveApiKey) {
+      setEditableModels([])
+      setModelsFetched(false)
+      setLoadingModels(false)
+      return
+    }
+
+    let cancelled = false
+    setLoadingModels(true)
+
+    const timeout = window.setTimeout(async () => {
+      try {
+        const models = await window.jelico.providers.previewModels(
+          editingProvider.type,
+          effectiveApiKey,
+          effectiveBaseUrl
+        )
+
+        if (cancelled) return
+
+        const normalized = (models || [])
+          .map((model) => ({ id: model.id, name: model.name || model.id }))
+          .filter((model) => model.id)
+
+        setEditableModels(normalized)
+        setModelsFetched(normalized.length > 0)
+      } catch (error) {
+        if (!cancelled) {
+          console.error('Failed to fetch provider models:', error)
+          setEditableModels([])
+          setModelsFetched(false)
+        }
+      } finally {
+        if (!cancelled) {
+          setLoadingModels(false)
+        }
+      }
+    }, 350)
+
+    return () => {
+      cancelled = true
+      window.clearTimeout(timeout)
+    }
+  }, [editingProviderId, editingProvider, editApiKeyValue, editBaseUrlValue, currentApiKey])
 
   const handleTest = async (id: string) => {
     if (testResultTimersRef.current[id]) {
@@ -146,6 +294,7 @@ export function Settings({ onClose }: SettingsProps) {
     setEditNameValue(provider.name || '')
     setEditBaseUrlValue(provider.baseUrl || '')
     setEditModelValue(provider.defaultModel)
+    setEditReasoningEffortValue(provider.defaultReasoningEffort || '')
     setEditApiKeyValue('')
     const currentProfiles = normalizeCapabilityProfiles(provider.capabilityProfiles)
     setEditCapabilityProfilesValue(currentProfiles ? JSON.stringify(currentProfiles, null, 2) : '')
@@ -154,7 +303,9 @@ export function Settings({ onClose }: SettingsProps) {
     setCurrentApiKey(null)
     setInvalidStoredApiKey(false)
     setModelSearch('')
-    setOpenRouterModels([])
+    setEditableModels([])
+    setModelsFetched(false)
+    setLoadingModels(false)
     scrollProviderCardToTop(provider.id)
 
     // Load current API key for inline editing
@@ -177,21 +328,6 @@ export function Settings({ onClose }: SettingsProps) {
     } finally {
       setLoadingCurrentApiKey(false)
     }
-
-    // Fetch models for OpenRouter when key is available
-    if (provider.type === 'openrouter') {
-      setLoadingModels(true)
-      try {
-        if (providerApiKey && !keyLooksLikeModel) {
-          const models = await window.jelico.providers.fetchOpenRouterModels(providerApiKey)
-          setOpenRouterModels(models.map((m: any) => ({ id: m.id, name: m.name })))
-        }
-      } catch (error) {
-        console.error('Failed to fetch OpenRouter models:', error)
-      } finally {
-        setLoadingModels(false)
-      }
-    }
   }
 
   const saveProviderEdit = async () => {
@@ -206,6 +342,11 @@ export function Settings({ onClose }: SettingsProps) {
     const normalizedCurrentBaseUrl = (currentProvider.baseUrl || '').trim()
     const resolvedName = trimmedName || currentProvider.name || 'Provider'
     const currentCapabilityProfiles = normalizeCapabilityProfiles(currentProvider.capabilityProfiles)
+    const normalizedReasoningEffort = supportedReasoningEfforts.includes(editReasoningEffortValue as ReasoningEffort)
+      ? editReasoningEffortValue
+      : ''
+    const nextDefaultReasoningEffort = normalizedReasoningEffort || null
+    const currentDefaultReasoningEffort = currentProvider.defaultReasoningEffort || null
     const trimmedCapabilityProfiles = editCapabilityProfilesValue.trim()
     let parsedCapabilityProfiles: Record<string, unknown> | null = null
 
@@ -228,22 +369,95 @@ export function Settings({ onClose }: SettingsProps) {
       resolvedName !== currentProvider.name ||
       trimmedBaseUrl !== normalizedCurrentBaseUrl ||
       trimmedModel !== currentProvider.defaultModel ||
+      nextDefaultReasoningEffort !== currentDefaultReasoningEffort ||
       stringifyCapabilityProfiles(currentCapabilityProfiles) !== stringifyCapabilityProfiles(parsedCapabilityProfiles)
 
     const keyChanged = !!editApiKeyValue.trim()
+    const defaultModelChanged = trimmedModel !== currentProvider.defaultModel
+    const defaultReasoningChanged = nextDefaultReasoningEffort !== currentDefaultReasoningEffort
+    const isEditingActiveProvider = editingProviderId === activeProviderId
+    const isEditingActiveConversationProvider =
+      !!activeConversationId &&
+      !!activeConversation &&
+      activeConversation.providerId === editingProviderId
+    const shouldSyncActiveModelSelection =
+      isEditingActiveProvider &&
+      defaultModelChanged &&
+      activeModel === currentProvider.defaultModel
+    const shouldSyncActiveReasoningSelection =
+      isEditingActiveProvider &&
+      defaultReasoningChanged &&
+      (activeReasoningEffort || null) === currentDefaultReasoningEffort
+    const shouldSyncConversationModel =
+      isEditingActiveConversationProvider &&
+      defaultModelChanged &&
+      !!trimmedModel &&
+      activeConversation?.model === currentProvider.defaultModel
+    const shouldSyncConversationReasoning =
+      isEditingActiveConversationProvider &&
+      defaultReasoningChanged &&
+      (activeConversation?.reasoningEffort || null) === currentDefaultReasoningEffort
 
     if (providerChanged) {
       await updateProvider(editingProviderId, {
         name: resolvedName,
         baseUrl: trimmedBaseUrl,
         defaultModel: trimmedModel,
+        defaultReasoningEffort: nextDefaultReasoningEffort,
         capabilityProfiles: parsedCapabilityProfiles,
       })
     }
 
-    // Update active model if this is the active provider
-    if (providerChanged && editingProviderId === activeProviderId && trimmedModel !== currentProvider.defaultModel) {
+    if (providerChanged && shouldSyncActiveModelSelection) {
       await setActiveModel(trimmedModel)
+    }
+
+    if (providerChanged && shouldSyncActiveReasoningSelection) {
+      setActiveReasoningEffort(nextDefaultReasoningEffort)
+    }
+
+    if (providerChanged && isEditingActiveConversationProvider && activeConversationId) {
+      const modelName = `${resolvedName} / ${trimmedModel}`
+
+      if (shouldSyncConversationModel || shouldSyncConversationReasoning) {
+        try {
+          if (shouldSyncConversationModel) {
+            await window.jelico.conversations.updateModelProvider(
+              activeConversationId,
+              editingProviderId,
+              trimmedModel
+            )
+          }
+          if (shouldSyncConversationReasoning) {
+            await window.jelico.conversations.updateReasoningEffort(
+              activeConversationId,
+              nextDefaultReasoningEffort
+            )
+          }
+          if (shouldSyncConversationModel) {
+            setConversationModelSelection(
+              activeConversationId,
+              editingProviderId,
+              trimmedModel,
+              shouldSyncConversationReasoning
+                ? nextDefaultReasoningEffort
+                : (activeConversation?.reasoningEffort || null)
+            )
+          } else if (shouldSyncConversationReasoning) {
+            setConversationReasoningEffort(activeConversationId, nextDefaultReasoningEffort)
+          }
+          if (shouldSyncConversationModel) {
+            await switchConversationModel(activeConversationId, editingProviderId, trimmedModel)
+            addSystemNotification({
+              type: 'model_changed',
+              conversationId: activeConversationId,
+              modelName,
+            })
+          }
+        } catch (error) {
+          console.warn('[Settings] Failed to sync active conversation after provider edit:', error)
+        }
+      }
     }
 
     if (keyChanged) {
@@ -254,6 +468,7 @@ export function Settings({ onClose }: SettingsProps) {
     setEditNameValue('')
     setEditBaseUrlValue('')
     setEditModelValue('')
+    setEditReasoningEffortValue('')
     setEditApiKeyValue('')
     setEditCapabilityProfilesValue('')
     setCapabilityProfilesError(null)
@@ -261,7 +476,8 @@ export function Settings({ onClose }: SettingsProps) {
     setCurrentApiKey(null)
     setLoadingCurrentApiKey(false)
     setInvalidStoredApiKey(false)
-    setOpenRouterModels([])
+    setEditableModels([])
+    setModelsFetched(false)
   }
 
   const isProviderEditDirty = (provider: any) => {
@@ -271,6 +487,9 @@ export function Settings({ onClose }: SettingsProps) {
     const normalizedCurrentBaseUrl = (provider.baseUrl || '').trim()
     const resolvedName = trimmedName || provider.name || 'Provider'
     const currentCapabilityProfiles = normalizeCapabilityProfiles(provider.capabilityProfiles)
+    const normalizedReasoningEffort = supportedReasoningEfforts.includes(editReasoningEffortValue as ReasoningEffort)
+      ? editReasoningEffortValue
+      : ''
 
     let parsedCapabilityProfiles: Record<string, unknown> | null = null
     const trimmedCapabilityProfiles = editCapabilityProfilesValue.trim()
@@ -290,6 +509,7 @@ export function Settings({ onClose }: SettingsProps) {
       resolvedName !== provider.name ||
       trimmedBaseUrl !== normalizedCurrentBaseUrl ||
       trimmedModel !== provider.defaultModel ||
+      (normalizedReasoningEffort || null) !== (provider.defaultReasoningEffort || null) ||
       stringifyCapabilityProfiles(currentCapabilityProfiles) !== stringifyCapabilityProfiles(parsedCapabilityProfiles) ||
       !!editApiKeyValue.trim()
     )
@@ -324,7 +544,11 @@ export function Settings({ onClose }: SettingsProps) {
     })
 
     if (willHide && activeProviderId === provider.id && fallbackVisible) {
-      setActiveSelection(fallbackVisible.id, fallbackVisible.defaultModel)
+      setActiveSelection(
+        fallbackVisible.id,
+        fallbackVisible.defaultModel,
+        fallbackVisible.defaultReasoningEffort || null
+      )
 
       if (activeConversationId) {
         try {
@@ -332,6 +556,10 @@ export function Settings({ onClose }: SettingsProps) {
             activeConversationId,
             fallbackVisible.id,
             fallbackVisible.defaultModel
+          )
+          await window.jelico.conversations.updateReasoningEffort(
+            activeConversationId,
+            fallbackVisible.defaultReasoningEffort || null
           )
           await switchConversationModel(
             activeConversationId,
@@ -350,11 +578,37 @@ export function Settings({ onClose }: SettingsProps) {
     }
   }
 
+  const handleProviderDrop = async (targetProviderId: string) => {
+    if (!draggedProviderId || draggedProviderId === targetProviderId) {
+      setDraggedProviderId(null)
+      setDragOverProviderId(null)
+      return
+    }
+
+    const orderedIds = [...providers.map((provider) => provider.id)]
+    const fromIndex = orderedIds.indexOf(draggedProviderId)
+    const toIndex = orderedIds.indexOf(targetProviderId)
+
+    if (fromIndex === -1 || toIndex === -1) {
+      setDraggedProviderId(null)
+      setDragOverProviderId(null)
+      return
+    }
+
+    orderedIds.splice(fromIndex, 1)
+    orderedIds.splice(toIndex, 0, draggedProviderId)
+
+    await reorderProviders(orderedIds)
+    setDraggedProviderId(null)
+    setDragOverProviderId(null)
+  }
+
   const cancelEditProvider = () => {
     setEditingProviderId(null)
     setEditNameValue('')
     setEditBaseUrlValue('')
     setEditModelValue('')
+    setEditReasoningEffortValue('')
     setEditApiKeyValue('')
     setEditCapabilityProfilesValue('')
     setCapabilityProfilesError(null)
@@ -362,11 +616,13 @@ export function Settings({ onClose }: SettingsProps) {
     setCurrentApiKey(null)
     setLoadingCurrentApiKey(false)
     setInvalidStoredApiKey(false)
-    setOpenRouterModels([])
+    setEditableModels([])
+    setModelsFetched(false)
+    setLoadingModels(false)
     setModelSearch('')
   }
 
-  const filteredModels = openRouterModels.filter(m =>
+  const filteredModels = editableModels.filter(m =>
     m.id.toLowerCase().includes(modelSearch.toLowerCase()) ||
     m.name.toLowerCase().includes(modelSearch.toLowerCase())
   )
@@ -490,7 +746,6 @@ export function Settings({ onClose }: SettingsProps) {
                 <h3 className="text-lg font-medium text-text-primary">Providers</h3>
                 <button
                   onClick={() => {
-                    onClose()
                     openProviderSetup()
                   }}
                   className="flex items-center gap-2 px-3 py-1.5 text-sm bg-accent text-accent-foreground rounded-lg hover:bg-accent-bright transition-colors"
@@ -506,15 +761,52 @@ export function Settings({ onClose }: SettingsProps) {
                 </div>
               ) : (
                 <div className="space-y-3">
-                  {providers.map((provider) => (
+                  {providers.map((provider) => {
+                    const limits = modelLimitsByProviderId[provider.id]
+                    const isEditing = editingProviderId === provider.id
+                    const isDragTarget = dragOverProviderId === provider.id
+
+                    return (
                     <div
                       key={provider.id}
                       ref={(el) => { providerCardRefs.current[provider.id] = el }}
-                      className="p-4 bg-bg-elevated rounded-lg border border-border"
+                      className={`p-4 bg-bg-elevated rounded-lg border transition-colors ${
+                        isDragTarget ? 'border-accent' : 'border-border'
+                      }`}
+                      onDragOver={(event) => {
+                        event.preventDefault()
+                        if (draggedProviderId && draggedProviderId !== provider.id) {
+                          setDragOverProviderId(provider.id)
+                        }
+                      }}
+                      onDrop={() => {
+                        void handleProviderDrop(provider.id)
+                      }}
+                      onDragLeave={() => {
+                        if (dragOverProviderId === provider.id) {
+                          setDragOverProviderId(null)
+                        }
+                      }}
                     >
-                      <div className="flex items-center justify-between">
-                        <div>
+                      <div className="flex items-start justify-between gap-4">
+                        <div className="min-w-0 flex-1">
                           <div className="flex items-center gap-2">
+                            <button
+                              type="button"
+                              draggable
+                              onDragStart={() => {
+                                setDraggedProviderId(provider.id)
+                                setDragOverProviderId(provider.id)
+                              }}
+                              onDragEnd={() => {
+                                setDraggedProviderId(null)
+                                setDragOverProviderId(null)
+                              }}
+                              className="p-1 -ml-1 text-text-muted hover:text-text-primary cursor-grab active:cursor-grabbing"
+                              title="Drag to reorder provider"
+                            >
+                              <GripVertical className="w-4 h-4" />
+                            </button>
                             <span className="font-medium text-text-primary">
                               {provider.name}
                             </span>
@@ -524,7 +816,7 @@ export function Settings({ onClose }: SettingsProps) {
                               </span>
                             )}
                           </div>
-                          <div className="text-sm text-text-secondary mt-1 flex items-center gap-2">
+                          <div className="text-sm text-text-secondary mt-1 flex flex-wrap items-center gap-2">
                             <span>{provider.type}</span>
                             <span>·</span>
                             <span className="font-mono text-xs">
@@ -535,10 +827,18 @@ export function Settings({ onClose }: SettingsProps) {
                                 void handleEditProviderClick(provider)
                               }}
                               className="p-1 text-text-muted hover:text-text-primary hover:bg-bg-hover rounded transition-colors"
-                              title={editingProviderId === provider.id ? 'Save and close editor' : 'Edit provider'}
+                              title={isEditing ? 'Save and close editor' : 'Edit provider'}
                             >
                               <Edit2 className="w-3 h-3" />
                             </button>
+                            <span className="text-text-faint">|</span>
+                            <span className="text-xs">
+                              {formatTokenLimit(limits?.contextWindow)} ctx
+                            </span>
+                            <span className="text-text-faint">|</span>
+                            <span className="text-xs">
+                              {formatTokenLimit(limits?.maxOutputTokens)} max
+                            </span>
                           </div>
                           {(testingId === provider.id || testResults[provider.id]) && (
                             <div
@@ -611,7 +911,7 @@ export function Settings({ onClose }: SettingsProps) {
                       </div>
 
                       {/* Edit provider form */}
-                      {editingProviderId === provider.id && (
+                      {isEditing && (
                         <div className="mt-4 pt-4 border-t border-border">
                           <label className="block text-sm font-medium text-text-secondary mb-2">
                             Display Name <span className="text-text-muted font-normal">(optional)</span>
@@ -639,64 +939,80 @@ export function Settings({ onClose }: SettingsProps) {
                             Default Model
                           </label>
 
-                          {provider.type === 'openrouter' ? (
+                          {loadingModels ? (
+                            <div className="flex items-center gap-2 text-text-muted py-2">
+                              <Loader2 className="w-4 h-4 animate-spin" />
+                              <span>Loading models...</span>
+                            </div>
+                          ) : editableModels.length > 0 ? (
                             <div className="space-y-2">
-                              {loadingModels ? (
-                                <div className="flex items-center gap-2 text-text-muted py-2">
-                                  <Loader2 className="w-4 h-4 animate-spin" />
-                                  <span>Loading models...</span>
-                                </div>
-                              ) : openRouterModels.length > 0 ? (
-                                <>
-                                  <div className="relative">
-                                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-text-muted" />
-                                    <input
-                                      type="text"
-                                      value={modelSearch}
-                                      onChange={(e) => setModelSearch(e.target.value)}
-                                      className="w-full px-3 py-2 pl-9 text-sm bg-bg-deep border border-border rounded focus:outline-none focus:border-accent text-text-primary"
-                                      placeholder="Search models..."
-                                    />
-                                  </div>
-                                  <div className="max-h-40 overflow-y-auto border border-border rounded bg-bg-deep">
-                                    {filteredModels.slice(0, 30).map((model) => (
-                                      <button
-                                        key={model.id}
-                                        type="button"
-                                        onClick={() => setEditModelValue(model.id)}
-                                        className={`w-full px-3 py-2 text-left text-sm hover:bg-bg-surface border-b border-border last:border-b-0 ${
-                                          editModelValue === model.id ? 'bg-accent/10 text-accent' : 'text-text-primary'
-                                        }`}
-                                      >
-                                        <div className="font-medium">{model.name}</div>
-                                        <div className="text-xs text-text-muted font-mono">{model.id}</div>
-                                      </button>
-                                    ))}
-                                  </div>
-                                </>
-                              ) : (
+                              <div className="relative">
+                                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-text-muted" />
                                 <input
                                   type="text"
-                                  value={editModelValue}
-                                  onChange={(e) => setEditModelValue(e.target.value)}
-                                  className="w-full px-3 py-2 text-sm bg-bg-deep border border-border rounded focus:outline-none focus:border-accent text-text-primary font-mono"
-                                  placeholder="Enter model ID..."
+                                  value={modelSearch}
+                                  onChange={(e) => setModelSearch(e.target.value)}
+                                  className="w-full px-3 py-2 pl-9 text-sm bg-bg-deep border border-border rounded focus:outline-none focus:border-accent text-text-primary"
+                                  placeholder="Search models..."
                                 />
-                              )}
-                              {editModelValue && (
-                                <p className="text-xs text-text-muted">
-                                  Selected: <span className="font-mono">{editModelValue}</span>
-                                </p>
-                              )}
+                              </div>
+                              <div className="max-h-40 overflow-y-auto border border-border rounded bg-bg-deep">
+                                {filteredModels.slice(0, 40).map((model) => (
+                                  <button
+                                    key={model.id}
+                                    type="button"
+                                    onClick={() => setEditModelValue(model.id)}
+                                    className={`w-full px-3 py-2 text-left text-sm hover:bg-bg-surface border-b border-border last:border-b-0 ${
+                                      editModelValue === model.id ? 'bg-accent/10 text-accent' : 'text-text-primary'
+                                    }`}
+                                  >
+                                    <div className="font-medium">{model.name}</div>
+                                    <div className="text-xs text-text-muted font-mono">{model.id}</div>
+                                  </button>
+                                ))}
+                              </div>
                             </div>
                           ) : (
-                            <input
-                              type="text"
-                              value={editModelValue}
-                              onChange={(e) => setEditModelValue(e.target.value)}
-                              className="w-full px-3 py-2 text-sm bg-bg-deep border border-border rounded focus:outline-none focus:border-accent text-text-primary font-mono"
-                              placeholder="Enter model ID..."
-                            />
+                            <div className="space-y-2">
+                              {modelsFetched === false && DYNAMIC_PROVIDER_TYPES.has(provider.type) && (
+                                <p className="text-xs text-text-muted">
+                                  Enter a model ID manually or add an API key to load available models.
+                                </p>
+                              )}
+                              <input
+                                type="text"
+                                value={editModelValue}
+                                onChange={(e) => setEditModelValue(e.target.value)}
+                                className="w-full px-3 py-2 text-sm bg-bg-deep border border-border rounded focus:outline-none focus:border-accent text-text-primary font-mono"
+                                placeholder="Enter model ID..."
+                              />
+                            </div>
+                          )}
+
+                          {editModelValue && (
+                            <p className="text-xs text-text-muted mt-2">
+                              Selected: <span className="font-mono">{editModelValue}</span>
+                            </p>
+                          )}
+
+                          {supportedReasoningEfforts.length > 0 && (
+                            <div className="mt-3">
+                              <label className="block text-sm font-medium text-text-secondary mb-2">
+                                Default Reasoning
+                              </label>
+                              <select
+                                value={editReasoningEffortValue}
+                                onChange={(e) => setEditReasoningEffortValue((e.target.value as ReasoningEffort | '') || '')}
+                                className="w-full px-3 py-2 text-sm bg-bg-deep border border-border rounded focus:outline-none focus:border-accent text-text-primary"
+                              >
+                                <option value="">API default</option>
+                                {supportedReasoningEfforts.map((effort) => (
+                                  <option key={effort} value={effort}>
+                                    {REASONING_EFFORT_LABELS[effort]}
+                                  </option>
+                                ))}
+                              </select>
+                            </div>
                           )}
 
                           <div className="mt-3">
@@ -805,7 +1121,7 @@ export function Settings({ onClose }: SettingsProps) {
                         </div>
                       )}
                     </div>
-                  ))}
+                  )})}
                 </div>
               )}
             </div>

@@ -1,4 +1,4 @@
-import { app, ipcMain, BrowserWindow, shell } from 'electron'
+import { app, ipcMain, shell } from 'electron'
 import { applyDownloadedUpdate, checkForUpdates, clearDownloadedUpdateState, downloadLatestUpdate } from '../services/updates'
 
 export function registerUpdateHandlers() {
@@ -11,8 +11,7 @@ export function registerUpdateHandlers() {
   })
 
   ipcMain.handle('updates:download', async (event) => {
-    const window = BrowserWindow.fromWebContents(event.sender)
-    return downloadLatestUpdate(window ?? null, (progress) => {
+    return downloadLatestUpdate((progress) => {
       event.sender.send('updates:download-progress', progress)
     })
   })

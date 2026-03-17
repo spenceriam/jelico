@@ -33,7 +33,124 @@ export const changelog: ChangelogEntry[] = [
         'Skills, soul learnings, and remembered memories are now ranked against the current task so scoped context stays relevant without disappearing across adjacent work types',
       ],
       fixed: [
-        'Backup restore now recreates the backup-managed file set consistently and writes a local safety snapshot before overwriting data, and repeated learning toasts no longer re-fire for already-known patterns',
+        'GitHub and local backup restore now validate payload structure, constrain restored files to Jelico-managed paths, and create a local safety snapshot before overwriting backup-managed data (Fixes #158)',
+        'Repeated learning toasts now only fire for genuinely new captures instead of reappearing for previously known patterns (Fixes #157)',
+      ],
+    },
+  },
+  {
+    version: '0.38.2',
+    date: '2026-03-16',
+    changes: {
+      fixed: [
+        'Todo plan previews now stream full step text in chat instead of truncating each line with ellipses, so multi-step research and planning turns remain readable from the first response block (Fixes #164)',
+        'Todo completion now normalizes provider- and model-emitted status aliases such as `completed`, `finished`, and `working`, and preserves status-change history during updates so the final task reliably marks complete across providers and reloads (Fixes #165)',
+        'Sidebar conversation rows once again apply the in-progress shimmer treatment in both dark and light themes, restoring active-chat visibility inside grouped status sections (Fixes #168)',
+      ],
+    },
+  },
+  {
+    version: '0.38.1',
+    date: '2026-03-14',
+    changes: {
+      fixed: [
+        'Generic compatible providers no longer inherit foreign models.dev output-token limits by model name alone, so streamed chat turns avoid sending unsupported `max_tokens` caps to backends like Nous Research while still preserving provider-specific matches such as MiniMax coding-plan models (Fixes #171)',
+      ],
+    },
+  },
+  {
+    version: '0.38.0',
+    date: '2026-03-13',
+    changes: {
+      added: [
+        'Provider setup now includes dedicated presets for NVIDIA NIM, Cerebras, Alibaba Qwen, Nous Research, KwaiKat, LM Studio, local servers, and custom endpoints so multi-provider onboarding covers more hosted and self-hosted options out of the box (Fixes #132)',
+        'Supported OpenAI reasoning models now expose provider-level default reasoning effort and per-conversation reasoning selection beside the model picker (Fixes #144)',
+      ],
+      changed: [
+        'Provider setup and Settings editing now fetch live model lists from provider APIs and compatible endpoints instead of relying on baked-in Anthropic, OpenAI, and Google model lists, and returning from Add Provider preserves the Settings context (Fixes #132, Fixes #144)',
+        'Provider rows in Settings now show context-window and max-output metadata inline and support drag reordering so preferred providers are easier to scan and prioritize (Fixes #159)',
+      ],
+      fixed: [
+        'Compatible provider limit lookups now retry Bearer and x-api-key auth variants, and native OpenAI fallbacks now include max-output limits so Settings metadata stays populated when catalog data is missing',
+        'Reasoning effort selections are now validated against the active OpenAI model before requests are sent, preventing unsupported Extra High selections from reaching incompatible codex-branded models',
+        'OpenAI-style reasoning controls now remain available for prefixed compatible model IDs such as `openai/gpt-5.1` and `openai/o3`, so reasoning-capable models are not misclassified when providers namespace their catalog entries',
+        'Queued or forced sends now use the target conversation\'s saved reasoning override instead of the currently active chat\'s selector state, keeping per-conversation reasoning reproducible across background turns and retries',
+        'Conversations using the Default reasoning option now inherit the current provider-level default for both active and queued sends, so background turns no longer fall back to raw API defaults when no per-chat override is set',
+        'Restoring or re-normalizing provider selections now preserves explicit Default reasoning choices, and deleting unrelated providers no longer resets the active chat\'s model or reasoning override back to provider defaults',
+      ],
+    },
+  },
+  {
+    version: '0.37.2',
+    date: '2026-03-13',
+    changes: {
+      changed: [
+        'The new-chat backdrop now uses the intended mirrored floating-path animation while keeping the effect muted and reduced-motion friendly',
+      ],
+      fixed: [
+        'Light theme new-chat backgrounds now render the muted animated path field across the full empty-state canvas instead of losing the effect outside dark mode or clipping it to the centered content column (Fixes #167)',
+        'Light theme sidebar conversation rows now preserve distinct in-progress, waiting-for-input, needs-attention, and done status tinting so grouped status sections remain visually differentiated again (Fixes #167)',
+      ],
+    },
+  },
+  {
+    version: '0.37.1',
+    date: '2026-03-13',
+    changes: {
+      changed: [
+        'Update download/apply UX now saves installers to the system Downloads folder, uses a shared restart decision flow between the app banner and Settings, and schedules automatic apply only after all active AI turns finish (Fixes #149, Fixes #150)',
+      ],
+      fixed: [
+        'macOS update asset selection now avoids incompatible architecture-tagged DMG choices and derives the install target from the running app bundle path while staging replacement through a backup/restore flow so failed installs do not remove the working app (Fixes #149)',
+        'Windows and Linux downloaded updates now use detached platform-specific apply helpers with safer fallback relaunch behavior, preserve legacy user-managed installer files, and open Linux packages for manual install when privileged package installs fail (Fixes #150)',
+        'Context usage ring track contrast now uses accent-derived theme-specific tones so the unfilled meter remains readable in light mode (Fixes #154)',
+      ],
+    },
+  },
+  {
+    version: '0.37.0',
+    date: '2026-03-12',
+    changes: {
+      added: [
+        'Added a muted animated paths backdrop to the new-chat screen with reduced-motion handling so the empty-state view feels more alive without competing with the greeting, controls, or composer (Fixes #134)',
+        'Added grouped sidebar conversation status sections with per-chat status indicators for in-progress, waiting-for-input, needs-attention, and done states so parallel work is easier to track within each workspace or sandbox (Fixes #143)',
+      ],
+      changed: [
+        'Archive confirmation now happens inline in the sidebar row with striped warning styling and bottom-left toast feedback instead of a modal confirmation prompt (Fixes #145)',
+      ],
+      fixed: [
+        'Sidebar status grouping now treats sub-agents waiting on user input as waiting-for-input conversations, and historical failed sub-agents no longer leave later successful chats stuck under needs-attention sections (Fixes #143)',
+        'macOS window docking now relies on native drag regions in the titlebar/header path and disables renderer-driven drag/maximize handling on Mac so edge docking gestures work again (Fixes #146)',
+      ],
+    },
+  },
+  {
+    version: '0.36.0',
+    date: '2026-03-10',
+    changes: {
+      added: [
+        'Queued messages now persist across app restarts and can be prioritized to run next without interrupting the current response, edited back into place, or removed directly from the queue panel while the current response is still active',
+        'The most recent user message before the latest assistant turn can now be edited inline in its existing chat bubble, then regenerated from the updated prompt and attachments',
+      ],
+      changed: [
+        'Queued-message rows now use richer wrapped previews, clearer hover/tooltips, scan-friendly alternating surfaces, queue-state sharing across both new-chat and active-chat composer layouts, and a non-interrupting send action that promotes a queued item to the next runnable turn instead of force-stopping the current stream',
+        'Queued send-now prioritization is now persisted and enforced ahead of all other queued work until that selected message becomes runnable, so "send next" remains true even when other conversations still have idle queued items',
+      ],
+      fixed: [
+        'Queueing a new message during an active response now always auto-expands the queued messages panel for the active conversation instead of leaving new entries hidden in a collapsed state (Fixes #135)',
+        'Queued messages are no longer dropped on restart, during startup queue hydration, or during failed queue handoff attempts; queue state now survives reloads and restores items when immediate/deferred sends fail',
+        'Conversation reloads now resync the persisted queue state, filter out queued rows for permanently deleted conversations, keep queue hydration in merge mode until persisted queue loading succeeds, refuse to apply stale hydrated snapshots after later queue mutations, and preserve explicit local queue deletions during hydration merge mode, so transient IPC failures, in-flight reload races, and startup-time queue removals do not clear, overwrite, or resurrect queued items',
+        'Queue persistence now skips replace-all writes while the persisted queue cannot be read during startup merge mode, so transient queue-list failures do not overwrite saved queued work with a partial in-memory snapshot',
+        'Starting to edit a queued message no longer removes it from durable queue storage before the edit is finalized, so reloads during edit restore the original queued item instead of silently losing it',
+        'Editing or restoring a queued message now preserves the original global queue order, so interleaved work across multiple conversations continues to run FIFO instead of being silently reordered',
+        'Editing a queued message now preserves its original provider/model routing instead of silently replacing it with the current composer selection',
+        'Saving a queued-message edit now restores the draft text and attachments that were already in the composer before edit mode, instead of clearing that unsent work after the queue item is updated',
+        'Queued-message edits now refuse to submit from a different conversation if the user switches chats before queued-edit cleanup finishes, preventing stale edit state from routing prompts into the wrong conversation during navigation races',
+        'Queued-message reloads now keep the hidden pending edit out of the visible queue list, so refreshing conversations mid-edit does not duplicate the same queued item in both the editor and the queue panel',
+        'Queued-message edit saves now stay available even when the global provider/model selector is temporarily unset, so queue edits are not blocked by unrelated composer configuration state',
+        'Inline editing for the last user prompt now stays disabled for the full assistant streaming window instead of only after streamed content becomes visible, so prompt history cannot be changed while a response is already in flight',
+        'Removing the final unsent composer attachment now clears the cached draft attachment state immediately, so deleted files do not reappear after switching conversations',
+        'Regenerate now preserves attachments from the preceding user message instead of silently dropping them on resend',
       ],
     },
   },
