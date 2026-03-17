@@ -23,12 +23,28 @@ function getSoulPath(): string {
 
 function createSafetyBackupSnapshot(timestamp: number): void {
   const backupPath = path.join(getUserDataPath(), `jelico-restore.backup-${timestamp}.json`)
-  fs.writeFileSync(backupPath, JSON.stringify(collectBackupPayload(), null, 2))
+  try {
+    fs.writeFileSync(backupPath, JSON.stringify(collectBackupPayload({ tolerateMalformedJson: true }), null, 2))
+  } catch (error) {
+    console.warn('[Backup] Failed to create restore safety snapshot:', error)
+  }
 }
 
-function readJsonIfPresent(filePath: string): Record<string, unknown> | undefined {
+function readJsonIfPresent(
+  filePath: string,
+  options?: { tolerateParseErrors?: boolean }
+): Record<string, unknown> | undefined {
   if (!fs.existsSync(filePath)) return undefined
-  const parsed = JSON.parse(fs.readFileSync(filePath, 'utf-8'))
+  let parsed: unknown
+  try {
+    parsed = JSON.parse(fs.readFileSync(filePath, 'utf-8'))
+  } catch (error) {
+    if (options?.tolerateParseErrors) {
+      console.warn(`[Backup] Skipping malformed JSON in ${path.basename(filePath)} while creating a restore snapshot.`, error)
+      return undefined
+    }
+    throw error
+  }
   if (typeof parsed === 'object' && parsed !== null && !Array.isArray(parsed)) {
     return parsed as Record<string, unknown>
   }
@@ -76,7 +92,7 @@ function restoreFiles(files: Record<string, string>) {
   }
 }
 
-export function collectBackupPayload(): BackupPayload {
+export function collectBackupPayload(options?: { tolerateMalformedJson?: boolean }): BackupPayload {
   const files: Record<string, string> = {}
   const userDataPath = getUserDataPath()
 
@@ -94,8 +110,12 @@ export function collectBackupPayload(): BackupPayload {
     version: 1,
     exportedAt: Date.now(),
     appVersion: app.getVersion(),
-    database: readJsonIfPresent(getDatabasePath()),
-    soul: readJsonIfPresent(getSoulPath()),
+    database: readJsonIfPresent(getDatabasePath(), {
+      tolerateParseErrors: options?.tolerateMalformedJson,
+    }),
+    soul: readJsonIfPresent(getSoulPath(), {
+      tolerateParseErrors: options?.tolerateMalformedJson,
+    }),
   }
 
   if (Object.keys(files).length > 0) {
