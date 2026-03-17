@@ -21,11 +21,17 @@ function getSoulPath(): string {
   return path.join(getUserDataPath(), 'soul.json')
 }
 
-function createSafetyBackupSnapshot(timestamp: number): void {
+function createSafetyBackupSnapshot(
+  timestamp: number,
+  options?: { suppressWriteErrors?: boolean }
+): void {
   const backupPath = path.join(getUserDataPath(), `jelico-restore.backup-${timestamp}.json`)
   try {
     fs.writeFileSync(backupPath, JSON.stringify(collectBackupPayload({ tolerateMalformedJson: true }), null, 2))
   } catch (error) {
+    if (!options?.suppressWriteErrors) {
+      throw error
+    }
     console.warn('[Backup] Failed to create restore safety snapshot:', error)
   }
 }
@@ -133,7 +139,7 @@ export function applyBackupPayload(payloadInput: BackupPayload | unknown): {
   const databasePath = getDatabasePath()
   const soulPath = getSoulPath()
 
-  createSafetyBackupSnapshot(timestamp)
+  createSafetyBackupSnapshot(timestamp, { suppressWriteErrors: true })
 
   if (payload.database) {
     if (fs.existsSync(databasePath)) {
@@ -211,6 +217,8 @@ export function clearAllLocalData(): void {
   const databasePath = getDatabasePath()
   const soulPath = getSoulPath()
   const timestamp = Date.now()
+
+  createSafetyBackupSnapshot(timestamp)
 
   if (fs.existsSync(databasePath)) {
     fs.copyFileSync(databasePath, path.join(userDataPath, `jelico-data.backup-${timestamp}.json`))

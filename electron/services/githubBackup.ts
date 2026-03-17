@@ -4,6 +4,11 @@ import path from 'path'
 import { keychainService } from './keychain.js'
 import { applyBackupPayload, collectBackupPayload } from './backupPayload.js'
 import { validateBackupPayload } from './backupPayloadSchema.js'
+import {
+  assembleGithubChunkedBackupPayload,
+  createGithubChunkedBackupFiles,
+  parseGithubChunkedBackupManifest,
+} from './githubBackupChunks.js'
 
 type GithubBackupMode = 'manual' | 'on_change' | 'scheduled'
 type GithubBackupTrigger = 'manual' | 'on_change' | 'scheduled'
@@ -130,6 +135,19 @@ async function getExistingFileSha(target: GithubRepoTarget, filePath: string, br
   return payload.sha
 }
 
+async function getFileContent(target: GithubRepoTarget, filePath: string, branch: string, token: string): Promise<string> {
+  const response = await githubRequest<{ content: string; encoding: string }>(
+    `https://api.github.com/repos/${target.owner}/${target.repo}/contents/${filePath}?ref=${encodeURIComponent(branch)}`,
+    token
+  )
+
+  if (response.encoding !== 'base64') {
+    throw new Error(`Unsupported encoding returned for ${filePath}.`)
+  }
+
+  return Buffer.from(response.content, 'base64').toString('utf-8')
+}
+
 async function putFile(target: GithubRepoTarget, branch: string, filePath: string, content: string, token: string, message: string) {
   const sha = await getExistingFileSha(target, filePath, branch, token)
   await githubRequest(
@@ -241,13 +259,18 @@ export async function runGithubBackup(trigger: GithubBackupTrigger): Promise<{ s
       const metadata = await getRepositoryMetadata(target, token)
       const branch = metadata.default_branch
       const payload = collectBackupPayload()
-      const serializedPayload = JSON.stringify(payload, null, 2)
       const timestamp = new Date().toISOString().replace(/[:]/g, '-')
+      const chunkBasePath = `jelico-backups/chunks/${timestamp}`
+      const { manifest, chunkFiles } = createGithubChunkedBackupFiles(payload, chunkBasePath)
+      const serializedManifest = JSON.stringify(manifest, null, 2)
       const historyPath = `jelico-backups/history/${timestamp}.json`
       const message = `backup: jelico ${trigger} snapshot ${timestamp}`
 
-      await putFile(target, branch, LATEST_BACKUP_PATH, serializedPayload, token, message)
-      await putFile(target, branch, historyPath, serializedPayload, token, message)
+      for (const chunkFile of chunkFiles) {
+        await putFile(target, branch, chunkFile.path, chunkFile.content, token, message)
+      }
+      await putFile(target, branch, historyPath, serializedManifest, token, message)
+      await putFile(target, branch, LATEST_BACKUP_PATH, serializedManifest, token, message)
 
       await updateStoredConfig((current) => ({
         ...current,
@@ -297,16 +320,20 @@ export async function restoreLatestGithubBackup(): Promise<{
   try {
     const target = parseRepoUrl(config.repoUrl)
     const metadata = await getRepositoryMetadata(target, token)
-    const response = await githubRequest<{ content: string; encoding: string }>(
-      `https://api.github.com/repos/${target.owner}/${target.repo}/contents/${LATEST_BACKUP_PATH}?ref=${encodeURIComponent(metadata.default_branch)}`,
-      token
-    )
+    const latestContent = await getFileContent(target, LATEST_BACKUP_PATH, metadata.default_branch, token)
+    const parsed = JSON.parse(latestContent)
 
-    if (response.encoding !== 'base64') {
-      throw new Error('Unsupported backup encoding returned by GitHub.')
+    let payload
+    try {
+      payload = validateBackupPayload(parsed)
+    } catch {
+      const manifest = parseGithubChunkedBackupManifest(parsed)
+      const chunkContents = await Promise.all(
+        manifest.chunks.map((chunkPath) => getFileContent(target, chunkPath, metadata.default_branch, token))
+      )
+      payload = assembleGithubChunkedBackupPayload(manifest, chunkContents)
     }
 
-    const payload = validateBackupPayload(JSON.parse(Buffer.from(response.content, 'base64').toString('utf-8')))
     const imported = applyBackupPayload(payload)
 
     return { success: true, imported }
