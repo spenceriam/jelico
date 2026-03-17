@@ -99,6 +99,14 @@ export function validateBackupPayload(payload: unknown): BackupPayload {
     }
   }
 
+  const hasRestorableSection = payload.database !== undefined ||
+    payload.soul !== undefined ||
+    Object.keys(normalizedFiles).length > 0
+
+  if (!hasRestorableSection) {
+    throw new Error('Backup payload does not contain any restorable data')
+  }
+
   return {
     version: payload.version,
     exportedAt: payload.exportedAt,

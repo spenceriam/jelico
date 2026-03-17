@@ -2,6 +2,7 @@ import { app } from 'electron'
 import fs from 'fs'
 import path from 'path'
 import { v4 as uuid } from 'uuid'
+import { notifyGithubBackupDataChanged } from './githubBackup.js'
 import {
   createLegacySkillDraft,
   createSkillRecord,
@@ -53,6 +54,7 @@ function loadSkillsFile(): SkillsFile {
 
 function saveSkillsFile(data: SkillsFile): void {
   fs.writeFileSync(getSkillsPath(), JSON.stringify(data, null, 2))
+  notifyGithubBackupDataChanged()
 }
 
 function toCustomSkillRecord(skill: StoredCustomSkill): SkillRecord {

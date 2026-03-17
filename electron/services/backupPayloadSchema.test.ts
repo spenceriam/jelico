@@ -49,6 +49,11 @@ test('validateBackupPayload rejects malformed content before restore', () => {
   assert.throws(() => validateBackupPayload({
     version: 1,
     exportedAt: 1234,
+    appVersion: '0.39.0',
+  }), /does not contain any restorable data/)
+  assert.throws(() => validateBackupPayload({
+    version: 1,
+    exportedAt: 1234,
     files: ['bad'],
   }), /Invalid backup file payload/)
   assert.throws(() => validateBackupPayload({

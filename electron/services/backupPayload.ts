@@ -43,6 +43,10 @@ function collectFilesRecursively(basePath: string, relativeBase: string, output:
     const fullPath = path.join(basePath, entry.name)
     const relativePath = path.posix.join(relativeBase, entry.name)
 
+    if (entry.isSymbolicLink()) {
+      continue
+    }
+
     if (entry.isDirectory()) {
       collectFilesRecursively(fullPath, relativePath, output)
       continue
@@ -81,7 +85,7 @@ export function collectBackupPayload(): BackupPayload {
   }
   for (const fileName of BACKUP_ROOT_FILES) {
     const filePath = path.join(userDataPath, fileName)
-    if (fs.existsSync(filePath)) {
+    if (fs.existsSync(filePath) && !fs.lstatSync(filePath).isSymbolicLink()) {
       files[fileName] = fs.readFileSync(filePath).toString('base64')
     }
   }
@@ -128,7 +132,9 @@ export function applyBackupPayload(payloadInput: BackupPayload | unknown): {
     fs.writeFileSync(soulPath, JSON.stringify(payload.soul, null, 2))
   }
 
-  restoreFiles(payload.files || {})
+  if (payload.files) {
+    restoreFiles(payload.files)
+  }
 
   return {
     database: Boolean(payload.database),
