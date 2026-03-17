@@ -9,7 +9,8 @@ import { keychainService } from '../services/keychain'
 import { buildSystemPrompt, buildLeanSystemPrompt, type AgentMode, getCachedPrompt } from '../lib/modes'
 import { getModeCapabilities, canSubAgentMutate, assertCapabilityMatrix } from '../lib/modeCapabilities'
 import { searchFileContents } from '../lib/contentSearch'
-import { formatSoulForContext } from '../services/soul'
+import { buildMemoryContext, formatSoulForContext } from '../services/soul'
+import { listSkills } from '../services/skills'
 import {
   checkPermission,
   requestPermission,
@@ -38,6 +39,7 @@ import {
 import { validateArtifact } from '../services/artifactValidator'
 import { extractPartialArtifactContent } from '../services/artifactUtils'
 import { normalizeToolSchemas, createToolCallRepair } from '../lib/tooling'
+import { findRelevantSkills } from '../../shared/skills'
 import {
   getConversationSandboxPath,
   writeSandboxFile,
@@ -891,6 +893,20 @@ function getContextualKnowledge(messages: Array<{ role: string; content: string 
 
   // Return as a reference section (the AI won't announce reading this)
   return `\n\n## Reference Documentation\n${matchedKnowledge.join('\n\n---\n\n')}`
+}
+
+function getRelevantSkillsContext(request: string): string {
+  const relevantSkills = findRelevantSkills(listSkills(), request, 3)
+  if (relevantSkills.length === 0) return ''
+
+  const skillSections = relevantSkills.map((skill) => (
+    `### ${skill.name} (${skill.source === 'builtin' ? 'built-in' : 'custom'})\n${skill.content}`
+  ))
+
+  return `\n\n## Relevant Skills
+These skills are available to you as internal workflows. Use them when they fit the user's intent; do not ask the user to invoke them manually.
+
+${skillSections.join('\n\n')}`
 }
 
 function appendOptionalPromptSection(base: string, section: string): string {
@@ -3886,6 +3902,9 @@ export function registerAIHandlers() {
       const provider = getProviderInstance(providerConfig, apiKey || '')
       const mode: AgentMode = params.mode || 'auto'
       streamRuntimeModes.set(channelId, mode)
+      const latestUserText = getLatestUserMessageText(params.messages)
+      const conversationRecord = params.conversationId ? conversationDb.get(params.conversationId) : null
+      const workspaceIdForLearning = conversationRecord?.workspace_id || undefined
 
       // Build OS/environment context for terminal commands
       const osType = process.platform === 'win32' ? 'Windows' : process.platform === 'darwin' ? 'macOS' : 'Linux'
@@ -3904,7 +3923,16 @@ export function registerAIHandlers() {
         : 'Sandbox (no workspace selected).\nIf you suggest exporting or saving files, explicitly mention this is because no workspace is selected.'
 
       // Get soul learnings (the core differentiator!)
-      const soulLearnings = formatSoulForContext()
+      const soulLearnings = formatSoulForContext({
+        workspaceId: workspaceIdForLearning,
+        conversationId: params.conversationId || undefined,
+        latestUserText,
+      })
+      const userContext = buildMemoryContext({
+        workspaceId: workspaceIdForLearning,
+        conversationId: params.conversationId || undefined,
+        latestUserText,
+      })
       const projectConversationContext = buildProjectConversationContext(params.conversationId)
       const useLeanPromptDefault = process.env.JELICO_FULL_PROMPT !== '1'
       const providerProfileOverrides = ((providerConfig as any).capability_profiles || null) as Record<string, any> | null
@@ -3922,10 +3950,12 @@ export function registerAIHandlers() {
       // Lean base prompt by default; full prompt is available via env toggle for debugging/comparison.
       let systemPrompt = useLeanPromptDefault
         ? buildLeanSystemPrompt(mode, {
+            userContext: userContext || undefined,
             soulLearnings: soulLearnings || undefined,
             workspaceContext,
           })
         : buildSystemPrompt(mode, {
+            userContext: userContext || undefined,
             soulLearnings: soulLearnings || undefined,
             workspaceContext,
             includeSubAgents: true,
@@ -3934,6 +3964,11 @@ export function registerAIHandlers() {
 
       // Add OS context after the main prompt
       systemPrompt += `\n\n${osContext}`
+
+      const relevantSkillsContext = getRelevantSkillsContext(latestUserText)
+      if (relevantSkillsContext) {
+        systemPrompt += relevantSkillsContext
+      }
 
       // Runtime guardrails for sandbox behavior + artifact-first UX
       systemPrompt += `\n\n## Runtime Guardrails
@@ -4061,7 +4096,6 @@ If you find yourself frequently hitting limits, suggest breaking the task into m
           }
         })
 
-      const latestUserText = getLatestUserMessageText(params.messages)
       const allowAllSession = getAllowAllSession()
       const existingArtifactCount = Array.isArray(params.artifacts) && params.artifacts.length > 0
         ? params.artifacts.length

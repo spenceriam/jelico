@@ -1,73 +1,118 @@
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { Plus, Edit2, Trash2, Zap, X } from 'lucide-react'
-import { useSkillStore, type Skill } from '../../stores/skills'
-import type { AgentMode } from '../../lib/modes'
+import { useSkillStore } from '../../stores/skills'
+
+function splitTags(value: string): string[] {
+  return value
+    .split(/[,\n]/)
+    .map((tag) => tag.trim().toLowerCase())
+    .filter(Boolean)
+}
 
 export function SkillManager() {
   const { skills, addSkill, updateSkill, deleteSkill } = useSkillStore()
-  const [editingSkill, setEditingSkill] = useState<Skill | null>(null)
+  const [editingSkill, setEditingSkill] = useState<AppSkill | null>(null)
   const [isCreating, setIsCreating] = useState(false)
 
-  const customSkills = skills.filter((s) => !s.isBuiltIn)
-  const builtInSkills = skills.filter((s) => s.isBuiltIn)
+  const builtInSkills = useMemo(
+    () => skills.filter((skill) => skill.source === 'builtin').sort((a, b) => a.name.localeCompare(b.name)),
+    [skills]
+  )
+  const customSkills = useMemo(
+    () => skills.filter((skill) => skill.source === 'custom').sort((a, b) => b.updatedAt - a.updatedAt),
+    [skills]
+  )
 
-  const handleSave = (skill: Omit<Skill, 'id' | 'isBuiltIn' | 'createdAt' | 'updatedAt'>) => {
+  const handleSave = async (draft: AppSkillDraft) => {
     if (editingSkill) {
-      updateSkill(editingSkill.id, skill)
+      await updateSkill(editingSkill.id, draft)
     } else {
-      addSkill(skill)
+      await addSkill(draft)
     }
+
     setEditingSkill(null)
     setIsCreating(false)
   }
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="space-y-2">
         <h3 className="text-lg font-medium text-text-primary">Skills</h3>
-        <button
-          onClick={() => setIsCreating(true)}
-          className="flex items-center gap-2 px-3 py-1.5 text-sm bg-accent text-accent-foreground rounded-lg hover:bg-accent-bright transition-colors"
-        >
-          <Plus className="w-4 h-4" />
-          New Skill
-        </button>
+        <p className="text-sm text-text-secondary max-w-3xl">
+          Skills are internal workflows Jelico can apply when your request matches. Built-in skills are available automatically,
+          and custom skills use the same Claude Code-style <code className="px-1 py-0.5 bg-bg-elevated rounded text-accent">SKILL.md</code>{' '}
+          structure so the assistant can reason about them consistently.
+        </p>
       </div>
 
-      <p className="text-sm text-text-secondary">
-        Skills are reusable prompts that can be triggered with shortcuts like{' '}
-        <code className="px-1 py-0.5 bg-bg-elevated rounded text-accent">!review</code> or{' '}
-        <code className="px-1 py-0.5 bg-bg-elevated rounded text-accent">!fix</code>
-      </p>
+      <section className="space-y-3">
+        <div className="flex items-center justify-between gap-3">
+          <div>
+            <h4 className="text-sm font-medium text-text-primary">Built-in Skills</h4>
+            <p className="text-xs text-text-muted">Applied contextually by the main assistant when they fit the task.</p>
+          </div>
+          <span className="text-xs text-text-muted">Claude Code format</span>
+        </div>
 
-      {/* Custom skills */}
-      {customSkills.length > 0 && (
-        <div className="space-y-3">
-          <h4 className="text-sm font-medium text-text-secondary">Your Skills</h4>
-          {customSkills.map((skill) => (
-            <SkillCard
-              key={skill.id}
-              skill={skill}
-              onEdit={() => setEditingSkill(skill)}
-              onDelete={() => deleteSkill(skill.id)}
-            />
+        <div className="grid gap-4 md:grid-cols-2">
+          {builtInSkills.map((skill) => (
+            <SkillCard key={skill.id} skill={skill} />
           ))}
         </div>
-      )}
+      </section>
 
-      {/* Built-in skills */}
-      <div className="space-y-3">
-        <h4 className="text-sm font-medium text-text-secondary">Built-in Skills</h4>
-        {builtInSkills.map((skill) => (
-          <SkillCard key={skill.id} skill={skill} isBuiltIn />
-        ))}
-      </div>
+      <section className="space-y-3 border-t border-border pt-6">
+        <div className="flex items-center justify-between gap-3">
+          <div>
+            <h4 className="text-sm font-medium text-text-primary">Custom Skills</h4>
+            <p className="text-xs text-text-muted">Create reusable workflows Jelico can pick up for your projects and habits.</p>
+          </div>
+          {customSkills.length > 0 && (
+            <button
+              onClick={() => setIsCreating(true)}
+              className="flex items-center gap-2 px-3 py-1.5 text-sm bg-accent text-accent-foreground rounded-lg hover:bg-accent-bright transition-colors"
+            >
+              <Plus className="w-4 h-4" />
+              New Skill
+            </button>
+          )}
+        </div>
 
-      {/* Edit/Create modal */}
+        {customSkills.length > 0 ? (
+          <div className="space-y-3">
+            {customSkills.map((skill) => (
+              <SkillCard
+                key={skill.id}
+                skill={skill}
+                onEdit={() => setEditingSkill(skill)}
+                onDelete={() => { void deleteSkill(skill.id) }}
+              />
+            ))}
+          </div>
+        ) : (
+          <button
+            onClick={() => setIsCreating(true)}
+            className="w-full rounded-xl border border-dashed border-border bg-bg-elevated/60 px-4 py-6 text-left hover:bg-bg-hover transition-colors"
+          >
+            <div className="flex items-start gap-3">
+              <div className="mt-0.5 rounded-lg bg-accent/10 p-2">
+                <Plus className="w-4 h-4 text-accent" />
+              </div>
+              <div className="space-y-1">
+                <div className="font-medium text-text-primary">Create your first custom skill</div>
+                <p className="text-sm text-text-secondary">
+                  Define when Jelico should use it, add the workflow instructions, and it will be stored in the same standardized format as the built-ins.
+                </p>
+              </div>
+            </div>
+          </button>
+        )}
+      </section>
+
       {(isCreating || editingSkill) && (
         <SkillEditor
           skill={editingSkill || undefined}
-          onSave={handleSave}
+          onSave={(draft) => { void handleSave(draft) }}
           onCancel={() => {
             setEditingSkill(null)
             setIsCreating(false)
@@ -80,47 +125,66 @@ export function SkillManager() {
 
 function SkillCard({
   skill,
-  isBuiltIn,
   onEdit,
   onDelete,
 }: {
-  skill: Skill
-  isBuiltIn?: boolean
+  skill: AppSkill
   onEdit?: () => void
   onDelete?: () => void
 }) {
+  const isBuiltIn = skill.source === 'builtin'
+
   return (
-    <div className="p-3 bg-bg-elevated rounded-lg border border-border">
+    <div className="rounded-xl border border-border bg-bg-elevated p-4">
       <div className="flex items-start justify-between gap-3">
-        <div className="flex-1 min-w-0">
+        <div className="min-w-0 flex-1 space-y-3">
           <div className="flex items-center gap-2">
-            <Zap className="w-4 h-4 text-accent flex-shrink-0" />
+            <Zap className="h-4 w-4 shrink-0 text-accent" />
             <span className="font-medium text-text-primary">{skill.name}</span>
-            {skill.shortcut && (
-              <code className="px-1.5 py-0.5 text-xs bg-bg-surface rounded text-accent">
-                {skill.shortcut}
-              </code>
-            )}
-            {skill.mode && (
-              <span className="text-xs text-text-muted">({skill.mode})</span>
+            <span className="rounded-full bg-bg-surface px-2 py-0.5 text-[11px] uppercase tracking-wide text-text-muted">
+              {isBuiltIn ? 'Automatic' : 'Custom'}
+            </span>
+            {skill.suggestedMode && (
+              <span className="text-xs text-text-muted">Mode: {skill.suggestedMode}</span>
             )}
           </div>
-          <p className="text-sm text-text-secondary mt-1">{skill.description}</p>
+
+          <div className="space-y-2">
+            <p className="text-sm text-text-secondary">{skill.description}</p>
+            <p className="text-xs text-text-muted">
+              <span className="font-medium text-text-secondary">Use when:</span> {skill.whenToUse}
+            </p>
+          </div>
+
+          {skill.tags.length > 0 && (
+            <div className="flex flex-wrap gap-2">
+              {skill.tags.map((tag) => (
+                <span
+                  key={tag}
+                  className="rounded-full bg-accent/10 px-2 py-0.5 text-xs text-accent"
+                >
+                  {tag}
+                </span>
+              ))}
+            </div>
+          )}
         </div>
 
         {!isBuiltIn && (
           <div className="flex items-center gap-1">
             <button
               onClick={onEdit}
-              className="p-1.5 text-text-muted hover:text-text-primary rounded"
+              className="rounded p-1.5 text-text-muted hover:text-text-primary"
+              title="Edit skill"
             >
-              <Edit2 className="w-4 h-4" />
+              <Edit2 className="h-4 w-4" />
             </button>
             <button
               onClick={onDelete}
-              className="p-1.5 text-text-muted hover:text-error rounded"
+              className="rounded p-1.5 text-text-muted hover:text-error"
+              title="Delete skill"
             >
-              <Trash2 className="w-4 h-4" />
+              <Trash2 className="h-4 w-4" />
             </button>
           </div>
         )}
@@ -134,93 +198,105 @@ function SkillEditor({
   onSave,
   onCancel,
 }: {
-  skill?: Skill
-  onSave: (skill: Omit<Skill, 'id' | 'isBuiltIn' | 'createdAt' | 'updatedAt'>) => void
+  skill?: AppSkill
+  onSave: (draft: AppSkillDraft) => void
   onCancel: () => void
 }) {
   const [name, setName] = useState(skill?.name || '')
   const [description, setDescription] = useState(skill?.description || '')
-  const [shortcut, setShortcut] = useState(skill?.shortcut || '')
-  const [mode, setMode] = useState<AgentMode | ''>(skill?.mode || '')
-  const [prompt, setPrompt] = useState(
-    skill?.prompt || 'Your prompt here...\n\n{{context}}'
-  )
+  const [whenToUse, setWhenToUse] = useState(skill?.whenToUse || '')
+  const [tags, setTags] = useState(skill?.tags.join(', ') || '')
+  const [suggestedMode, setSuggestedMode] = useState<AppSkillMode | ''>(skill?.suggestedMode || '')
+  const [instructions, setInstructions] = useState(skill?.instructions || '')
 
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault()
+  const handleSubmit = (event: React.FormEvent) => {
+    event.preventDefault()
     onSave({
       name,
       description,
-      shortcut: shortcut || undefined,
-      mode: mode || undefined,
-      prompt,
+      whenToUse,
+      tags: splitTags(tags),
+      suggestedMode: suggestedMode || undefined,
+      instructions,
     })
   }
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-      <div className="bg-bg-surface rounded-lg shadow-xl max-w-lg w-full mx-4 max-h-[90vh] overflow-auto">
+      <div className="max-h-[90vh] w-full max-w-2xl overflow-auto rounded-xl bg-bg-surface shadow-xl">
         <form onSubmit={handleSubmit}>
-          <div className="p-4 border-b border-border flex items-center justify-between">
-            <h3 className="text-lg font-medium text-text-primary">
-              {skill ? 'Edit Skill' : 'New Skill'}
-            </h3>
+          <div className="flex items-center justify-between border-b border-border px-5 py-4">
+            <div>
+              <h3 className="text-lg font-medium text-text-primary">
+                {skill ? 'Edit Custom Skill' : 'New Custom Skill'}
+              </h3>
+              <p className="text-sm text-text-muted">Stored in Claude Code-style SKILL.md format.</p>
+            </div>
             <button
               type="button"
               onClick={onCancel}
-              className="p-1 text-text-muted hover:text-text-primary"
+              className="rounded p-1 text-text-muted hover:text-text-primary"
             >
-              <X className="w-5 h-5" />
+              <X className="h-5 w-5" />
             </button>
           </div>
 
-          <div className="p-4 space-y-4">
+          <div className="space-y-4 px-5 py-5">
             <div>
-              <label className="block text-sm text-text-secondary mb-1">Name</label>
+              <label className="mb-1 block text-sm text-text-secondary">Name</label>
               <input
                 type="text"
                 value={name}
-                onChange={(e) => setName(e.target.value)}
-                className="w-full px-3 py-2 bg-bg-elevated border border-border rounded-lg text-text-primary focus:outline-none focus:border-accent"
+                onChange={(event) => setName(event.target.value)}
+                className="w-full rounded-lg border border-border bg-bg-elevated px-3 py-2 text-text-primary focus:border-accent focus:outline-none"
                 required
               />
             </div>
 
             <div>
-              <label className="block text-sm text-text-secondary mb-1">Description</label>
+              <label className="mb-1 block text-sm text-text-secondary">Description</label>
               <input
                 type="text"
                 value={description}
-                onChange={(e) => setDescription(e.target.value)}
-                className="w-full px-3 py-2 bg-bg-elevated border border-border rounded-lg text-text-primary focus:outline-none focus:border-accent"
+                onChange={(event) => setDescription(event.target.value)}
+                className="w-full rounded-lg border border-border bg-bg-elevated px-3 py-2 text-text-primary focus:border-accent focus:outline-none"
+                placeholder="What this skill helps Jelico do"
                 required
               />
             </div>
 
-            <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="mb-1 block text-sm text-text-secondary">When to use</label>
+              <textarea
+                value={whenToUse}
+                onChange={(event) => setWhenToUse(event.target.value)}
+                rows={3}
+                className="w-full rounded-lg border border-border bg-bg-elevated px-3 py-2 text-text-primary focus:border-accent focus:outline-none"
+                placeholder="Describe the kinds of requests where this skill should activate."
+                required
+              />
+            </div>
+
+            <div className="grid gap-4 md:grid-cols-2">
               <div>
-                <label className="block text-sm text-text-secondary mb-1">
-                  Shortcut (optional)
-                </label>
+                <label className="mb-1 block text-sm text-text-secondary">Tags</label>
                 <input
                   type="text"
-                  value={shortcut}
-                  onChange={(e) => setShortcut(e.target.value)}
-                  placeholder="!myskill"
-                  className="w-full px-3 py-2 bg-bg-elevated border border-border rounded-lg text-text-primary focus:outline-none focus:border-accent"
+                  value={tags}
+                  onChange={(event) => setTags(event.target.value)}
+                  className="w-full rounded-lg border border-border bg-bg-elevated px-3 py-2 text-text-primary focus:border-accent focus:outline-none"
+                  placeholder="review, react, refactor"
                 />
               </div>
 
               <div>
-                <label className="block text-sm text-text-secondary mb-1">
-                  Mode (optional)
-                </label>
+                <label className="mb-1 block text-sm text-text-secondary">Suggested mode</label>
                 <select
-                  value={mode}
-                  onChange={(e) => setMode(e.target.value as AgentMode | '')}
-                  className="w-full px-3 py-2 bg-bg-elevated border border-border rounded-lg text-text-primary focus:outline-none focus:border-accent"
+                  value={suggestedMode}
+                  onChange={(event) => setSuggestedMode(event.target.value as AppSkillMode | '')}
+                  className="w-full rounded-lg border border-border bg-bg-elevated px-3 py-2 text-text-primary focus:border-accent focus:outline-none"
                 >
-                  <option value="">Auto-detect</option>
+                  <option value="">No preference</option>
                   <option value="auto">Auto</option>
                   <option value="execute">Full Execute</option>
                   <option value="plan">Plan</option>
@@ -231,24 +307,22 @@ function SkillEditor({
             </div>
 
             <div>
-              <label className="block text-sm text-text-secondary mb-1">
-                Prompt Template
-              </label>
-              <p className="text-xs text-text-muted mb-2">
-                Use <code className="px-1 bg-bg-elevated rounded">{'{{context}}'}</code> to
-                insert user input
+              <label className="mb-1 block text-sm text-text-secondary">Instructions</label>
+              <p className="mb-2 text-xs text-text-muted">
+                These become the main body of the skill. Write the workflow Jelico should follow when this skill is relevant.
               </p>
               <textarea
-                value={prompt}
-                onChange={(e) => setPrompt(e.target.value)}
-                rows={8}
-                className="w-full px-3 py-2 bg-bg-elevated border border-border rounded-lg text-text-primary font-mono text-sm focus:outline-none focus:border-accent"
+                value={instructions}
+                onChange={(event) => setInstructions(event.target.value)}
+                rows={10}
+                className="w-full rounded-lg border border-border bg-bg-elevated px-3 py-2 font-mono text-sm text-text-primary focus:border-accent focus:outline-none"
+                placeholder="List the steps, checks, or constraints for the skill."
                 required
               />
             </div>
           </div>
 
-          <div className="p-4 border-t border-border flex justify-end gap-3">
+          <div className="flex justify-end gap-3 border-t border-border px-5 py-4">
             <button
               type="button"
               onClick={onCancel}
@@ -258,7 +332,7 @@ function SkillEditor({
             </button>
             <button
               type="submit"
-              className="px-4 py-2 text-sm bg-accent text-accent-foreground rounded-lg hover:bg-accent-bright"
+              className="rounded-lg bg-accent px-4 py-2 text-sm text-accent-foreground hover:bg-accent-bright"
             >
               Save Skill
             </button>

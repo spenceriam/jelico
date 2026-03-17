@@ -112,6 +112,13 @@ contextBridge.exposeInMainWorld('jelico', {
     deleteByConversation: (conversationId: string) => ipcRenderer.invoke('todos:deleteByConversation', conversationId),
     migrateFromLocalStorage: () => ipcRenderer.invoke('todos:migrateFromLocalStorage'),
   },
+  skills: {
+    list: () => ipcRenderer.invoke('skills:list'),
+    create: (draft: any) => ipcRenderer.invoke('skills:create', draft),
+    update: (id: string, draft: any) => ipcRenderer.invoke('skills:update', id, draft),
+    delete: (id: string) => ipcRenderer.invoke('skills:delete', id),
+    importLegacy: (skills: any[]) => ipcRenderer.invoke('skills:importLegacy', skills),
+  },
   permissions: {
     list: (workspaceId?: string) => ipcRenderer.invoke('permissions:list', workspaceId),
     get: (id: string) => ipcRenderer.invoke('permissions:get', id),
@@ -173,6 +180,15 @@ contextBridge.exposeInMainWorld('jelico', {
     import: () => ipcRenderer.invoke('backup:import'),
     getStats: () => ipcRenderer.invoke('backup:getStats'),
     clearAll: () => ipcRenderer.invoke('backup:clearAll'),
+    getGithubStatus: () => ipcRenderer.invoke('backup:getGithubStatus'),
+    saveGithubSettings: (input: {
+      repoUrl: string
+      token?: string
+      mode: 'manual' | 'on_change' | 'scheduled'
+      scheduleHours?: number
+    }) => ipcRenderer.invoke('backup:saveGithubSettings', input),
+    runGithubBackup: () => ipcRenderer.invoke('backup:runGithubBackup'),
+    restoreGithubBackup: () => ipcRenderer.invoke('backup:restoreGithubBackup'),
   },
   speech: {
     getModels: () => ipcRenderer.invoke('speech:getModels'),

@@ -4,7 +4,6 @@ import { useArtifactStore } from './artifacts'
 import type { Artifact } from './artifacts'
 import { useWorkspaceStore } from './workspaces'
 import { useAgentStore } from './agents'
-import { useSkillStore } from './skills'
 import { useContextStore, estimateTokens } from './context'
 import { useTodoStore } from './todos'
 import { useClarificationStore } from './clarification'
@@ -12,6 +11,7 @@ import { useDecisionPromptStore } from './decisionPrompt'
 import { notifyUserEvent } from '../lib/notifications'
 import { createInlineToolProtocolFilter } from '../lib/inlineToolProtocol'
 import { hasIncompleteToolEvidence } from './chatInterruption'
+import { useToastStore } from './toasts'
 
 export interface MessageUsage {
   promptTokens: number
@@ -907,19 +907,8 @@ export const useChatStore = create<ChatStore>((set, get) => ({
       return
     }
 
-    // Check for skill shortcuts (skip for regenerate - original message already processed)
-    const skillMatch = _isRegenerate ? null : useSkillStore.getState().findSkillByShortcut(content)
     let finalContent = content
-    let finalMode = mode
-
-    if (skillMatch) {
-      finalContent = skillMatch.skill.prompt.replace('{{context}}', skillMatch.context)
-      if (skillMatch.skill.mode) {
-        // Route skill mode changes through the same mode guard.
-        get().setMode(skillMatch.skill.mode)
-        finalMode = get().mode
-      }
-    }
+    const finalMode = mode
 
     let conversationId = requestedConversationId
 
@@ -989,11 +978,11 @@ export const useChatStore = create<ChatStore>((set, get) => ({
     // For regenerate, use existing messages; otherwise add user message
     let updatedMessages = contextMessages
     if (!_isRegenerate) {
-      // Add user message (show original content, not expanded skill)
+      // Add user message exactly as the user wrote it.
       const userMessage = await window.jelico.conversations.addMessage(conversationId, {
         role: 'user',
-        content: content, // Original content for display
-        attachments: attachments, // Include attachments for display
+        content: content,
+        attachments: attachments,
       })
 
       // Update title if this is the first message - use truncated content or placeholder
@@ -1139,7 +1128,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
       startedAt: streamStartedAt,
     })
 
-    // Build messages for AI - use expanded content for last user message if skill was used
+    // Build messages for AI, preserving attachments on the newest user turn.
     const aiMessages = updatedMessages.map((m, i) => {
       if (i === updatedMessages.length - 1 && m.role === 'user') {
         return { role: m.role, content: finalContent, attachments }
@@ -1748,6 +1737,34 @@ export const useChatStore = create<ChatStore>((set, get) => ({
 
           return updates as Partial<ChatStore>
         })
+
+        const targetConversation = get().conversations.find(
+          (conversation) => conversation.id === targetConversationId
+        )
+        const recentLearningMessages = [...updatedMessages, messageWithTools]
+          .slice(-8)
+          .map((message) => ({
+            role: message.role,
+            content: message.content,
+          }))
+
+        try {
+          const analysis = await window.jelico.soul.analyzeConversation(recentLearningMessages, {
+            workspaceId: targetConversation?.workspaceId,
+            conversationId: targetConversationId,
+            latestUserText: content,
+          })
+
+          analysis.captured?.slice(0, 2).forEach((entry) => {
+            useToastStore.getState().addToast({
+              tone: 'success',
+              title: 'Remembered for next time',
+              message: entry.message,
+            })
+          })
+        } catch (learningError) {
+          console.warn('[Chat Store] Failed to capture learnings:', learningError)
+        }
 
         // Title is generated ONCE when user sends first message (see sendMessage)
         // No second generation here - we don't want AI response to change the title

@@ -178,6 +178,13 @@ interface Window {
       deleteByConversation: (conversationId: string) => Promise<{ success: boolean }>
       migrateFromLocalStorage: () => Promise<{ success: boolean; migrated: number }>
     }
+    skills: {
+      list: () => Promise<AppSkill[]>
+      create: (draft: AppSkillDraft) => Promise<AppSkill>
+      update: (id: string, draft: AppSkillDraft) => Promise<AppSkill | null>
+      delete: (id: string) => Promise<{ success: boolean }>
+      importLegacy: (skills: LegacyAppSkillInput[]) => Promise<AppSkill[]>
+    }
     permissions: {
       list: (workspaceId?: string) => Promise<PermissionRecord[]>
       get: (id: string) => Promise<PermissionRecord | null>
@@ -213,6 +220,9 @@ interface Window {
       analyzeConversation: (messages: Array<{ role: string; content: string }>, metadata?: {
         wasSuccessful?: boolean
         userFeedback?: string
+        workspaceId?: string
+        conversationId?: string
+        latestUserText?: string
       }) => Promise<SoulAnalysisResult>
     }
     backup: {
@@ -220,6 +230,15 @@ interface Window {
       import: () => Promise<BackupImportResult>
       getStats: () => Promise<BackupStats>
       clearAll: () => Promise<{ success: boolean; error?: string }>
+      getGithubStatus: () => Promise<GithubBackupStatus>
+      saveGithubSettings: (input: {
+        repoUrl: string
+        token?: string
+        mode: 'manual' | 'on_change' | 'scheduled'
+        scheduleHours?: number
+      }) => Promise<GithubBackupStatus>
+      runGithubBackup: () => Promise<GithubBackupRunResult>
+      restoreGithubBackup: () => Promise<GithubBackupRestoreResult>
     }
     speech: {
       getModels: () => Promise<WhisperModel[]>
@@ -249,6 +268,35 @@ interface ProviderConfig {
   isDefault: boolean
   createdAt: number
   updatedAt: number
+}
+
+type AppSkillMode = 'auto' | 'explore' | 'execute' | 'plan' | 'review'
+type AppSkillSource = 'builtin' | 'custom'
+type AppSkillFormat = 'claude-code'
+
+interface AppSkillDraft {
+  name: string
+  description: string
+  whenToUse: string
+  suggestedMode?: AppSkillMode
+  tags: string[]
+  instructions: string
+}
+
+interface AppSkill extends AppSkillDraft {
+  id: string
+  source: AppSkillSource
+  format: AppSkillFormat
+  content: string
+  createdAt: number
+  updatedAt: number
+}
+
+interface LegacyAppSkillInput {
+  name: string
+  description: string
+  prompt: string
+  mode?: AppSkillMode
 }
 
 interface ProviderInput {
@@ -684,6 +732,9 @@ interface SoulPattern {
   lastObserved: number
   decay: number
   source: 'explicit' | 'inferred'
+  scope?: 'global' | 'workspace' | 'conversation'
+  scopeId?: string | null
+  taskTypes?: string[]
 }
 
 interface SoulCorrection {
@@ -693,6 +744,9 @@ interface SoulCorrection {
   context: string
   category: string
   timestamp: number
+  scope?: 'global' | 'workspace' | 'conversation'
+  scopeId?: string | null
+  taskTypes?: string[]
 }
 
 interface Soul {
@@ -710,6 +764,11 @@ interface Soul {
 interface SoulAnalysisResult {
   newPatterns: SoulPattern[]
   updates: string[]
+  captured: Array<{
+    kind: 'pattern' | 'correction' | 'memory'
+    scope: 'global' | 'workspace' | 'conversation'
+    message: string
+  }>
 }
 
 // Backup types
@@ -748,6 +807,32 @@ interface BackupStats {
     preferences: number
   }
   soulSize?: number
+}
+
+interface GithubBackupStatus {
+  repoUrl: string
+  mode: 'manual' | 'on_change' | 'scheduled'
+  scheduleHours: number
+  hasToken: boolean
+  lastBackupAt?: number
+  lastBackupPath?: string
+  lastError?: string | null
+}
+
+interface GithubBackupRunResult {
+  success: boolean
+  backupPath?: string
+  error?: string
+}
+
+interface GithubBackupRestoreResult {
+  success: boolean
+  imported?: {
+    database: boolean
+    soul: boolean
+    filesRestored: number
+  }
+  error?: string
 }
 
 // Speech types

@@ -18,6 +18,9 @@ export interface Pattern {
   lastObserved: number
   decay: number
   source: 'explicit' | 'inferred'
+  scope?: 'global' | 'workspace' | 'conversation'
+  scopeId?: string | null
+  taskTypes?: string[]
 }
 
 export interface Correction {
@@ -27,6 +30,9 @@ export interface Correction {
   context: string
   category: string
   timestamp: number
+  scope?: 'global' | 'workspace' | 'conversation'
+  scopeId?: string | null
+  taskTypes?: string[]
 }
 
 export interface Preference {
@@ -53,7 +59,18 @@ interface SoulStore {
   analyzeConversation: (messages: Array<{ role: string; content: string }>, metadata?: {
     wasSuccessful?: boolean
     userFeedback?: string
-  }) => Promise<{ newPatterns: Pattern[]; updates: string[] }>
+    workspaceId?: string
+    conversationId?: string
+    latestUserText?: string
+  }) => Promise<{
+    newPatterns: Pattern[]
+    updates: string[]
+    captured: Array<{
+      kind: 'pattern' | 'correction' | 'memory'
+      scope: 'global' | 'workspace' | 'conversation'
+      message: string
+    }>
+  }>
   decayConfidence: () => Promise<void>
 
   // Helpers
@@ -194,7 +211,7 @@ export const useSoulStore = create<SoulStore>((set, get) => ({
       return result
     } catch (error) {
       console.error('Failed to analyze conversation:', error)
-      return { newPatterns: [], updates: [] }
+      return { newPatterns: [], updates: [], captured: [] }
     }
   },
 

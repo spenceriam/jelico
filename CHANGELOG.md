@@ -1,3 +1,23 @@
+## [0.36.0] - 2026-03-17
+
+### Highlights
+- Jelico can now use built-in and custom skills from `SKILL.md` files and pull in the ones that match your request automatically.
+- Soul and memory learning now feed back into prompts more deliberately, with scoped context that stays relevant to the current task.
+- You can now back up Jelico to GitHub and restore conversations, soul data, artifacts, sandbox files, and custom skills from that backup.
+
+### New
+- **Skills Library** — Jelico now includes a built-in skills shelf plus custom `SKILL.md` support, so reusable instructions can be saved locally and injected when they match what you are asking for.
+- **Contextual Learning** — Jelico now remembers scoped preferences and corrections across conversations and workspaces, then uses that memory more carefully in later prompts.
+- **GitHub Backup** — You can now send backups to a GitHub repository manually, on change, or on a schedule, then restore that snapshot later.
+
+### Changed
+- **Learning Relevance** — Learned memories and soul context are now ranked against the current task so repo-specific guidance can stay available without flooding unrelated prompts.
+- **Skills Management UI** — Skills settings now separate built-in skills from custom ones and use a clearer compact layout for browsing and editing.
+
+### Fixed
+- **Restore Safety** — Backup restore now creates a local safety snapshot before overwriting backup-managed data.
+- **Learning Toast Noise** — “Remembered for next time” notices now only appear when Jelico captures a genuinely new learning.
+
 ## [0.35.3] - 2026-03-10
 
 ### Highlights

@@ -21,6 +21,23 @@ export interface ChangelogEntry {
 
 export const changelog: ChangelogEntry[] = [
   {
+    version: '0.36.0',
+    date: '2026-03-17',
+    changes: {
+      added: [
+        'Added a first-class skills system backed by shared `SKILL.md` definitions, built-in skill browsing, and custom-skill storage/import flows so relevant skills can be injected directly into AI prompts (Fixes #156)',
+        'Added contextual soul and memory learning capture with scope-aware prompt injection, remembered-context surfacing, and lightweight toast feedback for newly captured learnings (Fixes #157)',
+        'Added GitHub backup configuration with manual, on-change, and scheduled uploads plus restore support for database, soul data, artifacts, sandbox files, and custom skills (Fixes #158)',
+      ],
+      changed: [
+        'Skills, soul learnings, and remembered memories are now ranked against the current task so scoped context stays relevant without disappearing across adjacent work types',
+      ],
+      fixed: [
+        'Backup restore now recreates the backup-managed file set consistently and writes a local safety snapshot before overwriting data, and repeated learning toasts no longer re-fire for already-known patterns',
+      ],
+    },
+  },
+  {
     version: '0.35.3',
     date: '2026-03-10',
     changes: {

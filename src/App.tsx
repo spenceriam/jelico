@@ -6,6 +6,7 @@ import { useUIStore } from './stores/ui'
 import { useArtifactStore } from './stores/artifacts'
 import { useWorkspaceStore, initWorkspaceStore } from './stores/workspaces'
 import { usePermissionStore } from './stores/permissions'
+import { useSkillStore } from './stores/skills'
 import { useThemeStore } from './stores/theme'
 import { getUpdateBannerVisibility, useUpdateStore } from './stores/updates'
 import { Sidebar } from './components/Layout/Sidebar'
@@ -19,6 +20,7 @@ import { ProviderSetup } from './components/Setup/ProviderSetup'
 import { Settings } from './components/Settings/Settings'
 import { PermissionDialog } from './components/Permissions/PermissionDialog'
 import { ClarificationPanel } from './components/Clarification/ClarificationPanel'
+import { ToastStack } from './components/StatusIndicators/ToastStack'
 import { WelcomeScreen, type OnboardingProfile } from './components/Onboarding/WelcomeScreen'
 
 // Default and constraints for canvas panel width
@@ -77,6 +79,7 @@ export default function App() {
   const { canvasOpen } = useArtifactStore()
   const { loadWorkspaces } = useWorkspaceStore()
   const { clearOncePermissions, loadPermissions } = usePermissionStore()
+  const { loadSkills } = useSkillStore()
   const { loadFromStorage: loadTheme } = useThemeStore()
   const {
     info: updateInfo,
@@ -128,6 +131,7 @@ export default function App() {
     loadConversations()
     initWorkspaceStore() // Restore active workspace from localStorage
     loadWorkspaces()
+    void loadSkills()
 
     // Clear "allow once" permissions from previous session
     clearOncePermissions()
@@ -145,7 +149,7 @@ export default function App() {
         setCanvasWidth(Math.min(maxCanvasWidth, Math.max(MIN_CANVAS_WIDTH, width)))
       }
     }
-  }, [getMaxCanvasWidth])
+  }, [getMaxCanvasWidth, loadSkills])
 
   useEffect(() => {
     const updateCanvasBounds = () => {
@@ -570,6 +574,8 @@ export default function App() {
 
       {/* App-level decision prompt dialog */}
       <DecisionPromptDialog />
+
+      <ToastStack />
 
       {(showApplyBanner || showAvailableBanner) && (
         <div className="fixed bottom-4 right-4 z-[70] w-[min(90vw,420px)]" data-window-toggle="ignore">

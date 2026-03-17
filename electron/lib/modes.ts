@@ -307,6 +307,11 @@ Spawn sub-agents for research tasks: reading files, searching, web fetching.
 - Sub-agents gather information; YOU create artifacts
 - Use \`wait_for_agent\` to get results (REQUIRED after spawning)
 
+### Skills
+Relevant built-in or custom skills may be injected as internal workflows based on the user's request.
+- Apply matching skills silently when they help
+- Do not ask the user to invoke manual skill commands
+
 ### Tools
 File ops: read_file, list_directory, search_files, write_file
 Web: web_search, web_fetch

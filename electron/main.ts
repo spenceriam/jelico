@@ -14,6 +14,7 @@ import { registerPermissionHandlers } from './ipc/permissions'
 import { registerTodoHandlers } from './ipc/todos'
 import { registerSoulHandlers } from './ipc/soul'
 import { registerBackupHandlers } from './ipc/backup'
+import { registerSkillHandlers } from './ipc/skills'
 import { registerSpeechHandlers } from './ipc/speech'
 import { registerCompactionHandlers } from './ipc/compaction'
 import { registerUpdateHandlers } from './ipc/updates'
@@ -400,6 +401,7 @@ if (gotSingleInstanceLock) {
     registerTodoHandlers()
     registerSoulHandlers()
     registerBackupHandlers()
+    registerSkillHandlers()
     registerSpeechHandlers()
     registerCompactionHandlers()
     registerUpdateHandlers()
