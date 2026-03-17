@@ -3,6 +3,7 @@ import fs from 'fs'
 import path from 'path'
 import { keychainService } from './keychain.js'
 import { applyBackupPayload, collectBackupPayload } from './backupPayload.js'
+import { validateBackupPayload } from './backupPayloadSchema.js'
 
 type GithubBackupMode = 'manual' | 'on_change' | 'scheduled'
 type GithubBackupTrigger = 'manual' | 'on_change' | 'scheduled'
@@ -297,7 +298,7 @@ export async function restoreLatestGithubBackup(): Promise<{
       throw new Error('Unsupported backup encoding returned by GitHub.')
     }
 
-    const payload = JSON.parse(Buffer.from(response.content, 'base64').toString('utf-8'))
+    const payload = validateBackupPayload(JSON.parse(Buffer.from(response.content, 'base64').toString('utf-8')))
     const imported = applyBackupPayload(payload)
 
     return { success: true, imported }

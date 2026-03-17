@@ -1,18 +1,13 @@
 import { app } from 'electron'
 import fs from 'fs'
 import path from 'path'
-
-interface BackupPayload {
-  version: number
-  exportedAt: number
-  appVersion: string
-  database?: unknown
-  soul?: unknown
-  files?: Record<string, string>
-}
-
-const BACKUP_DIRECTORIES = ['artifacts', 'sandbox']
-const BACKUP_ROOT_FILES = ['skills.json']
+import {
+  BACKUP_DIRECTORIES,
+  BACKUP_ROOT_FILES,
+  type BackupPayload,
+  resolveBackupDestination,
+  validateBackupPayload,
+} from './backupPayloadSchema.js'
 
 function getUserDataPath(): string {
   return app.getPath('userData')
@@ -31,9 +26,13 @@ function createSafetyBackupSnapshot(timestamp: number): void {
   fs.writeFileSync(backupPath, JSON.stringify(collectBackupPayload(), null, 2))
 }
 
-function readJsonIfPresent(filePath: string): unknown | undefined {
+function readJsonIfPresent(filePath: string): Record<string, unknown> | undefined {
   if (!fs.existsSync(filePath)) return undefined
-  return JSON.parse(fs.readFileSync(filePath, 'utf-8'))
+  const parsed = JSON.parse(fs.readFileSync(filePath, 'utf-8'))
+  if (typeof parsed === 'object' && parsed !== null && !Array.isArray(parsed)) {
+    return parsed as Record<string, unknown>
+  }
+  return undefined
 }
 
 function collectFilesRecursively(basePath: string, relativeBase: string, output: Record<string, string>) {
@@ -42,7 +41,7 @@ function collectFilesRecursively(basePath: string, relativeBase: string, output:
   const entries = fs.readdirSync(basePath, { withFileTypes: true })
   for (const entry of entries) {
     const fullPath = path.join(basePath, entry.name)
-    const relativePath = path.join(relativeBase, entry.name)
+    const relativePath = path.posix.join(relativeBase, entry.name)
 
     if (entry.isDirectory()) {
       collectFilesRecursively(fullPath, relativePath, output)
@@ -55,6 +54,10 @@ function collectFilesRecursively(basePath: string, relativeBase: string, output:
 
 function restoreFiles(files: Record<string, string>) {
   const userDataPath = getUserDataPath()
+  const validatedFiles = Object.entries(files).map(([relativePath, base64Content]) => ({
+    destination: resolveBackupDestination(userDataPath, relativePath),
+    base64Content,
+  }))
 
   for (const directory of BACKUP_DIRECTORIES) {
     fs.rmSync(path.join(userDataPath, directory), { recursive: true, force: true })
@@ -63,8 +66,7 @@ function restoreFiles(files: Record<string, string>) {
     fs.rmSync(path.join(userDataPath, fileName), { force: true })
   }
 
-  for (const [relativePath, base64Content] of Object.entries(files)) {
-    const destination = path.join(userDataPath, relativePath)
+  for (const { destination, base64Content } of validatedFiles) {
     fs.mkdirSync(path.dirname(destination), { recursive: true })
     fs.writeFileSync(destination, Buffer.from(base64Content, 'base64'))
   }
@@ -99,11 +101,12 @@ export function collectBackupPayload(): BackupPayload {
   return payload
 }
 
-export function applyBackupPayload(payload: BackupPayload): {
+export function applyBackupPayload(payloadInput: BackupPayload | unknown): {
   database: boolean
   soul: boolean
   filesRestored: number
 } {
+  const payload = validateBackupPayload(payloadInput)
   const userDataPath = getUserDataPath()
   const timestamp = Date.now()
   const databasePath = getDatabasePath()

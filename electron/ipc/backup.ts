@@ -6,6 +6,7 @@ import {
   collectBackupPayload,
   getBackupStats,
 } from '../services/backupPayload.js'
+import { validateBackupPayload } from '../services/backupPayloadSchema.js'
 import {
   getGithubBackupStatus,
   initializeGithubBackupScheduler,
@@ -55,11 +56,7 @@ export function registerBackupHandlers() {
 
     try {
       const content = fs.readFileSync(result.filePaths[0], 'utf-8')
-      const backup = JSON.parse(content)
-
-      if (!backup.version || !backup.exportedAt) {
-        return { success: false, error: 'Invalid backup format' }
-      }
+      const backup = validateBackupPayload(JSON.parse(content))
 
       const imported = applyBackupPayload(backup)
       return {
