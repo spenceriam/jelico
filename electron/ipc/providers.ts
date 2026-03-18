@@ -21,6 +21,7 @@ import {
   buildPrimaryCompatibleModelsEndpoint,
   DEFAULT_OPENAI_MODELS_ENDPOINT,
 } from '../../src/lib/compatibleProviderModels'
+import { findZaiContextFallback, findZaiOutputFallback } from '../../src/lib/zaiModelLimits'
 
 const GOOGLE_GENERATIVE_LANGUAGE_API_BASE_URL = 'https://generativelanguage.googleapis.com/v1beta'
 
@@ -1041,7 +1042,11 @@ export function registerProviderHandlers() {
   })
 
   ipcMain.handle('providers:refreshModelCatalog', async () => {
-    await refreshModelCatalog(true)
+    await refreshModelCatalog(false)
+    return getModelCatalogStatus()
+  })
+
+  ipcMain.handle('providers:getModelCatalogStatus', () => {
     return getModelCatalogStatus()
   })
 
@@ -1116,6 +1121,19 @@ export function registerProviderHandlers() {
                 Number(model?.top_provider?.max_output_tokens) ||
                 null
             }
+          }
+          break
+        }
+
+        case 'zai':
+        case 'zai-china':
+        case 'zai-coding':
+        case 'zai-coding-china': {
+          if (!contextWindow) {
+            contextWindow = findZaiContextFallback(modelId)
+          }
+          if (!maxOutputTokens) {
+            maxOutputTokens = findZaiOutputFallback(modelId)
           }
           break
         }
@@ -1245,8 +1263,7 @@ export function registerProviderHandlers() {
         case 'zai-china':
         case 'zai-coding':
         case 'zai-coding-china': {
-          // Z.ai models - use known values
-          return 128000
+          return findZaiContextFallback(modelId) || 128000
         }
 
         case 'openai-compatible':

@@ -1,4 +1,5 @@
 import { create } from 'zustand'
+import { findZaiContextFallback } from '../lib/zaiModelLimits'
 
 // Compaction thresholds (must match electron/services/compaction.ts)
 export const COMPACTION_THRESHOLDS = {
@@ -60,6 +61,15 @@ const KNOWN_CONTEXT_SIZES: Record<string, number> = {
   'mixtral': 32768,
   
   // Z.ai models
+  'glm-5': 200000,
+  'glm-4.7': 200000,
+  'glm-4.7-flash': 200000,
+  'glm-4.7-flashx': 200000,
+  'glm-4.6': 200000,
+  'glm-4.5': 128000,
+  'glm-4.5-air': 128000,
+  'glm-4.5-airx': 128000,
+  'glm-4.5-flash': 128000,
   'glm-4-plus': 128000,
   'glm-4-flash': 128000,
   'glm-4-long': 1000000,
@@ -160,12 +170,18 @@ async function resolveModelContextSize(providerId: string, modelId: string): Pro
   }
 
   if (source !== 'api') {
+    const knownZaiContext = findZaiContextFallback(modelId)
+    if (knownZaiContext) {
+      modelContextSize = knownZaiContext
+      source = 'default'
+    }
+
     const normalizedModelId = modelId.toLowerCase().replace(/[:@]/g, '-')
 
-    if (KNOWN_CONTEXT_SIZES[modelId]) {
+    if (source !== 'default' && KNOWN_CONTEXT_SIZES[modelId]) {
       modelContextSize = KNOWN_CONTEXT_SIZES[modelId]
       source = 'default'
-    } else {
+    } else if (source !== 'default') {
       const knownModel = Object.entries(KNOWN_CONTEXT_SIZES).find(([key]) =>
         normalizedModelId.includes(key.toLowerCase()) ||
         key.toLowerCase().includes(normalizedModelId)

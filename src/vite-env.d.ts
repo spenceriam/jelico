@@ -17,6 +17,8 @@ interface Window {
         providerName?: string
       ) => Promise<OpenRouterModel[]>
       fetchOpenRouterModels: (apiKey: string) => Promise<OpenRouterModel[]>
+      refreshModelCatalog: () => Promise<ModelCatalogStatus>
+      getModelCatalogStatus: () => Promise<ModelCatalogStatus>
       getModelLimits: (
         providerId: string,
         modelId: string
@@ -283,6 +285,16 @@ interface ProviderConfig {
   isDefault: boolean
   createdAt: number
   updatedAt: number
+}
+
+interface ModelCatalogStatus {
+  hasSnapshot: boolean
+  providersIndexed: number
+  modelsIndexed: number
+  outputModelsIndexed: number
+  metadataModelsIndexed: number
+  lastCheckedAt: number
+  lastUpdatedAt: number
 }
 
 interface ProviderCapabilitySummary {

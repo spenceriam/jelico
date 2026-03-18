@@ -135,7 +135,22 @@ export default function App() {
   }, [])
 
   useEffect(() => {
+    let cancelled = false
+
     loadProviders()
+    void (async () => {
+      try {
+        const catalogStatus = await window.jelico.providers.getModelCatalogStatus()
+        if (cancelled || catalogStatus.hasSnapshot) return
+
+        await window.jelico.providers.refreshModelCatalog()
+        if (!cancelled) {
+          await loadProviders()
+        }
+      } catch {
+        // Keep startup resilient if the catalog warmup path fails.
+      }
+    })()
     loadConversations()
     initWorkspaceStore() // Restore active workspace from localStorage
     loadWorkspaces()
@@ -156,6 +171,9 @@ export default function App() {
       if (!Number.isNaN(width)) {
         setCanvasWidth(Math.min(maxCanvasWidth, Math.max(MIN_CANVAS_WIDTH, width)))
       }
+    }
+    return () => {
+      cancelled = true
     }
   }, [getMaxCanvasWidth, loadSkills])
 
