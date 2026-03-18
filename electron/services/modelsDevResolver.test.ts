@@ -59,6 +59,25 @@ const indexes = buildModelsDevIndexes({
       },
     },
   },
+  lmstudio: {
+    id: 'lmstudio',
+    name: 'LM Studio',
+    api: 'http://127.0.0.1:1234/v1',
+    models: {
+      'gpt-oss-20b': {
+        id: 'gpt-oss-20b',
+        name: 'GPT OSS 20B',
+        reasoning: false,
+        tool_call: true,
+        release_date: '2026-02',
+        last_updated: '2026-02',
+        limit: {
+          context: 131072,
+          output: 8192,
+        },
+      },
+    },
+  },
 })
 
 test('provider-specific model ids can resolve to preferred provider models', () => {
@@ -155,4 +174,20 @@ test('strict metadata lookup avoids foreign global fallback for compatible provi
   )
 
   assert.equal(strictMetadata, null)
+})
+
+test('generic local providers stay unknown unless their base url matches a known local host', () => {
+  assert.equal(
+    lookupStrictModelsDevModelMetadataInIndexes(indexes, 'local', 'gpt-oss-20b', {
+      baseUrl: 'http://localhost:8080/v1',
+    }),
+    null
+  )
+
+  const lmStudioMetadata = lookupStrictModelsDevModelMetadataInIndexes(indexes, 'local', 'gpt-oss-20b', {
+    baseUrl: 'http://127.0.0.1:1234/v1',
+  })
+
+  assert.equal(lmStudioMetadata?.providerKey, 'lmstudio')
+  assert.equal(lmStudioMetadata?.modelId, 'gpt-oss-20b')
 })

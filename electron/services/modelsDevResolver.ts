@@ -4,7 +4,7 @@ export const PROVIDER_TYPE_TO_MODELS_DEV_KEYS: Record<string, string[]> = {
   google: ['google'],
   openrouter: ['openrouter'],
   ollama: ['ollama'],
-  local: ['lmstudio', 'ollama'],
+  local: [],
   minimax: ['minimax', 'minimax-coding-plan', 'minimax-cn', 'minimax-cn-coding-plan'],
   zai: ['zai', 'zhipuai'],
   'zai-china': ['zai', 'zhipuai'],

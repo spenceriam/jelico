@@ -104,10 +104,6 @@ function queueModelCatalogRefresh() {
   void refreshModelCatalog(false)
 }
 
-async function ensureCapabilityCatalogReady() {
-  await refreshModelCatalog(false)
-}
-
 // Extract context size from model metadata
 function extractContextSize(model: any): number | null {
   const candidates = [
@@ -415,7 +411,7 @@ async function attachCapabilitySummaries(
 ) {
   if (!models.length) return models
 
-  await ensureCapabilityCatalogReady()
+  queueModelCatalogRefresh()
   const lookupOptions = buildModelsDevLookupOptions(providerType, providerName, baseUrl)
 
   return models.map((model) => ({
