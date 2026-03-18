@@ -289,6 +289,7 @@ interface ProviderConfig {
 
 interface ModelCatalogStatus {
   hasSnapshot: boolean
+  isStale: boolean
   providersIndexed: number
   modelsIndexed: number
   outputModelsIndexed: number

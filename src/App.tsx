@@ -141,7 +141,7 @@ export default function App() {
     void (async () => {
       try {
         const catalogStatus = await window.jelico.providers.getModelCatalogStatus()
-        if (cancelled || catalogStatus.hasSnapshot) return
+        if (cancelled || (catalogStatus.hasSnapshot && !catalogStatus.isStale)) return
 
         await window.jelico.providers.refreshModelCatalog()
         if (!cancelled) {

@@ -37,6 +37,15 @@ let lastUpdatedAt = 0
 let refreshInFlight: Promise<void> | null = null
 let refreshTimer: NodeJS.Timeout | null = null
 
+function getCatalogRetryWindowMs(hasSnapshot: boolean): number {
+  return hasSnapshot ? CATALOG_REFRESH_TTL_MS : INITIAL_CATALOG_RETRY_MS
+}
+
+function isCatalogStale(now = Date.now()): boolean {
+  const hasSnapshot = Boolean(inMemoryProviders)
+  return now - lastCheckedAt >= getCatalogRetryWindowMs(hasSnapshot)
+}
+
 function rebuildIndexes(providers: Record<string, unknown>) {
   indexes = buildModelsDevIndexes(providers)
 }
@@ -84,7 +93,7 @@ export async function refreshModelCatalog(force = false): Promise<void> {
   if (refreshInFlight) return refreshInFlight
 
   const now = Date.now()
-  const retryWindowMs = inMemoryProviders ? CATALOG_REFRESH_TTL_MS : INITIAL_CATALOG_RETRY_MS
+  const retryWindowMs = getCatalogRetryWindowMs(Boolean(inMemoryProviders))
   if (!force && now - lastCheckedAt < retryWindowMs) {
     return
   }
@@ -188,6 +197,7 @@ export function initializeModelCatalog() {
 export function getModelCatalogStatus() {
   return {
     hasSnapshot: Boolean(inMemoryProviders),
+    isStale: isCatalogStale(),
     providersIndexed: indexes.providerModelIndex.size,
     modelsIndexed: indexes.globalModelIndex.size,
     outputModelsIndexed: indexes.globalModelOutputIndex.size,

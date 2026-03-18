@@ -104,6 +104,18 @@ function queueModelCatalogRefresh() {
   void refreshModelCatalog(false)
 }
 
+async function ensureCapabilityCatalogReadyForLiveModelLabels() {
+  const catalogStatus = getModelCatalogStatus()
+  if (!catalogStatus.hasSnapshot) {
+    await refreshModelCatalog(false)
+    return
+  }
+
+  if (catalogStatus.isStale) {
+    queueModelCatalogRefresh()
+  }
+}
+
 // Extract context size from model metadata
 function extractContextSize(model: any): number | null {
   const candidates = [
@@ -411,7 +423,7 @@ async function attachCapabilitySummaries(
 ) {
   if (!models.length) return models
 
-  queueModelCatalogRefresh()
+  await ensureCapabilityCatalogReadyForLiveModelLabels()
   const lookupOptions = buildModelsDevLookupOptions(providerType, providerName, baseUrl)
 
   return models.map((model) => ({
