@@ -26,13 +26,8 @@ function isKnownChatOnlyCompatibleProvider(params: ResolveProviderCapabilitySumm
     return false
   }
 
-  const providerName = normalize(params.providerName)
   const baseUrl = normalize(params.baseUrl)
-  return (
-    providerName.includes('nous research') ||
-    providerName.includes('shadow portal') ||
-    baseUrl.includes('shadow.nousresearch.com')
-  )
+  return baseUrl.includes('shadow.nousresearch.com')
 }
 
 export function resolveProviderCapabilitySummary(

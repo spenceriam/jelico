@@ -2,10 +2,11 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import { resolveProviderCapabilitySummary } from './providerCapabilitySummary'
 
-test('compatible Nous Research endpoints are labeled chat-only', () => {
+test('compatible Nous shadow endpoints are labeled chat-only', () => {
   const summary = resolveProviderCapabilitySummary({
     providerType: 'openai-compatible',
     providerName: 'Nous Research',
+    baseUrl: 'https://shadow.nousresearch.com/v1',
     modelId: 'nous-hermes',
   })
 
@@ -13,6 +14,19 @@ test('compatible Nous Research endpoints are labeled chat-only', () => {
   assert.equal(summary?.toolSupport, 'unsupported')
   assert.equal(summary.label, 'Chat only')
   assert.equal(summary.source, 'provider_override')
+})
+
+test('editable provider names alone do not force chat-only labels', () => {
+  const summary = resolveProviderCapabilitySummary({
+    providerType: 'openai-compatible',
+    providerName: 'Nous Research',
+    baseUrl: 'https://api.studio.nebius.com/v1',
+    modelId: 'nous-hermes',
+  })
+
+  assert.ok(summary)
+  assert.equal(summary?.toolSupport, 'unknown')
+  assert.equal(summary?.source, 'default_unknown')
 })
 
 test('catalog tool metadata marks models as tool-capable', () => {

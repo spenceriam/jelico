@@ -922,11 +922,19 @@ export function registerProviderHandlers() {
         case 'zai':
         case 'zai-china':
         case 'zai-coding':
-        case 'zai-coding-china':
-          return await probeCompatibleModelsEndpoint(
-            getProviderModelsBaseUrl(provider.type, provider.base_url) || null,
-            apiKey || null
+        case 'zai-coding-china': {
+          const baseUrl = getProviderModelsBaseUrl(provider.type, provider.base_url) || null
+          const modelsProbe = await probeCompatibleModelsEndpoint(baseUrl, apiKey || null)
+          if (modelsProbe.ok || !provider.default_model?.trim()) {
+            return modelsProbe
+          }
+
+          return await probeCompatibleChatCompletionsEndpoint(
+            baseUrl,
+            apiKey || null,
+            provider.default_model
           )
+        }
         default:
           return {
             ok: !!apiKey,
