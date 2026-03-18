@@ -54,8 +54,8 @@ const FALLBACK_MODELS: Record<string, Array<{ id: string; name: string }>> = {
     { id: 'glm-z1-airx', name: 'GLM-Z1 AirX' },
   ],
   'zai-coding': [
-    { id: 'glm-5', name: 'GLM-5' },
     { id: 'glm-4.7', name: 'GLM-4.7' },
+    { id: 'glm-5', name: 'GLM-5' },
     { id: 'glm-4.7-flashx', name: 'GLM-4.7 FlashX' },
     { id: 'glm-4.5', name: 'GLM-4.5' },
     { id: 'glm-4.5-air', name: 'GLM-4.5 Air' },
@@ -65,8 +65,8 @@ const FALLBACK_MODELS: Record<string, Array<{ id: string; name: string }>> = {
     { id: 'glm-z1-airx', name: 'GLM-Z1 AirX' },
   ],
   'zai-coding-china': [
-    { id: 'glm-5', name: 'GLM-5' },
     { id: 'glm-4.7', name: 'GLM-4.7' },
+    { id: 'glm-5', name: 'GLM-5' },
     { id: 'glm-4.7-flashx', name: 'GLM-4.7 FlashX' },
     { id: 'glm-4.5', name: 'GLM-4.5' },
     { id: 'glm-4.5-air', name: 'GLM-4.5 Air' },

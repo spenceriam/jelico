@@ -97,6 +97,10 @@ function buildCompatibleModelsEndpoints(baseUrl?: string | null): string[] {
   return buildCompatibleModelsEndpointCandidates(baseUrl, { defaultOpenAI: true })
 }
 
+function queueModelCatalogRefresh() {
+  void refreshModelCatalog(false)
+}
+
 // Extract context size from model metadata
 function extractContextSize(model: any): number | null {
   const candidates = [
@@ -706,7 +710,7 @@ export function registerProviderHandlers() {
       await keychainService.setApiKey(provider.id, input.apiKey)
     }
 
-    await refreshModelCatalog(false)
+    queueModelCatalogRefresh()
     return toApiFormat(provider)
   })
 
@@ -727,7 +731,7 @@ export function registerProviderHandlers() {
       }
     }
 
-    await refreshModelCatalog(false)
+    queueModelCatalogRefresh()
     return provider ? toApiFormat(provider) : null
   })
 
@@ -738,7 +742,6 @@ export function registerProviderHandlers() {
   })
 
   ipcMain.handle('providers:reorder', async (_, ids: string[]) => {
-    await refreshModelCatalog(false)
     const providers = providerDb.reorder(ids)
     return providers.map(toApiFormat)
   })
