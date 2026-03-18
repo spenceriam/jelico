@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useCallback } from 'react'
+import { useState, useEffect, useMemo, useCallback, useRef } from 'react'
 import { Eye, EyeOff, Search, Loader2, RefreshCw } from 'lucide-react'
 import { buildCompatibleModelsEndpointCandidates } from '../../lib/compatibleProviderModels'
 import { getSupportedReasoningEfforts, REASONING_EFFORT_LABELS, type ReasoningEffort } from '../../lib/reasoning'
@@ -144,6 +144,7 @@ export function ProviderConfigForm({
   const [isLoadingModels, setIsLoadingModels] = useState(false)
   const [modelsFetched, setModelsFetched] = useState(false)
   const [modelSearch, setModelSearch] = useState('')
+  const hasTouchedModelSelectionRef = useRef(false)
   const [reasoningEffort, setReasoningEffort] = useState<ReasoningEffort | ''>('')
 
   const needsApiKey = type !== 'ollama' && type !== 'local'
@@ -180,8 +181,13 @@ export function ProviderConfigForm({
       if (fetchedModels.length > 0) {
         setModels(fetchedModels)
         setModelsFetched(true)
-        // Preserve manually entered model IDs when live discovery does not know them.
-        setModel((currentModel) => currentModel || fetchedModels[0].id)
+        if (!hasTouchedModelSelectionRef.current) {
+          setModel((currentModel) =>
+            currentModel && fetchedModels.some((candidate) => candidate.id === currentModel)
+              ? currentModel
+              : fetchedModels[0].id
+          )
+        }
       } else {
         setModels(FALLBACK_MODELS[type] || [])
         setModelsFetched(false)
@@ -342,7 +348,10 @@ export function ProviderConfigForm({
             <input
               type="text"
               value={model}
-              onChange={(e) => setModel(e.target.value)}
+              onChange={(e) => {
+                hasTouchedModelSelectionRef.current = true
+                setModel(e.target.value)
+              }}
               className="input input-mono"
               placeholder="Enter model ID..."
             />
@@ -370,7 +379,10 @@ export function ProviderConfigForm({
                   <button
                     key={m.id}
                     type="button"
-                    onClick={() => setModel(m.id)}
+                    onClick={() => {
+                      hasTouchedModelSelectionRef.current = true
+                      setModel(m.id)
+                    }}
                     className={`w-full px-3 py-2 text-left text-sm hover:bg-bg-surface transition-colors border-b border-border-subtle last:border-b-0 ${
                       model === m.id ? 'bg-accent-glow text-accent' : 'text-text-primary'
                     }`}
@@ -397,7 +409,10 @@ export function ProviderConfigForm({
           /* Simple dropdown for smaller model lists */
           <select
             value={modelIsListed ? model : ''}
-            onChange={(e) => setModel(e.target.value)}
+            onChange={(e) => {
+              hasTouchedModelSelectionRef.current = true
+              setModel(e.target.value)
+            }}
             className="input"
           >
             <option value="">
@@ -424,7 +439,10 @@ export function ProviderConfigForm({
             <input
               type="text"
               value={model}
-              onChange={(e) => setModel(e.target.value)}
+              onChange={(e) => {
+                hasTouchedModelSelectionRef.current = true
+                setModel(e.target.value)
+              }}
               className="input input-mono"
               placeholder="Use this for testing or early-access models"
             />

@@ -427,7 +427,7 @@ async function attachCapabilitySummaries(
 ) {
   if (!models.length) return models
 
-  await refreshModelCatalog(false)
+  queueModelCatalogRefresh()
   const lookupOptions = buildModelsDevLookupOptions(providerType, providerName, baseUrl)
 
   return models.map((model) => ({
