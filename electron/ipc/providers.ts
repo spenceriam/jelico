@@ -1045,7 +1045,7 @@ export function registerProviderHandlers() {
   })
 
   ipcMain.handle('providers:refreshModelCatalog', async () => {
-    await refreshModelCatalog(false)
+    await refreshModelCatalog(true)
     return getModelCatalogStatus()
   })
 
