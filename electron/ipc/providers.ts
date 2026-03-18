@@ -8,6 +8,7 @@ import {
   getCompatibleAuthHeaderCandidates,
 } from '../lib/providerModelLimits'
 import {
+  getModelCatalogStatus,
   initializeModelCatalog,
   lookupModelsDevContextLimit,
   lookupModelsDevOutputLimit,
