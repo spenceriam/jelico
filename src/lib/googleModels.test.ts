@@ -49,3 +49,17 @@ test('google model sorting prefers stable releases within the same Gemini family
     'gemini-2.5-flash-preview',
   ])
 })
+
+test('google model sorting keeps date-coded experimental ids behind current stable families', () => {
+  const sorted = sortGoogleModels([
+    { id: 'gemini-exp-1206', name: 'Gemini Exp 1206' },
+    { id: 'gemini-2.5-pro', name: 'Gemini 2.5 Pro' },
+    { id: 'gemini-3-flash-preview', name: 'Gemini 3 Flash Preview' },
+  ])
+
+  assert.deepEqual(sorted.map((model) => model.id), [
+    'gemini-3-flash-preview',
+    'gemini-2.5-pro',
+    'gemini-exp-1206',
+  ])
+})

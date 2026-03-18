@@ -29,6 +29,11 @@ function getGoogleModelVersion(model: GoogleModelLike): number {
   return match ? Number.parseFloat(match[1]) : 0
 }
 
+function isExperimentalGoogleModel(model: GoogleModelLike): boolean {
+  const normalizedId = normalizeGoogleModelId(model)
+  return normalizedId.includes('gemini-exp-') || normalizedId.includes('experimental')
+}
+
 function isSpecializedGoogleModel(model: GoogleModelLike): boolean {
   const normalizedId = normalizeGoogleModelId(model)
   return GOOGLE_SPECIALIZED_MODEL_KEYWORDS.some((keyword) => normalizedId.includes(keyword))
@@ -51,6 +56,9 @@ function getGoogleModelVariantWeight(model: GoogleModelLike): number {
 export function compareGoogleModels(a: GoogleModelLike, b: GoogleModelLike): number {
   const specializedDelta = Number(isSpecializedGoogleModel(a)) - Number(isSpecializedGoogleModel(b))
   if (specializedDelta !== 0) return specializedDelta
+
+  const experimentalDelta = Number(isExperimentalGoogleModel(a)) - Number(isExperimentalGoogleModel(b))
+  if (experimentalDelta !== 0) return experimentalDelta
 
   const versionDelta = getGoogleModelVersion(b) - getGoogleModelVersion(a)
   if (versionDelta !== 0) return versionDelta

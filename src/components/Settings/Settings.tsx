@@ -63,6 +63,14 @@ const DYNAMIC_PROVIDER_TYPES = new Set([
   'local',
 ])
 
+const OPTIONAL_DEFAULT_MODEL_PROVIDER_TYPES = new Set([
+  'openai-compatible',
+  'anthropic-compatible',
+  'custom',
+  'local',
+  'minimax',
+])
+
 export function Settings({ onClose }: SettingsProps) {
   const {
     providers,
@@ -122,6 +130,7 @@ export function Settings({ onClose }: SettingsProps) {
   const [editApiKeyValue, setEditApiKeyValue] = useState('')
   const [editCapabilityProfilesValue, setEditCapabilityProfilesValue] = useState('')
   const [capabilityProfilesError, setCapabilityProfilesError] = useState<string | null>(null)
+  const [modelValidationError, setModelValidationError] = useState<string | null>(null)
   const [showCurrentKey, setShowCurrentKey] = useState(false)
   const [currentApiKey, setCurrentApiKey] = useState<string | null>(null)
   const [loadingCurrentApiKey, setLoadingCurrentApiKey] = useState(false)
@@ -129,6 +138,8 @@ export function Settings({ onClose }: SettingsProps) {
 
   const editingProvider = providers.find((provider) => provider.id === editingProviderId) || null
   const supportedReasoningEfforts = getSupportedReasoningEfforts(editingProvider?.type || '', editModelValue)
+  const editingProviderRequiresDefaultModel =
+    !!editingProvider && !OPTIONAL_DEFAULT_MODEL_PROVIDER_TYPES.has(String(editingProvider.type || '').trim().toLowerCase())
 
   useEffect(() => {
     void loadSkills()
@@ -310,6 +321,7 @@ export function Settings({ onClose }: SettingsProps) {
     const currentProfiles = normalizeCapabilityProfiles(provider.capabilityProfiles)
     setEditCapabilityProfilesValue(currentProfiles ? JSON.stringify(currentProfiles, null, 2) : '')
     setCapabilityProfilesError(null)
+    setModelValidationError(null)
     setShowCurrentKey(false)
     setCurrentApiKey(null)
     setInvalidStoredApiKey(false)
@@ -352,6 +364,9 @@ export function Settings({ onClose }: SettingsProps) {
     const trimmedModel = editModelValue.trim()
     const normalizedCurrentBaseUrl = (currentProvider.baseUrl || '').trim()
     const resolvedName = trimmedName || currentProvider.name || 'Provider'
+    const providerRequiresDefaultModel = !OPTIONAL_DEFAULT_MODEL_PROVIDER_TYPES.has(
+      String(currentProvider.type || '').trim().toLowerCase()
+    )
     const currentCapabilityProfiles = normalizeCapabilityProfiles(currentProvider.capabilityProfiles)
     const normalizedReasoningEffort = supportedReasoningEfforts.includes(editReasoningEffortValue as ReasoningEffort)
       ? editReasoningEffortValue
@@ -375,6 +390,12 @@ export function Settings({ onClose }: SettingsProps) {
       }
     }
     setCapabilityProfilesError(null)
+
+    if (providerRequiresDefaultModel && !trimmedModel) {
+      setModelValidationError('Model name/id is required for this provider.')
+      return
+    }
+    setModelValidationError(null)
 
     const providerChanged =
       resolvedName !== currentProvider.name ||
@@ -483,6 +504,7 @@ export function Settings({ onClose }: SettingsProps) {
     setEditApiKeyValue('')
     setEditCapabilityProfilesValue('')
     setCapabilityProfilesError(null)
+    setModelValidationError(null)
     setShowCurrentKey(false)
     setCurrentApiKey(null)
     setLoadingCurrentApiKey(false)
@@ -997,7 +1019,10 @@ export function Settings({ onClose }: SettingsProps) {
                                 <input
                                   type="text"
                                   value={editModelValue}
-                                  onChange={(e) => setEditModelValue(e.target.value)}
+                                  onChange={(e) => {
+                                    setEditModelValue(e.target.value)
+                                    setModelValidationError(null)
+                                  }}
                                   className="w-full px-3 py-2 text-sm bg-bg-deep border border-border rounded focus:outline-none focus:border-accent text-text-primary font-mono"
                                   placeholder="Use this for testing or early-access model IDs"
                                 />
@@ -1013,7 +1038,10 @@ export function Settings({ onClose }: SettingsProps) {
                               <input
                                 type="text"
                                 value={editModelValue}
-                                onChange={(e) => setEditModelValue(e.target.value)}
+                                onChange={(e) => {
+                                  setEditModelValue(e.target.value)
+                                  setModelValidationError(null)
+                                }}
                                 className="w-full px-3 py-2 text-sm bg-bg-deep border border-border rounded focus:outline-none focus:border-accent text-text-primary font-mono"
                                 placeholder="Enter model ID..."
                               />
@@ -1024,6 +1052,9 @@ export function Settings({ onClose }: SettingsProps) {
                             <p className="text-xs text-text-muted mt-2">
                               Selected: <span className="font-mono">{editModelValue}</span>
                             </p>
+                          )}
+                          {modelValidationError && (
+                            <p className="mt-2 text-xs text-error">{modelValidationError}</p>
                           )}
 
                           {supportedReasoningEfforts.length > 0 && (
@@ -1138,7 +1169,12 @@ export function Settings({ onClose }: SettingsProps) {
                           <div className="flex items-center gap-2 mt-3">
                             <button
                               onClick={saveProviderEdit}
-                              className="px-3 py-1.5 text-sm bg-accent text-accent-foreground rounded hover:bg-accent-bright transition-colors"
+                              disabled={editingProviderRequiresDefaultModel && !editModelValue.trim()}
+                              className={`px-3 py-1.5 text-sm rounded transition-colors ${
+                                editingProviderRequiresDefaultModel && !editModelValue.trim()
+                                  ? 'bg-bg-hover text-text-muted cursor-not-allowed'
+                                  : 'bg-accent text-accent-foreground hover:bg-accent-bright'
+                              }`}
                             >
                               Save
                             </button>
