@@ -19,6 +19,7 @@ interface ContextSizeCacheEntry {
 
 const contextSizeCache = new Map<string, ContextSizeCacheEntry>()
 const CACHE_TTL_MS = 24 * 60 * 60 * 1000 // 24 hours
+const ZAI_PROVIDER_TYPES = new Set(['zai', 'zai-china', 'zai-coding', 'zai-coding-china'])
 
 // Known model context sizes (Issue #56: Hardcoded known sizes for common models)
 const KNOWN_CONTEXT_SIZES: Record<string, number> = {
@@ -170,10 +171,13 @@ async function resolveModelContextSize(providerId: string, modelId: string): Pro
   }
 
   if (source !== 'api') {
-    const knownZaiContext = findZaiContextFallback(modelId)
-    if (knownZaiContext) {
-      modelContextSize = knownZaiContext
-      source = 'default'
+    const provider = await window.jelico.providers.get(providerId)
+    if (provider && ZAI_PROVIDER_TYPES.has(String(provider.type || '').trim().toLowerCase())) {
+      const knownZaiContext = findZaiContextFallback(modelId)
+      if (knownZaiContext) {
+        modelContextSize = knownZaiContext
+        source = 'default'
+      }
     }
 
     const normalizedModelId = modelId.toLowerCase().replace(/[:@]/g, '-')

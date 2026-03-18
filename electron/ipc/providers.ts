@@ -847,6 +847,9 @@ export function registerProviderHandlers() {
         case 'zai-china':
         case 'zai-coding':
         case 'zai-coding-china':
+          if (!provider.default_model?.trim()) {
+            return { ok: false, message: 'Missing model name/id' } satisfies ProviderTestResult
+          }
           return await probeCompatibleModelsEndpoint(
             getProviderModelsBaseUrl(provider.type, provider.base_url) || null,
             apiKey || null
