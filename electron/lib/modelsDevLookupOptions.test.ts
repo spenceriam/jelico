@@ -37,12 +37,9 @@ test('known local provider aliases remain available for local models.dev lookup'
   )
 })
 
-test('managed providers keep provider names available for models.dev lookup', () => {
+test('native providers rely on provider type and base url, not editable display names', () => {
   assert.deepEqual(
     buildModelsDevLookupOptions('anthropic', 'Anthropic', 'https://api.anthropic.com'),
-    {
-      baseUrl: 'https://api.anthropic.com',
-      providerName: 'Anthropic',
-    }
+    { baseUrl: 'https://api.anthropic.com' }
   )
 })

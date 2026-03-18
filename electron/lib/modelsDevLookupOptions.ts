@@ -1,4 +1,3 @@
-const USER_EDITABLE_PROVIDER_ALIAS_TYPES = new Set(['openai-compatible', 'anthropic-compatible', 'custom'])
 const SAFE_LOCAL_PROVIDER_ALIASES = new Set(['lm studio', 'ollama'])
 
 export function buildModelsDevLookupOptions(providerType: string, providerName?: string | null, baseUrl?: string | null) {
@@ -13,10 +12,8 @@ export function buildModelsDevLookupOptions(providerType: string, providerName?:
 
   const allowProviderNameLookup =
     !!trimmedProviderName &&
-    (
-      (normalizedType === 'local' && SAFE_LOCAL_PROVIDER_ALIASES.has(trimmedProviderName.toLowerCase())) ||
-      (normalizedType !== 'local' && !USER_EDITABLE_PROVIDER_ALIAS_TYPES.has(normalizedType))
-    )
+    normalizedType === 'local' &&
+    SAFE_LOCAL_PROVIDER_ALIASES.has(trimmedProviderName.toLowerCase())
 
   if (allowProviderNameLookup) {
     options.providerName = trimmedProviderName
