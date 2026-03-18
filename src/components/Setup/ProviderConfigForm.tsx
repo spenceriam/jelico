@@ -146,6 +146,8 @@ export function ProviderConfigForm({
   const [modelsFetched, setModelsFetched] = useState(false)
   const [modelSearch, setModelSearch] = useState('')
   const hasTouchedModelSelectionRef = useRef(false)
+  const latestModelRequestKeyRef = useRef('')
+  const catalogRefreshRequestKeyRef = useRef<string | null>(null)
   const [reasoningEffort, setReasoningEffort] = useState<ReasoningEffort | ''>('')
 
   const needsApiKey = type !== 'ollama' && type !== 'local'
@@ -167,16 +169,28 @@ export function ProviderConfigForm({
 
     setIsLoadingModels(true)
     try {
+      const providerName = name || initialName || getDefaultName(type)
+      const requestKey = JSON.stringify({
+        type,
+        apiKey,
+        baseUrl,
+        providerName,
+      })
+      latestModelRequestKeyRef.current = requestKey
       let fetchedModels: ProviderModel[] = []
 
       fetchedModels = await window.jelico.providers.previewModels(
         type,
         apiKey,
         baseUrl,
-        name || initialName || getDefaultName(type)
+        providerName
       )
       if (fetchedModels.length === 0) {
         fetchedModels = await fetchModelsWithKey(type, apiKey, baseUrl)
+      }
+
+      if (latestModelRequestKeyRef.current !== requestKey) {
+        return
       }
 
       if (fetchedModels.length > 0) {
@@ -192,6 +206,44 @@ export function ProviderConfigForm({
       } else {
         setModels(FALLBACK_MODELS[type] || [])
         setModelsFetched(false)
+      }
+
+      const catalogStatus = await window.jelico.providers.getModelCatalogStatus()
+      if (
+        fetchedModels.length > 0 &&
+        (!catalogStatus.hasSnapshot || catalogStatus.isStale) &&
+        catalogRefreshRequestKeyRef.current !== requestKey
+      ) {
+        catalogRefreshRequestKeyRef.current = requestKey
+        void (async () => {
+          try {
+            await window.jelico.providers.refreshModelCatalog()
+            const refreshedModels = await window.jelico.providers.previewModels(
+              type,
+              apiKey,
+              baseUrl,
+              providerName
+            )
+            if (
+              latestModelRequestKeyRef.current !== requestKey ||
+              refreshedModels.length === 0
+            ) {
+              return
+            }
+
+            setModels(refreshedModels)
+            setModelsFetched(true)
+            if (!hasTouchedModelSelectionRef.current) {
+              setModel((currentModel) =>
+                currentModel && refreshedModels.some((candidate) => candidate.id === currentModel)
+                  ? currentModel
+                  : refreshedModels[0].id
+              )
+            }
+          } catch (error) {
+            console.error(`Failed to refresh ${type} model capability labels:`, error)
+          }
+        })()
       }
     } catch (err) {
       console.error(`Failed to fetch ${type} models:`, err)

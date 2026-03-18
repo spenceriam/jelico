@@ -119,6 +119,8 @@ export function Settings({ onClose }: SettingsProps) {
   const [editableModels, setEditableModels] = useState<ProviderModelOption[]>([])
   const [loadingModels, setLoadingModels] = useState(false)
   const [modelsFetched, setModelsFetched] = useState(false)
+  const editableModelsRequestKeyRef = useRef('')
+  const editableModelsCatalogRefreshKeyRef = useRef<string | null>(null)
   const [modelSearch, setModelSearch] = useState('')
   const [modelLimitsByProviderId, setModelLimitsByProviderId] = useState<Record<string, ModelLimits>>({})
   const [draggedProviderId, setDraggedProviderId] = useState<string | null>(null)
@@ -217,14 +219,23 @@ export function Settings({ onClose }: SettingsProps) {
 
     const timeout = window.setTimeout(async () => {
       try {
+        const providerName = editNameValue.trim() || editingProvider.name
+        const requestKey = JSON.stringify({
+          providerId: editingProvider.id,
+          providerType: editingProvider.type,
+          apiKey: effectiveApiKey,
+          baseUrl: effectiveBaseUrl,
+          providerName,
+        })
+        editableModelsRequestKeyRef.current = requestKey
         const models = await window.jelico.providers.previewModels(
           editingProvider.type,
           effectiveApiKey,
           effectiveBaseUrl,
-          editNameValue.trim() || editingProvider.name
+          providerName
         )
 
-        if (cancelled) return
+        if (cancelled || editableModelsRequestKeyRef.current !== requestKey) return
 
         const normalized = (models || [])
           .map((model) => ({
@@ -236,6 +247,41 @@ export function Settings({ onClose }: SettingsProps) {
 
         setEditableModels(normalized)
         setModelsFetched(normalized.length > 0)
+
+        const catalogStatus = await window.jelico.providers.getModelCatalogStatus()
+        if (
+          normalized.length > 0 &&
+          (!catalogStatus.hasSnapshot || catalogStatus.isStale) &&
+          editableModelsCatalogRefreshKeyRef.current !== requestKey
+        ) {
+          editableModelsCatalogRefreshKeyRef.current = requestKey
+          void (async () => {
+            try {
+              await window.jelico.providers.refreshModelCatalog()
+              const refreshedModels = await window.jelico.providers.previewModels(
+                editingProvider.type,
+                effectiveApiKey,
+                effectiveBaseUrl,
+                providerName
+              )
+
+              if (cancelled || editableModelsRequestKeyRef.current !== requestKey) return
+
+              const refreshedNormalized = (refreshedModels || [])
+                .map((model) => ({
+                  id: model.id,
+                  name: model.name || model.id,
+                  capabilitySummary: model.capabilitySummary || null,
+                }))
+                .filter((model) => model.id)
+
+              setEditableModels(refreshedNormalized)
+              setModelsFetched(refreshedNormalized.length > 0)
+            } catch (error) {
+              console.error('Failed to refresh provider model capability labels:', error)
+            }
+          })()
+        }
       } catch (error) {
         if (!cancelled) {
           console.error('Failed to fetch provider models:', error)
