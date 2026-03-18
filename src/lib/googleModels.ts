@@ -60,11 +60,11 @@ export function compareGoogleModels(a: GoogleModelLike, b: GoogleModelLike): num
   const experimentalDelta = Number(isExperimentalGoogleModel(a)) - Number(isExperimentalGoogleModel(b))
   if (experimentalDelta !== 0) return experimentalDelta
 
-  const versionDelta = getGoogleModelVersion(b) - getGoogleModelVersion(a)
-  if (versionDelta !== 0) return versionDelta
-
   const previewDelta = Number(isPreviewGoogleModel(a)) - Number(isPreviewGoogleModel(b))
   if (previewDelta !== 0) return previewDelta
+
+  const versionDelta = getGoogleModelVersion(b) - getGoogleModelVersion(a)
+  if (versionDelta !== 0) return versionDelta
 
   const variantDelta = getGoogleModelVariantWeight(a) - getGoogleModelVariantWeight(b)
   if (variantDelta !== 0) return variantDelta

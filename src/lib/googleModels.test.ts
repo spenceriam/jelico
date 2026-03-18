@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import { sortGoogleModels } from './googleModels'
 
-test('google model sorting prefers newer Gemini families over alphabetical order', () => {
+test('google model sorting prefers stable Gemini families before newer preview ids', () => {
   const sorted = sortGoogleModels([
     { id: 'gemini-1.5-pro', name: 'Gemini 1.5 Pro' },
     { id: 'gemini-2.0-flash', name: 'Gemini 2.0 Flash' },
@@ -11,10 +11,26 @@ test('google model sorting prefers newer Gemini families over alphabetical order
   ])
 
   assert.deepEqual(sorted.map((model) => model.id), [
-    'gemini-3-flash-preview',
     'gemini-2.5-pro',
     'gemini-2.0-flash',
     'gemini-1.5-pro',
+    'gemini-3-flash-preview',
+  ])
+})
+
+test('google model sorting prefers stable releases ahead of newer preview families', () => {
+  const sorted = sortGoogleModels([
+    { id: 'gemini-2.0-flash', name: 'Gemini 2.0 Flash' },
+    { id: 'gemini-3-flash-preview', name: 'Gemini 3 Flash Preview' },
+    { id: 'gemini-2.5-pro', name: 'Gemini 2.5 Pro' },
+    { id: 'gemini-2.5-flash-preview', name: 'Gemini 2.5 Flash Preview' },
+  ])
+
+  assert.deepEqual(sorted.map((model) => model.id), [
+    'gemini-2.5-pro',
+    'gemini-2.0-flash',
+    'gemini-3-flash-preview',
+    'gemini-2.5-flash-preview',
   ])
 })
 
@@ -58,8 +74,8 @@ test('google model sorting keeps date-coded experimental ids behind current stab
   ])
 
   assert.deepEqual(sorted.map((model) => model.id), [
-    'gemini-3-flash-preview',
     'gemini-2.5-pro',
+    'gemini-3-flash-preview',
     'gemini-exp-1206',
   ])
 })

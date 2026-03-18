@@ -8,7 +8,6 @@ import {
   getCompatibleAuthHeaderCandidates,
 } from '../lib/providerModelLimits'
 import {
-  getModelCatalogStatus,
   initializeModelCatalog,
   lookupModelsDevContextLimit,
   lookupModelsDevOutputLimit,
@@ -104,11 +103,6 @@ function queueModelCatalogRefresh() {
 }
 
 async function ensureCapabilityCatalogReady() {
-  if (getModelCatalogStatus().hasSnapshot) {
-    queueModelCatalogRefresh()
-    return
-  }
-
   await refreshModelCatalog(false)
 }
 
