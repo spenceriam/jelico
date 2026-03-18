@@ -378,6 +378,28 @@ async function fetchGoogleModels(apiKey: string): Promise<Array<{ id: string; na
   }
 }
 
+async function fetchGoogleModelMetadata(apiKey: string, modelId: string): Promise<any | null> {
+  const trimmedModelId = String(modelId || '').trim()
+  if (!trimmedModelId) return null
+
+  const directResponse = await fetch(buildGoogleModelUrl(trimmedModelId, apiKey))
+  if (directResponse.ok) {
+    const directData = await directResponse.json()
+    if (directData?.inputTokenLimit || directData?.outputTokenLimit) {
+      return directData
+    }
+  }
+
+  const normalizedTarget = trimmedModelId.replace(/^models\//i, '').toLowerCase()
+  const candidates = (await fetchAllGoogleModels(apiKey)).filter((entry: any) => {
+    const resourceId = String(entry?.name || entry?.id || '').replace(/^models\//i, '').toLowerCase()
+    const baseModelId = getGoogleModelId(entry).toLowerCase()
+    return resourceId === normalizedTarget || baseModelId === normalizedTarget
+  })
+
+  return selectPreferredGoogleModels(candidates)[0] || null
+}
+
 // Convert database row to API format
 function toApiFormat(row: any) {
   const lookupOptions = buildModelsDevLookupOptions(row.type, row.name, row.base_url)
@@ -632,7 +654,6 @@ async function probeCompatibleChatCompletionsEndpoint(
         body: JSON.stringify({
           model: modelId,
           max_tokens: 1,
-          temperature: 0,
           messages: [
             {
               role: 'user',
@@ -1159,9 +1180,8 @@ export function registerProviderHandlers() {
 
         case 'google': {
           if ((!contextWindow || !maxOutputTokens) && apiKey) {
-            const response = await fetch(buildGoogleModelUrl(modelId, apiKey))
-            if (response.ok) {
-              const data = await response.json()
+            const data = await fetchGoogleModelMetadata(apiKey, modelId)
+            if (data) {
               contextWindow = contextWindow || Number(data.inputTokenLimit) || null
               maxOutputTokens = maxOutputTokens || Number(data.outputTokenLimit) || null
             }
@@ -1291,9 +1311,8 @@ export function registerProviderHandlers() {
 
         case 'google': {
           if (!apiKey) return null
-          const response = await fetch(buildGoogleModelUrl(modelId, apiKey))
-          if (!response.ok) return null
-          const data = await response.json()
+          const data = await fetchGoogleModelMetadata(apiKey, modelId)
+          if (!data) return null
           // Google returns inputTokenLimit
           return data.inputTokenLimit || null
         }
