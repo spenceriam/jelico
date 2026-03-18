@@ -136,6 +136,20 @@ test('compatible provider base URLs can anchor provider-specific names to models
   )
 })
 
+test('compatible chat-completions URLs still resolve provider-scoped metadata', () => {
+  const metadata = lookupStrictModelsDevModelMetadataInIndexes(
+    indexes,
+    'openai-compatible',
+    'NousResearch/Hermes-4-405B',
+    {
+      baseUrl: 'https://api.studio.nebius.com/v1/chat/completions',
+    }
+  )
+
+  assert.equal(metadata?.providerKey, 'nebius')
+  assert.equal(metadata?.modelId, 'NousResearch/Hermes-4-405B')
+})
+
 test('generic compatible providers do not inherit foreign global output limits without a provider match', () => {
   const options = {
     baseUrl: 'https://inference-api.nousresearch.com/v1',

@@ -10,6 +10,8 @@ export function findZaiContextFallback(modelId?: string | null): number | null {
   if (normalized.includes('glm-4.6v')) return 128000
   if (normalized.includes('glm-4.5v')) return 64000
   if (normalized.includes('glm-4.5-flash')) return 200000
+  if (normalized.includes('glm-z1-airx')) return 32000
+  if (normalized.includes('glm-z1-air')) return 128000
   if (normalized.includes('glm-5')) return 200000
   if (normalized.includes('glm-4.7')) return 200000
   if (normalized.includes('glm-4.6')) return 200000
@@ -26,6 +28,8 @@ export function findZaiOutputFallback(modelId?: string | null): number | null {
   if (normalized.includes('glm-4.6v')) return 32000
   if (normalized.includes('glm-4.5v')) return 16000
   if (normalized.includes('glm-4.5-flash')) return 98304
+  if (normalized.includes('glm-z1-airx')) return 30000
+  if (normalized.includes('glm-z1-air')) return 32000
   if (normalized.includes('glm-5')) return 128000
   if (normalized.includes('glm-4.7')) return 128000
   if (normalized.includes('glm-4.6')) return 128000

@@ -70,6 +70,7 @@ function normalizeApiUrl(value?: string | null): string | null {
 
   const stripTailSegments = (input: string) =>
     input
+      .replace(/\/+chat\/completions$/i, '')
       .replace(/\/+(models|messages)$/i, '')
       .replace(/\/+$/, '')
 

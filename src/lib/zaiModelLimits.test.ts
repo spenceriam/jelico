@@ -22,6 +22,13 @@ test('glm-4.5 family and legacy 32b models keep their smaller fallback limits', 
   assert.equal(findZaiOutputFallback('glm-4-32b-0414-128k'), 16000)
 })
 
+test('glm-z1 fallback limits match the documented reasoning variants', () => {
+  assert.equal(findZaiContextFallback('glm-z1-air'), 128000)
+  assert.equal(findZaiOutputFallback('glm-z1-air'), 32000)
+  assert.equal(findZaiContextFallback('glm-z1-airx'), 32000)
+  assert.equal(findZaiOutputFallback('glm-z1-airx'), 30000)
+})
+
 test('z.ai fallback helpers stay null for unknown model ids', () => {
   assert.equal(findZaiContextFallback('future-zai-model'), null)
   assert.equal(findZaiOutputFallback('future-zai-model'), null)
