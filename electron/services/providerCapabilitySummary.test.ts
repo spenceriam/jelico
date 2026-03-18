@@ -27,15 +27,15 @@ test('catalog tool metadata marks models as tool-capable', () => {
   assert.equal(summary.source, 'models_dev_provider_match')
 })
 
-test('known hosted providers default to tools-supported when catalog metadata is absent', () => {
+test('native-provider model ids stay unknown until catalog metadata verifies tool support', () => {
   const summary = resolveProviderCapabilitySummary({
     providerType: 'google',
     modelId: 'gemini-3.1-pro-preview',
   })
 
   assert.ok(summary)
-  assert.equal(summary?.toolSupport, 'supported')
-  assert.equal(summary.source, 'provider_override')
+  assert.equal(summary?.toolSupport, 'unknown')
+  assert.equal(summary.source, 'default_unknown')
 })
 
 test('generic compatible endpoints default to unknown tool support', () => {

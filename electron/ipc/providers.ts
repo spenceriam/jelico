@@ -1143,8 +1143,15 @@ export function registerProviderHandlers() {
         case 'zai-china':
         case 'zai-coding':
         case 'zai-coding-china': {
+          const resolvedBaseUrl = getProviderModelsBaseUrl(provider.type, baseUrl)
+          if (!contextWindow) {
+            contextWindow = await resolveContextSizeFromModelsEndpoint(modelId, resolvedBaseUrl, apiKey)
+          }
           if (!contextWindow) {
             contextWindow = findZaiContextFallback(modelId)
+          }
+          if (!maxOutputTokens) {
+            maxOutputTokens = await resolveOutputSizeFromModelsEndpoint(modelId, resolvedBaseUrl, apiKey)
           }
           if (!maxOutputTokens) {
             maxOutputTokens = findZaiOutputFallback(modelId)
@@ -1275,6 +1282,12 @@ export function registerProviderHandlers() {
         case 'zai-china':
         case 'zai-coding':
         case 'zai-coding-china': {
+          const resolved = await resolveContextSizeFromModelsEndpoint(
+            modelId,
+            getProviderModelsBaseUrl(provider.type, baseUrl),
+            apiKey
+          )
+          if (resolved) return resolved
           return findZaiContextFallback(modelId) || 128000
         }
 

@@ -16,17 +16,6 @@ interface ResolveProviderCapabilitySummaryParams {
   providerType: string
 }
 
-const KNOWN_NATIVE_TOOL_PROVIDER_TYPES = new Set([
-  'anthropic',
-  'google',
-  'minimax',
-  'openai',
-  'zai',
-  'zai-china',
-  'zai-coding',
-  'zai-coding-china',
-])
-
 function normalize(value?: string | null): string {
   return String(value || '').trim().toLowerCase()
 }
@@ -77,15 +66,6 @@ export function resolveProviderCapabilitySummary(
       label: 'Chat only',
       source: 'models_dev_provider_match',
       note: 'Catalog metadata marks this provider/model as lacking structured tool-call support.',
-    }
-  }
-
-  if (KNOWN_NATIVE_TOOL_PROVIDER_TYPES.has(normalize(params.providerType))) {
-    return {
-      toolSupport: 'supported',
-      label: 'Tools supported',
-      source: 'provider_override',
-      note: 'Jelico treats this provider family as tool-capable by default.',
     }
   }
 
