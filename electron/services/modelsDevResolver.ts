@@ -486,7 +486,7 @@ export function lookupModelsDevOutputLimitInIndexes(
   return lookupGlobalIndex(indexes.globalModelOutputIndex, modelId)
 }
 
-export function lookupModelsDevModelMetadataInIndexes(
+function lookupProviderScopedModelsDevModelMetadataInIndexes(
   indexes: ModelsDevIndexes,
   providerType: string,
   modelId: string,
@@ -505,6 +505,35 @@ export function lookupModelsDevModelMetadataInIndexes(
 
     const aliasMatch = lookupInProviderMetadataIndex(indexes.providerModelMetadataIndex, providerKey, aliasModelId)
     if (aliasMatch) return aliasMatch
+  }
+
+  return null
+}
+
+export function lookupStrictModelsDevModelMetadataInIndexes(
+  indexes: ModelsDevIndexes,
+  providerType: string,
+  modelId: string,
+  options?: ModelsDevLookupOptions
+): ModelsDevModelMetadata | null {
+  return lookupProviderScopedModelsDevModelMetadataInIndexes(indexes, providerType, modelId, options)
+}
+
+export function lookupModelsDevModelMetadataInIndexes(
+  indexes: ModelsDevIndexes,
+  providerType: string,
+  modelId: string,
+  options?: ModelsDevLookupOptions
+): ModelsDevModelMetadata | null {
+  const providerScoped = lookupProviderScopedModelsDevModelMetadataInIndexes(
+    indexes,
+    providerType,
+    modelId,
+    options
+  )
+
+  if (providerScoped) {
+    return providerScoped
   }
 
   return lookupGlobalIndex(indexes.globalModelMetadataIndex, modelId)

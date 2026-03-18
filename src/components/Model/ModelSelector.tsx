@@ -5,6 +5,7 @@ import { useChatStore } from '../../stores/chat'
 import { useContextStore } from '../../stores/context'
 import { useProviderStore } from '../../stores/providers'
 import { useUIStore } from '../../stores/ui'
+import { ToolSupportBadge } from '../Providers/ToolSupportBadge'
 
 interface ModelSelectorProps {
   compact?: boolean
@@ -74,6 +75,7 @@ export function ModelSelector({ compact = false }: ModelSelectorProps) {
         model,
         label: `${provider.name} / ${model}`,
         isActive: activeProviderId === provider.id && activeModel === model,
+        capabilitySummary: provider.capabilitySummary,
       }
     })
   }, [visibleProviders, activeProviderId, activeModel])
@@ -229,6 +231,10 @@ export function ModelSelector({ compact = false }: ModelSelectorProps) {
             </div>
           )}
 
+          <div className="px-3 py-2 text-xs text-text-muted border-b border-border-subtle">
+            Artifacts, file writes, and workspace actions depend on tool support.
+          </div>
+
           {options.length === 0 ? (
             <div className="px-3 py-3 text-sm text-text-muted">No visible providers configured</div>
           ) : (
@@ -251,9 +257,17 @@ export function ModelSelector({ compact = false }: ModelSelectorProps) {
                   }`}
                 >
                   <div className="flex items-start justify-between gap-2">
-                    <span className="min-w-0 whitespace-normal break-all text-left leading-tight">
-                      {option.label}
-                    </span>
+                    <div className="min-w-0 space-y-1 text-left">
+                      <span className="block whitespace-normal break-all leading-tight">
+                        {option.label}
+                      </span>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="text-xs text-text-faint whitespace-normal break-all leading-tight">
+                          {subtitle}
+                        </span>
+                        <ToolSupportBadge summary={option.capabilitySummary} compact />
+                      </div>
+                    </div>
                     <span className="mt-0.5 ml-2 flex-shrink-0">
                       {isPending ? (
                         <Loader2 className="w-4 h-4 animate-spin" />
@@ -261,9 +275,6 @@ export function ModelSelector({ compact = false }: ModelSelectorProps) {
                         '✓'
                       ) : null}
                     </span>
-                  </div>
-                  <div className="text-xs text-text-faint whitespace-normal break-all text-left leading-tight mt-0.5">
-                    {subtitle}
                   </div>
                 </button>
               )

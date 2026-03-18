@@ -12,16 +12,63 @@ import {
   initializeModelCatalog,
   lookupModelsDevContextLimit,
   lookupModelsDevOutputLimit,
+  lookupStrictModelsDevModelMetadata,
   refreshModelCatalog,
 } from '../services/modelCatalog'
+import { resolveProviderCapabilitySummary } from '../services/providerCapabilitySummary'
+
+const GOOGLE_GENERATIVE_LANGUAGE_API_BASE_URL = 'https://generativelanguage.googleapis.com/v1beta'
 
 // Build models endpoint URL from base URL
 function buildModelsEndpoint(baseUrl?: string | null): string {
   const trimmed = (baseUrl || '').replace(/\/+$/, '')
   if (!trimmed) return 'https://api.openai.com/v1/models'
   if (trimmed.endsWith('/models')) return trimmed
+  if (/\/api\/(?:coding\/)?paas\/v4$/i.test(trimmed)) return `${trimmed}/models`
   if (trimmed.endsWith('/v1')) return `${trimmed}/models`
   return `${trimmed}/v1/models`
+}
+
+function getProviderModelsBaseUrl(type: string, baseUrl?: string | null): string | undefined {
+  const trimmedBaseUrl = String(baseUrl || '').trim()
+  if (trimmedBaseUrl) {
+    return trimmedBaseUrl
+  }
+
+  switch (String(type || '').trim().toLowerCase()) {
+    case 'zai':
+      return 'https://api.z.ai/api/paas/v4'
+    case 'zai-china':
+      return 'https://open.bigmodel.cn/api/paas/v4'
+    case 'zai-coding':
+      return 'https://api.z.ai/api/coding/paas/v4'
+    case 'zai-coding-china':
+      return 'https://open.bigmodel.cn/api/coding/paas/v4'
+    default:
+      return trimmedBaseUrl || undefined
+  }
+}
+
+function normalizeGoogleModelName(modelId: string): string {
+  const trimmed = String(modelId || '').trim()
+  if (!trimmed) return 'models'
+  return trimmed.startsWith('models/') ? trimmed : `models/${trimmed}`
+}
+
+function buildGoogleModelsListUrl(apiKey: string, pageToken?: string | null): string {
+  const url = new URL(`${GOOGLE_GENERATIVE_LANGUAGE_API_BASE_URL}/models`)
+  url.searchParams.set('key', apiKey)
+  url.searchParams.set('pageSize', '1000')
+  if (pageToken) {
+    url.searchParams.set('pageToken', pageToken)
+  }
+  return url.toString()
+}
+
+function buildGoogleModelUrl(modelId: string, apiKey: string): string {
+  const url = new URL(`${GOOGLE_GENERATIVE_LANGUAGE_API_BASE_URL}/${normalizeGoogleModelName(modelId)}`)
+  url.searchParams.set('key', apiKey)
+  return url.toString()
 }
 
 const MINIMAX_COMPAT_MODELS: Array<{ id: string; name: string }> = [
@@ -269,25 +316,58 @@ async function fetchOpenAIModels(apiKey: string, baseUrl?: string): Promise<Arra
   }
 }
 
-// Fetch models from Google Gemini API
-async function fetchGoogleModels(apiKey: string): Promise<Array<{ id: string; name: string }>> {
-  try {
-    const response = await fetch(`https://generativelanguage.googleapis.com/v1/models?key=${apiKey}`)
+async function fetchAllGoogleModels(apiKey: string): Promise<any[]> {
+  const allModels: any[] = []
+  const seenNames = new Set<string>()
+  const seenPageTokens = new Set<string>()
+  let nextPageToken: string | null = null
 
+  do {
+    const url = buildGoogleModelsListUrl(apiKey, nextPageToken)
+    const response = await fetch(url)
     if (!response.ok) {
-      console.error('Google API error:', response.status)
-      return FALLBACK_MODELS.google
+      throw new Error(`Google API error: ${response.status}`)
     }
 
     const data = await response.json()
+    const pageModels = Array.isArray(data?.models) ? data.models : []
+    for (const model of pageModels) {
+      const key = String(model?.name || '')
+      if (!key || seenNames.has(key)) continue
+      seenNames.add(key)
+      allModels.push(model)
+    }
 
-    // Filter to generative models
-    const models = (data.models || [])
+    const candidateToken = typeof data?.nextPageToken === 'string' ? data.nextPageToken : ''
+    if (!candidateToken || seenPageTokens.has(candidateToken)) {
+      nextPageToken = null
+    } else {
+      seenPageTokens.add(candidateToken)
+      nextPageToken = candidateToken
+    }
+  } while (nextPageToken)
+
+  return allModels
+}
+
+// Fetch models from Google Gemini API
+async function fetchGoogleModels(apiKey: string): Promise<Array<{ id: string; name: string }>> {
+  try {
+    const models = (await fetchAllGoogleModels(apiKey))
       .filter((m: any) => {
         const name = m.name || ''
         // Include gemini models that support generateContent
+        const supportedGenerationMethods = Array.isArray(m.supportedGenerationMethods)
+          ? m.supportedGenerationMethods
+          : Array.isArray(m.supportedActions)
+            ? m.supportedActions
+            : []
+
         return name.includes('gemini') &&
-               m.supportedGenerationMethods?.includes('generateContent')
+               (
+                 supportedGenerationMethods.length === 0 ||
+                 supportedGenerationMethods.includes('generateContent')
+               )
       })
       .map((m: any) => {
         // Extract model ID from name (e.g., "models/gemini-1.5-pro" -> "gemini-1.5-pro")
@@ -317,10 +397,45 @@ function toApiFormat(row: any) {
     hiddenFromSelector: row.hidden_from_selector === 1,
     capabilityProfiles: row.capability_profiles || null,
     defaultReasoningEffort: row.default_reasoning_effort || null,
+    capabilitySummary: resolveProviderCapabilitySummary({
+      providerType: row.type,
+      modelId: row.default_model,
+      providerName: row.name,
+      baseUrl: row.base_url,
+      modelsDevMetadata: lookupStrictModelsDevModelMetadata(row.type, row.default_model, {
+        providerName: row.name,
+        baseUrl: row.base_url,
+      }) || undefined,
+    }),
     isDefault: row.is_default === 1,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   }
+}
+
+async function attachCapabilitySummaries(
+  providerType: string,
+  models: Array<{ id: string; name: string; contextLength?: number; pricing?: { prompt: string; completion: string } }>,
+  providerName?: string,
+  baseUrl?: string
+) {
+  if (!models.length) return models
+
+  await refreshModelCatalog(false)
+
+  return models.map((model) => ({
+    ...model,
+    capabilitySummary: resolveProviderCapabilitySummary({
+      providerType,
+      modelId: model.id,
+      providerName,
+      baseUrl,
+      modelsDevMetadata: lookupStrictModelsDevModelMetadata(providerType, model.id, {
+        providerName,
+        baseUrl,
+      }) || undefined,
+    }),
+  }))
 }
 
 async function fetchCompatibleModels(apiKey: string | null, baseUrl?: string): Promise<Array<{ id: string; name: string }>> {
@@ -577,12 +692,14 @@ export function registerProviderHandlers() {
 
   // List all providers
   ipcMain.handle('providers:list', async () => {
+    await refreshModelCatalog(false)
     const providers = providerDb.list()
     return providers.map(toApiFormat)
   })
 
   // Get a single provider
   ipcMain.handle('providers:get', async (_, id: string) => {
+    await refreshModelCatalog(false)
     const provider = providerDb.get(id)
     return provider ? toApiFormat(provider) : null
   })
@@ -604,6 +721,7 @@ export function registerProviderHandlers() {
       await keychainService.setApiKey(provider.id, input.apiKey)
     }
 
+    await refreshModelCatalog(false)
     return toApiFormat(provider)
   })
 
@@ -624,6 +742,7 @@ export function registerProviderHandlers() {
       }
     }
 
+    await refreshModelCatalog(false)
     return provider ? toApiFormat(provider) : null
   })
 
@@ -634,6 +753,7 @@ export function registerProviderHandlers() {
   })
 
   ipcMain.handle('providers:reorder', async (_, ids: string[]) => {
+    await refreshModelCatalog(false)
     const providers = providerDb.reorder(ids)
     return providers.map(toApiFormat)
   })
@@ -680,7 +800,7 @@ export function registerProviderHandlers() {
           })
         }
         case 'google': {
-          return await probeProviderEndpoint(`https://generativelanguage.googleapis.com/v1/models?key=${apiKey}`)
+          return await probeProviderEndpoint(buildGoogleModelsListUrl(apiKey!))
         }
         case 'openrouter': {
           return await probeProviderEndpoint('https://openrouter.ai/api/v1/models', {
@@ -723,10 +843,10 @@ export function registerProviderHandlers() {
         case 'zai-china':
         case 'zai-coding':
         case 'zai-coding-china':
-          return {
-            ok: !!apiKey,
-            message: apiKey ? 'API key configured' : 'Missing API key',
-          } satisfies ProviderTestResult
+          return await probeCompatibleModelsEndpoint(
+            getProviderModelsBaseUrl(provider.type, provider.base_url) || null,
+            apiKey || null
+          )
         default:
           return {
             ok: !!apiKey,
@@ -746,29 +866,31 @@ export function registerProviderHandlers() {
     // Get API key if providerId is given
     let apiKey: string | null = null
     let baseUrl: string | undefined
+    let providerName: string | undefined
 
     if (providerId) {
       apiKey = await keychainService.getApiKey(providerId)
       const provider = providerDb.get(providerId)
       baseUrl = provider?.base_url
+      providerName = provider?.name
     }
 
     switch (type) {
       case 'anthropic':
         if (apiKey) {
-          return await fetchAnthropicModels(apiKey)
+          return await attachCapabilitySummaries(type, await fetchAnthropicModels(apiKey), providerName, baseUrl)
         }
         return []
 
       case 'openai':
         if (apiKey) {
-          return await fetchOpenAIModels(apiKey, baseUrl)
+          return await attachCapabilitySummaries(type, await fetchOpenAIModels(apiKey, baseUrl), providerName, baseUrl)
         }
         return []
 
       case 'google':
         if (apiKey) {
-          return await fetchGoogleModels(apiKey)
+          return await attachCapabilitySummaries(type, await fetchGoogleModels(apiKey), providerName, baseUrl)
         }
         return []
 
@@ -778,12 +900,28 @@ export function registerProviderHandlers() {
           const response = await fetch(`${url}/api/tags`)
           if (response.ok) {
             const data = await response.json()
-            return data.models?.map((m: any) => ({ id: m.name, name: m.name })) || []
+            return await attachCapabilitySummaries(
+              type,
+              data.models?.map((m: any) => ({ id: m.name, name: m.name })) || [],
+              providerName,
+              baseUrl
+            )
           }
         } catch {
           return []
         }
         return []
+
+      case 'zai':
+      case 'zai-china':
+      case 'zai-coding':
+      case 'zai-coding-china':
+        return await attachCapabilitySummaries(
+          type,
+          await fetchCompatibleModels(apiKey, getProviderModelsBaseUrl(type, baseUrl)),
+          providerName,
+          getProviderModelsBaseUrl(type, baseUrl)
+        )
 
       case 'openrouter':
         // OpenRouter still uses the dedicated handler with API key
@@ -794,7 +932,12 @@ export function registerProviderHandlers() {
       case 'custom':
       case 'local':
       case 'minimax':
-        return await fetchCompatibleModels(apiKey, baseUrl)
+        return await attachCapabilitySummaries(
+          type,
+          await fetchCompatibleModels(apiKey, baseUrl),
+          providerName,
+          baseUrl
+        )
 
       default:
         return FALLBACK_MODELS[type] || []
@@ -817,14 +960,14 @@ export function registerProviderHandlers() {
       const data = await response.json()
 
       // Sort by name and return formatted list
-      return (data.data || [])
+      return await attachCapabilitySummaries('openrouter', (data.data || [])
         .map((m: any) => ({
           id: m.id,
           name: m.name || m.id,
           contextLength: m.context_length,
           pricing: m.pricing,
         }))
-        .sort((a: any, b: any) => a.name.localeCompare(b.name))
+        .sort((a: any, b: any) => a.name.localeCompare(b.name)))
     } catch (err: any) {
       console.error('Failed to fetch OpenRouter models:', err)
       return []
@@ -832,19 +975,30 @@ export function registerProviderHandlers() {
   })
 
   // Preview models before provider is saved (setup flow)
-  ipcMain.handle('providers:previewModels', async (_, type: string, apiKey?: string, baseUrl?: string) => {
+  ipcMain.handle('providers:previewModels', async (_, type: string, apiKey?: string, baseUrl?: string, providerName?: string) => {
     switch (type) {
       case 'anthropic':
-        if (apiKey) return await fetchAnthropicModels(apiKey)
+        if (apiKey) return await attachCapabilitySummaries(type, await fetchAnthropicModels(apiKey), providerName, baseUrl)
         return []
 
       case 'openai':
-        if (apiKey) return await fetchOpenAIModels(apiKey, baseUrl)
+        if (apiKey) return await attachCapabilitySummaries(type, await fetchOpenAIModels(apiKey, baseUrl), providerName, baseUrl)
         return []
 
       case 'google':
-        if (apiKey) return await fetchGoogleModels(apiKey)
+        if (apiKey) return await attachCapabilitySummaries(type, await fetchGoogleModels(apiKey), providerName, baseUrl)
         return []
+
+      case 'zai':
+      case 'zai-china':
+      case 'zai-coding':
+      case 'zai-coding-china':
+        return await attachCapabilitySummaries(
+          type,
+          await fetchCompatibleModels(apiKey || null, getProviderModelsBaseUrl(type, baseUrl)),
+          providerName,
+          getProviderModelsBaseUrl(type, baseUrl)
+        )
 
       case 'openrouter':
         if (apiKey) {
@@ -854,9 +1008,14 @@ export function registerProviderHandlers() {
             })
             if (!response.ok) return []
             const data = await response.json()
-            return (data.data || [])
-              .map((m: any) => ({ id: m.id, name: m.name || m.id }))
-              .sort((a: any, b: any) => a.name.localeCompare(b.name))
+            return await attachCapabilitySummaries(
+              type,
+              (data.data || [])
+                .map((m: any) => ({ id: m.id, name: m.name || m.id }))
+                .sort((a: any, b: any) => a.name.localeCompare(b.name)),
+              providerName,
+              baseUrl
+            )
           } catch {
             return []
           }
@@ -869,7 +1028,12 @@ export function registerProviderHandlers() {
           const response = await fetch(`${url}/api/tags`)
           if (!response.ok) return []
           const data = await response.json()
-          return data.models?.map((m: any) => ({ id: m.name, name: m.name })) || []
+          return await attachCapabilitySummaries(
+            type,
+            data.models?.map((m: any) => ({ id: m.name, name: m.name })) || [],
+            providerName,
+            baseUrl
+          )
         } catch {
           return []
         }
@@ -880,7 +1044,12 @@ export function registerProviderHandlers() {
       case 'custom':
       case 'local':
       case 'minimax':
-        return await fetchCompatibleModels(apiKey || null, baseUrl)
+        return await attachCapabilitySummaries(
+          type,
+          await fetchCompatibleModels(apiKey || null, baseUrl),
+          providerName,
+          baseUrl
+        )
 
       default:
         return FALLBACK_MODELS[type] || []
@@ -938,9 +1107,7 @@ export function registerProviderHandlers() {
 
         case 'google': {
           if ((!contextWindow || !maxOutputTokens) && apiKey) {
-            const response = await fetch(
-              `https://generativelanguage.googleapis.com/v1/models/${modelId}?key=${apiKey}`
-            )
+            const response = await fetch(buildGoogleModelUrl(modelId, apiKey))
             if (response.ok) {
               const data = await response.json()
               contextWindow = contextWindow || Number(data.inputTokenLimit) || null
@@ -1054,9 +1221,7 @@ export function registerProviderHandlers() {
 
         case 'google': {
           if (!apiKey) return null
-          const response = await fetch(
-            `https://generativelanguage.googleapis.com/v1/models/${modelId}?key=${apiKey}`
-          )
+          const response = await fetch(buildGoogleModelUrl(modelId, apiKey))
           if (!response.ok) return null
           const data = await response.json()
           // Google returns inputTokenLimit

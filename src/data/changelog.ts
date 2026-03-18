@@ -21,6 +21,23 @@ export interface ChangelogEntry {
 
 export const changelog: ChangelogEntry[] = [
   {
+    version: '0.40.0',
+    date: '2026-03-17',
+    changes: {
+      added: [
+        'Provider setup, Settings, and the chat model selector now label providers and models as `Tools supported`, `Chat only`, or `Tool support unknown` so users can tell when artifacts, file edits, and workspace actions are actually available (Fixes #173)',
+        'Z.ai setup and Settings editing now keep a manual custom-model field available alongside discovered or curated model lists so early-access and entitlement-specific model IDs can still be used (Fixes #174)',
+      ],
+      changed: [
+        'Google Gemini model discovery now uses the current Generative Language `v1beta/models` listing with pagination so newer Gemini 3.x models stay visible when the API key can access them (Fixes #175)',
+        'Dedicated Z.ai provider presets now use docs-backed hosted model discovery plus refreshed fallback catalogs led by `glm-5`, while provider connection tests validate the configured endpoint instead of only checking whether an API key string exists (Fixes #174)',
+      ],
+      fixed: [
+        'Compatible providers no longer reuse foreign global models.dev tool metadata for capability badges, preventing endpoints such as Nous Research from being mislabeled as tool-capable based on another host\'s catalog entry (Fixes #173)',
+      ],
+    },
+  },
+  {
     version: '0.39.1',
     date: '2026-03-17',
     changes: {

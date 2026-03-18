@@ -8,6 +8,7 @@ import {
   type ModelsDevModelMetadata,
   lookupModelsDevContextLimitInIndexes,
   lookupModelsDevModelMetadataInIndexes,
+  lookupStrictModelsDevModelMetadataInIndexes,
   lookupModelsDevOutputLimitInIndexes,
 } from './modelsDevResolver'
 
@@ -151,6 +152,15 @@ export function lookupModelsDevModelMetadata(
 ): ModelsDevModelMetadata | null {
   if (!inMemoryProviders || !modelId) return null
   return lookupModelsDevModelMetadataInIndexes(indexes, providerType, modelId, options)
+}
+
+export function lookupStrictModelsDevModelMetadata(
+  providerType: string,
+  modelId: string,
+  options?: ModelsDevLookupOptions
+): ModelsDevModelMetadata | null {
+  if (!inMemoryProviders || !modelId) return null
+  return lookupStrictModelsDevModelMetadataInIndexes(indexes, providerType, modelId, options)
 }
 
 export function initializeModelCatalog() {

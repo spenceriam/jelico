@@ -17,6 +17,7 @@ interface ProviderConfig {
   defaultModel: string
   hiddenFromSelector?: boolean
   capabilityProfiles?: Record<string, unknown> | null
+  capabilitySummary?: ProviderCapabilitySummary | null
   defaultReasoningEffort?: ReasoningEffort | null
   isDefault: boolean
   createdAt: number

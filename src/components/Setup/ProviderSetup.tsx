@@ -4,6 +4,7 @@ import type { ReasoningEffort } from '../../lib/reasoning'
 import { useProviderStore } from '../../stores/providers'
 import { ProviderConfigForm } from './ProviderConfigForm'
 import { JelicoLogo } from '../Brand/JelicoLogo'
+import { ToolSupportBadge } from '../Providers/ToolSupportBadge'
 
 interface ProviderOption {
   id: string
@@ -18,6 +19,24 @@ interface ProviderOption {
   defaultProviderName?: string
   apiKeyUrl?: string
   docsUrl?: string
+  capabilitySummary?: ProviderCapabilitySummary
+}
+
+function buildCapabilitySummary(
+  toolSupport: ProviderCapabilitySummary['toolSupport'],
+  note: string
+): ProviderCapabilitySummary {
+  return {
+    toolSupport,
+    label:
+      toolSupport === 'supported'
+        ? 'Tools supported'
+        : toolSupport === 'unsupported'
+          ? 'Chat only'
+          : 'Tool support unknown',
+    source: toolSupport === 'unknown' ? 'default_unknown' : 'provider_override',
+    note,
+  }
 }
 
 const PROVIDER_TYPES: ProviderOption[] = [
@@ -32,6 +51,7 @@ const PROVIDER_TYPES: ProviderOption[] = [
     defaultModel: '',
     apiKeyUrl: 'console.anthropic.com',
     docsUrl: 'https://platform.claude.com/docs/en/api/overview',
+    capabilitySummary: buildCapabilitySummary('supported', 'Artifacts, file writes, and workspace actions depend on tool support.'),
   },
   {
     id: 'openai',
@@ -44,6 +64,7 @@ const PROVIDER_TYPES: ProviderOption[] = [
     defaultModel: '',
     apiKeyUrl: 'platform.openai.com',
     docsUrl: 'https://developers.openai.com/api/docs/models',
+    capabilitySummary: buildCapabilitySummary('supported', 'Artifacts, file writes, and workspace actions depend on tool support.'),
   },
   {
     id: 'google',
@@ -56,6 +77,7 @@ const PROVIDER_TYPES: ProviderOption[] = [
     defaultModel: '',
     apiKeyUrl: 'aistudio.google.com',
     docsUrl: 'https://ai.google.dev/gemini-api/docs/quickstart',
+    capabilitySummary: buildCapabilitySummary('supported', 'Artifacts, file writes, and workspace actions depend on tool support.'),
   },
   {
     id: 'openrouter',
@@ -68,6 +90,7 @@ const PROVIDER_TYPES: ProviderOption[] = [
     defaultModel: '',
     apiKeyUrl: 'openrouter.ai',
     docsUrl: 'https://openrouter.ai/docs/quickstart',
+    capabilitySummary: buildCapabilitySummary('supported', 'Artifacts, file writes, and workspace actions depend on tool support.'),
   },
   {
     id: 'zai',
@@ -77,8 +100,9 @@ const PROVIDER_TYPES: ProviderOption[] = [
     cardTitle: 'Z.ai API',
     summary: 'General GLM chat and multimodal endpoints from Z.ai.',
     icon: 'Z',
-    defaultModel: 'glm-4.7',
+    defaultModel: 'glm-5',
     docsUrl: 'https://docs.z.ai/',
+    capabilitySummary: buildCapabilitySummary('supported', 'Artifacts, file writes, and workspace actions depend on tool support.'),
   },
   {
     id: 'zai-china',
@@ -88,8 +112,9 @@ const PROVIDER_TYPES: ProviderOption[] = [
     cardTitle: 'Z.ai API China',
     summary: 'China-region access to Z.ai general GLM API endpoints.',
     icon: 'Z',
-    defaultModel: 'glm-4.7',
+    defaultModel: 'glm-5',
     docsUrl: 'https://docs.z.ai/',
+    capabilitySummary: buildCapabilitySummary('supported', 'Artifacts, file writes, and workspace actions depend on tool support.'),
   },
   {
     id: 'zai-coding',
@@ -99,8 +124,9 @@ const PROVIDER_TYPES: ProviderOption[] = [
     cardTitle: 'Z.ai Coding Plan',
     summary: 'Dedicated GLM coding endpoint for coding-plan access.',
     icon: 'Z',
-    defaultModel: 'glm-4.7',
+    defaultModel: 'glm-5',
     docsUrl: 'https://docs.z.ai/devpack/overview',
+    capabilitySummary: buildCapabilitySummary('supported', 'Artifacts, file writes, and workspace actions depend on tool support.'),
   },
   {
     id: 'zai-coding-china',
@@ -110,8 +136,9 @@ const PROVIDER_TYPES: ProviderOption[] = [
     cardTitle: 'Z.ai Coding Plan China',
     summary: 'China-region coding-plan endpoint for GLM coding tools.',
     icon: 'Z',
-    defaultModel: 'glm-4.7',
+    defaultModel: 'glm-5',
     docsUrl: 'https://docs.z.ai/devpack/overview',
+    capabilitySummary: buildCapabilitySummary('supported', 'Artifacts, file writes, and workspace actions depend on tool support.'),
   },
   {
     id: 'minimax-api',
@@ -126,6 +153,7 @@ const PROVIDER_TYPES: ProviderOption[] = [
     defaultProviderName: 'MiniMax API',
     apiKeyUrl: 'platform.minimax.io',
     docsUrl: 'https://platform.minimax.io/docs/api-reference/api-overview',
+    capabilitySummary: buildCapabilitySummary('unknown', 'Artifacts, file writes, and workspace actions depend on verified tool support for the selected endpoint.'),
   },
   {
     id: 'minimax-coding-plan',
@@ -140,6 +168,7 @@ const PROVIDER_TYPES: ProviderOption[] = [
     defaultProviderName: 'MiniMax Coding Plan',
     apiKeyUrl: 'platform.minimax.io',
     docsUrl: 'https://platform.minimax.io/docs/coding-plan/quickstart',
+    capabilitySummary: buildCapabilitySummary('unknown', 'Artifacts, file writes, and workspace actions depend on verified tool support for the selected endpoint.'),
   },
   {
     id: 'nous-research',
@@ -153,6 +182,7 @@ const PROVIDER_TYPES: ProviderOption[] = [
     defaultProviderName: 'Nous Research',
     apiKeyUrl: 'shadow.nousresearch.com',
     docsUrl: 'https://shadow-portal.nousresearch.com/api-docs',
+    capabilitySummary: buildCapabilitySummary('unsupported', 'This endpoint is currently treated as chat only. Artifacts, file writes, and workspace actions depend on tool support.'),
   },
   {
     id: 'cerebras',
@@ -167,6 +197,7 @@ const PROVIDER_TYPES: ProviderOption[] = [
     defaultProviderName: 'Cerebras',
     apiKeyUrl: 'inference-docs.cerebras.ai',
     docsUrl: 'https://inference-docs.cerebras.ai/introduction',
+    capabilitySummary: buildCapabilitySummary('unknown', 'Artifacts, file writes, and workspace actions depend on verified tool support for the selected endpoint.'),
   },
   {
     id: 'kwai-kat',
@@ -180,6 +211,7 @@ const PROVIDER_TYPES: ProviderOption[] = [
     defaultProviderName: 'KwaiKat',
     apiKeyUrl: 'streamlake.ai',
     docsUrl: 'https://streamlake.ai',
+    capabilitySummary: buildCapabilitySummary('unknown', 'Artifacts, file writes, and workspace actions depend on verified tool support for the selected endpoint.'),
   },
   {
     id: 'alibaba-qwen',
@@ -194,6 +226,7 @@ const PROVIDER_TYPES: ProviderOption[] = [
     defaultProviderName: 'Alibaba Qwen',
     apiKeyUrl: 'dashscope.console.aliyun.com',
     docsUrl: 'https://www.alibabacloud.com/help/en/model-studio/regions/',
+    capabilitySummary: buildCapabilitySummary('unknown', 'Artifacts, file writes, and workspace actions depend on verified tool support for the selected endpoint.'),
   },
   {
     id: 'nvidia',
@@ -208,6 +241,7 @@ const PROVIDER_TYPES: ProviderOption[] = [
     defaultProviderName: 'NVIDIA NIM',
     apiKeyUrl: 'build.nvidia.com',
     docsUrl: 'https://docs.nvidia.com/nim/',
+    capabilitySummary: buildCapabilitySummary('unknown', 'Artifacts, file writes, and workspace actions depend on verified tool support for the selected endpoint.'),
   },
   {
     id: 'lm-studio',
@@ -220,6 +254,7 @@ const PROVIDER_TYPES: ProviderOption[] = [
     defaultModel: '',
     defaultBaseUrl: 'http://127.0.0.1:1234/v1',
     defaultProviderName: 'LM Studio',
+    capabilitySummary: buildCapabilitySummary('unknown', 'Artifacts, file writes, and workspace actions depend on verified tool support for the selected endpoint.'),
   },
   {
     id: 'ollama',
@@ -230,6 +265,7 @@ const PROVIDER_TYPES: ProviderOption[] = [
     summary: 'Run and serve local models from a simple local endpoint.',
     icon: 'O',
     defaultModel: '',
+    capabilitySummary: buildCapabilitySummary('unknown', 'Artifacts, file writes, and workspace actions depend on verified tool support for the selected endpoint.'),
   },
   {
     id: 'local',
@@ -242,6 +278,7 @@ const PROVIDER_TYPES: ProviderOption[] = [
     defaultModel: '',
     defaultBaseUrl: 'http://localhost:8080/v1',
     defaultProviderName: 'Custom Local',
+    capabilitySummary: buildCapabilitySummary('unknown', 'Artifacts, file writes, and workspace actions depend on verified tool support for the selected endpoint.'),
   },
   {
     id: 'openai-compatible',
@@ -252,6 +289,7 @@ const PROVIDER_TYPES: ProviderOption[] = [
     summary: 'Custom endpoint',
     icon: '\u2699', // gear
     defaultModel: '',
+    capabilitySummary: buildCapabilitySummary('unknown', 'Artifacts, file writes, and workspace actions depend on verified tool support for the selected endpoint.'),
   },
   {
     id: 'anthropic-compatible',
@@ -262,6 +300,7 @@ const PROVIDER_TYPES: ProviderOption[] = [
     summary: 'Custom endpoint',
     icon: '\u2699', // gear
     defaultModel: '',
+    capabilitySummary: buildCapabilitySummary('unknown', 'Artifacts, file writes, and workspace actions depend on verified tool support for the selected endpoint.'),
   },
   {
     id: 'custom',
@@ -272,6 +311,7 @@ const PROVIDER_TYPES: ProviderOption[] = [
     summary: 'Generic endpoint',
     icon: '+',
     defaultModel: '',
+    capabilitySummary: buildCapabilitySummary('unknown', 'Artifacts, file writes, and workspace actions depend on verified tool support for the selected endpoint.'),
   },
 ]
 
@@ -348,6 +388,9 @@ export function ProviderSetup({ isModal, onComplete, onCancel }: ProviderSetupPr
                 To get started, add an AI provider:
               </p>
             )}
+            <p className="text-xs text-text-muted mb-6">
+              Artifacts, file writes, and workspace actions depend on tool support. Chat-only providers still work for normal conversations.
+            </p>
           </div>
 
           <div className="space-y-7 mb-8 text-left">
@@ -380,6 +423,9 @@ export function ProviderSetup({ isModal, onComplete, onCancel }: ProviderSetupPr
                             <div className="text-xs text-text-muted leading-5">
                               {provider.summary}
                             </div>
+                          </div>
+                          <div className="pointer-events-none">
+                            <ToolSupportBadge summary={provider.capabilitySummary} />
                           </div>
                           {provider.docsUrl && (
                             <a

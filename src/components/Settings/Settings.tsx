@@ -14,6 +14,7 @@ import { ProfileSettings } from './ProfileSettings'
 import { AppearanceSettings } from './AppearanceSettings'
 import { ArchiveSettings } from './ArchiveSettings'
 import { getSupportedReasoningEfforts, REASONING_EFFORT_LABELS, type ReasoningEffort } from '../../lib/reasoning'
+import { ToolSupportBadge } from '../Providers/ToolSupportBadge'
 // MicrophoneSettings disabled - WASM crashes on Windows ARM64, will revisit later
 // import { MicrophoneSettings } from './MicrophoneSettings'
 
@@ -26,6 +27,7 @@ interface SettingsProps {
 interface ProviderModelOption {
   id: string
   name: string
+  capabilitySummary?: ProviderCapabilitySummary | null
 }
 
 function normalizeCapabilityProfiles(value: unknown): Record<string, unknown> | null {
@@ -50,6 +52,10 @@ const DYNAMIC_PROVIDER_TYPES = new Set([
   'google',
   'openrouter',
   'ollama',
+  'zai',
+  'zai-china',
+  'zai-coding',
+  'zai-coding-china',
   'minimax',
   'openai-compatible',
   'anthropic-compatible',
@@ -203,13 +209,18 @@ export function Settings({ onClose }: SettingsProps) {
         const models = await window.jelico.providers.previewModels(
           editingProvider.type,
           effectiveApiKey,
-          effectiveBaseUrl
+          effectiveBaseUrl,
+          editNameValue.trim() || editingProvider.name
         )
 
         if (cancelled) return
 
         const normalized = (models || [])
-          .map((model) => ({ id: model.id, name: model.name || model.id }))
+          .map((model) => ({
+            id: model.id,
+            name: model.name || model.id,
+            capabilitySummary: model.capabilitySummary || null,
+          }))
           .filter((model) => model.id)
 
         setEditableModels(normalized)
@@ -231,7 +242,7 @@ export function Settings({ onClose }: SettingsProps) {
       cancelled = true
       window.clearTimeout(timeout)
     }
-  }, [editingProviderId, editingProvider, editApiKeyValue, editBaseUrlValue, currentApiKey])
+  }, [editingProviderId, editingProvider, editApiKeyValue, editBaseUrlValue, editNameValue, currentApiKey])
 
   const handleTest = async (id: string) => {
     if (testResultTimersRef.current[id]) {
@@ -755,6 +766,10 @@ export function Settings({ onClose }: SettingsProps) {
                 </button>
               </div>
 
+              <p className="text-sm text-text-muted">
+                Artifacts, file writes, and workspace actions depend on tool support. Chat-only providers still work for normal conversations.
+              </p>
+
               {providers.length === 0 ? (
                 <div className="text-center py-8 text-text-muted">
                   No providers configured
@@ -810,6 +825,7 @@ export function Settings({ onClose }: SettingsProps) {
                             <span className="font-medium text-text-primary">
                               {provider.name}
                             </span>
+                            <ToolSupportBadge summary={provider.capabilitySummary} compact />
                             {activeProviderId === provider.id && (
                               <span className="px-1.5 py-0.5 text-xs bg-accent/10 text-accent rounded">
                                 Last used
@@ -966,10 +982,25 @@ export function Settings({ onClose }: SettingsProps) {
                                       editModelValue === model.id ? 'bg-accent/10 text-accent' : 'text-text-primary'
                                     }`}
                                   >
-                                    <div className="font-medium">{model.name}</div>
+                                    <div className="flex flex-wrap items-center gap-2">
+                                      <div className="font-medium">{model.name}</div>
+                                      <ToolSupportBadge summary={model.capabilitySummary} compact />
+                                    </div>
                                     <div className="text-xs text-text-muted font-mono">{model.id}</div>
                                   </button>
                                 ))}
+                              </div>
+                              <div>
+                                <label className="block text-xs text-text-muted mb-1">
+                                  Custom model ID
+                                </label>
+                                <input
+                                  type="text"
+                                  value={editModelValue}
+                                  onChange={(e) => setEditModelValue(e.target.value)}
+                                  className="w-full px-3 py-2 text-sm bg-bg-deep border border-border rounded focus:outline-none focus:border-accent text-text-primary font-mono"
+                                  placeholder="Use this for testing or early-access model IDs"
+                                />
                               </div>
                             </div>
                           ) : (

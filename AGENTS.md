@@ -64,7 +64,7 @@ Jelico is a local-first AI desktop assistant. A native app where you chat with A
 
 The Soul/Memory system should make Jelico increasingly personalized - it learns YOUR coding style, YOUR preferences, YOUR common mistakes. Every conversation teaches it to help YOU better.
 
-**Current Status:** Skills now ship as first-class `SKILL.md` assets, soul/memory learnings are injected with scoped task relevance, and GitHub backup/restore is available for local data and managed files. Current stabilization work is focused on validating those flows alongside response/tool ordering UX, safer cross-platform updater apply/restart behavior, stronger provider/model consistency, conversation/composer recovery after edge-case interactions, and prompt/menu layering regressions.
+**Current Status:** Skills now ship as first-class `SKILL.md` assets, soul/memory learnings are injected with scoped task relevance, and GitHub backup/restore is available for local data and managed files. Current stabilization work is focused on validating those flows alongside response/tool ordering UX, clearer provider capability labeling, stronger live model discovery for hosted endpoints, safer cross-platform updater apply/restart behavior, and conversation/composer recovery after edge-case interactions.
 
 ## Setup commands
 - Install dependencies: `npm install`
@@ -76,7 +76,7 @@ The Soul/Memory system should make Jelico increasingly personalized - it learns 
 ## Project overview
 Jelico is an AI Productivity Desktop built with Electron, React, TypeScript, and Vite. It provides a frictionless AI assistant experience with multi-provider support (Anthropic, OpenAI, Google), workspace management, conversation persistence, and a soul/memory system that learns user patterns and preferences over time.
 
-**Current Version:** 0.39.1 (working branch version; not yet a public release)
+**Current Version:** 0.40.0 (working branch version; not yet a public release)
 
 **License:** GNU General Public License v3.0 (GPL-3.0-or-later)
 - See LICENSE file in project root
@@ -685,8 +685,8 @@ todo_write({ tasks: [
 
 - **Phase 1-7 Complete**: Core functionality, UI, artifacts, memory, soul system
 - **Phase 8 Complete**: Onboarding flow, backup/restore, versioning
-- **Current Focus**: Testing, polish, user feedback integration, runtime validation, stronger provider/model consistency, release hardening across skills/memory/backup flows, updater/restart behavior, conversation state recovery, and prompt/menu layering regressions.
-- **Next Planned Release (0.39.1)**: Patch release planned on top of `0.39.0` to keep the composer beneath workspace and selector menus so new-chat and existing-chat prompt surfaces share the same safe stacking behavior.
+- **Current Focus**: Testing, polish, user feedback integration, runtime validation, clearer provider capability labeling, stronger provider/model consistency, release hardening across skills/memory/backup flows, updater/restart behavior, and conversation state recovery.
+- **Next Planned Release (0.40.0)**: Minor release planned on top of `0.39.0` to label chat-only versus tool-capable providers, keep custom model entry available for Z.ai and other compatible endpoints, and refresh hosted model discovery so current Gemini and Z.ai model families surface correctly.
 - **Latest Public Release (0.39.0)**: Minor release focused on first-class skills, contextual soul/memory learning, and GitHub-backed backup/restore coverage for local Jelico data.
 - **Public Release History**:
   - `0.39.0` - Added first-class skills, contextual soul and memory learning, and GitHub-backed backup and restore coverage for local Jelico data.

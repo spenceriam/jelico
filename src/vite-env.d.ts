@@ -13,7 +13,8 @@ interface Window {
       previewModels: (
         type: string,
         apiKey: string,
-        baseUrl?: string
+        baseUrl?: string,
+        providerName?: string
       ) => Promise<OpenRouterModel[]>
       fetchOpenRouterModels: (apiKey: string) => Promise<OpenRouterModel[]>
       getModelLimits: (
@@ -277,10 +278,18 @@ interface ProviderConfig {
   defaultModel: string
   hiddenFromSelector?: boolean
   capabilityProfiles?: Record<string, unknown> | null
+  capabilitySummary?: ProviderCapabilitySummary | null
   defaultReasoningEffort?: ReasoningEffort | null
   isDefault: boolean
   createdAt: number
   updatedAt: number
+}
+
+interface ProviderCapabilitySummary {
+  toolSupport: 'supported' | 'unsupported' | 'unknown'
+  label: string
+  source: 'provider_override' | 'models_dev_provider_match' | 'default_unknown'
+  note: string
 }
 
 type AppSkillMode = 'auto' | 'explore' | 'execute' | 'plan' | 'review'
@@ -580,6 +589,7 @@ interface OpenRouterModel {
   name: string
   contextLength?: number
   pricing?: { prompt: string; completion: string }
+  capabilitySummary?: ProviderCapabilitySummary | null
 }
 
 interface ModelLimits {

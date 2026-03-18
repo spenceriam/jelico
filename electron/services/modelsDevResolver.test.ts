@@ -5,6 +5,7 @@ import {
   lookupModelsDevContextLimitInIndexes,
   lookupModelsDevModelMetadataInIndexes,
   lookupModelsDevOutputLimitInIndexes,
+  lookupStrictModelsDevModelMetadataInIndexes,
 } from './modelsDevResolver'
 
 const indexes = buildModelsDevIndexes({
@@ -138,4 +139,20 @@ test('generic compatible providers do not inherit foreign global output limits w
     lookupModelsDevContextLimitInIndexes(indexes, 'openai-compatible', 'Hermes-4-405B', options),
     262144
   )
+})
+
+test('strict metadata lookup avoids foreign global fallback for compatible providers', () => {
+  const options = {
+    baseUrl: 'https://inference-api.nousresearch.com/v1',
+    providerName: 'Nous Research',
+  }
+
+  const strictMetadata = lookupStrictModelsDevModelMetadataInIndexes(
+    indexes,
+    'openai-compatible',
+    'Hermes-4-405B',
+    options
+  )
+
+  assert.equal(strictMetadata, null)
 })

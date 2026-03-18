@@ -1,6 +1,9 @@
 import { useState, useEffect, useMemo, useCallback } from 'react'
 import { Eye, EyeOff, Search, Loader2, RefreshCw } from 'lucide-react'
 import { getSupportedReasoningEfforts, REASONING_EFFORT_LABELS, type ReasoningEffort } from '../../lib/reasoning'
+import { ToolSupportBadge } from '../Providers/ToolSupportBadge'
+
+const GOOGLE_GENERATIVE_LANGUAGE_API_BASE_URL = 'https://generativelanguage.googleapis.com/v1beta'
 
 const API_KEY_URLS: Record<string, string> = {
   anthropic: 'console.anthropic.com',
@@ -26,38 +29,50 @@ const FALLBACK_MODELS: Record<string, Array<{ id: string; name: string }>> = {
   openrouter: [],
   ollama: [],
   custom: [],
-  // Z.ai models - verified from z.ai/mastra.ai docs
+  // Z.ai models - curated fallback from current public docs.
   zai: [
-    { id: 'glm-4.7', name: 'GLM-4.7 (Flagship)' },
-    { id: 'glm-4.7-flash', name: 'GLM-4.7 Flash' },
-    { id: 'glm-4.6', name: 'GLM-4.6 (205K)' },
-    { id: 'glm-4.6v', name: 'GLM-4.6v (Vision)' },
-    { id: 'glm-4.5', name: 'GLM-4.5 (131K)' },
+    { id: 'glm-5', name: 'GLM-5' },
+    { id: 'glm-4.7', name: 'GLM-4.7' },
+    { id: 'glm-4.7-flashx', name: 'GLM-4.7 FlashX' },
+    { id: 'glm-4.5', name: 'GLM-4.5' },
     { id: 'glm-4.5-air', name: 'GLM-4.5 Air' },
-    { id: 'glm-4.5-flash', name: 'GLM-4.5 Flash (Free)' },
+    { id: 'glm-4.5-airx', name: 'GLM-4.5 AirX' },
+    { id: 'glm-4.5-flash', name: 'GLM-4.5 Flash' },
+    { id: 'glm-z1-air', name: 'GLM-Z1 Air' },
+    { id: 'glm-z1-airx', name: 'GLM-Z1 AirX' },
   ],
   'zai-china': [
-    { id: 'glm-4.7', name: 'GLM-4.7 (Flagship)' },
-    { id: 'glm-4.7-flash', name: 'GLM-4.7 Flash' },
-    { id: 'glm-4.6', name: 'GLM-4.6 (205K)' },
-    { id: 'glm-4.6v', name: 'GLM-4.6v (Vision)' },
-    { id: 'glm-4.5', name: 'GLM-4.5 (131K)' },
+    { id: 'glm-5', name: 'GLM-5' },
+    { id: 'glm-4.7', name: 'GLM-4.7' },
+    { id: 'glm-4.7-flashx', name: 'GLM-4.7 FlashX' },
+    { id: 'glm-4.5', name: 'GLM-4.5' },
     { id: 'glm-4.5-air', name: 'GLM-4.5 Air' },
-    { id: 'glm-4.5-flash', name: 'GLM-4.5 Flash (Free)' },
+    { id: 'glm-4.5-airx', name: 'GLM-4.5 AirX' },
+    { id: 'glm-4.5-flash', name: 'GLM-4.5 Flash' },
+    { id: 'glm-z1-air', name: 'GLM-Z1 Air' },
+    { id: 'glm-z1-airx', name: 'GLM-Z1 AirX' },
   ],
   'zai-coding': [
-    { id: 'glm-4.7', name: 'GLM-4.7 (Flagship)' },
-    { id: 'glm-4.6', name: 'GLM-4.6 (205K)' },
-    { id: 'glm-4.5', name: 'GLM-4.5 (131K)' },
+    { id: 'glm-5', name: 'GLM-5' },
+    { id: 'glm-4.7', name: 'GLM-4.7' },
+    { id: 'glm-4.7-flashx', name: 'GLM-4.7 FlashX' },
+    { id: 'glm-4.5', name: 'GLM-4.5' },
     { id: 'glm-4.5-air', name: 'GLM-4.5 Air' },
+    { id: 'glm-4.5-airx', name: 'GLM-4.5 AirX' },
     { id: 'glm-4.5-flash', name: 'GLM-4.5 Flash' },
+    { id: 'glm-z1-air', name: 'GLM-Z1 Air' },
+    { id: 'glm-z1-airx', name: 'GLM-Z1 AirX' },
   ],
   'zai-coding-china': [
-    { id: 'glm-4.7', name: 'GLM-4.7 (Flagship)' },
-    { id: 'glm-4.6', name: 'GLM-4.6 (205K)' },
-    { id: 'glm-4.5', name: 'GLM-4.5 (131K)' },
+    { id: 'glm-5', name: 'GLM-5' },
+    { id: 'glm-4.7', name: 'GLM-4.7' },
+    { id: 'glm-4.7-flashx', name: 'GLM-4.7 FlashX' },
+    { id: 'glm-4.5', name: 'GLM-4.5' },
     { id: 'glm-4.5-air', name: 'GLM-4.5 Air' },
+    { id: 'glm-4.5-airx', name: 'GLM-4.5 AirX' },
     { id: 'glm-4.5-flash', name: 'GLM-4.5 Flash' },
+    { id: 'glm-z1-air', name: 'GLM-Z1 Air' },
+    { id: 'glm-z1-airx', name: 'GLM-Z1 AirX' },
   ],
   minimax: [],
   // Generic providers - user enters model manually
@@ -73,6 +88,10 @@ const DYNAMIC_MODEL_PROVIDERS = [
   'google',
   'openrouter',
   'ollama',
+  'zai',
+  'zai-china',
+  'zai-coding',
+  'zai-coding-china',
   'minimax',
   'openai-compatible',
   'anthropic-compatible',
@@ -85,6 +104,7 @@ interface ProviderModel {
   name: string
   contextLength?: number
   pricing?: { prompt: string; completion: string }
+  capabilitySummary?: ProviderCapabilitySummary | null
 }
 
 interface ProviderConfigFormProps {
@@ -150,7 +170,12 @@ export function ProviderConfigForm({
     try {
       let fetchedModels: ProviderModel[] = []
 
-      fetchedModels = await window.jelico.providers.previewModels(type, apiKey, baseUrl)
+      fetchedModels = await window.jelico.providers.previewModels(
+        type,
+        apiKey,
+        baseUrl,
+        name || initialName || getDefaultName(type)
+      )
       if (fetchedModels.length === 0) {
         fetchedModels = await fetchModelsWithKey(type, apiKey, baseUrl)
       }
@@ -158,8 +183,8 @@ export function ProviderConfigForm({
       if (fetchedModels.length > 0) {
         setModels(fetchedModels)
         setModelsFetched(true)
-        // Auto-select first model if none selected or current not in list
-        if (!model || !fetchedModels.find(m => m.id === model)) {
+        // Preserve manually entered model IDs when live discovery does not know them.
+        if (!model) {
           setModel(fetchedModels[0].id)
         }
       } else {
@@ -173,7 +198,7 @@ export function ProviderConfigForm({
     } finally {
       setIsLoadingModels(false)
     }
-  }, [type, apiKey, baseUrl, isDynamic, needsApiKey, model])
+  }, [type, apiKey, baseUrl, isDynamic, needsApiKey, model, name, initialName])
 
   // Fetch models when API key changes (debounced)
   useEffect(() => {
@@ -220,6 +245,7 @@ export function ProviderConfigForm({
 
   // Show searchable list for providers with many models
   const showSearchableList = type === 'openrouter' || (modelsFetched && models.length > 10)
+  const modelIsListed = models.some((entry) => entry.id === model)
 
   return (
     <form onSubmit={handleSubmit} className="space-y-5">
@@ -354,7 +380,10 @@ export function ProviderConfigForm({
                       model === m.id ? 'bg-accent-glow text-accent' : 'text-text-primary'
                     }`}
                   >
-                    <div className="font-medium">{m.name}</div>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <div className="font-medium">{m.name}</div>
+                      <ToolSupportBadge summary={m.capabilitySummary} compact />
+                    </div>
                     {m.id !== m.name && (
                       <div className="text-xs text-text-muted font-mono">{m.id}</div>
                     )}
@@ -372,10 +401,13 @@ export function ProviderConfigForm({
         ) : (
           /* Simple dropdown for smaller model lists */
           <select
-            value={model}
+            value={modelIsListed ? model : ''}
             onChange={(e) => setModel(e.target.value)}
             className="input"
           >
+            <option value="">
+              {model && !modelIsListed ? `Custom: ${model}` : 'Select a model...'}
+            </option>
             {models.map((m) => (
               <option key={m.id} value={m.id}>
                 {m.name}{m.id !== m.name ? ` (${m.id})` : ''}
@@ -388,6 +420,23 @@ export function ProviderConfigForm({
           <p className="text-xs text-text-muted mt-1">
             {models.length} models loaded from API
           </p>
+        )}
+        {models.length > 0 && (
+          <div className="mt-3">
+            <label className="label">
+              Custom Model ID <span className="text-text-muted font-normal">(optional override)</span>
+            </label>
+            <input
+              type="text"
+              value={model}
+              onChange={(e) => setModel(e.target.value)}
+              className="input input-mono"
+              placeholder="Use this for testing or early-access models"
+            />
+            <p className="form-hint">
+              Live model discovery can vary by API key. You can always enter a model ID manually.
+            </p>
+          </div>
         )}
       </div>
 
@@ -415,7 +464,7 @@ export function ProviderConfigForm({
       <div className="flex items-center justify-end gap-3 pt-4">
         <button
           type="submit"
-          disabled={isLoading || (needsApiKey && !apiKey) || (!modelIsOptional && !model)}
+          disabled={isLoading || (needsApiKey && !apiKey) || (!modelIsOptional && !model.trim())}
           className="btn btn-primary disabled:opacity-50 disabled:cursor-not-allowed"
         >
           {isLoading ? 'Saving...' : 'Save & Continue'}
@@ -423,6 +472,47 @@ export function ProviderConfigForm({
       </div>
     </form>
   )
+}
+
+function buildGoogleModelsListUrl(apiKey: string, pageToken?: string | null): string {
+  const url = new URL(`${GOOGLE_GENERATIVE_LANGUAGE_API_BASE_URL}/models`)
+  url.searchParams.set('key', apiKey)
+  url.searchParams.set('pageSize', '1000')
+  if (pageToken) {
+    url.searchParams.set('pageToken', pageToken)
+  }
+  return url.toString()
+}
+
+async function fetchAllGoogleModelsWithKey(apiKey: string): Promise<any[]> {
+  const allModels: any[] = []
+  const seenNames = new Set<string>()
+  const seenPageTokens = new Set<string>()
+  let nextPageToken: string | null = null
+
+  do {
+    const response: Response = await fetch(buildGoogleModelsListUrl(apiKey, nextPageToken))
+    if (!response.ok) return []
+
+    const data: { models?: any[]; nextPageToken?: string } = await response.json()
+    const pageModels = Array.isArray(data?.models) ? data.models : []
+    for (const model of pageModels) {
+      const key = String(model?.name || '')
+      if (!key || seenNames.has(key)) continue
+      seenNames.add(key)
+      allModels.push(model)
+    }
+
+    const candidateToken: string = typeof data?.nextPageToken === 'string' ? data.nextPageToken : ''
+    if (!candidateToken || seenPageTokens.has(candidateToken)) {
+      nextPageToken = null
+    } else {
+      seenPageTokens.add(candidateToken)
+      nextPageToken = candidateToken
+    }
+  } while (nextPageToken)
+
+  return allModels
 }
 
 // Fetch models with temporary API key (before provider is saved)
@@ -473,24 +563,31 @@ async function fetchModelsWithKey(
       }
 
       case 'minimax':
+      case 'zai':
+      case 'zai-china':
+      case 'zai-coding':
+      case 'zai-coding-china':
       case 'openai-compatible':
       case 'anthropic-compatible':
       case 'custom':
       case 'local': {
-        return await fetchOpenAICompatibleModels(apiKey, baseUrl, type)
+        return await fetchOpenAICompatibleModels(apiKey, getCompatibleProviderBaseUrl(type, baseUrl), type)
       }
 
       case 'google': {
-        const response = await fetch(
-          `https://generativelanguage.googleapis.com/v1/models?key=${apiKey}`
-        )
-        if (!response.ok) return []
-        const data = await response.json()
-        return (data.models || [])
+        return (await fetchAllGoogleModelsWithKey(apiKey))
           .filter((m: any) => {
             const name = m.name || ''
+            const supportedGenerationMethods = Array.isArray(m.supportedGenerationMethods)
+              ? m.supportedGenerationMethods
+              : Array.isArray(m.supportedActions)
+                ? m.supportedActions
+                : []
             return name.includes('gemini') &&
-                   m.supportedGenerationMethods?.includes('generateContent')
+                   (
+                     supportedGenerationMethods.length === 0 ||
+                     supportedGenerationMethods.includes('generateContent')
+                   )
           })
           .map((m: any) => {
             const id = m.name.replace('models/', '')
@@ -561,6 +658,26 @@ function buildModelsEndpointCandidates(type: string, baseUrl?: string): string[]
   }
 
   return candidates
+}
+
+function getCompatibleProviderBaseUrl(type: string, baseUrl?: string): string | undefined {
+  const trimmedBaseUrl = String(baseUrl || '').trim()
+  if (trimmedBaseUrl) {
+    return trimmedBaseUrl
+  }
+
+  switch (type) {
+    case 'zai':
+      return 'https://api.z.ai/api/paas/v4'
+    case 'zai-china':
+      return 'https://open.bigmodel.cn/api/paas/v4'
+    case 'zai-coding':
+      return 'https://api.z.ai/api/coding/paas/v4'
+    case 'zai-coding-china':
+      return 'https://open.bigmodel.cn/api/coding/paas/v4'
+    default:
+      return trimmedBaseUrl || undefined
+  }
 }
 
 async function fetchOpenAICompatibleModels(
