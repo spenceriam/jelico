@@ -1146,6 +1146,24 @@ function normalizeAnthropicCompatibleBaseUrl(baseUrl?: string | null): string | 
   return `${trimmed}/v1`
 }
 
+function getZaiProviderBaseUrl(type: string, baseUrl?: string | null): string {
+  const trimmed = String(baseUrl || '').trim()
+  if (trimmed) return trimmed
+
+  switch (type) {
+    case 'zai':
+      return 'https://api.z.ai/api/paas/v4'
+    case 'zai-china':
+      return 'https://open.bigmodel.cn/api/paas/v4'
+    case 'zai-coding':
+      return 'https://api.z.ai/api/coding/paas/v4'
+    case 'zai-coding-china':
+      return 'https://open.bigmodel.cn/api/coding/paas/v4'
+    default:
+      return ''
+  }
+}
+
 async function resolveProviderMaxOutputTokens(providerConfig: any, modelId: string): Promise<number | undefined> {
   const normalizedModel = String(modelId || '').trim()
   if (!normalizedModel) return undefined
@@ -1202,22 +1220,22 @@ function getProviderInstance(providerConfig: any, apiKey: string) {
     case 'zai':
       return createOpenAI({
         apiKey,
-        baseURL: 'https://api.z.ai/api/paas/v4',
+        baseURL: getZaiProviderBaseUrl(providerConfig.type, providerConfig.base_url),
       })
     case 'zai-china':
       return createOpenAI({
         apiKey,
-        baseURL: 'https://open.bigmodel.cn/api/paas/v4',
+        baseURL: getZaiProviderBaseUrl(providerConfig.type, providerConfig.base_url),
       })
     case 'zai-coding':
       return createOpenAI({
         apiKey,
-        baseURL: 'https://api.z.ai/api/coding/paas/v4',
+        baseURL: getZaiProviderBaseUrl(providerConfig.type, providerConfig.base_url),
       })
     case 'zai-coding-china':
       return createOpenAI({
         apiKey,
-        baseURL: 'https://open.bigmodel.cn/api/coding/paas/v4',
+        baseURL: getZaiProviderBaseUrl(providerConfig.type, providerConfig.base_url),
       })
     case 'minimax':
       return createOpenAI({
