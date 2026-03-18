@@ -69,6 +69,7 @@ import {
   refreshModelCatalog,
 } from '../services/modelCatalog'
 import { resolveModelCapabilityProfile, buildModelCapabilityProfilePrompt } from '../services/modelCapabilityProfiles'
+import { resolveProviderCapabilitySummary } from '../services/providerCapabilitySummary'
 import {
   hasInterruptedMeaningfulMutationTool,
   isMeaningfulTurnToolName,
