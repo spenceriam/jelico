@@ -145,7 +145,7 @@ export function ProviderConfigForm({
   const [isLoadingModels, setIsLoadingModels] = useState(false)
   const [modelsFetched, setModelsFetched] = useState(false)
   const [modelSearch, setModelSearch] = useState('')
-  const hasTouchedModelSelectionRef = useRef(false)
+  const hasCustomModelOverrideRef = useRef(false)
   const latestModelRequestKeyRef = useRef('')
   const catalogRefreshRequestKeyRef = useRef<string | null>(null)
   const [reasoningEffort, setReasoningEffort] = useState<ReasoningEffort | ''>('')
@@ -155,6 +155,16 @@ export function ProviderConfigForm({
   const modelIsOptional = ['openai-compatible', 'anthropic-compatible', 'custom', 'local', 'minimax'].includes(type)
   const isDynamic = DYNAMIC_MODEL_PROVIDERS.includes(type)
   const apiKeyUrl = apiKeyUrlOverride || API_KEY_URLS[type]
+
+  const resolveFetchedModelSelection = useCallback((currentModel: string, fetchedModels: ProviderModel[]) => {
+    if (hasCustomModelOverrideRef.current && currentModel.trim()) {
+      return currentModel
+    }
+
+    return currentModel && fetchedModels.some((candidate) => candidate.id === currentModel)
+      ? currentModel
+      : fetchedModels[0].id
+  }, [])
 
   // Function to fetch models from API
   const fetchModels = useCallback(async () => {
@@ -196,13 +206,7 @@ export function ProviderConfigForm({
       if (fetchedModels.length > 0) {
         setModels(fetchedModels)
         setModelsFetched(true)
-        if (!hasTouchedModelSelectionRef.current) {
-          setModel((currentModel) =>
-            currentModel && fetchedModels.some((candidate) => candidate.id === currentModel)
-              ? currentModel
-              : fetchedModels[0].id
-          )
-        }
+        setModel((currentModel) => resolveFetchedModelSelection(currentModel, fetchedModels))
       } else {
         setModels(FALLBACK_MODELS[type] || [])
         setModelsFetched(false)
@@ -233,13 +237,7 @@ export function ProviderConfigForm({
 
             setModels(refreshedModels)
             setModelsFetched(true)
-            if (!hasTouchedModelSelectionRef.current) {
-              setModel((currentModel) =>
-                currentModel && refreshedModels.some((candidate) => candidate.id === currentModel)
-                  ? currentModel
-                  : refreshedModels[0].id
-              )
-            }
+            setModel((currentModel) => resolveFetchedModelSelection(currentModel, refreshedModels))
           } catch (error) {
             console.error(`Failed to refresh ${type} model capability labels:`, error)
           }
@@ -252,7 +250,7 @@ export function ProviderConfigForm({
     } finally {
       setIsLoadingModels(false)
     }
-  }, [type, apiKey, baseUrl, isDynamic, needsApiKey, name, initialName])
+  }, [type, apiKey, baseUrl, isDynamic, needsApiKey, name, initialName, resolveFetchedModelSelection])
 
   // Fetch models when API key changes (debounced)
   useEffect(() => {
@@ -402,7 +400,7 @@ export function ProviderConfigForm({
               type="text"
               value={model}
               onChange={(e) => {
-                hasTouchedModelSelectionRef.current = true
+                hasCustomModelOverrideRef.current = true
                 setModel(e.target.value)
               }}
               className="input input-mono"
@@ -433,7 +431,7 @@ export function ProviderConfigForm({
                     key={m.id}
                     type="button"
                     onClick={() => {
-                      hasTouchedModelSelectionRef.current = true
+                      hasCustomModelOverrideRef.current = false
                       setModel(m.id)
                     }}
                     className={`w-full px-3 py-2 text-left text-sm hover:bg-bg-surface transition-colors border-b border-border-subtle last:border-b-0 ${
@@ -463,7 +461,7 @@ export function ProviderConfigForm({
           <select
             value={modelIsListed ? model : ''}
             onChange={(e) => {
-              hasTouchedModelSelectionRef.current = true
+              hasCustomModelOverrideRef.current = false
               setModel(e.target.value)
             }}
             className="input"
@@ -493,7 +491,7 @@ export function ProviderConfigForm({
               type="text"
               value={model}
               onChange={(e) => {
-                hasTouchedModelSelectionRef.current = true
+                hasCustomModelOverrideRef.current = true
                 setModel(e.target.value)
               }}
               className="input input-mono"
