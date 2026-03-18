@@ -97,7 +97,7 @@ function normalizeAnthropicCompatibleBaseUrl(baseUrl?: string | null): string | 
 }
 
 function buildCompatibleModelsEndpoints(baseUrl?: string | null): string[] {
-  return buildCompatibleModelsEndpointCandidates(baseUrl, { defaultOpenAI: true })
+  return buildCompatibleModelsEndpointCandidates(baseUrl)
 }
 
 function queueModelCatalogRefresh() {
