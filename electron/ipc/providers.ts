@@ -773,14 +773,14 @@ export function registerProviderHandlers() {
 
   // List all providers
   ipcMain.handle('providers:list', async () => {
-    await ensureProviderBadgeCatalogReady()
+    void refreshModelCatalog(false)
     const providers = providerDb.list()
     return providers.map(toApiFormat)
   })
 
   // Get a single provider
   ipcMain.handle('providers:get', async (_, id: string) => {
-    await ensureProviderBadgeCatalogReady()
+    void refreshModelCatalog(false)
     const provider = providerDb.get(id)
     return provider ? toApiFormat(provider) : null
   })

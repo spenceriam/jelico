@@ -4,18 +4,25 @@ import { buildModelsDevLookupOptions } from './modelsDevLookupOptions'
 
 test('compatible and custom providers keep provider names available for proxied models.dev lookup', () => {
   assert.deepEqual(
-    buildModelsDevLookupOptions('openai-compatible', 'Kimi For Coding', 'https://example.com/v1'),
+    buildModelsDevLookupOptions('openai-compatible', 'Kimi For Coding', 'https://proxy.internal.example/v1'),
     {
-      baseUrl: 'https://example.com/v1',
+      baseUrl: 'https://proxy.internal.example/v1',
       providerName: 'Kimi For Coding',
     }
   )
   assert.deepEqual(
-    buildModelsDevLookupOptions('custom', 'Known Host Alias', 'https://gateway.example.com'),
+    buildModelsDevLookupOptions('custom', 'Known Host Alias', 'https://gateway.internal.example'),
     {
-      baseUrl: 'https://gateway.example.com',
+      baseUrl: 'https://gateway.internal.example',
       providerName: 'Known Host Alias',
     }
+  )
+})
+
+test('public compatible endpoints do not inherit provider-name matches from editable labels', () => {
+  assert.deepEqual(
+    buildModelsDevLookupOptions('openai-compatible', 'Kimi For Coding', 'https://gateway.example.com/v1'),
+    { baseUrl: 'https://gateway.example.com/v1' }
   )
 })
 
