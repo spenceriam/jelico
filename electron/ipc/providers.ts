@@ -24,6 +24,7 @@ import {
 import { findZaiContextFallback, findZaiOutputFallback } from '../../src/lib/zaiModelLimits'
 
 const GOOGLE_GENERATIVE_LANGUAGE_API_BASE_URL = 'https://generativelanguage.googleapis.com/v1beta'
+const USER_EDITABLE_PROVIDER_ALIAS_TYPES = new Set(['openai-compatible', 'anthropic-compatible', 'custom', 'local'])
 
 // Build models endpoint URL from base URL
 function buildModelsEndpoint(baseUrl?: string | null): string {
@@ -99,6 +100,23 @@ function buildCompatibleModelsEndpoints(baseUrl?: string | null): string[] {
 
 function queueModelCatalogRefresh() {
   void refreshModelCatalog(false)
+}
+
+function buildModelsDevLookupOptions(providerType: string, providerName?: string | null, baseUrl?: string | null) {
+  const options: { providerName?: string; baseUrl?: string } = {}
+  const normalizedType = String(providerType || '').trim().toLowerCase()
+  const trimmedBaseUrl = String(baseUrl || '').trim()
+  const trimmedProviderName = String(providerName || '').trim()
+
+  if (trimmedBaseUrl) {
+    options.baseUrl = trimmedBaseUrl
+  }
+
+  if (trimmedProviderName && !USER_EDITABLE_PROVIDER_ALIAS_TYPES.has(normalizedType)) {
+    options.providerName = trimmedProviderName
+  }
+
+  return options
 }
 
 // Extract context size from model metadata
@@ -377,6 +395,8 @@ async function fetchGoogleModels(apiKey: string): Promise<Array<{ id: string; na
 
 // Convert database row to API format
 function toApiFormat(row: any) {
+  const lookupOptions = buildModelsDevLookupOptions(row.type, row.name, row.base_url)
+
   return {
     id: row.id,
     type: row.type,
@@ -391,10 +411,7 @@ function toApiFormat(row: any) {
       modelId: row.default_model,
       providerName: row.name,
       baseUrl: row.base_url,
-      modelsDevMetadata: lookupStrictModelsDevModelMetadata(row.type, row.default_model, {
-        providerName: row.name,
-        baseUrl: row.base_url,
-      }) || undefined,
+      modelsDevMetadata: lookupStrictModelsDevModelMetadata(row.type, row.default_model, lookupOptions) || undefined,
     }),
     isDefault: row.is_default === 1,
     createdAt: row.created_at,
@@ -411,6 +428,7 @@ async function attachCapabilitySummaries(
   if (!models.length) return models
 
   await refreshModelCatalog(false)
+  const lookupOptions = buildModelsDevLookupOptions(providerType, providerName, baseUrl)
 
   return models.map((model) => ({
     ...model,
@@ -419,10 +437,7 @@ async function attachCapabilitySummaries(
       modelId: model.id,
       providerName,
       baseUrl,
-      modelsDevMetadata: lookupStrictModelsDevModelMetadata(providerType, model.id, {
-        providerName,
-        baseUrl,
-      }) || undefined,
+      modelsDevMetadata: lookupStrictModelsDevModelMetadata(providerType, model.id, lookupOptions) || undefined,
     }),
   }))
 }
@@ -1062,18 +1077,13 @@ export function registerProviderHandlers() {
 
       const apiKey = await keychainService.getApiKey(providerId)
       const baseUrl = provider.base_url
+      const lookupOptions = buildModelsDevLookupOptions(provider.type, provider.name, baseUrl)
 
       await refreshModelCatalog(false)
 
-      let contextWindow = lookupModelsDevContextLimit(provider.type, modelId, {
-        baseUrl,
-        providerName: provider.name,
-      })
+      let contextWindow = lookupModelsDevContextLimit(provider.type, modelId, lookupOptions)
 
-      let maxOutputTokens = lookupModelsDevOutputLimit(provider.type, modelId, {
-        baseUrl,
-        providerName: provider.name,
-      })
+      let maxOutputTokens = lookupModelsDevOutputLimit(provider.type, modelId, lookupOptions)
 
       switch (provider.type) {
         case 'openai':
@@ -1184,13 +1194,11 @@ export function registerProviderHandlers() {
 
       const apiKey = await keychainService.getApiKey(providerId)
       const baseUrl = provider.base_url
+      const lookupOptions = buildModelsDevLookupOptions(provider.type, provider.name, baseUrl)
 
       // Keep catalog fresh and prefer models.dev when available.
       await refreshModelCatalog(false)
-      const fromModelsDev = lookupModelsDevContextLimit(provider.type, modelId, {
-        baseUrl,
-        providerName: provider.name,
-      })
+      const fromModelsDev = lookupModelsDevContextLimit(provider.type, modelId, lookupOptions)
       if (fromModelsDev) {
         return fromModelsDev
       }

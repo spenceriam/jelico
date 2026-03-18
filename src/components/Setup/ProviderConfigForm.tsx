@@ -181,9 +181,7 @@ export function ProviderConfigForm({
         setModels(fetchedModels)
         setModelsFetched(true)
         // Preserve manually entered model IDs when live discovery does not know them.
-        if (!model) {
-          setModel(fetchedModels[0].id)
-        }
+        setModel((currentModel) => currentModel || fetchedModels[0].id)
       } else {
         setModels(FALLBACK_MODELS[type] || [])
         setModelsFetched(false)
@@ -195,7 +193,7 @@ export function ProviderConfigForm({
     } finally {
       setIsLoadingModels(false)
     }
-  }, [type, apiKey, baseUrl, isDynamic, needsApiKey, model, name, initialName])
+  }, [type, apiKey, baseUrl, isDynamic, needsApiKey, name, initialName])
 
   // Fetch models when API key changes (debounced)
   useEffect(() => {
