@@ -103,6 +103,15 @@ function queueModelCatalogRefresh() {
   void refreshModelCatalog(false)
 }
 
+async function ensureCapabilityCatalogReady() {
+  if (getModelCatalogStatus().hasSnapshot) {
+    queueModelCatalogRefresh()
+    return
+  }
+
+  await refreshModelCatalog(false)
+}
+
 function buildModelsDevLookupOptions(providerType: string, providerName?: string | null, baseUrl?: string | null) {
   const options: { providerName?: string; baseUrl?: string } = {}
   const normalizedType = String(providerType || '').trim().toLowerCase()
@@ -428,7 +437,7 @@ async function attachCapabilitySummaries(
 ) {
   if (!models.length) return models
 
-  queueModelCatalogRefresh()
+  await ensureCapabilityCatalogReady()
   const lookupOptions = buildModelsDevLookupOptions(providerType, providerName, baseUrl)
 
   return models.map((model) => ({

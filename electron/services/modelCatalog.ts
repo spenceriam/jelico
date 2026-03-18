@@ -14,6 +14,8 @@ import {
 
 const MODELS_DEV_URL = 'https://models.dev/api.json'
 const CATALOG_REFRESH_TTL_MS = 6 * 60 * 60 * 1000 // 6h
+const INITIAL_CATALOG_RETRY_MS = 30 * 1000
+const MODELS_DEV_FETCH_TIMEOUT_MS = 3 * 1000
 
 interface ModelCatalogSnapshot {
   etag?: string | null
@@ -82,7 +84,8 @@ export async function refreshModelCatalog(force = false): Promise<void> {
   if (refreshInFlight) return refreshInFlight
 
   const now = Date.now()
-  if (!force && now - lastCheckedAt < CATALOG_REFRESH_TTL_MS) {
+  const retryWindowMs = inMemoryProviders ? CATALOG_REFRESH_TTL_MS : INITIAL_CATALOG_RETRY_MS
+  if (!force && now - lastCheckedAt < retryWindowMs) {
     return
   }
 
@@ -90,11 +93,16 @@ export async function refreshModelCatalog(force = false): Promise<void> {
     lastCheckedAt = now
 
     try {
+      const controller = new AbortController()
+      const timeoutId = setTimeout(() => controller.abort(), MODELS_DEV_FETCH_TIMEOUT_MS)
       const response = await fetch(MODELS_DEV_URL, {
         headers: {
           Accept: 'application/json',
           ...(etag ? { 'If-None-Match': etag } : {}),
         },
+        signal: controller.signal,
+      }).finally(() => {
+        clearTimeout(timeoutId)
       })
 
       if (response.status === 304) {

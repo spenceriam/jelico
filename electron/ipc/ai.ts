@@ -63,7 +63,11 @@ import {
   type WebProviderRuntime,
 } from '../services/webAdapter'
 import { scanWorkspaceSpecs, formatSpecContext } from '../services/specScanner'
-import { lookupModelsDevModelMetadata, lookupModelsDevOutputLimit, refreshModelCatalog } from '../services/modelCatalog'
+import {
+  lookupModelsDevOutputLimit,
+  lookupStrictModelsDevModelMetadata,
+  refreshModelCatalog,
+} from '../services/modelCatalog'
 import { resolveModelCapabilityProfile, buildModelCapabilityProfilePrompt } from '../services/modelCapabilityProfiles'
 import {
   hasInterruptedMeaningfulMutationTool,
@@ -3937,7 +3941,7 @@ export function registerAIHandlers() {
       const projectConversationContext = buildProjectConversationContext(params.conversationId)
       const useLeanPromptDefault = process.env.JELICO_FULL_PROMPT !== '1'
       const providerProfileOverrides = ((providerConfig as any).capability_profiles || null) as Record<string, any> | null
-      const modelsDevMetadata = lookupModelsDevModelMetadata(providerConfig.type, modelId, {
+      const modelsDevMetadata = lookupStrictModelsDevModelMetadata(providerConfig.type, modelId, {
         baseUrl: providerConfig.base_url,
         providerName: providerConfig.name,
       })
