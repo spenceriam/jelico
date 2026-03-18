@@ -53,4 +53,27 @@ export function buildPrimaryCompatibleModelsEndpoint(
   return buildCompatibleModelsEndpointCandidates(baseUrl, options)[0] ?? null
 }
 
+export function buildCompatibleChatCompletionsEndpoint(baseUrl?: string | null): string | null {
+  const trimmed = String(baseUrl || '').trim().replace(/\/+$/, '')
+  if (!trimmed) return null
+
+  if (trimmed.endsWith('/chat/completions')) {
+    return trimmed
+  }
+
+  if (trimmed.endsWith('/models')) {
+    return trimmed.replace(/\/models$/, '/chat/completions')
+  }
+
+  if (/\/api\/(?:coding\/)?paas\/v4$/i.test(trimmed)) {
+    return `${trimmed}/chat/completions`
+  }
+
+  if (trimmed.endsWith('/v1')) {
+    return `${trimmed}/chat/completions`
+  }
+
+  return `${trimmed}/v1/chat/completions`
+}
+
 export { DEFAULT_OPENAI_MODELS_ENDPOINT }

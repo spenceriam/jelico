@@ -76,6 +76,7 @@ import {
   type IncompleteToolStart,
 } from '../lib/turnToolSemantics'
 import { buildReasoningProviderOptions, sanitizeReasoningEffort } from '../../src/lib/reasoning'
+import { buildModelsDevLookupOptions } from '../lib/modelsDevLookupOptions'
 
 // Start orphan cleanup on module load
 startOrphanCleanup()
@@ -1150,10 +1151,11 @@ async function resolveProviderMaxOutputTokens(providerConfig: any, modelId: stri
 
   try {
     await refreshModelCatalog(false)
-    const limit = lookupModelsDevOutputLimit(providerConfig.type, normalizedModel, {
-      baseUrl: providerConfig.base_url,
-      providerName: providerConfig.name,
-    })
+    const limit = lookupModelsDevOutputLimit(
+      providerConfig.type,
+      normalizedModel,
+      buildModelsDevLookupOptions(providerConfig.type, providerConfig.name, providerConfig.base_url)
+    )
     if (limit && Number.isFinite(limit) && limit > 0) {
       return Math.round(limit)
     }
@@ -3941,10 +3943,11 @@ export function registerAIHandlers() {
       const projectConversationContext = buildProjectConversationContext(params.conversationId)
       const useLeanPromptDefault = process.env.JELICO_FULL_PROMPT !== '1'
       const providerProfileOverrides = ((providerConfig as any).capability_profiles || null) as Record<string, any> | null
-      const modelsDevMetadata = lookupStrictModelsDevModelMetadata(providerConfig.type, modelId, {
-        baseUrl: providerConfig.base_url,
-        providerName: providerConfig.name,
-      })
+      const modelsDevMetadata = lookupStrictModelsDevModelMetadata(
+        providerConfig.type,
+        modelId,
+        buildModelsDevLookupOptions(providerConfig.type, providerConfig.name, providerConfig.base_url)
+      )
       const modelCapabilityProfile = resolveModelCapabilityProfile({
         providerType: providerConfig.type,
         modelId,

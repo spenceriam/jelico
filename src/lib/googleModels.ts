@@ -1,4 +1,5 @@
 type GoogleModelLike = {
+  baseModelId?: string
   id: string
   name: string
 }
@@ -16,11 +17,18 @@ const GOOGLE_SPECIALIZED_MODEL_KEYWORDS = [
   'audio',
 ]
 
-function normalizeGoogleModelId(model: GoogleModelLike): string {
-  return String(model.id || model.name || '')
+function trimGoogleModelId(value: unknown): string {
+  return String(value || '')
     .trim()
-    .toLowerCase()
-    .replace(/^models\//, '')
+    .replace(/^models\//i, '')
+}
+
+export function getGoogleModelId(model: Partial<GoogleModelLike>): string {
+  return trimGoogleModelId(model.baseModelId || model.id || model.name || '')
+}
+
+function normalizeGoogleModelId(model: GoogleModelLike): string {
+  return getGoogleModelId(model).toLowerCase()
 }
 
 function getGoogleModelVersion(model: GoogleModelLike): number {

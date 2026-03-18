@@ -17,14 +17,15 @@ import {
 import { resolveProviderCapabilitySummary } from '../services/providerCapabilitySummary'
 import {
   buildCompatibleModelsEndpointCandidates,
+  buildCompatibleChatCompletionsEndpoint,
   buildPrimaryCompatibleModelsEndpoint,
   DEFAULT_OPENAI_MODELS_ENDPOINT,
 } from '../../src/lib/compatibleProviderModels'
-import { sortGoogleModels } from '../../src/lib/googleModels'
+import { getGoogleModelId, sortGoogleModels } from '../../src/lib/googleModels'
 import { findZaiContextFallback, findZaiOutputFallback } from '../../src/lib/zaiModelLimits'
+import { buildModelsDevLookupOptions } from '../lib/modelsDevLookupOptions'
 
 const GOOGLE_GENERATIVE_LANGUAGE_API_BASE_URL = 'https://generativelanguage.googleapis.com/v1beta'
-const USER_EDITABLE_PROVIDER_ALIAS_TYPES = new Set(['openai-compatible', 'anthropic-compatible', 'custom', 'local'])
 
 // Build models endpoint URL from base URL
 function buildModelsEndpoint(baseUrl?: string | null): string {
@@ -104,23 +105,6 @@ function queueModelCatalogRefresh() {
 
 async function ensureCapabilityCatalogReady() {
   await refreshModelCatalog(false)
-}
-
-function buildModelsDevLookupOptions(providerType: string, providerName?: string | null, baseUrl?: string | null) {
-  const options: { providerName?: string; baseUrl?: string } = {}
-  const normalizedType = String(providerType || '').trim().toLowerCase()
-  const trimmedBaseUrl = String(baseUrl || '').trim()
-  const trimmedProviderName = String(providerName || '').trim()
-
-  if (trimmedBaseUrl) {
-    options.baseUrl = trimmedBaseUrl
-  }
-
-  if (trimmedProviderName && !USER_EDITABLE_PROVIDER_ALIAS_TYPES.has(normalizedType)) {
-    options.providerName = trimmedProviderName
-  }
-
-  return options
 }
 
 // Extract context size from model metadata
@@ -329,7 +313,7 @@ async function fetchOpenAIModels(apiKey: string, baseUrl?: string): Promise<Arra
 
 async function fetchAllGoogleModels(apiKey: string): Promise<any[]> {
   const allModels: any[] = []
-  const seenNames = new Set<string>()
+  const seenModelIds = new Set<string>()
   const seenPageTokens = new Set<string>()
   let nextPageToken: string | null = null
 
@@ -343,9 +327,9 @@ async function fetchAllGoogleModels(apiKey: string): Promise<any[]> {
     const data = await response.json()
     const pageModels = Array.isArray(data?.models) ? data.models : []
     for (const model of pageModels) {
-      const key = String(model?.name || '')
-      if (!key || seenNames.has(key)) continue
-      seenNames.add(key)
+      const modelId = getGoogleModelId(model)
+      if (!modelId || seenModelIds.has(modelId)) continue
+      seenModelIds.add(modelId)
       allModels.push(model)
     }
 
@@ -366,7 +350,7 @@ async function fetchGoogleModels(apiKey: string): Promise<Array<{ id: string; na
   try {
     const models = (await fetchAllGoogleModels(apiKey))
       .filter((m: any) => {
-        const name = m.name || ''
+        const modelId = getGoogleModelId(m).toLowerCase()
         // Include gemini models that support generateContent
         const supportedGenerationMethods = Array.isArray(m.supportedGenerationMethods)
           ? m.supportedGenerationMethods
@@ -374,15 +358,14 @@ async function fetchGoogleModels(apiKey: string): Promise<Array<{ id: string; na
             ? m.supportedActions
             : []
 
-        return name.includes('gemini') &&
+        return modelId.includes('gemini') &&
                (
                  supportedGenerationMethods.length === 0 ||
                  supportedGenerationMethods.includes('generateContent')
                )
       })
       .map((m: any) => {
-        // Extract model ID from name (e.g., "models/gemini-1.5-pro" -> "gemini-1.5-pro")
-        const id = m.name.replace('models/', '')
+        const id = getGoogleModelId(m)
         return {
           id,
           name: m.displayName || id,
@@ -628,6 +611,67 @@ async function probeCompatibleModelsEndpoint(
   return lastFailure || { ok: false, message: 'Connection test failed' }
 }
 
+async function probeCompatibleChatCompletionsEndpoint(
+  baseUrl: string | null,
+  apiKey: string | null,
+  modelId: string
+): Promise<ProviderTestResult> {
+  const endpoint = buildCompatibleChatCompletionsEndpoint(baseUrl)
+  if (!endpoint) {
+    return { ok: false, message: 'Missing provider endpoint URL' }
+  }
+
+  let lastFailure: ProviderTestResult | null = null
+  for (const authHeaders of getCompatibleAuthHeaderCandidates(apiKey)) {
+    try {
+      const response = await fetch(endpoint, {
+        method: 'POST',
+        headers: {
+          Accept: 'application/json',
+          'Content-Type': 'application/json',
+          ...authHeaders,
+        },
+        body: JSON.stringify({
+          model: modelId,
+          max_tokens: 1,
+          temperature: 0,
+          messages: [
+            {
+              role: 'user',
+              content: 'ping',
+            },
+          ],
+        }),
+      })
+
+      if (response.ok) {
+        return { ok: true, message: 'Connection successful' }
+      }
+
+      let payload: unknown = null
+      try {
+        const contentType = response.headers.get('content-type') || ''
+        payload = contentType.includes('application/json') ? await response.json() : await response.text()
+      } catch {
+        payload = null
+      }
+
+      lastFailure = {
+        ok: false,
+        status: response.status,
+        message: extractProviderErrorMessage(response.status, payload),
+      }
+    } catch (error: any) {
+      lastFailure = {
+        ok: false,
+        message: error?.message || 'Network error',
+      }
+    }
+  }
+
+  return lastFailure || { ok: false, message: 'Connection test failed' }
+}
+
 async function probeMiniMaxAnthropicMessageEndpoint(
   baseUrl: string | null,
   apiKey: string,
@@ -853,9 +897,10 @@ export function registerProviderHandlers() {
           if (!provider.default_model?.trim()) {
             return { ok: false, message: 'Missing model name/id' } satisfies ProviderTestResult
           }
-          return await probeCompatibleModelsEndpoint(
+          return await probeCompatibleChatCompletionsEndpoint(
             getProviderModelsBaseUrl(provider.type, provider.base_url) || null,
-            apiKey || null
+            apiKey || null,
+            provider.default_model
           )
         default:
           return {

@@ -1,6 +1,17 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { sortGoogleModels } from './googleModels'
+import { getGoogleModelId, sortGoogleModels } from './googleModels'
+
+test('google discovery prefers baseModelId over versioned resource names', () => {
+  assert.equal(
+    getGoogleModelId({
+      id: 'models/gemini-1.5-pro-001',
+      name: 'Gemini 1.5 Pro',
+      baseModelId: 'gemini-1.5-pro',
+    }),
+    'gemini-1.5-pro'
+  )
+})
 
 test('google model sorting prefers stable Gemini families before newer preview ids', () => {
   const sorted = sortGoogleModels([

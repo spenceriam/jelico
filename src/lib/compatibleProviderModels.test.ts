@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import {
+  buildCompatibleChatCompletionsEndpoint,
   buildCompatibleModelsEndpointCandidates,
   buildPrimaryCompatibleModelsEndpoint,
   DEFAULT_OPENAI_MODELS_ENDPOINT,
@@ -27,5 +28,23 @@ test('default openai endpoint is opt-in when base urls are missing', () => {
   assert.equal(
     buildPrimaryCompatibleModelsEndpoint(undefined, { defaultOpenAI: true }),
     DEFAULT_OPENAI_MODELS_ENDPOINT
+  )
+})
+
+test('compatible chat completion endpoints keep hosted Z.ai paths intact', () => {
+  assert.equal(
+    buildCompatibleChatCompletionsEndpoint('https://api.z.ai/api/paas/v4'),
+    'https://api.z.ai/api/paas/v4/chat/completions'
+  )
+  assert.equal(
+    buildCompatibleChatCompletionsEndpoint('https://api.z.ai/api/coding/paas/v4'),
+    'https://api.z.ai/api/coding/paas/v4/chat/completions'
+  )
+})
+
+test('compatible chat completion endpoints preserve explicit v1 bases', () => {
+  assert.equal(
+    buildCompatibleChatCompletionsEndpoint('https://example.com/v1'),
+    'https://example.com/v1/chat/completions'
   )
 })
