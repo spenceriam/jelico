@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { getGoogleModelId, isSpecializedGoogleModel, sortGoogleModels } from './googleModels'
+import { getGoogleModelId, isSpecializedGoogleModel, selectPreferredGoogleModels, sortGoogleModels } from './googleModels'
 
 test('google discovery prefers baseModelId over versioned resource names', () => {
   assert.equal(
@@ -11,6 +11,26 @@ test('google discovery prefers baseModelId over versioned resource names', () =>
     }),
     'gemini-1.5-pro'
   )
+})
+
+test('google model sorting uses versioned resource ids when baseModelId is shared', () => {
+  const sorted = sortGoogleModels([
+    {
+      id: 'models/gemini-2.5-flash-preview-001',
+      name: 'models/gemini-2.5-flash-preview-001',
+      baseModelId: 'gemini-2.5-flash',
+    },
+    {
+      id: 'models/gemini-2.5-flash-001',
+      name: 'models/gemini-2.5-flash-001',
+      baseModelId: 'gemini-2.5-flash',
+    },
+  ])
+
+  assert.deepEqual(sorted.map((model) => model.name), [
+    'models/gemini-2.5-flash-001',
+    'models/gemini-2.5-flash-preview-001',
+  ])
 })
 
 test('google specialization detection excludes audio and image chat variants', () => {
@@ -98,6 +118,36 @@ test('google model sorting prefers stable releases within the same Gemini family
     'gemini-2.5-flash',
     'gemini-2.5-pro-preview',
     'gemini-2.5-flash-preview',
+  ])
+})
+
+test('google model selection keeps the preferred variant for each base model family', () => {
+  const selected = selectPreferredGoogleModels([
+    {
+      id: 'models/gemini-2.5-flash-preview-001',
+      name: 'models/gemini-2.5-flash-preview-001',
+      baseModelId: 'gemini-2.5-flash',
+    },
+    {
+      id: 'models/gemini-2.5-flash-001',
+      name: 'models/gemini-2.5-flash-001',
+      baseModelId: 'gemini-2.5-flash',
+    },
+    {
+      id: 'models/gemini-2.5-pro-preview-002',
+      name: 'models/gemini-2.5-pro-preview-002',
+      baseModelId: 'gemini-2.5-pro',
+    },
+    {
+      id: 'models/gemini-2.5-pro-001',
+      name: 'models/gemini-2.5-pro-001',
+      baseModelId: 'gemini-2.5-pro',
+    },
+  ])
+
+  assert.deepEqual(selected.map((model) => model.name), [
+    'models/gemini-2.5-pro-001',
+    'models/gemini-2.5-flash-001',
   ])
 })
 

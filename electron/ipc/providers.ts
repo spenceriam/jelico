@@ -22,7 +22,7 @@ import {
   buildPrimaryCompatibleModelsEndpoint,
   DEFAULT_OPENAI_MODELS_ENDPOINT,
 } from '../../src/lib/compatibleProviderModels'
-import { getGoogleModelId, sortGoogleModels } from '../../src/lib/googleModels'
+import { getGoogleModelId, selectPreferredGoogleModels, sortGoogleModels } from '../../src/lib/googleModels'
 import { findZaiContextFallback, findZaiOutputFallback } from '../../src/lib/zaiModelLimits'
 import { buildModelsDevLookupOptions } from '../lib/modelsDevLookupOptions'
 
@@ -310,7 +310,7 @@ async function fetchOpenAIModels(apiKey: string, baseUrl?: string): Promise<Arra
 
 async function fetchAllGoogleModels(apiKey: string): Promise<any[]> {
   const allModels: any[] = []
-  const seenModelIds = new Set<string>()
+  const seenModelResources = new Set<string>()
   const seenPageTokens = new Set<string>()
   let nextPageToken: string | null = null
 
@@ -324,9 +324,9 @@ async function fetchAllGoogleModels(apiKey: string): Promise<any[]> {
     const data = await response.json()
     const pageModels = Array.isArray(data?.models) ? data.models : []
     for (const model of pageModels) {
-      const modelId = getGoogleModelId(model)
-      if (!modelId || seenModelIds.has(modelId)) continue
-      seenModelIds.add(modelId)
+      const modelResource = String(model?.name || model?.id || '').trim()
+      if (!modelResource || seenModelResources.has(modelResource)) continue
+      seenModelResources.add(modelResource)
       allModels.push(model)
     }
 
@@ -345,7 +345,7 @@ async function fetchAllGoogleModels(apiKey: string): Promise<any[]> {
 // Fetch models from Google Gemini API
 async function fetchGoogleModels(apiKey: string): Promise<Array<{ id: string; name: string }>> {
   try {
-    const models = (await fetchAllGoogleModels(apiKey))
+    const filteredModels = (await fetchAllGoogleModels(apiKey))
       .filter((m: any) => {
         const modelId = getGoogleModelId(m).toLowerCase()
         // Include gemini models that support generateContent
@@ -361,6 +361,7 @@ async function fetchGoogleModels(apiKey: string): Promise<Array<{ id: string; na
                  supportedGenerationMethods.includes('generateContent')
                )
       })
+    const models = selectPreferredGoogleModels(filteredModels)
       .map((m: any) => {
         const id = getGoogleModelId(m)
         return {
