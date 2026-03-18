@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react'
 import { Eye, EyeOff, Search, Loader2, RefreshCw } from 'lucide-react'
 import { buildCompatibleModelsEndpointCandidates } from '../../lib/compatibleProviderModels'
+import { sortGoogleModels } from '../../lib/googleModels'
 import { getSupportedReasoningEfforts, REASONING_EFFORT_LABELS, type ReasoningEffort } from '../../lib/reasoning'
 import { ToolSupportBadge } from '../Providers/ToolSupportBadge'
 
@@ -588,7 +589,7 @@ async function fetchModelsWithKey(
       }
 
       case 'google': {
-        return (await fetchAllGoogleModelsWithKey(apiKey))
+        return sortGoogleModels((await fetchAllGoogleModelsWithKey(apiKey))
           .filter((m: any) => {
             const name = m.name || ''
             const supportedGenerationMethods = Array.isArray(m.supportedGenerationMethods)
@@ -605,8 +606,7 @@ async function fetchModelsWithKey(
           .map((m: any) => {
             const id = m.name.replace('models/', '')
             return { id, name: m.displayName || id }
-          })
-          .sort((a: ProviderModel, b: ProviderModel) => a.name.localeCompare(b.name))
+          }))
       }
 
       default:

@@ -21,6 +21,7 @@ import {
   buildPrimaryCompatibleModelsEndpoint,
   DEFAULT_OPENAI_MODELS_ENDPOINT,
 } from '../../src/lib/compatibleProviderModels'
+import { sortGoogleModels } from '../../src/lib/googleModels'
 import { findZaiContextFallback, findZaiOutputFallback } from '../../src/lib/zaiModelLimits'
 
 const GOOGLE_GENERATIVE_LANGUAGE_API_BASE_URL = 'https://generativelanguage.googleapis.com/v1beta'
@@ -384,9 +385,9 @@ async function fetchGoogleModels(apiKey: string): Promise<Array<{ id: string; na
           name: m.displayName || id,
         }
       })
-      .sort((a: any, b: any) => a.name.localeCompare(b.name))
+    const sortedModels = sortGoogleModels(models)
 
-    return models.length > 0 ? models : FALLBACK_MODELS.google
+    return sortedModels.length > 0 ? sortedModels : FALLBACK_MODELS.google
   } catch (err) {
     console.error('Failed to fetch Google models:', err)
     return FALLBACK_MODELS.google
