@@ -65,6 +65,17 @@ function getGoogleModelVariantWeight(model: GoogleModelLike): number {
   return 3
 }
 
+function getGooglePreviewRevisionParts(model: GoogleModelLike): number[] {
+  const normalizedId = normalizeGoogleModelVariantId(model)
+  const match = normalizedId.match(/(?:preview|experimental|exp)(?:-[a-z]+)*-(\d+(?:-\d+)*)$/)
+  if (!match) return []
+
+  return match[1]
+    .split('-')
+    .map((part) => Number.parseInt(part, 10))
+    .filter((part) => Number.isFinite(part))
+}
+
 export function compareGoogleModels(a: GoogleModelLike, b: GoogleModelLike): number {
   const specializedDelta = Number(isSpecializedGoogleModel(a)) - Number(isSpecializedGoogleModel(b))
   if (specializedDelta !== 0) return specializedDelta
@@ -80,6 +91,15 @@ export function compareGoogleModels(a: GoogleModelLike, b: GoogleModelLike): num
 
   const variantDelta = getGoogleModelVariantWeight(a) - getGoogleModelVariantWeight(b)
   if (variantDelta !== 0) return variantDelta
+
+  const aPreviewRevision = getGooglePreviewRevisionParts(a)
+  const bPreviewRevision = getGooglePreviewRevisionParts(b)
+  const previewRevisionLength = Math.max(aPreviewRevision.length, bPreviewRevision.length)
+  for (let index = 0; index < previewRevisionLength; index += 1) {
+    const aPart = aPreviewRevision[index] ?? 0
+    const bPart = bPreviewRevision[index] ?? 0
+    if (aPart !== bPart) return bPart - aPart
+  }
 
   return getGoogleModelVariantId(a).localeCompare(getGoogleModelVariantId(b)) ||
     getGoogleModelId(a).localeCompare(getGoogleModelId(b))

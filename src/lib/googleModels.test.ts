@@ -121,6 +121,25 @@ test('google model sorting prefers stable releases within the same Gemini family
   ])
 })
 
+test('google model selection prefers newer dated preview revisions within the same family', () => {
+  const selected = selectPreferredGoogleModels([
+    {
+      id: 'models/gemini-3-flash-preview-04-17',
+      name: 'models/gemini-3-flash-preview-04-17',
+      baseModelId: 'gemini-3-flash-preview',
+    },
+    {
+      id: 'models/gemini-3-flash-preview-05-06',
+      name: 'models/gemini-3-flash-preview-05-06',
+      baseModelId: 'gemini-3-flash-preview',
+    },
+  ])
+
+  assert.deepEqual(selected.map((model) => model.name), [
+    'models/gemini-3-flash-preview-05-06',
+  ])
+})
+
 test('google model selection keeps the preferred variant for each base model family', () => {
   const selected = selectPreferredGoogleModels([
     {

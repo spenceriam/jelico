@@ -400,6 +400,16 @@ async function fetchGoogleModelMetadata(apiKey: string, modelId: string): Promis
   return selectPreferredGoogleModels(candidates)[0] || null
 }
 
+async function ensureProviderBadgeCatalogReady() {
+  const catalogStatus = getModelCatalogStatus()
+  if (!catalogStatus.hasSnapshot || catalogStatus.isStale) {
+    await refreshModelCatalog(false)
+    return
+  }
+
+  void refreshModelCatalog(false)
+}
+
 // Convert database row to API format
 function toApiFormat(row: any) {
   const lookupOptions = buildModelsDevLookupOptions(row.type, row.name, row.base_url)
@@ -763,14 +773,14 @@ export function registerProviderHandlers() {
 
   // List all providers
   ipcMain.handle('providers:list', async () => {
-    void refreshModelCatalog(false)
+    await ensureProviderBadgeCatalogReady()
     const providers = providerDb.list()
     return providers.map(toApiFormat)
   })
 
   // Get a single provider
   ipcMain.handle('providers:get', async (_, id: string) => {
-    void refreshModelCatalog(false)
+    await ensureProviderBadgeCatalogReady()
     const provider = providerDb.get(id)
     return provider ? toApiFormat(provider) : null
   })
@@ -792,7 +802,7 @@ export function registerProviderHandlers() {
       await keychainService.setApiKey(provider.id, input.apiKey)
     }
 
-    queueModelCatalogRefresh()
+    await ensureProviderBadgeCatalogReady()
     return toApiFormat(provider)
   })
 
@@ -813,7 +823,7 @@ export function registerProviderHandlers() {
       }
     }
 
-    queueModelCatalogRefresh()
+    await ensureProviderBadgeCatalogReady()
     return provider ? toApiFormat(provider) : null
   })
 
