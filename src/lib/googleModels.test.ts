@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { getGoogleModelId, sortGoogleModels } from './googleModels'
+import { getGoogleModelId, isSpecializedGoogleModel, sortGoogleModels } from './googleModels'
 
 test('google discovery prefers baseModelId over versioned resource names', () => {
   assert.equal(
@@ -10,6 +10,30 @@ test('google discovery prefers baseModelId over versioned resource names', () =>
       baseModelId: 'gemini-1.5-pro',
     }),
     'gemini-1.5-pro'
+  )
+})
+
+test('google specialization detection excludes audio and image chat variants', () => {
+  assert.equal(
+    isSpecializedGoogleModel({
+      id: 'gemini-2.5-flash-native-audio-preview-09-2025',
+      name: 'Gemini 2.5 Flash Native Audio Preview',
+    }),
+    true
+  )
+  assert.equal(
+    isSpecializedGoogleModel({
+      id: 'gemini-2.0-flash-preview-image-generation',
+      name: 'Gemini 2.0 Flash Image Generation Preview',
+    }),
+    true
+  )
+  assert.equal(
+    isSpecializedGoogleModel({
+      id: 'gemini-2.5-pro',
+      name: 'Gemini 2.5 Pro',
+    }),
+    false
   )
 })
 

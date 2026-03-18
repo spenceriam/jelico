@@ -42,7 +42,7 @@ function isExperimentalGoogleModel(model: GoogleModelLike): boolean {
   return normalizedId.includes('gemini-exp-') || normalizedId.includes('experimental')
 }
 
-function isSpecializedGoogleModel(model: GoogleModelLike): boolean {
+export function isSpecializedGoogleModel(model: GoogleModelLike): boolean {
   const normalizedId = normalizeGoogleModelId(model)
   return GOOGLE_SPECIALIZED_MODEL_KEYWORDS.some((keyword) => normalizedId.includes(keyword))
 }
