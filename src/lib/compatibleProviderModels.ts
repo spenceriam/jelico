@@ -9,6 +9,9 @@ export function buildCompatibleModelsEndpointCandidates(
   { defaultOpenAI = false }: CompatibleModelsEndpointOptions = {}
 ): string[] {
   const trimmed = String(baseUrl || '').trim().replace(/\/+$/, '')
+  const normalizedBase = trimmed.endsWith('/chat/completions')
+    ? trimmed.replace(/\/chat\/completions$/, '')
+    : trimmed
   const candidates: string[] = []
 
   const pushUnique = (url: string) => {
@@ -17,26 +20,26 @@ export function buildCompatibleModelsEndpointCandidates(
     }
   }
 
-  if (!trimmed) {
+  if (!normalizedBase) {
     if (defaultOpenAI) {
       pushUnique(DEFAULT_OPENAI_MODELS_ENDPOINT)
     }
     return candidates
   }
 
-  if (trimmed.endsWith('/models')) {
-    pushUnique(trimmed)
-  } else if (/\/api\/(?:coding\/)?paas\/v4$/i.test(trimmed)) {
-    pushUnique(`${trimmed}/models`)
-  } else if (trimmed.endsWith('/v1')) {
-    pushUnique(`${trimmed}/models`)
+  if (normalizedBase.endsWith('/models')) {
+    pushUnique(normalizedBase)
+  } else if (/\/api\/(?:coding\/)?paas\/v4$/i.test(normalizedBase)) {
+    pushUnique(`${normalizedBase}/models`)
+  } else if (normalizedBase.endsWith('/v1')) {
+    pushUnique(`${normalizedBase}/models`)
   } else {
-    pushUnique(`${trimmed}/v1/models`)
+    pushUnique(`${normalizedBase}/v1/models`)
   }
 
-  if (trimmed.endsWith('/anthropic') || trimmed.endsWith('/anthropic/v1')) {
+  if (normalizedBase.endsWith('/anthropic') || normalizedBase.endsWith('/anthropic/v1')) {
     try {
-      const parsed = new URL(trimmed)
+      const parsed = new URL(normalizedBase)
       pushUnique(`${parsed.origin}/v1/models`)
     } catch {
       // Ignore malformed base URL and keep the primary endpoint only.

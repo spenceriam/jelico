@@ -23,6 +23,17 @@ test('anthropic compatibility endpoints keep their origin fallback', () => {
   ])
 })
 
+test('compatible model endpoint builder strips explicit chat completion paths', () => {
+  assert.deepEqual(
+    buildCompatibleModelsEndpointCandidates('https://api.z.ai/api/paas/v4/chat/completions'),
+    ['https://api.z.ai/api/paas/v4/models']
+  )
+  assert.deepEqual(
+    buildCompatibleModelsEndpointCandidates('https://example.com/v1/chat/completions'),
+    ['https://example.com/v1/models']
+  )
+})
+
 test('default openai endpoint is opt-in when base urls are missing', () => {
   assert.deepEqual(buildCompatibleModelsEndpointCandidates(), [])
   assert.equal(
