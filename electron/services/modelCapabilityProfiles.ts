@@ -53,7 +53,8 @@ function clampDelay(value: number | undefined, fallback: number): number {
 function resolveDefaultProfile(
   providerType: string,
   _modelId: string,
-  metadata?: ModelsDevCapabilityMetadata | null
+  metadata?: ModelsDevCapabilityMetadata | null,
+  providerToolSupport?: 'supported' | 'unsupported' | 'unknown'
 ): Omit<ModelCapabilityProfile, 'source'> {
   const normalizedProvider = providerType.toLowerCase()
 
@@ -97,6 +98,18 @@ function resolveDefaultProfile(
     }
   }
 
+  if (providerToolSupport === 'unsupported') {
+    return {
+      profileId: 'provider-chat-only',
+      ...DEFAULT_PROFILE,
+      toolUseGuidance: 'low',
+      reminderAggressiveness: 'high',
+      maxRetries: 1,
+      retryBaseDelayMs: 700,
+      delegationStyle: 'minimal',
+    }
+  }
+
   return {
     profileId: 'balanced-fallback',
     ...DEFAULT_PROFILE,
@@ -137,9 +150,15 @@ export function resolveModelCapabilityProfile(params: {
   providerType: string
   modelId: string
   modelsDevMetadata?: ModelsDevCapabilityMetadata | null
+  providerToolSupport?: 'supported' | 'unsupported' | 'unknown'
   providerOverrides?: ModelCapabilityProfileMap | null
 }): ModelCapabilityProfile {
-  const defaults = resolveDefaultProfile(params.providerType, params.modelId, params.modelsDevMetadata)
+  const defaults = resolveDefaultProfile(
+    params.providerType,
+    params.modelId,
+    params.modelsDevMetadata,
+    params.providerToolSupport
+  )
   const override = pickOverride(params.modelId, params.providerOverrides)
 
   if (!override) {

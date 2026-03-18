@@ -43,6 +43,22 @@ test('metadata-first: non-tool-call models resolve from metadata', () => {
   assert.equal(profile.delegationStyle, 'minimal')
 })
 
+test('chat-only provider summaries still downgrade tool guidance without metadata', () => {
+  const profile = resolveModelCapabilityProfile({
+    providerType: 'openai-compatible',
+    modelId: 'NousResearch/Hermes-4-405B',
+    providerToolSupport: 'unsupported',
+  })
+
+  assert.equal(profile.source, 'default')
+  assert.equal(profile.profileId, 'provider-chat-only')
+  assert.equal(profile.toolUseGuidance, 'low')
+  assert.equal(profile.reminderAggressiveness, 'high')
+  assert.equal(profile.maxRetries, 1)
+  assert.equal(profile.retryBaseDelayMs, 700)
+  assert.equal(profile.delegationStyle, 'minimal')
+})
+
 test('fallback default remains neutral when metadata is unavailable', () => {
   const profile = resolveModelCapabilityProfile({
     providerType: 'openrouter',

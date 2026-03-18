@@ -3948,10 +3948,18 @@ export function registerAIHandlers() {
         modelId,
         buildModelsDevLookupOptions(providerConfig.type, providerConfig.name, providerConfig.base_url)
       )
+      const providerCapabilitySummary = resolveProviderCapabilitySummary({
+        providerType: providerConfig.type,
+        modelId,
+        providerName: providerConfig.name,
+        baseUrl: providerConfig.base_url,
+        modelsDevMetadata: modelsDevMetadata || undefined,
+      })
       const modelCapabilityProfile = resolveModelCapabilityProfile({
         providerType: providerConfig.type,
         modelId,
         modelsDevMetadata: modelsDevMetadata || undefined,
+        providerToolSupport: providerCapabilitySummary?.toolSupport,
         providerOverrides: providerProfileOverrides || undefined,
       })
 

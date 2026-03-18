@@ -136,6 +136,21 @@ test('compatible provider base URLs can anchor provider-specific names to models
   )
 })
 
+test('compatible provider names still anchor metadata when endpoints are proxied', () => {
+  const metadata = lookupStrictModelsDevModelMetadataInIndexes(
+    indexes,
+    'anthropic-compatible',
+    'Kimi For Coding',
+    {
+      baseUrl: 'https://proxy.internal.example/v1',
+      providerName: 'Kimi For Coding',
+    }
+  )
+
+  assert.equal(metadata?.providerKey, 'kimi-for-coding')
+  assert.equal(metadata?.modelId, 'k2p5')
+})
+
 test('compatible chat-completions URLs still resolve provider-scoped metadata', () => {
   const metadata = lookupStrictModelsDevModelMetadataInIndexes(
     indexes,
