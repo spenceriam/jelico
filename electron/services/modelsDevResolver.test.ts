@@ -191,3 +191,21 @@ test('generic local providers stay unknown unless their base url matches a known
   assert.equal(lmStudioMetadata?.providerKey, 'lmstudio')
   assert.equal(lmStudioMetadata?.modelId, 'gpt-oss-20b')
 })
+
+test('known local preset aliases still resolve metadata when users customize the local base url', () => {
+  const lmStudioMetadata = lookupStrictModelsDevModelMetadataInIndexes(indexes, 'local', 'gpt-oss-20b', {
+    baseUrl: 'http://devbox.local:1234/v1',
+    providerName: 'LM Studio',
+  })
+
+  assert.equal(lmStudioMetadata?.providerKey, 'lmstudio')
+  assert.equal(lmStudioMetadata?.modelId, 'gpt-oss-20b')
+
+  assert.equal(
+    lookupStrictModelsDevModelMetadataInIndexes(indexes, 'local', 'gpt-oss-20b', {
+      baseUrl: 'http://devbox.local:1234/v1',
+      providerName: 'Custom Local',
+    }),
+    null
+  )
+})

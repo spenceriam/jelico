@@ -22,7 +22,7 @@ import {
   buildPrimaryCompatibleModelsEndpoint,
   DEFAULT_OPENAI_MODELS_ENDPOINT,
 } from '../../src/lib/compatibleProviderModels'
-import { getGoogleModelId, isSpecializedGoogleModel, sortGoogleModels } from '../../src/lib/googleModels'
+import { getGoogleModelId, sortGoogleModels } from '../../src/lib/googleModels'
 import { findZaiContextFallback, findZaiOutputFallback } from '../../src/lib/zaiModelLimits'
 import { buildModelsDevLookupOptions } from '../lib/modelsDevLookupOptions'
 
@@ -356,7 +356,6 @@ async function fetchGoogleModels(apiKey: string): Promise<Array<{ id: string; na
             : []
 
         return modelId.includes('gemini') &&
-               !isSpecializedGoogleModel({ id: modelId, name: modelId }) &&
                (
                  supportedGenerationMethods.length === 0 ||
                  supportedGenerationMethods.includes('generateContent')

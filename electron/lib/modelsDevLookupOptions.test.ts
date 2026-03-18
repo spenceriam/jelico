@@ -13,6 +13,30 @@ test('user-editable compatible providers do not use display names for models.dev
   )
 })
 
+test('generic local providers do not use arbitrary display names for models.dev lookup', () => {
+  assert.deepEqual(
+    buildModelsDevLookupOptions('local', 'Custom Local', 'http://localhost:8080/v1'),
+    { baseUrl: 'http://localhost:8080/v1' }
+  )
+})
+
+test('known local provider aliases remain available for local models.dev lookup', () => {
+  assert.deepEqual(
+    buildModelsDevLookupOptions('local', 'LM Studio', 'http://devbox.local:1234/v1'),
+    {
+      baseUrl: 'http://devbox.local:1234/v1',
+      providerName: 'LM Studio',
+    }
+  )
+  assert.deepEqual(
+    buildModelsDevLookupOptions('local', 'Ollama', 'http://192.168.1.20:11434'),
+    {
+      baseUrl: 'http://192.168.1.20:11434',
+      providerName: 'Ollama',
+    }
+  )
+})
+
 test('managed providers keep provider names available for models.dev lookup', () => {
   assert.deepEqual(
     buildModelsDevLookupOptions('anthropic', 'Anthropic', 'https://api.anthropic.com'),
