@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo, useCallback } from 'react'
 import { Eye, EyeOff, Search, Loader2, RefreshCw } from 'lucide-react'
+import { buildCompatibleModelsEndpointCandidates } from '../../lib/compatibleProviderModels'
 import { getSupportedReasoningEfforts, REASONING_EFFORT_LABELS, type ReasoningEffort } from '../../lib/reasoning'
 import { ToolSupportBadge } from '../Providers/ToolSupportBadge'
 
@@ -571,7 +572,7 @@ async function fetchModelsWithKey(
       case 'anthropic-compatible':
       case 'custom':
       case 'local': {
-        return await fetchOpenAICompatibleModels(apiKey, getCompatibleProviderBaseUrl(type, baseUrl), type)
+        return await fetchOpenAICompatibleModels(apiKey, getCompatibleProviderBaseUrl(type, baseUrl))
       }
 
       case 'google': {
@@ -625,41 +626,6 @@ function getDefaultName(type: string): string {
   return names[type] || 'Provider'
 }
 
-function buildModelsEndpointCandidates(type: string, baseUrl?: string): string[] {
-  if (!baseUrl) {
-    if (type === 'openai') return ['https://api.openai.com/v1/models']
-    return []
-  }
-
-  const trimmed = baseUrl.replace(/\/+$/, '')
-  const candidates: string[] = []
-
-  const pushUnique = (url: string) => {
-    if (!candidates.includes(url)) {
-      candidates.push(url)
-    }
-  }
-
-  if (trimmed.endsWith('/models')) {
-    pushUnique(trimmed)
-  } else if (trimmed.endsWith('/v1')) {
-    pushUnique(`${trimmed}/models`)
-  } else {
-    pushUnique(`${trimmed}/v1/models`)
-  }
-
-  if (trimmed.endsWith('/anthropic')) {
-    try {
-      const parsed = new URL(trimmed)
-      pushUnique(`${parsed.origin}/v1/models`)
-    } catch {
-      // Ignore invalid URL and use existing candidates only.
-    }
-  }
-
-  return candidates
-}
-
 function getCompatibleProviderBaseUrl(type: string, baseUrl?: string): string | undefined {
   const trimmedBaseUrl = String(baseUrl || '').trim()
   if (trimmedBaseUrl) {
@@ -682,10 +648,9 @@ function getCompatibleProviderBaseUrl(type: string, baseUrl?: string): string | 
 
 async function fetchOpenAICompatibleModels(
   apiKey: string,
-  baseUrl?: string,
-  type: string = 'openai-compatible'
+  baseUrl?: string
 ): Promise<ProviderModel[]> {
-  const endpoints = buildModelsEndpointCandidates(type, baseUrl)
+  const endpoints = buildCompatibleModelsEndpointCandidates(baseUrl)
   if (endpoints.length === 0) {
     return []
   }

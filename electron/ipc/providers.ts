@@ -16,17 +16,17 @@ import {
   refreshModelCatalog,
 } from '../services/modelCatalog'
 import { resolveProviderCapabilitySummary } from '../services/providerCapabilitySummary'
+import {
+  buildCompatibleModelsEndpointCandidates,
+  buildPrimaryCompatibleModelsEndpoint,
+  DEFAULT_OPENAI_MODELS_ENDPOINT,
+} from '../../src/lib/compatibleProviderModels'
 
 const GOOGLE_GENERATIVE_LANGUAGE_API_BASE_URL = 'https://generativelanguage.googleapis.com/v1beta'
 
 // Build models endpoint URL from base URL
 function buildModelsEndpoint(baseUrl?: string | null): string {
-  const trimmed = (baseUrl || '').replace(/\/+$/, '')
-  if (!trimmed) return 'https://api.openai.com/v1/models'
-  if (trimmed.endsWith('/models')) return trimmed
-  if (/\/api\/(?:coding\/)?paas\/v4$/i.test(trimmed)) return `${trimmed}/models`
-  if (trimmed.endsWith('/v1')) return `${trimmed}/models`
-  return `${trimmed}/v1/models`
+  return buildPrimaryCompatibleModelsEndpoint(baseUrl, { defaultOpenAI: true }) || DEFAULT_OPENAI_MODELS_ENDPOINT
 }
 
 function getProviderModelsBaseUrl(type: string, baseUrl?: string | null): string | undefined {
@@ -93,23 +93,7 @@ function normalizeAnthropicCompatibleBaseUrl(baseUrl?: string | null): string | 
 }
 
 function buildCompatibleModelsEndpoints(baseUrl?: string | null): string[] {
-  const primary = buildModelsEndpoint(baseUrl)
-  const endpoints = [primary]
-
-  const trimmed = (baseUrl || '').replace(/\/+$/, '')
-  if (trimmed.endsWith('/anthropic') || trimmed.endsWith('/anthropic/v1')) {
-    try {
-      const parsed = new URL(trimmed)
-      const fallback = `${parsed.origin}/v1/models`
-      if (!endpoints.includes(fallback)) {
-        endpoints.push(fallback)
-      }
-    } catch {
-      // Ignore malformed base URL and keep primary endpoint only.
-    }
-  }
-
-  return endpoints
+  return buildCompatibleModelsEndpointCandidates(baseUrl, { defaultOpenAI: true })
 }
 
 // Extract context size from model metadata
@@ -692,14 +676,14 @@ export function registerProviderHandlers() {
 
   // List all providers
   ipcMain.handle('providers:list', async () => {
-    await refreshModelCatalog(false)
+    void refreshModelCatalog(false)
     const providers = providerDb.list()
     return providers.map(toApiFormat)
   })
 
   // Get a single provider
   ipcMain.handle('providers:get', async (_, id: string) => {
-    await refreshModelCatalog(false)
+    void refreshModelCatalog(false)
     const provider = providerDb.get(id)
     return provider ? toApiFormat(provider) : null
   })
