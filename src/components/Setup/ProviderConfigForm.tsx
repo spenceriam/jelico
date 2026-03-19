@@ -37,6 +37,8 @@ const FALLBACK_MODELS: Record<string, Array<{ id: string; name: string }>> = {
     { id: 'glm-4.7', name: 'GLM-4.7' },
     { id: 'glm-4.7-flash', name: 'GLM-4.7 Flash' },
     { id: 'glm-4.7-flashx', name: 'GLM-4.7 FlashX' },
+    { id: 'glm-4.6', name: 'GLM-4.6' },
+    { id: 'glm-4.6v', name: 'GLM-4.6V' },
     { id: 'glm-4.5', name: 'GLM-4.5' },
     { id: 'glm-4.5-air', name: 'GLM-4.5 Air' },
     { id: 'glm-4.5-airx', name: 'GLM-4.5 AirX' },
@@ -49,6 +51,8 @@ const FALLBACK_MODELS: Record<string, Array<{ id: string; name: string }>> = {
     { id: 'glm-4.7', name: 'GLM-4.7' },
     { id: 'glm-4.7-flash', name: 'GLM-4.7 Flash' },
     { id: 'glm-4.7-flashx', name: 'GLM-4.7 FlashX' },
+    { id: 'glm-4.6', name: 'GLM-4.6' },
+    { id: 'glm-4.6v', name: 'GLM-4.6V' },
     { id: 'glm-4.5', name: 'GLM-4.5' },
     { id: 'glm-4.5-air', name: 'GLM-4.5 Air' },
     { id: 'glm-4.5-airx', name: 'GLM-4.5 AirX' },
@@ -189,6 +193,8 @@ export function ProviderConfigForm({
         providerName,
       })
       latestModelRequestKeyRef.current = requestKey
+      const initialCatalogStatus = await window.jelico.providers.getModelCatalogStatus()
+      const shouldRetryCatalogWarmup = !initialCatalogStatus.hasSnapshot || initialCatalogStatus.isStale
       let fetchedModels: ProviderModel[] = []
 
       fetchedModels = await window.jelico.providers.previewModels(
@@ -214,10 +220,9 @@ export function ProviderConfigForm({
         setModelsFetched(false)
       }
 
-      const catalogStatus = await window.jelico.providers.getModelCatalogStatus()
       if (
         fetchedModels.length > 0 &&
-        (!catalogStatus.hasSnapshot || catalogStatus.isStale) &&
+        shouldRetryCatalogWarmup &&
         catalogRefreshRequestKeyRef.current !== requestKey
       ) {
         catalogRefreshRequestKeyRef.current = requestKey
