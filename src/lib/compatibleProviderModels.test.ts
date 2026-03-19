@@ -68,6 +68,10 @@ test('compatible base url normalization strips endpoint suffixes', () => {
   )
   assert.equal(
     normalizeCompatibleBaseUrl('https://example.com/v1/models'),
+    'https://example.com/v1/models'
+  )
+  assert.equal(
+    normalizeCompatibleBaseUrl('https://example.com/v1/models', { stripModelsPath: true }),
     'https://example.com/v1'
   )
 })

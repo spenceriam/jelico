@@ -228,6 +228,8 @@ export function Settings({ onClose }: SettingsProps) {
           providerName,
         })
         editableModelsRequestKeyRef.current = requestKey
+        const initialCatalogStatus = await window.jelico.providers.getModelCatalogStatus()
+        const shouldRetryCatalogWarmup = !initialCatalogStatus.hasSnapshot || initialCatalogStatus.isStale
         const models = await window.jelico.providers.previewModels(
           editingProvider.type,
           effectiveApiKey,
@@ -248,14 +250,19 @@ export function Settings({ onClose }: SettingsProps) {
         setEditableModels(normalized)
         setModelsFetched(normalized.length > 0)
 
-        const catalogStatus = await window.jelico.providers.getModelCatalogStatus()
         if (
           normalized.length > 0 &&
-          (!catalogStatus.hasSnapshot || catalogStatus.isStale) &&
+          shouldRetryCatalogWarmup &&
           editableModelsCatalogRefreshKeyRef.current !== requestKey
         ) {
           editableModelsCatalogRefreshKeyRef.current = requestKey
           void (async () => {
+            const releaseCatalogWarmupRetry = () => {
+              if (editableModelsCatalogRefreshKeyRef.current === requestKey) {
+                editableModelsCatalogRefreshKeyRef.current = null
+              }
+            }
+
             try {
               await window.jelico.providers.refreshModelCatalog()
               const refreshedModels = await window.jelico.providers.previewModels(
@@ -275,9 +282,15 @@ export function Settings({ onClose }: SettingsProps) {
                 }))
                 .filter((model) => model.id)
 
+              if (refreshedNormalized.length === 0) {
+                releaseCatalogWarmupRetry()
+                return
+              }
+
               setEditableModels(refreshedNormalized)
               setModelsFetched(refreshedNormalized.length > 0)
             } catch (error) {
+              releaseCatalogWarmupRetry()
               console.error('Failed to refresh provider model capability labels:', error)
             }
           })()

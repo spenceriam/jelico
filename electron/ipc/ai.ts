@@ -1148,7 +1148,7 @@ function normalizeAnthropicCompatibleBaseUrl(baseUrl?: string | null): string | 
 }
 
 function getZaiProviderBaseUrl(type: string, baseUrl?: string | null): string {
-  const normalizedBaseUrl = normalizeCompatibleBaseUrl(baseUrl)
+  const normalizedBaseUrl = normalizeCompatibleBaseUrl(baseUrl, { stripModelsPath: true })
   if (normalizedBaseUrl) return normalizedBaseUrl
 
   switch (type) {

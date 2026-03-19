@@ -4,13 +4,20 @@ interface CompatibleModelsEndpointOptions {
   defaultOpenAI?: boolean
 }
 
-export function normalizeCompatibleBaseUrl(baseUrl?: string | null): string {
+interface NormalizeCompatibleBaseUrlOptions {
+  stripModelsPath?: boolean
+}
+
+export function normalizeCompatibleBaseUrl(
+  baseUrl?: string | null,
+  { stripModelsPath = false }: NormalizeCompatibleBaseUrlOptions = {}
+): string {
   const trimmed = String(baseUrl || '').trim().replace(/\/+$/, '')
   if (!trimmed) return ''
   if (trimmed.endsWith('/chat/completions')) {
     return trimmed.replace(/\/chat\/completions$/, '')
   }
-  if (trimmed.endsWith('/models')) {
+  if (stripModelsPath && trimmed.endsWith('/models')) {
     return trimmed.replace(/\/models$/, '')
   }
   return trimmed
@@ -66,7 +73,7 @@ export function buildPrimaryCompatibleModelsEndpoint(
 }
 
 export function buildCompatibleChatCompletionsEndpoint(baseUrl?: string | null): string | null {
-  const normalizedBase = normalizeCompatibleBaseUrl(baseUrl)
+  const normalizedBase = normalizeCompatibleBaseUrl(baseUrl, { stripModelsPath: true })
   if (!normalizedBase) return null
 
   if (/\/api\/(?:coding\/)?paas\/v4$/i.test(normalizedBase)) {
