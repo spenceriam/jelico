@@ -43,12 +43,18 @@ export function buildModelsDevLookupOptions(providerType: string, providerName?:
     options.baseUrl = trimmedBaseUrl
   }
 
+  const allowLocalProviderNameLookup =
+    normalizedType === 'local' &&
+    SAFE_LOCAL_PROVIDER_ALIASES.has(trimmedProviderName.toLowerCase()) &&
+    isProxyLikeBaseUrl(trimmedBaseUrl)
+
+  const allowCompatibleProviderNameLookup =
+    PROVIDER_NAME_LOOKUP_TYPES.has(normalizedType) &&
+    isProxyLikeBaseUrl(trimmedBaseUrl)
+
   const allowProviderNameLookup =
     !!trimmedProviderName &&
-    (
-      (normalizedType === 'local' && SAFE_LOCAL_PROVIDER_ALIASES.has(trimmedProviderName.toLowerCase())) ||
-      (PROVIDER_NAME_LOOKUP_TYPES.has(normalizedType) && isProxyLikeBaseUrl(trimmedBaseUrl))
-    )
+    (allowLocalProviderNameLookup || allowCompatibleProviderNameLookup)
 
   if (allowProviderNameLookup) {
     options.providerName = trimmedProviderName

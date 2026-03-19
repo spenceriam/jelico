@@ -78,6 +78,7 @@ import {
 } from '../lib/turnToolSemantics'
 import { buildReasoningProviderOptions, sanitizeReasoningEffort } from '../../src/lib/reasoning'
 import { buildModelsDevLookupOptions } from '../lib/modelsDevLookupOptions'
+import { normalizeCompatibleBaseUrl } from '../../src/lib/compatibleProviderModels'
 
 // Start orphan cleanup on module load
 startOrphanCleanup()
@@ -1147,8 +1148,8 @@ function normalizeAnthropicCompatibleBaseUrl(baseUrl?: string | null): string | 
 }
 
 function getZaiProviderBaseUrl(type: string, baseUrl?: string | null): string {
-  const trimmed = String(baseUrl || '').trim()
-  if (trimmed) return trimmed
+  const normalizedBaseUrl = normalizeCompatibleBaseUrl(baseUrl)
+  if (normalizedBaseUrl) return normalizedBaseUrl
 
   switch (type) {
     case 'zai':

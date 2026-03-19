@@ -4,14 +4,23 @@ interface CompatibleModelsEndpointOptions {
   defaultOpenAI?: boolean
 }
 
+export function normalizeCompatibleBaseUrl(baseUrl?: string | null): string {
+  const trimmed = String(baseUrl || '').trim().replace(/\/+$/, '')
+  if (!trimmed) return ''
+  if (trimmed.endsWith('/chat/completions')) {
+    return trimmed.replace(/\/chat\/completions$/, '')
+  }
+  if (trimmed.endsWith('/models')) {
+    return trimmed.replace(/\/models$/, '')
+  }
+  return trimmed
+}
+
 export function buildCompatibleModelsEndpointCandidates(
   baseUrl?: string | null,
   { defaultOpenAI = false }: CompatibleModelsEndpointOptions = {}
 ): string[] {
-  const trimmed = String(baseUrl || '').trim().replace(/\/+$/, '')
-  const normalizedBase = trimmed.endsWith('/chat/completions')
-    ? trimmed.replace(/\/chat\/completions$/, '')
-    : trimmed
+  const normalizedBase = normalizeCompatibleBaseUrl(baseUrl)
   const candidates: string[] = []
 
   const pushUnique = (url: string) => {
@@ -57,26 +66,18 @@ export function buildPrimaryCompatibleModelsEndpoint(
 }
 
 export function buildCompatibleChatCompletionsEndpoint(baseUrl?: string | null): string | null {
-  const trimmed = String(baseUrl || '').trim().replace(/\/+$/, '')
-  if (!trimmed) return null
+  const normalizedBase = normalizeCompatibleBaseUrl(baseUrl)
+  if (!normalizedBase) return null
 
-  if (trimmed.endsWith('/chat/completions')) {
-    return trimmed
+  if (/\/api\/(?:coding\/)?paas\/v4$/i.test(normalizedBase)) {
+    return `${normalizedBase}/chat/completions`
   }
 
-  if (trimmed.endsWith('/models')) {
-    return trimmed.replace(/\/models$/, '/chat/completions')
+  if (normalizedBase.endsWith('/v1')) {
+    return `${normalizedBase}/chat/completions`
   }
 
-  if (/\/api\/(?:coding\/)?paas\/v4$/i.test(trimmed)) {
-    return `${trimmed}/chat/completions`
-  }
-
-  if (trimmed.endsWith('/v1')) {
-    return `${trimmed}/chat/completions`
-  }
-
-  return `${trimmed}/v1/chat/completions`
+  return `${normalizedBase}/v1/chat/completions`
 }
 
 export { DEFAULT_OPENAI_MODELS_ENDPOINT }

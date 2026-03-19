@@ -50,6 +50,13 @@ test('known local provider aliases remain available for local models.dev lookup'
   )
 })
 
+test('repointed local aliases do not reuse local metadata on public hosts', () => {
+  assert.deepEqual(
+    buildModelsDevLookupOptions('local', 'LM Studio', 'https://public.example.com/v1'),
+    { baseUrl: 'https://public.example.com/v1' }
+  )
+})
+
 test('native providers rely on provider type and base url, not editable display names', () => {
   assert.deepEqual(
     buildModelsDevLookupOptions('anthropic', 'Anthropic', 'https://api.anthropic.com'),

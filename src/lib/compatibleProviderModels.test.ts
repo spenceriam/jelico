@@ -5,6 +5,7 @@ import {
   buildCompatibleModelsEndpointCandidates,
   buildPrimaryCompatibleModelsEndpoint,
   DEFAULT_OPENAI_MODELS_ENDPOINT,
+  normalizeCompatibleBaseUrl,
 } from './compatibleProviderModels'
 
 test('z.ai hosted endpoints use the /models path without inserting /v1', () => {
@@ -57,5 +58,16 @@ test('compatible chat completion endpoints preserve explicit v1 bases', () => {
   assert.equal(
     buildCompatibleChatCompletionsEndpoint('https://example.com/v1'),
     'https://example.com/v1/chat/completions'
+  )
+})
+
+test('compatible base url normalization strips endpoint suffixes', () => {
+  assert.equal(
+    normalizeCompatibleBaseUrl('https://api.z.ai/api/paas/v4/chat/completions'),
+    'https://api.z.ai/api/paas/v4'
+  )
+  assert.equal(
+    normalizeCompatibleBaseUrl('https://example.com/v1/models'),
+    'https://example.com/v1'
   )
 })
