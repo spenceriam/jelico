@@ -227,6 +227,12 @@ export function ProviderConfigForm({
       ) {
         catalogRefreshRequestKeyRef.current = requestKey
         void (async () => {
+          const releaseCatalogWarmupRetry = () => {
+            if (catalogRefreshRequestKeyRef.current === requestKey) {
+              catalogRefreshRequestKeyRef.current = null
+            }
+          }
+
           try {
             await window.jelico.providers.refreshModelCatalog()
             const refreshedModels = await window.jelico.providers.previewModels(
@@ -239,6 +245,7 @@ export function ProviderConfigForm({
               latestModelRequestKeyRef.current !== requestKey ||
               refreshedModels.length === 0
             ) {
+              releaseCatalogWarmupRetry()
               return
             }
 
@@ -246,6 +253,7 @@ export function ProviderConfigForm({
             setModelsFetched(true)
             setModel((currentModel) => resolveFetchedModelSelection(currentModel, refreshedModels))
           } catch (error) {
+            releaseCatalogWarmupRetry()
             console.error(`Failed to refresh ${type} model capability labels:`, error)
           }
         })()

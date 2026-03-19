@@ -179,6 +179,7 @@ const PROVIDER_TYPES: ProviderOption[] = [
     summary: 'Hermes and Forge-powered reasoning APIs from Nous Research.',
     icon: 'N',
     defaultModel: '',
+    defaultBaseUrl: 'https://shadow.nousresearch.com/v1',
     defaultProviderName: 'Nous Research',
     apiKeyUrl: 'shadow.nousresearch.com',
     docsUrl: 'https://shadow-portal.nousresearch.com/api-docs',
