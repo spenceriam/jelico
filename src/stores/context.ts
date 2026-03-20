@@ -70,7 +70,7 @@ const KNOWN_CONTEXT_SIZES: Record<string, number> = {
   'glm-4.5': 128000,
   'glm-4.5-air': 128000,
   'glm-4.5-airx': 128000,
-  'glm-4.5-flash': 200000,
+  'glm-4.5-flash': 128000,
   'glm-4-plus': 128000,
   'glm-4-flash': 128000,
   'glm-4-long': 1000000,

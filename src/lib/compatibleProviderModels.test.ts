@@ -5,6 +5,7 @@ import {
   buildCompatibleModelsEndpointCandidates,
   buildPrimaryCompatibleModelsEndpoint,
   DEFAULT_OPENAI_MODELS_ENDPOINT,
+  getZaiProviderBaseUrl,
   normalizeCompatibleBaseUrl,
 } from './compatibleProviderModels'
 
@@ -51,6 +52,17 @@ test('compatible chat completion endpoints keep hosted Z.ai paths intact', () =>
   assert.equal(
     buildCompatibleChatCompletionsEndpoint('https://api.z.ai/api/coding/paas/v4'),
     'https://api.z.ai/api/coding/paas/v4/chat/completions'
+  )
+})
+
+test('z.ai provider base url helper preserves custom endpoints and hosted defaults', () => {
+  assert.equal(
+    getZaiProviderBaseUrl('zai', 'https://proxy.example.com/api/paas/v4/chat/completions'),
+    'https://proxy.example.com/api/paas/v4'
+  )
+  assert.equal(
+    getZaiProviderBaseUrl('zai-coding-china'),
+    'https://open.bigmodel.cn/api/coding/paas/v4'
   )
 })
 

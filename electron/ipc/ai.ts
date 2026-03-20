@@ -78,7 +78,7 @@ import {
 } from '../lib/turnToolSemantics'
 import { buildReasoningProviderOptions, sanitizeReasoningEffort } from '../../src/lib/reasoning'
 import { buildModelsDevLookupOptions } from '../lib/modelsDevLookupOptions'
-import { normalizeCompatibleBaseUrl } from '../../src/lib/compatibleProviderModels'
+import { getZaiProviderBaseUrl, normalizeCompatibleBaseUrl } from '../../src/lib/compatibleProviderModels'
 
 // Start orphan cleanup on module load
 startOrphanCleanup()
@@ -1145,24 +1145,6 @@ function normalizeAnthropicCompatibleBaseUrl(baseUrl?: string | null): string | 
   if (trimmed.endsWith('/messages')) return trimmed.replace(/\/messages$/, '')
   if (trimmed.endsWith('/v1')) return trimmed
   return `${trimmed}/v1`
-}
-
-function getZaiProviderBaseUrl(type: string, baseUrl?: string | null): string {
-  const normalizedBaseUrl = normalizeCompatibleBaseUrl(baseUrl, { stripModelsPath: true })
-  if (normalizedBaseUrl) return normalizedBaseUrl
-
-  switch (type) {
-    case 'zai':
-      return 'https://api.z.ai/api/paas/v4'
-    case 'zai-china':
-      return 'https://open.bigmodel.cn/api/paas/v4'
-    case 'zai-coding':
-      return 'https://api.z.ai/api/coding/paas/v4'
-    case 'zai-coding-china':
-      return 'https://open.bigmodel.cn/api/coding/paas/v4'
-    default:
-      return ''
-  }
 }
 
 async function resolveProviderMaxOutputTokens(providerConfig: any, modelId: string): Promise<number | undefined> {

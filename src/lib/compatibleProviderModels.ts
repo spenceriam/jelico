@@ -87,4 +87,22 @@ export function buildCompatibleChatCompletionsEndpoint(baseUrl?: string | null):
   return `${normalizedBase}/v1/chat/completions`
 }
 
+export function getZaiProviderBaseUrl(type: string, baseUrl?: string | null): string {
+  const normalizedBaseUrl = normalizeCompatibleBaseUrl(baseUrl, { stripModelsPath: true })
+  if (normalizedBaseUrl) return normalizedBaseUrl
+
+  switch (String(type || '').trim().toLowerCase()) {
+    case 'zai':
+      return 'https://api.z.ai/api/paas/v4'
+    case 'zai-china':
+      return 'https://open.bigmodel.cn/api/paas/v4'
+    case 'zai-coding':
+      return 'https://api.z.ai/api/coding/paas/v4'
+    case 'zai-coding-china':
+      return 'https://open.bigmodel.cn/api/coding/paas/v4'
+    default:
+      return ''
+  }
+}
+
 export { DEFAULT_OPENAI_MODELS_ENDPOINT }

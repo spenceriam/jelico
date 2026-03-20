@@ -37,6 +37,7 @@ import { normalizeToolSchemas, createToolCallRepair } from '../lib/tooling'
 import { getModeCapabilities, assertCapabilityMatrix } from '../lib/modeCapabilities'
 import { searchFileContents } from '../lib/contentSearch'
 import type { AgentMode } from '../lib/modes'
+import { getZaiProviderBaseUrl } from '../../src/lib/compatibleProviderModels'
 
 // Configuration
 const ORPHAN_CHECK_INTERVAL_MS = 60 * 1000 // Check for orphans every minute
@@ -740,22 +741,22 @@ function getProviderClient(providerConfig: any, apiKey: string | null) {
     case 'zai':
       return createOpenAI({
         apiKey: apiKey || '',
-        baseURL: 'https://api.z.ai/api/paas/v4',
+        baseURL: getZaiProviderBaseUrl(providerConfig.type, providerConfig.base_url),
       })
     case 'zai-china':
       return createOpenAI({
         apiKey: apiKey || '',
-        baseURL: 'https://open.bigmodel.cn/api/paas/v4',
+        baseURL: getZaiProviderBaseUrl(providerConfig.type, providerConfig.base_url),
       })
     case 'zai-coding':
       return createOpenAI({
         apiKey: apiKey || '',
-        baseURL: 'https://api.z.ai/api/coding/paas/v4',
+        baseURL: getZaiProviderBaseUrl(providerConfig.type, providerConfig.base_url),
       })
     case 'zai-coding-china':
       return createOpenAI({
         apiKey: apiKey || '',
-        baseURL: 'https://open.bigmodel.cn/api/coding/paas/v4',
+        baseURL: getZaiProviderBaseUrl(providerConfig.type, providerConfig.base_url),
       })
     case 'minimax':
       return createOpenAI({
