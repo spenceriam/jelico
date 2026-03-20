@@ -1,6 +1,12 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { getGoogleModelId, isSpecializedGoogleModel, selectPreferredGoogleModels, sortGoogleModels } from './googleModels'
+import {
+  getGoogleModelId,
+  getGoogleModelVariantId,
+  isSpecializedGoogleModel,
+  selectPreferredGoogleModels,
+  sortGoogleModels,
+} from './googleModels'
 
 test('google discovery prefers baseModelId over versioned resource names', () => {
   assert.equal(
@@ -10,6 +16,17 @@ test('google discovery prefers baseModelId over versioned resource names', () =>
       baseModelId: 'gemini-1.5-pro',
     }),
     'gemini-1.5-pro'
+  )
+})
+
+test('google variant ids preserve versioned resource names for selection', () => {
+  assert.equal(
+    getGoogleModelVariantId({
+      id: 'models/gemini-2.5-flash-preview-001',
+      name: 'models/gemini-2.5-flash-preview-001',
+      baseModelId: 'gemini-2.5-flash',
+    }),
+    'gemini-2.5-flash-preview-001'
   )
 })
 

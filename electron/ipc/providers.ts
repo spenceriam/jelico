@@ -22,7 +22,7 @@ import {
   buildPrimaryCompatibleModelsEndpoint,
   DEFAULT_OPENAI_MODELS_ENDPOINT,
 } from '../../src/lib/compatibleProviderModels'
-import { getGoogleModelId, selectPreferredGoogleModels, sortGoogleModels } from '../../src/lib/googleModels'
+import { getGoogleModelId, getGoogleModelVariantId, selectPreferredGoogleModels, sortGoogleModels } from '../../src/lib/googleModels'
 import { findZaiContextFallback, findZaiOutputFallback } from '../../src/lib/zaiModelLimits'
 import { buildModelsDevLookupOptions } from '../lib/modelsDevLookupOptions'
 
@@ -363,7 +363,7 @@ async function fetchGoogleModels(apiKey: string): Promise<Array<{ id: string; na
       })
     const models = selectPreferredGoogleModels(filteredModels)
       .map((m: any) => {
-        const id = getGoogleModelId(m)
+        const id = getGoogleModelVariantId(m)
         return {
           id,
           name: m.displayName || id,

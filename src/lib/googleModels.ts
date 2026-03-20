@@ -23,7 +23,7 @@ function trimGoogleModelId(value: unknown): string {
     .replace(/^models\//i, '')
 }
 
-function getGoogleModelVariantId(model: Partial<GoogleModelLike>): string {
+export function getGoogleModelVariantId(model: Partial<GoogleModelLike>): string {
   return trimGoogleModelId(model.id || model.name || model.baseModelId || '')
 }
 

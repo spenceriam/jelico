@@ -7,11 +7,11 @@ test('glm-5 and glm-4.7 families use the documented 200k Z.ai context window', (
   assert.equal(findZaiContextFallback('glm-4.7'), 200000)
   assert.equal(findZaiContextFallback('glm-4.7-flashx'), 200000)
   assert.equal(findZaiContextFallback('glm-4.6'), 200000)
-  assert.equal(findZaiContextFallback('glm-4.5-flash'), 200000)
 })
 
 test('glm-4.5 family and legacy 32b models keep their smaller fallback limits', () => {
   assert.equal(findZaiContextFallback('glm-4.5-airx'), 128000)
+  assert.equal(findZaiContextFallback('glm-4.5-flash'), 128000)
   assert.equal(findZaiContextFallback('glm-4-32b-0414-128k'), 128000)
   assert.equal(findZaiContextFallback('glm-4.6v'), 128000)
   assert.equal(findZaiContextFallback('glm-4.5v'), 64000)
