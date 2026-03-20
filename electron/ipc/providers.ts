@@ -924,15 +924,32 @@ export function registerProviderHandlers() {
         case 'zai-coding':
         case 'zai-coding-china': {
           const baseUrl = getProviderModelsBaseUrl(provider.type, provider.base_url) || null
-          const modelsProbe = await probeCompatibleModelsEndpoint(baseUrl, apiKey || null)
-          if (modelsProbe.ok || !provider.default_model?.trim()) {
-            return modelsProbe
+          const defaultModel = String(provider.default_model || '').trim()
+          if (!defaultModel) {
+            return { ok: false, message: 'Missing model name/id' } satisfies ProviderTestResult
+          }
+
+          const availableModels = await fetchCompatibleModels(apiKey || null, baseUrl || undefined)
+          if (availableModels.length > 0) {
+            const normalizedDefaultModel = defaultModel.toLowerCase()
+            const modelIsAvailable = availableModels.some(
+              (candidate) => candidate.id.trim().toLowerCase() === normalizedDefaultModel
+            )
+
+            if (modelIsAvailable) {
+              return { ok: true, message: 'Connection successful' } satisfies ProviderTestResult
+            }
+
+            return {
+              ok: false,
+              message: `Configured model "${defaultModel}" was not found in the provider catalog`,
+            } satisfies ProviderTestResult
           }
 
           return await probeCompatibleChatCompletionsEndpoint(
             baseUrl,
             apiKey || null,
-            provider.default_model
+            defaultModel
           )
         }
         default:

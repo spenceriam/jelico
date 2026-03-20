@@ -127,6 +127,22 @@ interface ProviderConfigFormProps {
   isLoading?: boolean
 }
 
+function resolvePreferredFetchedModelId(type: string, fetchedModels: ProviderModel[]): string {
+  if (fetchedModels.length === 0) return ''
+
+  const preferredFallbacks = FALLBACK_MODELS[type] || []
+  for (const preferredModel of preferredFallbacks) {
+    const match = fetchedModels.find(
+      (candidate) => candidate.id.trim().toLowerCase() === preferredModel.id.trim().toLowerCase()
+    )
+    if (match) {
+      return match.id
+    }
+  }
+
+  return fetchedModels[0].id
+}
+
 export function ProviderConfigForm({
   type,
   defaultModel,
@@ -169,8 +185,8 @@ export function ProviderConfigForm({
 
     return currentModel && fetchedModels.some((candidate) => candidate.id === currentModel)
       ? currentModel
-      : fetchedModels[0].id
-  }, [])
+      : resolvePreferredFetchedModelId(type, fetchedModels)
+  }, [type])
 
   // Function to fetch models from API
   const fetchModels = useCallback(async () => {
