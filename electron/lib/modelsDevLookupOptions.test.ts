@@ -2,20 +2,14 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import { buildModelsDevLookupOptions } from './modelsDevLookupOptions'
 
-test('compatible and custom providers keep provider names available for proxied models.dev lookup', () => {
+test('compatible and custom providers do not trust editable names for models.dev lookup', () => {
   assert.deepEqual(
     buildModelsDevLookupOptions('openai-compatible', 'Kimi For Coding', 'https://proxy.internal.example/v1'),
-    {
-      baseUrl: 'https://proxy.internal.example/v1',
-      providerName: 'Kimi For Coding',
-    }
+    { baseUrl: 'https://proxy.internal.example/v1' }
   )
   assert.deepEqual(
     buildModelsDevLookupOptions('custom', 'Known Host Alias', 'https://gateway.internal.example'),
-    {
-      baseUrl: 'https://gateway.internal.example',
-      providerName: 'Known Host Alias',
-    }
+    { baseUrl: 'https://gateway.internal.example' }
   )
 })
 

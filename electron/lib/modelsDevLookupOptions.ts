@@ -1,5 +1,4 @@
 const SAFE_LOCAL_PROVIDER_ALIASES = new Set(['lm studio', 'ollama'])
-const PROVIDER_NAME_LOOKUP_TYPES = new Set(['openai-compatible', 'anthropic-compatible', 'custom'])
 
 function isPrivateHost(hostname: string): boolean {
   if (hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '::1') {
@@ -48,13 +47,9 @@ export function buildModelsDevLookupOptions(providerType: string, providerName?:
     SAFE_LOCAL_PROVIDER_ALIASES.has(trimmedProviderName.toLowerCase()) &&
     isProxyLikeBaseUrl(trimmedBaseUrl)
 
-  const allowCompatibleProviderNameLookup =
-    PROVIDER_NAME_LOOKUP_TYPES.has(normalizedType) &&
-    isProxyLikeBaseUrl(trimmedBaseUrl)
-
   const allowProviderNameLookup =
     !!trimmedProviderName &&
-    (allowLocalProviderNameLookup || allowCompatibleProviderNameLookup)
+    allowLocalProviderNameLookup
 
   if (allowProviderNameLookup) {
     options.providerName = trimmedProviderName
