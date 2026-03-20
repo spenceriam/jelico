@@ -272,7 +272,10 @@ export function Settings({ onClose }: SettingsProps) {
                 providerName
               )
 
-              if (cancelled || editableModelsRequestKeyRef.current !== requestKey) return
+              if (cancelled || editableModelsRequestKeyRef.current !== requestKey) {
+                releaseCatalogWarmupRetry()
+                return
+              }
 
               const refreshedNormalized = (refreshedModels || [])
                 .map((model) => ({
