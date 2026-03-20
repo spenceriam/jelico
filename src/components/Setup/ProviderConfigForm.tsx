@@ -261,7 +261,6 @@ export function ProviderConfigForm({
               latestModelRequestKeyRef.current !== requestKey ||
               refreshedModels.length === 0
             ) {
-              releaseCatalogWarmupRetry()
               return
             }
 
@@ -269,8 +268,9 @@ export function ProviderConfigForm({
             setModelsFetched(true)
             setModel((currentModel) => resolveFetchedModelSelection(currentModel, refreshedModels))
           } catch (error) {
-            releaseCatalogWarmupRetry()
             console.error(`Failed to refresh ${type} model capability labels:`, error)
+          } finally {
+            releaseCatalogWarmupRetry()
           }
         })()
       }

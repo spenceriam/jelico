@@ -273,7 +273,6 @@ export function Settings({ onClose }: SettingsProps) {
               )
 
               if (cancelled || editableModelsRequestKeyRef.current !== requestKey) {
-                releaseCatalogWarmupRetry()
                 return
               }
 
@@ -286,15 +285,15 @@ export function Settings({ onClose }: SettingsProps) {
                 .filter((model) => model.id)
 
               if (refreshedNormalized.length === 0) {
-                releaseCatalogWarmupRetry()
                 return
               }
 
               setEditableModels(refreshedNormalized)
               setModelsFetched(refreshedNormalized.length > 0)
             } catch (error) {
-              releaseCatalogWarmupRetry()
               console.error('Failed to refresh provider model capability labels:', error)
+            } finally {
+              releaseCatalogWarmupRetry()
             }
           })()
         }

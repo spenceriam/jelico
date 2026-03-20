@@ -939,11 +939,6 @@ export function registerProviderHandlers() {
             if (modelIsAvailable) {
               return { ok: true, message: 'Connection successful' } satisfies ProviderTestResult
             }
-
-            return {
-              ok: false,
-              message: `Configured model "${defaultModel}" was not found in the provider catalog`,
-            } satisfies ProviderTestResult
           }
 
           return await probeCompatibleChatCompletionsEndpoint(
