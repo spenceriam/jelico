@@ -76,7 +76,7 @@ The Soul/Memory system should make Jelico increasingly personalized - it learns 
 ## Project overview
 Jelico is an AI Productivity Desktop built with Electron, React, TypeScript, and Vite. It provides a frictionless AI assistant experience with multi-provider support (Anthropic, OpenAI, Google), workspace management, conversation persistence, and a soul/memory system that learns user patterns and preferences over time.
 
-**Current Version:** 0.39.1 (working branch version; not yet a public release)
+**Current Version:** 0.39.2 (working branch version; not yet a public release)
 
 **License:** GNU General Public License v3.0 (GPL-3.0-or-later)
 - See LICENSE file in project root
@@ -686,7 +686,7 @@ todo_write({ tasks: [
 - **Phase 1-7 Complete**: Core functionality, UI, artifacts, memory, soul system
 - **Phase 8 Complete**: Onboarding flow, backup/restore, versioning
 - **Current Focus**: Testing, polish, user feedback integration, runtime validation, stronger provider/model consistency, release hardening across skills/memory/backup flows, updater/restart behavior, conversation state recovery, and prompt/menu layering regressions.
-- **Next Planned Release (0.39.1)**: Patch release planned on top of `0.39.0` to keep the composer beneath workspace and selector menus so new-chat and existing-chat prompt surfaces share the same safe stacking behavior.
+- **Next Planned Release (0.39.2)**: Patch release planned on top of `0.39.1` to harden hosted provider discovery, DashScope regional setup, and uncommon-provider validation.
 - **Latest Public Release (0.39.0)**: Minor release focused on first-class skills, contextual soul/memory learning, and GitHub-backed backup/restore coverage for local Jelico data.
 - **Public Release History**:
   - `0.39.0` - Added first-class skills, contextual soul and memory learning, and GitHub-backed backup and restore coverage for local Jelico data.

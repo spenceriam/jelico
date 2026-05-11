@@ -72,6 +72,9 @@ import {
   type IncompleteToolStart,
 } from '../lib/turnToolSemantics'
 import { buildReasoningProviderOptions, sanitizeReasoningEffort } from '../../src/lib/reasoning'
+import { getZaiProviderBaseUrl } from '../../src/lib/compatibleProviderModels'
+import { validateDashScopeProviderConfig } from '../../src/lib/dashscopeProvider'
+import { findZaiOutputFallback } from '../../src/lib/zaiModelLimits'
 
 // Start orphan cleanup on module load
 startOrphanCleanup()
@@ -1157,6 +1160,13 @@ async function resolveProviderMaxOutputTokens(providerConfig: any, modelId: stri
     console.warn('[AI] Failed to resolve models.dev output token limit:', error)
   }
 
+  if (['zai', 'zai-china', 'zai-coding', 'zai-coding-china'].includes(providerConfig.type)) {
+    const zaiLimit = findZaiOutputFallback(normalizedModel)
+    if (zaiLimit && Number.isFinite(zaiLimit) && zaiLimit > 0) {
+      return Math.round(zaiLimit)
+    }
+  }
+
   return undefined
 }
 
@@ -1193,24 +1203,12 @@ function getProviderInstance(providerConfig: any, apiKey: string) {
 
     // Z.ai providers
     case 'zai':
-      return createOpenAI({
-        apiKey,
-        baseURL: 'https://api.z.ai/api/paas/v4',
-      })
     case 'zai-china':
-      return createOpenAI({
-        apiKey,
-        baseURL: 'https://open.bigmodel.cn/api/paas/v4',
-      })
     case 'zai-coding':
-      return createOpenAI({
-        apiKey,
-        baseURL: 'https://api.z.ai/api/coding/paas/v4',
-      })
     case 'zai-coding-china':
       return createOpenAI({
         apiKey,
-        baseURL: 'https://open.bigmodel.cn/api/coding/paas/v4',
+        baseURL: getZaiProviderBaseUrl(providerConfig.type, providerConfig.base_url),
       })
     case 'minimax':
       return createOpenAI({
@@ -1243,7 +1241,17 @@ function getProviderInstance(providerConfig: any, apiKey: string) {
   }
 }
 
-function isModelProviderMismatch(providerType: string, modelId: string): string | null {
+function isModelProviderMismatch(providerConfig: any, modelId: string): string | null {
+  const dashScopeMessage = validateDashScopeProviderConfig({
+    providerType: providerConfig.type,
+    baseUrl: providerConfig.base_url,
+    modelId,
+  })
+  if (dashScopeMessage) {
+    return dashScopeMessage
+  }
+
+  const providerType = String(providerConfig.type || '')
   const normalized = String(modelId || '').toLowerCase()
   if (providerType === 'openai-compatible' && normalized.includes('highspeed')) {
     return 'Model appears to require Anthropic-compatible provider type (highspeed model on OpenAI-compatible provider).'
@@ -3893,7 +3901,7 @@ export function registerAIHandlers() {
       }
 
       const modelId = params.model || providerConfig.default_model
-      const providerModelMismatch = isModelProviderMismatch(providerConfig.type, modelId)
+      const providerModelMismatch = isModelProviderMismatch(providerConfig, modelId)
       if (providerModelMismatch) {
         event.sender.send(`ai:error:${channelId}`, providerModelMismatch)
         return
@@ -5214,7 +5222,7 @@ If you find yourself frequently hitting limits, suggest breaking the task into m
       }
 
       const provider = getProviderInstance(providerConfig, apiKey || '')
-      const providerModelMismatch = isModelProviderMismatch(providerConfig.type, params.model)
+      const providerModelMismatch = isModelProviderMismatch(providerConfig, params.model)
       if (providerModelMismatch) {
         return { success: false, error: providerModelMismatch }
       }

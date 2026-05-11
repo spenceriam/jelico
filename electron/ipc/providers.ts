@@ -14,14 +14,30 @@ import {
   lookupModelsDevOutputLimit,
   refreshModelCatalog,
 } from '../services/modelCatalog'
+import {
+  buildCompatibleChatCompletionsEndpoint,
+  buildCompatibleModelsEndpointCandidates,
+  buildPrimaryCompatibleModelsEndpoint,
+  DEFAULT_OPENAI_MODELS_ENDPOINT,
+  getZaiProviderBaseUrl,
+} from '../../src/lib/compatibleProviderModels'
+import {
+  getGoogleModelId,
+  getGoogleModelVariantId,
+  isSpecializedGoogleModel,
+  mergeDocumentedGeminiModels,
+  selectPreferredGoogleModels,
+  sortGoogleModels,
+  supportsGoogleGenerateContent,
+} from '../../src/lib/googleModels'
+import { isDashScopeCompatibleProvider, validateDashScopeProviderConfig } from '../../src/lib/dashscopeProvider'
+import { findZaiContextFallback, findZaiOutputFallback } from '../../src/lib/zaiModelLimits'
+
+const GOOGLE_GENERATIVE_LANGUAGE_API_BASE_URL = 'https://generativelanguage.googleapis.com/v1beta'
 
 // Build models endpoint URL from base URL
 function buildModelsEndpoint(baseUrl?: string | null): string {
-  const trimmed = (baseUrl || '').replace(/\/+$/, '')
-  if (!trimmed) return 'https://api.openai.com/v1/models'
-  if (trimmed.endsWith('/models')) return trimmed
-  if (trimmed.endsWith('/v1')) return `${trimmed}/models`
-  return `${trimmed}/v1/models`
+  return buildPrimaryCompatibleModelsEndpoint(baseUrl, { defaultOpenAI: true }) || DEFAULT_OPENAI_MODELS_ENDPOINT
 }
 
 const MINIMAX_COMPAT_MODELS: Array<{ id: string; name: string }> = [
@@ -46,23 +62,7 @@ function normalizeAnthropicCompatibleBaseUrl(baseUrl?: string | null): string | 
 }
 
 function buildCompatibleModelsEndpoints(baseUrl?: string | null): string[] {
-  const primary = buildModelsEndpoint(baseUrl)
-  const endpoints = [primary]
-
-  const trimmed = (baseUrl || '').replace(/\/+$/, '')
-  if (trimmed.endsWith('/anthropic') || trimmed.endsWith('/anthropic/v1')) {
-    try {
-      const parsed = new URL(trimmed)
-      const fallback = `${parsed.origin}/v1/models`
-      if (!endpoints.includes(fallback)) {
-        endpoints.push(fallback)
-      }
-    } catch {
-      // Ignore malformed base URL and keep primary endpoint only.
-    }
-  }
-
-  return endpoints
+  return buildCompatibleModelsEndpointCandidates(baseUrl)
 }
 
 // Extract context size from model metadata
@@ -269,40 +269,107 @@ async function fetchOpenAIModels(apiKey: string, baseUrl?: string): Promise<Arra
   }
 }
 
-// Fetch models from Google Gemini API
-async function fetchGoogleModels(apiKey: string): Promise<Array<{ id: string; name: string }>> {
-  try {
-    const response = await fetch(`https://generativelanguage.googleapis.com/v1/models?key=${apiKey}`)
+function normalizeGoogleModelName(modelId: string): string {
+  const trimmed = String(modelId || '').trim()
+  if (!trimmed) return 'models'
+  return trimmed.startsWith('models/') ? trimmed : `models/${trimmed}`
+}
 
+function buildGoogleModelsListUrl(apiKey: string, pageToken?: string | null): string {
+  const url = new URL(`${GOOGLE_GENERATIVE_LANGUAGE_API_BASE_URL}/models`)
+  url.searchParams.set('key', apiKey)
+  url.searchParams.set('pageSize', '1000')
+  if (pageToken) {
+    url.searchParams.set('pageToken', pageToken)
+  }
+  return url.toString()
+}
+
+function buildGoogleModelUrl(modelId: string, apiKey: string): string {
+  const url = new URL(`${GOOGLE_GENERATIVE_LANGUAGE_API_BASE_URL}/${normalizeGoogleModelName(modelId)}`)
+  url.searchParams.set('key', apiKey)
+  return url.toString()
+}
+
+async function fetchAllGoogleModels(apiKey: string): Promise<any[]> {
+  const allModels: any[] = []
+  const seenModelResources = new Set<string>()
+  const seenPageTokens = new Set<string>()
+  let nextPageToken: string | null = null
+
+  do {
+    const response = await fetch(buildGoogleModelsListUrl(apiKey, nextPageToken))
     if (!response.ok) {
-      console.error('Google API error:', response.status)
-      return FALLBACK_MODELS.google
+      throw new Error(`Google API error: ${response.status}`)
     }
 
     const data = await response.json()
+    const pageModels = Array.isArray(data?.models) ? data.models : []
+    for (const model of pageModels) {
+      const modelResource = String(model?.name || model?.id || '').trim()
+      if (!modelResource || seenModelResources.has(modelResource)) continue
+      seenModelResources.add(modelResource)
+      allModels.push(model)
+    }
 
-    // Filter to generative models
-    const models = (data.models || [])
+    const candidateToken = typeof data?.nextPageToken === 'string' ? data.nextPageToken : ''
+    if (!candidateToken || seenPageTokens.has(candidateToken)) {
+      nextPageToken = null
+    } else {
+      seenPageTokens.add(candidateToken)
+      nextPageToken = candidateToken
+    }
+  } while (nextPageToken)
+
+  return allModels
+}
+
+async function fetchGoogleModelMetadata(apiKey: string, modelId: string): Promise<any | null> {
+  const trimmedModelId = String(modelId || '').trim()
+  if (!trimmedModelId) return null
+
+  const directResponse = await fetch(buildGoogleModelUrl(trimmedModelId, apiKey))
+  if (directResponse.ok) {
+    const directData = await directResponse.json()
+    if (directData?.inputTokenLimit || directData?.outputTokenLimit) {
+      return directData
+    }
+  }
+
+  const normalizedTarget = trimmedModelId.replace(/^models\//i, '').toLowerCase()
+  const candidates = (await fetchAllGoogleModels(apiKey)).filter((entry: any) => {
+    const resourceId = String(entry?.name || entry?.id || '').replace(/^models\//i, '').toLowerCase()
+    const baseModelId = getGoogleModelId(entry).toLowerCase()
+    return resourceId === normalizedTarget || baseModelId === normalizedTarget
+  })
+
+  return selectPreferredGoogleModels(candidates)[0] || null
+}
+
+// Fetch models from Google Gemini API
+async function fetchGoogleModels(apiKey: string): Promise<Array<{ id: string; name: string }>> {
+  try {
+    const models = selectPreferredGoogleModels(
+      (await fetchAllGoogleModels(apiKey))
       .filter((m: any) => {
-        const name = m.name || ''
-        // Include gemini models that support generateContent
-        return name.includes('gemini') &&
-               m.supportedGenerationMethods?.includes('generateContent')
+        const modelId = getGoogleModelId(m).toLowerCase()
+        return modelId.includes('gemini') &&
+          supportsGoogleGenerateContent(m) &&
+          !isSpecializedGoogleModel(m)
       })
+    )
       .map((m: any) => {
-        // Extract model ID from name (e.g., "models/gemini-1.5-pro" -> "gemini-1.5-pro")
-        const id = m.name.replace('models/', '')
+        const id = getGoogleModelVariantId(m)
         return {
           id,
           name: m.displayName || id,
         }
-      })
-      .sort((a: any, b: any) => a.name.localeCompare(b.name))
+      }) as Array<{ id: string; name: string }>
 
-    return models.length > 0 ? models : FALLBACK_MODELS.google
+    return mergeDocumentedGeminiModels(sortGoogleModels(models))
   } catch (err) {
     console.error('Failed to fetch Google models:', err)
-    return FALLBACK_MODELS.google
+    return mergeDocumentedGeminiModels(FALLBACK_MODELS.google)
   }
 }
 
@@ -505,6 +572,62 @@ async function probeCompatibleModelsEndpoint(
   return lastFailure || { ok: false, message: 'Connection test failed' }
 }
 
+async function probeCompatibleChatCompletionsEndpoint(
+  baseUrl: string | null,
+  apiKey: string | null,
+  modelId: string
+): Promise<ProviderTestResult> {
+  const endpoint = buildCompatibleChatCompletionsEndpoint(baseUrl)
+  if (!endpoint) {
+    return { ok: false, message: 'Missing provider endpoint URL' }
+  }
+
+  let lastFailure: ProviderTestResult | null = null
+  for (const authHeaders of getCompatibleAuthHeaderCandidates(apiKey)) {
+    try {
+      const response = await fetch(endpoint, {
+        method: 'POST',
+        headers: {
+          Accept: 'application/json',
+          'Content-Type': 'application/json',
+          ...authHeaders,
+        },
+        body: JSON.stringify({
+          model: modelId,
+          messages: [{ role: 'user', content: 'ping' }],
+          max_tokens: 4,
+          stream: false,
+        }),
+      })
+
+      if (response.ok) {
+        return { ok: true, message: 'Connection successful' }
+      }
+
+      let payload: unknown = null
+      try {
+        const contentType = response.headers.get('content-type') || ''
+        payload = contentType.includes('application/json') ? await response.json() : await response.text()
+      } catch {
+        payload = null
+      }
+
+      lastFailure = {
+        ok: false,
+        status: response.status,
+        message: extractProviderErrorMessage(response.status, payload),
+      }
+    } catch (error: any) {
+      lastFailure = {
+        ok: false,
+        message: error?.message || 'Network error',
+      }
+    }
+  }
+
+  return lastFailure || { ok: false, message: 'Connection test failed' }
+}
+
 async function probeMiniMaxAnthropicMessageEndpoint(
   baseUrl: string | null,
   apiKey: string,
@@ -645,6 +768,15 @@ export function registerProviderHandlers() {
       return { ok: false, message: 'Provider not found' } satisfies ProviderTestResult
     }
 
+    const providerConfigMessage = validateDashScopeProviderConfig({
+      providerType: provider.type,
+      baseUrl: provider.base_url,
+      modelId: provider.default_model,
+    })
+    if (providerConfigMessage) {
+      return { ok: false, message: providerConfigMessage } satisfies ProviderTestResult
+    }
+
     const normalizedModel = String(provider.default_model || '').toLowerCase()
     if (
       provider.type === 'openai-compatible' &&
@@ -680,7 +812,7 @@ export function registerProviderHandlers() {
           })
         }
         case 'google': {
-          return await probeProviderEndpoint(`https://generativelanguage.googleapis.com/v1/models?key=${apiKey}`)
+          return await probeProviderEndpoint(buildGoogleModelsListUrl(apiKey!))
         }
         case 'openrouter': {
           return await probeProviderEndpoint('https://openrouter.ai/api/v1/models', {
@@ -699,7 +831,17 @@ export function registerProviderHandlers() {
           if (!provider.default_model?.trim()) {
             return { ok: false, message: 'Missing model name/id' } satisfies ProviderTestResult
           }
-          return await probeCompatibleModelsEndpoint(provider.base_url, apiKey || null)
+
+          const modelsResult = await probeCompatibleModelsEndpoint(provider.base_url, apiKey || null)
+          if (modelsResult.ok || !isDashScopeCompatibleProvider(provider.base_url)) {
+            return modelsResult
+          }
+
+          return await probeCompatibleChatCompletionsEndpoint(
+            provider.base_url,
+            apiKey || null,
+            provider.default_model
+          )
         }
         case 'anthropic-compatible':
         case 'minimax': {
@@ -722,11 +864,29 @@ export function registerProviderHandlers() {
         case 'zai':
         case 'zai-china':
         case 'zai-coding':
-        case 'zai-coding-china':
-          return {
-            ok: !!apiKey,
-            message: apiKey ? 'API key configured' : 'Missing API key',
-          } satisfies ProviderTestResult
+        case 'zai-coding-china': {
+          if (!provider.default_model?.trim()) {
+            return { ok: false, message: 'Missing model name/id' } satisfies ProviderTestResult
+          }
+
+          const baseUrl = getZaiProviderBaseUrl(provider.type, provider.base_url) || null
+          const availableModels = await fetchCompatibleModels(apiKey || null, baseUrl || undefined)
+          if (availableModels.length > 0) {
+            const modelIsAvailable = availableModels.some(
+              (candidate) => candidate.id.trim().toLowerCase() === provider.default_model.trim().toLowerCase()
+            )
+
+            if (modelIsAvailable) {
+              return { ok: true, message: 'Connection successful' } satisfies ProviderTestResult
+            }
+          }
+
+          return await probeCompatibleChatCompletionsEndpoint(
+            baseUrl,
+            apiKey || null,
+            provider.default_model
+          )
+        }
         default:
           return {
             ok: !!apiKey,
@@ -770,7 +930,7 @@ export function registerProviderHandlers() {
         if (apiKey) {
           return await fetchGoogleModels(apiKey)
         }
-        return []
+        return mergeDocumentedGeminiModels([])
 
       case 'ollama':
         try {
@@ -788,6 +948,12 @@ export function registerProviderHandlers() {
       case 'openrouter':
         // OpenRouter still uses the dedicated handler with API key
         return []
+
+      case 'zai':
+      case 'zai-china':
+      case 'zai-coding':
+      case 'zai-coding-china':
+        return await fetchCompatibleModels(apiKey, getZaiProviderBaseUrl(type, baseUrl))
 
       case 'openai-compatible':
       case 'anthropic-compatible':
@@ -844,7 +1010,13 @@ export function registerProviderHandlers() {
 
       case 'google':
         if (apiKey) return await fetchGoogleModels(apiKey)
-        return []
+        return mergeDocumentedGeminiModels([])
+
+      case 'zai':
+      case 'zai-china':
+      case 'zai-coding':
+      case 'zai-coding-china':
+        return await fetchCompatibleModels(apiKey || null, getZaiProviderBaseUrl(type, baseUrl))
 
       case 'openrouter':
         if (apiKey) {
@@ -938,11 +1110,8 @@ export function registerProviderHandlers() {
 
         case 'google': {
           if ((!contextWindow || !maxOutputTokens) && apiKey) {
-            const response = await fetch(
-              `https://generativelanguage.googleapis.com/v1/models/${modelId}?key=${apiKey}`
-            )
-            if (response.ok) {
-              const data = await response.json()
+            const data = await fetchGoogleModelMetadata(apiKey, modelId)
+            if (data) {
               contextWindow = contextWindow || Number(data.inputTokenLimit) || null
               maxOutputTokens = maxOutputTokens || Number(data.outputTokenLimit) || null
             }
@@ -983,6 +1152,26 @@ export function registerProviderHandlers() {
               const match = params.match(/num_ctx\s+(\d+)/)
               contextWindow = match ? parseInt(match[1], 10) : Number(data.model_info?.context_length) || null
             }
+          }
+          break
+        }
+
+        case 'zai':
+        case 'zai-china':
+        case 'zai-coding':
+        case 'zai-coding-china': {
+          const resolvedBaseUrl = getZaiProviderBaseUrl(provider.type, baseUrl)
+          if (!contextWindow) {
+            contextWindow = await resolveContextSizeFromModelsEndpoint(modelId, resolvedBaseUrl, apiKey)
+          }
+          if (!contextWindow) {
+            contextWindow = findZaiContextFallback(modelId)
+          }
+          if (!maxOutputTokens) {
+            maxOutputTokens = await resolveOutputSizeFromModelsEndpoint(modelId, resolvedBaseUrl, apiKey)
+          }
+          if (!maxOutputTokens) {
+            maxOutputTokens = findZaiOutputFallback(modelId)
           }
           break
         }
@@ -1054,11 +1243,8 @@ export function registerProviderHandlers() {
 
         case 'google': {
           if (!apiKey) return null
-          const response = await fetch(
-            `https://generativelanguage.googleapis.com/v1/models/${modelId}?key=${apiKey}`
-          )
-          if (!response.ok) return null
-          const data = await response.json()
+          const data = await fetchGoogleModelMetadata(apiKey, modelId)
+          if (!data) return null
           // Google returns inputTokenLimit
           return data.inputTokenLimit || null
         }
@@ -1096,8 +1282,13 @@ export function registerProviderHandlers() {
         case 'zai-china':
         case 'zai-coding':
         case 'zai-coding-china': {
-          // Z.ai models - use known values
-          return 128000
+          const resolved = await resolveContextSizeFromModelsEndpoint(
+            modelId,
+            getZaiProviderBaseUrl(provider.type, baseUrl),
+            apiKey
+          )
+          if (resolved) return resolved
+          return findZaiContextFallback(modelId) || 128000
         }
 
         case 'openai-compatible':

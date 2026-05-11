@@ -12,6 +12,7 @@ import { createOpenAI } from '@ai-sdk/openai'
 import { createAnthropic } from '@ai-sdk/anthropic'
 import { providerDb } from './database'
 import { keychainService } from './keychain'
+import { getZaiProviderBaseUrl } from '../../src/lib/compatibleProviderModels'
 
 // Compaction thresholds
 export const COMPACTION_THRESHOLDS = {
@@ -250,6 +251,11 @@ async function generateSummary(
       baseURL: providerConfig.base_url || 'https://openrouter.ai/api/v1',
     })
     // Could use a cheaper model here
+  } else if (['zai', 'zai-china', 'zai-coding', 'zai-coding-china'].includes(providerConfig.type)) {
+    provider = createOpenAI({
+      apiKey: apiKey!,
+      baseURL: getZaiProviderBaseUrl(providerConfig.type, providerConfig.base_url),
+    })
   } else {
     provider = createOpenAI({
       apiKey: apiKey || 'local',

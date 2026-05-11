@@ -37,6 +37,9 @@ import { normalizeToolSchemas, createToolCallRepair } from '../lib/tooling'
 import { getModeCapabilities, assertCapabilityMatrix } from '../lib/modeCapabilities'
 import { searchFileContents } from '../lib/contentSearch'
 import type { AgentMode } from '../lib/modes'
+import { getZaiProviderBaseUrl } from '../../src/lib/compatibleProviderModels'
+import { validateDashScopeProviderConfig } from '../../src/lib/dashscopeProvider'
+import { findZaiOutputFallback } from '../../src/lib/zaiModelLimits'
 
 // Configuration
 const ORPHAN_CHECK_INTERVAL_MS = 60 * 1000 // Check for orphans every minute
@@ -738,24 +741,12 @@ function getProviderClient(providerConfig: any, apiKey: string | null) {
 
     // Z.ai providers (OpenAI-compatible)
     case 'zai':
-      return createOpenAI({
-        apiKey: apiKey || '',
-        baseURL: 'https://api.z.ai/api/paas/v4',
-      })
     case 'zai-china':
-      return createOpenAI({
-        apiKey: apiKey || '',
-        baseURL: 'https://open.bigmodel.cn/api/paas/v4',
-      })
     case 'zai-coding':
-      return createOpenAI({
-        apiKey: apiKey || '',
-        baseURL: 'https://api.z.ai/api/coding/paas/v4',
-      })
     case 'zai-coding-china':
       return createOpenAI({
         apiKey: apiKey || '',
-        baseURL: 'https://open.bigmodel.cn/api/coding/paas/v4',
+        baseURL: getZaiProviderBaseUrl(providerConfig.type, providerConfig.base_url),
       })
     case 'minimax':
       return createOpenAI({
@@ -808,6 +799,13 @@ async function resolveProviderMaxOutputTokens(providerConfig: any, modelId: stri
     }
   } catch (error) {
     console.warn('[SubAgents] Failed to resolve models.dev output token limit:', error)
+  }
+
+  if (['zai', 'zai-china', 'zai-coding', 'zai-coding-china'].includes(providerConfig.type)) {
+    const zaiLimit = findZaiOutputFallback(normalizedModel)
+    if (zaiLimit && Number.isFinite(zaiLimit) && zaiLimit > 0) {
+      return Math.round(zaiLimit)
+    }
   }
 
   return undefined
@@ -1445,6 +1443,15 @@ async function runSubAgent(agentId: string): Promise<void> {
   if (!providerConfig) {
     console.error(`[SubAgents] Provider not found: ${agent.providerId}`)
     throw new Error(`Provider not found: ${agent.providerId}`)
+  }
+
+  const providerConfigMessage = validateDashScopeProviderConfig({
+    providerType: providerConfig.type,
+    baseUrl: providerConfig.base_url,
+    modelId: agent.model,
+  })
+  if (providerConfigMessage) {
+    throw new Error(providerConfigMessage)
   }
 
   const apiKey = await keychainService.getApiKey(agent.providerId)
