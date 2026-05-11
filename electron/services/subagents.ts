@@ -37,6 +37,8 @@ import { normalizeToolSchemas, createToolCallRepair } from '../lib/tooling'
 import { getModeCapabilities, assertCapabilityMatrix } from '../lib/modeCapabilities'
 import { searchFileContents } from '../lib/contentSearch'
 import type { AgentMode } from '../lib/modes'
+import { validateDashScopeProviderConfig } from '../../src/lib/dashscopeProvider'
+import { findZaiOutputFallback } from '../../src/lib/zaiModelLimits'
 
 // Configuration
 const ORPHAN_CHECK_INTERVAL_MS = 60 * 1000 // Check for orphans every minute
@@ -810,6 +812,13 @@ async function resolveProviderMaxOutputTokens(providerConfig: any, modelId: stri
     console.warn('[SubAgents] Failed to resolve models.dev output token limit:', error)
   }
 
+  if (['zai', 'zai-china', 'zai-coding', 'zai-coding-china'].includes(providerConfig.type)) {
+    const zaiLimit = findZaiOutputFallback(normalizedModel)
+    if (zaiLimit && Number.isFinite(zaiLimit) && zaiLimit > 0) {
+      return Math.round(zaiLimit)
+    }
+  }
+
   return undefined
 }
 
@@ -1445,6 +1454,15 @@ async function runSubAgent(agentId: string): Promise<void> {
   if (!providerConfig) {
     console.error(`[SubAgents] Provider not found: ${agent.providerId}`)
     throw new Error(`Provider not found: ${agent.providerId}`)
+  }
+
+  const providerConfigMessage = validateDashScopeProviderConfig({
+    providerType: providerConfig.type,
+    baseUrl: providerConfig.base_url,
+    modelId: agent.model,
+  })
+  if (providerConfigMessage) {
+    throw new Error(providerConfigMessage)
   }
 
   const apiKey = await keychainService.getApiKey(agent.providerId)

@@ -1,6 +1,16 @@
 import { useState, useEffect, useMemo, useCallback } from 'react'
 import { Eye, EyeOff, Search, Loader2, RefreshCw } from 'lucide-react'
 import { getSupportedReasoningEfforts, REASONING_EFFORT_LABELS, type ReasoningEffort } from '../../lib/reasoning'
+import { buildCompatibleModelsEndpointCandidates, getZaiProviderBaseUrl } from '../../lib/compatibleProviderModels'
+import {
+  getGoogleModelId,
+  getGoogleModelVariantId,
+  isSpecializedGoogleModel,
+  mergeDocumentedGeminiModels,
+  selectPreferredGoogleModels,
+  sortGoogleModels,
+  supportsGoogleGenerateContent,
+} from '../../lib/googleModels'
 
 const API_KEY_URLS: Record<string, string> = {
   anthropic: 'console.anthropic.com',
@@ -22,13 +32,15 @@ const API_KEY_URLS: Record<string, string> = {
 const FALLBACK_MODELS: Record<string, Array<{ id: string; name: string }>> = {
   anthropic: [],
   openai: [],
-  google: [],
+  google: mergeDocumentedGeminiModels([]),
   openrouter: [],
   ollama: [],
   custom: [],
   // Z.ai models - verified from z.ai/mastra.ai docs
   zai: [
+    { id: 'glm-5', name: 'GLM-5' },
     { id: 'glm-4.7', name: 'GLM-4.7 (Flagship)' },
+    { id: 'glm-4.7-flashx', name: 'GLM-4.7 FlashX' },
     { id: 'glm-4.7-flash', name: 'GLM-4.7 Flash' },
     { id: 'glm-4.6', name: 'GLM-4.6 (205K)' },
     { id: 'glm-4.6v', name: 'GLM-4.6v (Vision)' },
@@ -37,7 +49,9 @@ const FALLBACK_MODELS: Record<string, Array<{ id: string; name: string }>> = {
     { id: 'glm-4.5-flash', name: 'GLM-4.5 Flash (Free)' },
   ],
   'zai-china': [
+    { id: 'glm-5', name: 'GLM-5' },
     { id: 'glm-4.7', name: 'GLM-4.7 (Flagship)' },
+    { id: 'glm-4.7-flashx', name: 'GLM-4.7 FlashX' },
     { id: 'glm-4.7-flash', name: 'GLM-4.7 Flash' },
     { id: 'glm-4.6', name: 'GLM-4.6 (205K)' },
     { id: 'glm-4.6v', name: 'GLM-4.6v (Vision)' },
@@ -46,6 +60,7 @@ const FALLBACK_MODELS: Record<string, Array<{ id: string; name: string }>> = {
     { id: 'glm-4.5-flash', name: 'GLM-4.5 Flash (Free)' },
   ],
   'zai-coding': [
+    { id: 'glm-5', name: 'GLM-5' },
     { id: 'glm-4.7', name: 'GLM-4.7 (Flagship)' },
     { id: 'glm-4.6', name: 'GLM-4.6 (205K)' },
     { id: 'glm-4.5', name: 'GLM-4.5 (131K)' },
@@ -53,6 +68,7 @@ const FALLBACK_MODELS: Record<string, Array<{ id: string; name: string }>> = {
     { id: 'glm-4.5-flash', name: 'GLM-4.5 Flash' },
   ],
   'zai-coding-china': [
+    { id: 'glm-5', name: 'GLM-5' },
     { id: 'glm-4.7', name: 'GLM-4.7 (Flagship)' },
     { id: 'glm-4.6', name: 'GLM-4.6 (205K)' },
     { id: 'glm-4.5', name: 'GLM-4.5 (131K)' },
@@ -73,6 +89,10 @@ const DYNAMIC_MODEL_PROVIDERS = [
   'google',
   'openrouter',
   'ollama',
+  'zai',
+  'zai-china',
+  'zai-coding',
+  'zai-coding-china',
   'minimax',
   'openai-compatible',
   'anthropic-compatible',
@@ -132,6 +152,17 @@ export function ProviderConfigForm({
   const needsApiKey = type !== 'ollama' && type !== 'local'
   const needsBaseUrl = ['ollama', 'custom', 'openai-compatible', 'anthropic-compatible', 'local'].includes(type)
   const modelIsOptional = ['openai-compatible', 'anthropic-compatible', 'custom', 'local', 'minimax'].includes(type)
+  const allowsManualModelEntry = [
+    'openai-compatible',
+    'anthropic-compatible',
+    'custom',
+    'local',
+    'minimax',
+    'zai',
+    'zai-china',
+    'zai-coding',
+    'zai-coding-china',
+  ].includes(type)
   const isDynamic = DYNAMIC_MODEL_PROVIDERS.includes(type)
   const apiKeyUrl = apiKeyUrlOverride || API_KEY_URLS[type]
 
@@ -389,6 +420,19 @@ export function ProviderConfigForm({
             {models.length} models loaded from API
           </p>
         )}
+
+        {allowsManualModelEntry && models.length > 0 && (
+          <div className="mt-3">
+            <label className="label">Model ID</label>
+            <input
+              type="text"
+              value={model}
+              onChange={(e) => setModel(e.target.value)}
+              className="input input-mono"
+              placeholder="Enter model ID..."
+            />
+          </div>
+        )}
       </div>
 
       {supportedReasoningEfforts.length > 0 && (
@@ -473,30 +517,19 @@ async function fetchModelsWithKey(
       }
 
       case 'minimax':
+      case 'zai':
+      case 'zai-china':
+      case 'zai-coding':
+      case 'zai-coding-china':
       case 'openai-compatible':
       case 'anthropic-compatible':
       case 'custom':
       case 'local': {
-        return await fetchOpenAICompatibleModels(apiKey, baseUrl, type)
+        return await fetchOpenAICompatibleModels(apiKey, getCompatibleProviderBaseUrl(type, baseUrl), type)
       }
 
       case 'google': {
-        const response = await fetch(
-          `https://generativelanguage.googleapis.com/v1/models?key=${apiKey}`
-        )
-        if (!response.ok) return []
-        const data = await response.json()
-        return (data.models || [])
-          .filter((m: any) => {
-            const name = m.name || ''
-            return name.includes('gemini') &&
-                   m.supportedGenerationMethods?.includes('generateContent')
-          })
-          .map((m: any) => {
-            const id = m.name.replace('models/', '')
-            return { id, name: m.displayName || id }
-          })
-          .sort((a: ProviderModel, b: ProviderModel) => a.name.localeCompare(b.name))
+        return await fetchGoogleModelsWithKey(apiKey)
       }
 
       default:
@@ -529,38 +562,12 @@ function getDefaultName(type: string): string {
 }
 
 function buildModelsEndpointCandidates(type: string, baseUrl?: string): string[] {
-  if (!baseUrl) {
-    if (type === 'openai') return ['https://api.openai.com/v1/models']
-    return []
-  }
+  return buildCompatibleModelsEndpointCandidates(baseUrl, { defaultOpenAI: type === 'openai' })
+}
 
-  const trimmed = baseUrl.replace(/\/+$/, '')
-  const candidates: string[] = []
-
-  const pushUnique = (url: string) => {
-    if (!candidates.includes(url)) {
-      candidates.push(url)
-    }
-  }
-
-  if (trimmed.endsWith('/models')) {
-    pushUnique(trimmed)
-  } else if (trimmed.endsWith('/v1')) {
-    pushUnique(`${trimmed}/models`)
-  } else {
-    pushUnique(`${trimmed}/v1/models`)
-  }
-
-  if (trimmed.endsWith('/anthropic')) {
-    try {
-      const parsed = new URL(trimmed)
-      pushUnique(`${parsed.origin}/v1/models`)
-    } catch {
-      // Ignore invalid URL and use existing candidates only.
-    }
-  }
-
-  return candidates
+function getCompatibleProviderBaseUrl(type: string, baseUrl?: string): string | undefined {
+  const zaiBaseUrl = getZaiProviderBaseUrl(type, baseUrl)
+  return zaiBaseUrl || baseUrl
 }
 
 async function fetchOpenAICompatibleModels(
@@ -610,4 +617,54 @@ async function fetchOpenAICompatibleModels(
   }
 
   return []
+}
+
+async function fetchGoogleModelsWithKey(apiKey: string): Promise<ProviderModel[]> {
+  const allModels: any[] = []
+  const seenModelResources = new Set<string>()
+  const seenPageTokens = new Set<string>()
+  let nextPageToken: string | null = null
+
+  do {
+    const url = new URL('https://generativelanguage.googleapis.com/v1beta/models')
+    url.searchParams.set('key', apiKey)
+    url.searchParams.set('pageSize', '1000')
+    if (nextPageToken) {
+      url.searchParams.set('pageToken', nextPageToken)
+    }
+
+    const response = await fetch(url.toString())
+    if (!response.ok) return mergeDocumentedGeminiModels([])
+
+    const data = await response.json()
+    const pageModels = Array.isArray(data?.models) ? data.models : []
+    for (const model of pageModels) {
+      const modelResource = String(model?.name || model?.id || '').trim()
+      if (!modelResource || seenModelResources.has(modelResource)) continue
+      seenModelResources.add(modelResource)
+      allModels.push(model)
+    }
+
+    const candidateToken = typeof data?.nextPageToken === 'string' ? data.nextPageToken : ''
+    if (!candidateToken || seenPageTokens.has(candidateToken)) {
+      nextPageToken = null
+    } else {
+      seenPageTokens.add(candidateToken)
+      nextPageToken = candidateToken
+    }
+  } while (nextPageToken)
+
+  const models = selectPreferredGoogleModels(
+    allModels.filter((model) => {
+      const modelId = getGoogleModelId(model).toLowerCase()
+      return modelId.includes('gemini') &&
+        supportsGoogleGenerateContent(model) &&
+        !isSpecializedGoogleModel(model)
+    })
+  ).map((model) => {
+    const id = getGoogleModelVariantId(model)
+    return { id, name: model.displayName || id }
+  })
+
+  return mergeDocumentedGeminiModels(sortGoogleModels(models))
 }

@@ -1,3 +1,15 @@
+## [0.39.2] - 2026-05-11
+
+### Highlights
+- Gemini setup can now find current Gemini 3 models more reliably, including preview models that may not appear in every live API response.
+- Alibaba Qwen setup now separates International, US, and China DashScope endpoints so region-specific keys and model IDs are harder to mix up.
+- Z.ai and other uncommon provider setups now validate more of the real request path before a chat starts.
+
+### Fixed
+- **Gemini Model Discovery** - Google model loading now uses the current paginated API and keeps documented Gemini 3 chat models available when live discovery is incomplete.
+- **DashScope Region Setup** - Alibaba Qwen presets now use region-specific compatible endpoints and block obvious base URL or model-region mismatches before requests are sent.
+- **Uncommon Provider Validation** - Z.ai provider setup now checks compatible model/chat endpoints and uses GLM context and output limits so failures surface earlier and with clearer messages.
+
 ## [0.39.0] - 2026-03-17
 
 ### Highlights
