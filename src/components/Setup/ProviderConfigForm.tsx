@@ -189,10 +189,13 @@ export function ProviderConfigForm({
       if (fetchedModels.length > 0) {
         setModels(fetchedModels)
         setModelsFetched(true)
-        // Auto-select first model if none selected or current not in list
-        if (!model || !fetchedModels.find(m => m.id === model)) {
-          setModel(fetchedModels[0].id)
-        }
+        setModel((currentModel) => {
+          if (!currentModel) return fetchedModels[0].id
+          if (!allowsManualModelEntry && !fetchedModels.find(m => m.id === currentModel)) {
+            return fetchedModels[0].id
+          }
+          return currentModel
+        })
       } else {
         setModels(FALLBACK_MODELS[type] || [])
         setModelsFetched(false)
@@ -204,7 +207,7 @@ export function ProviderConfigForm({
     } finally {
       setIsLoadingModels(false)
     }
-  }, [type, apiKey, baseUrl, isDynamic, needsApiKey, model])
+  }, [type, apiKey, baseUrl, isDynamic, needsApiKey, allowsManualModelEntry])
 
   // Fetch models when API key changes (debounced)
   useEffect(() => {
