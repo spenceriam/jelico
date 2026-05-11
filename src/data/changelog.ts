@@ -26,7 +26,7 @@ export const changelog: ChangelogEntry[] = [
     changes: {
       fixed: [
         'Google Gemini discovery now uses the current paginated v1beta model API and keeps documented Gemini 3 chat models available when live discovery omits preview or entitlement-specific IDs (Fixes #175)',
-        'Alibaba Qwen setup now has separate International, US, and China DashScope presets, with validation for /compatible-mode/v1 base URLs and US/non-US model-region mismatches before chat or title requests are sent (Fixes #176)',
+        'Alibaba Qwen setup now has separate International, US, and China DashScope presets, with validation for /compatible-mode/v1 base URLs, US/non-US model-region mismatches, and a chat-endpoint Test Connection fallback when compatible model listing is unavailable (Fixes #176)',
         'Z.ai hosted providers now use live compatible model discovery, real connection probes, and GLM context/output fallbacks so uncommon providers fail earlier with clearer setup errors instead of failing mid-request (Fixes #183)',
       ],
     },
