@@ -30,7 +30,7 @@ import {
   sortGoogleModels,
   supportsGoogleGenerateContent,
 } from '../../src/lib/googleModels'
-import { validateDashScopeProviderConfig } from '../../src/lib/dashscopeProvider'
+import { isDashScopeCompatibleProvider, validateDashScopeProviderConfig } from '../../src/lib/dashscopeProvider'
 import { findZaiContextFallback, findZaiOutputFallback } from '../../src/lib/zaiModelLimits'
 
 const GOOGLE_GENERATIVE_LANGUAGE_API_BASE_URL = 'https://generativelanguage.googleapis.com/v1beta'
@@ -831,7 +831,17 @@ export function registerProviderHandlers() {
           if (!provider.default_model?.trim()) {
             return { ok: false, message: 'Missing model name/id' } satisfies ProviderTestResult
           }
-          return await probeCompatibleModelsEndpoint(provider.base_url, apiKey || null)
+
+          const modelsResult = await probeCompatibleModelsEndpoint(provider.base_url, apiKey || null)
+          if (modelsResult.ok || !isDashScopeCompatibleProvider(provider.base_url)) {
+            return modelsResult
+          }
+
+          return await probeCompatibleChatCompletionsEndpoint(
+            provider.base_url,
+            apiKey || null,
+            provider.default_model
+          )
         }
         case 'anthropic-compatible':
         case 'minimax': {
