@@ -72,6 +72,7 @@ import {
   type IncompleteToolStart,
 } from '../lib/turnToolSemantics'
 import { buildReasoningProviderOptions, sanitizeReasoningEffort } from '../../src/lib/reasoning'
+import { getZaiProviderBaseUrl } from '../../src/lib/compatibleProviderModels'
 import { validateDashScopeProviderConfig } from '../../src/lib/dashscopeProvider'
 import { findZaiOutputFallback } from '../../src/lib/zaiModelLimits'
 
@@ -1202,24 +1203,12 @@ function getProviderInstance(providerConfig: any, apiKey: string) {
 
     // Z.ai providers
     case 'zai':
-      return createOpenAI({
-        apiKey,
-        baseURL: 'https://api.z.ai/api/paas/v4',
-      })
     case 'zai-china':
-      return createOpenAI({
-        apiKey,
-        baseURL: 'https://open.bigmodel.cn/api/paas/v4',
-      })
     case 'zai-coding':
-      return createOpenAI({
-        apiKey,
-        baseURL: 'https://api.z.ai/api/coding/paas/v4',
-      })
     case 'zai-coding-china':
       return createOpenAI({
         apiKey,
-        baseURL: 'https://open.bigmodel.cn/api/coding/paas/v4',
+        baseURL: getZaiProviderBaseUrl(providerConfig.type, providerConfig.base_url),
       })
     case 'minimax':
       return createOpenAI({

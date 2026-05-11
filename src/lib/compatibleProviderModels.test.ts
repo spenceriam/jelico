@@ -35,3 +35,14 @@ test('Z.ai provider base URLs fall back to documented endpoints', () => {
   assert.equal(getZaiProviderBaseUrl('zai'), 'https://api.z.ai/api/paas/v4')
   assert.equal(getZaiProviderBaseUrl('zai-coding'), 'https://api.z.ai/api/coding/paas/v4')
 })
+
+test('Z.ai provider base URLs preserve custom compatible endpoints', () => {
+  assert.equal(
+    getZaiProviderBaseUrl('zai', 'https://example.com/custom/v1'),
+    'https://example.com/custom/v1'
+  )
+  assert.equal(
+    getZaiProviderBaseUrl('zai-coding', 'https://example.com/custom/v1/chat/completions'),
+    'https://example.com/custom/v1'
+  )
+})
