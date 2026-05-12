@@ -510,6 +510,8 @@ export default function App() {
       onContextMenu={(event) => {
         const target = event.target as HTMLElement | null
         if (!target || target.closest('button,a,input,textarea,select,[role="button"],[data-context-menu-surface]')) return
+        if (window.getSelection()?.toString()) return
+        if (target.closest('.select-text')) return
         event.preventDefault()
         setContextMenu({
           x: event.clientX,
