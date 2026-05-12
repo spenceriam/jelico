@@ -5,6 +5,8 @@ import { useChatStore } from '../../stores/chat'
 import { useContextStore } from '../../stores/context'
 import { useProviderStore } from '../../stores/providers'
 import { useUIStore } from '../../stores/ui'
+import { getLocalModelToolCapability } from '../../lib/modelToolCapabilities'
+import { ModelToolCapabilityBadge } from './ModelToolCapabilityBadge'
 
 interface ModelSelectorProps {
   compact?: boolean
@@ -73,6 +75,7 @@ export function ModelSelector({ compact = false }: ModelSelectorProps) {
         providerEndpoint: getProviderEndpointHint(provider.baseUrl),
         model,
         label: `${provider.name} / ${model}`,
+        toolCapability: getLocalModelToolCapability(provider, model),
         isActive: activeProviderId === provider.id && activeModel === model,
       }
     })
@@ -264,6 +267,9 @@ export function ModelSelector({ compact = false }: ModelSelectorProps) {
                   </div>
                   <div className="text-xs text-text-faint whitespace-normal break-all text-left leading-tight mt-0.5">
                     {subtitle}
+                  </div>
+                  <div className="mt-1.5">
+                    <ModelToolCapabilityBadge capability={option.toolCapability} compact />
                   </div>
                 </button>
               )

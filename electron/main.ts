@@ -20,6 +20,7 @@ import { registerSpeechHandlers } from './ipc/speech'
 import { registerCompactionHandlers } from './ipc/compaction'
 import { registerUpdateHandlers } from './ipc/updates'
 import { registerWindowHandlers } from './ipc/window'
+import { registerLogHandlers } from './ipc/logs'
 import { closeAllArtifactTestSessions } from './services/artifactTester'
 
 const APP_DISPLAY_NAME = 'Jelico'
@@ -408,6 +409,7 @@ if (gotSingleInstanceLock) {
     registerCompactionHandlers()
     registerUpdateHandlers()
     registerWindowHandlers()
+    registerLogHandlers()
 
     // Create window
     createWindow()

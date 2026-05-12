@@ -1,6 +1,6 @@
 import { useState, useRef, useCallback, KeyboardEvent, useMemo, DragEvent, useEffect, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
-import { SendHorizontal, Square, Clock, Paperclip, X, Trash2, FileText, Image, File as FileIcon, ChevronUp, ChevronDown, Edit3 } from 'lucide-react'
+import { SendHorizontal, Square, Clock, Paperclip, X, Trash2, FileText, Image, File as FileIcon, ChevronUp, ChevronDown, Edit3, ShieldAlert } from 'lucide-react'
 import { useChatStore, type MessageAttachment, type QueuedMessage } from '../../stores/chat'
 import { useProviderStore } from '../../stores/providers'
 import { useContextStore } from '../../stores/context'
@@ -296,6 +296,8 @@ export function ChatInput({
     queuePanelExpandedByConversation,
     setQueuePanelExpanded,
     activeConversationId,
+    fullExecuteEnabled,
+    setFullExecuteEnabled,
   } = useChatStore()
   const { activeProviderId, activeModel } = useProviderStore()
   const { isConversationCompacting } = useContextStore()
@@ -500,6 +502,25 @@ export function ChatInput({
 
     resizeTextarea(nextValue)
   }, [activeConversationId, attachments, resizeTextarea])
+
+  useEffect(() => {
+    const handleReferenceArtifact = (event: Event) => {
+      const customEvent = event as CustomEvent<{ id: string; title: string; type: string }>
+      const artifact = customEvent.detail
+      if (!artifact?.id) return
+      const reference = `Reference artifact "${artifact.title}" (id: ${artifact.id}, type: ${artifact.type}).`
+      setInput((current) => {
+        const separator = current.trim().length > 0 ? '\n\n' : ''
+        const next = `${current}${separator}${reference}`
+        persistDraft(next, attachments)
+        return next
+      })
+      requestAnimationFrame(() => focusTextarea())
+    }
+
+    window.addEventListener('jelico:reference-artifact', handleReferenceArtifact)
+    return () => window.removeEventListener('jelico:reference-artifact', handleReferenceArtifact)
+  }, [attachments, focusTextarea, persistDraft])
 
   useEffect(() => {
     const draftKey = getDraftKey(activeConversationId)
@@ -1099,6 +1120,23 @@ export function ChatInput({
           {/* Right side - Send button */}
           <div className="flex min-w-max items-center justify-end gap-2">
             <ReasoningSelector compact menuDirection="up" menuAlign="right" variant="composer" />
+
+            <button
+              type="button"
+              onClick={(event) => {
+                event.stopPropagation()
+                setFullExecuteEnabled(!fullExecuteEnabled)
+              }}
+              className={`inline-flex h-[2.2em] items-center gap-1.5 rounded-full border px-3 text-[0.76rem] font-medium transition-colors ${
+                fullExecuteEnabled
+                  ? 'border-warning/70 bg-warning/15 text-warning'
+                  : 'border-border-subtle bg-bg-surface text-text-muted hover:border-border-strong hover:text-text-secondary'
+              }`}
+              title={fullExecuteEnabled ? 'Full Execute is enabled' : 'Enable Full Execute'}
+            >
+              <ShieldAlert className="h-[1em] w-[1em]" />
+              <span>Full Execute</span>
+            </button>
 
             {/* Speech-to-text disabled - WASM crashes on Windows ARM64, will revisit later */}
 

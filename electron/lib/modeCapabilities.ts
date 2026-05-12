@@ -10,6 +10,11 @@ export interface ModeCapabilities {
   subAgent: ToolMutationPolicy
 }
 
+export interface ExecutionPolicy {
+  mode: AgentMode
+  fullExecuteEnabled?: boolean
+}
+
 let capabilityMatrixValidated = false
 
 // Single capability source of truth used by:
@@ -51,8 +56,21 @@ export function getModeCapabilities(mode: AgentMode): ModeCapabilities {
   return MODE_CAPABILITY_MATRIX[mode] || MODE_CAPABILITY_MATRIX.auto
 }
 
+export function getEffectiveModeCapabilities(policy: AgentMode | ExecutionPolicy): ModeCapabilities {
+  const mode = typeof policy === 'string' ? policy : policy.mode
+  const fullExecuteEnabled = typeof policy === 'string' ? mode === 'execute' : policy.fullExecuteEnabled === true
+  if (!fullExecuteEnabled) {
+    return getModeCapabilities(mode === 'execute' ? 'auto' : mode)
+  }
+
+  return {
+    main: { canWriteFiles: true, canExecuteCommands: true },
+    subAgent: { canWriteFiles: true, canExecuteCommands: true },
+  }
+}
+
 export function canSubAgentMutate(mode: AgentMode): boolean {
-  const caps = getModeCapabilities(mode).subAgent
+  const caps = getEffectiveModeCapabilities(mode).subAgent
   return caps.canWriteFiles || caps.canExecuteCommands
 }
 

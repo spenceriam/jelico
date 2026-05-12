@@ -21,6 +21,8 @@ interface Window {
         modelId: string
       ) => Promise<ModelLimits>
       getModelContextSize: (providerId: string, modelId: string) => Promise<number | null>
+      getModelToolCapability: (providerId: string, modelId: string) => Promise<ModelToolCapability>
+      verifyModelToolCapability: (providerId: string, modelId: string) => Promise<ModelToolCapability>
     }
     keychain: {
       setApiKey: (providerId: string, key: string) => Promise<void>
@@ -54,6 +56,13 @@ interface Window {
     queue: {
       list: () => Promise<QueuedMessageData[]>
       replaceAll: (queuedMessages: QueuedMessageData[]) => Promise<{ success: boolean }>
+    }
+    logs: {
+      copyConversationLog: (markdown: string) => Promise<{ success: boolean }>
+      saveConversationLog: (
+        defaultFileName: string,
+        markdown: string
+      ) => Promise<{ success: boolean; canceled?: boolean; filePath?: string }>
     }
     workspaces: {
       list: () => Promise<Workspace[]>
@@ -134,6 +143,7 @@ interface Window {
       onReasoningStart: (channelId: string, callback: () => void) => void
       onReasoningEnd: (channelId: string, callback: () => void) => void
       updateStreamMode: (channelId: string, mode: 'auto' | 'explore' | 'execute' | 'plan' | 'review') => void
+      updateStreamExecutionPolicy: (channelId: string, fullExecuteEnabled: boolean) => void
       stopStream: (channelId: string) => void
       removeListeners: (channelId: string) => void
       generateTitle: (params: GenerateTitleParams) => Promise<GenerateTitleResult>
@@ -277,6 +287,7 @@ interface ProviderConfig {
   defaultModel: string
   hiddenFromSelector?: boolean
   capabilityProfiles?: Record<string, unknown> | null
+  modelToolCapabilities?: Record<string, ModelToolCapability> | null
   defaultReasoningEffort?: ReasoningEffort | null
   isDefault: boolean
   createdAt: number
@@ -319,6 +330,7 @@ interface ProviderInput {
   defaultModel: string
   hiddenFromSelector?: boolean
   capabilityProfiles?: Record<string, unknown> | null
+  modelToolCapabilities?: Record<string, ModelToolCapability> | null
   defaultReasoningEffort?: ReasoningEffort | null
   isDefault?: boolean
 }
@@ -406,11 +418,21 @@ interface StreamParams {
   model?: string
   reasoningEffort?: ReasoningEffort | null
   mode?: 'auto' | 'explore' | 'execute' | 'plan' | 'review'
+  fullExecuteEnabled?: boolean
   messages: Array<{ role: string; content: string }>
   tools?: ToolDefinition[]
   workspacePath?: string
   artifacts?: ArtifactContext[]
   conversationId?: string  // Track which conversation this stream belongs to
+}
+
+type ModelToolSupport = 'tools_supported' | 'chat_only' | 'unknown'
+
+interface ModelToolCapability {
+  support: ModelToolSupport
+  label: 'Tools supported' | 'Chat only' | 'Tool support unknown'
+  source: 'explicit' | 'provider' | 'verified' | 'unknown'
+  reason: string
 }
 
 interface ArtifactContext {

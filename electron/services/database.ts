@@ -81,6 +81,9 @@ function loadDb(): void {
           if (provider.default_reasoning_effort === undefined) {
             provider.default_reasoning_effort = null
           }
+          if (provider.model_tool_capabilities === undefined) {
+            provider.model_tool_capabilities = null
+          }
         })
       }
       // Conversation archive migration: legacy rows had no archived_at field.
@@ -350,6 +353,7 @@ export const providerDb = {
       default_model: provider.defaultModel,
       hidden_from_selector: provider.hiddenFromSelector ? 1 : 0,
       capability_profiles: provider.capabilityProfiles || null,
+      model_tool_capabilities: provider.modelToolCapabilities || null,
       default_reasoning_effort: provider.defaultReasoningEffort || null,
       is_default: isDefault ? 1 : 0,
       created_at: now,
@@ -378,6 +382,7 @@ export const providerDb = {
     if (updates.defaultModel !== undefined) provider.default_model = updates.defaultModel
     if (updates.hiddenFromSelector !== undefined) provider.hidden_from_selector = updates.hiddenFromSelector ? 1 : 0
     if (updates.capabilityProfiles !== undefined) provider.capability_profiles = updates.capabilityProfiles || null
+    if (updates.modelToolCapabilities !== undefined) provider.model_tool_capabilities = updates.modelToolCapabilities || null
     if (updates.defaultReasoningEffort !== undefined) provider.default_reasoning_effort = updates.defaultReasoningEffort || null
     if (updates.isDefault !== undefined) provider.is_default = updates.isDefault ? 1 : 0
     provider.updated_at = now
@@ -740,6 +745,7 @@ interface ProviderRow {
   default_model: string
   hidden_from_selector: number
   capability_profiles?: Record<string, unknown> | null
+  model_tool_capabilities?: Record<string, unknown> | null
   default_reasoning_effort: string | null
   is_default: number
   created_at: number
@@ -753,6 +759,7 @@ interface ProviderInput {
   defaultModel: string
   hiddenFromSelector?: boolean
   capabilityProfiles?: Record<string, unknown>
+  modelToolCapabilities?: Record<string, unknown>
   defaultReasoningEffort?: string | null
   isDefault?: boolean
 }

@@ -1,5 +1,5 @@
 import type { CSSProperties } from 'react'
-import { Settings, Presentation, GitBranch } from 'lucide-react'
+import { Settings, Settings2, PanelLeftOpen, GitBranch } from 'lucide-react'
 import { useUIStore } from '../../stores/ui'
 import { useArtifactStore } from '../../stores/artifacts'
 import { useChatStore } from '../../stores/chat'
@@ -41,6 +41,13 @@ export function Header() {
       >
         <WorkspaceSelector />
         <ModelSelector />
+        <button
+          onClick={() => openSettings('providers')}
+          className="p-[0.45em] text-sm text-text-muted hover:text-text-primary hover:bg-bg-surface rounded-md transition-colors"
+          title="Provider settings"
+        >
+          <Settings2 className="w-[1.05em] h-[1.05em]" />
+        </button>
         <ContextIndicator />
         {activeBranch && (
           <div
@@ -69,7 +76,7 @@ export function Header() {
           `}
           title={canvasOpen ? 'Hide Canvas' : 'Show Canvas'}
         >
-          <Presentation className="w-[1.15em] h-[1.15em]" />
+          <PanelLeftOpen className="w-[1.15em] h-[1.15em]" />
           {currentConversationArtifacts.length > 0 && !canvasOpen && (
             <span className="absolute -top-0.5 -right-0.5 w-2 h-2 bg-accent rounded-full" />
           )}

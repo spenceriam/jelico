@@ -21,6 +21,24 @@ export interface ChangelogEntry {
 
 export const changelog: ChangelogEntry[] = [
   {
+    version: '0.40.0',
+    date: '2026-05-11',
+    changes: {
+      added: [
+        'Added focused right-click menus for chats and artifacts, including rename, archive, workspace transfer, artifact reference, reveal, delete, and conversation log actions (Fixes #147, #155)',
+        'Added shareable conversation log collection with copy-to-clipboard and Markdown save options, including messages, tool activity, artifacts, metadata, truncation, and secret redaction (Fixes #155)',
+        'Added model tool-capability labels and warnings so provider setup, settings, and model selection can distinguish tool-capable, chat-only, and unknown models without blocking normal chat (Fixes #173)',
+      ],
+      changed: [
+        'Moved Full Execute out of the primary mode rail into a dedicated composer toggle while keeping Auto, Plan, Explore, and Review as the visible behavior modes (Fixes #153)',
+        'Added provider-settings shortcuts to new and existing chats, refreshed the artifact-pane toggle icon, and removed the extra top-pane spacing above chat content (Fixes #151, #152, #153)',
+      ],
+      fixed: [
+        'Z.ai model setup continues to preserve manually entered model IDs for testing and early-access usage even when live discovery returns a different API-key-scoped model list (Fixes #174)',
+      ],
+    },
+  },
+  {
     version: '0.39.2',
     date: '2026-05-11',
     changes: {
