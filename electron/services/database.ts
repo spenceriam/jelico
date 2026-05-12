@@ -81,6 +81,9 @@ function loadDb(): void {
           if (provider.default_reasoning_effort === undefined) {
             provider.default_reasoning_effort = null
           }
+          if (provider.model_tool_capabilities === undefined) {
+            provider.model_tool_capabilities = null
+          }
         })
       }
       // Conversation archive migration: legacy rows had no archived_at field.

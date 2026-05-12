@@ -1144,7 +1144,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
       if (provider) {
         const capability = getLocalModelToolCapability(provider, model)
         if (capability.support !== 'tools_supported') {
-          const warningKey = `tool-capability-warning:${requestedConversationId || 'new'}:${providerId}:${model}:${capability.support}`
+          const warningKey = `tool-capability-warning:${providerId}:${model}:${capability.support}`
           const alreadyAcknowledged = typeof window !== 'undefined' && localStorage.getItem(warningKey) === '1'
           if (!alreadyAcknowledged) {
             const result = await useDecisionPromptStore.getState().request({

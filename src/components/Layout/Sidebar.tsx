@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useMemo, useRef } from 'react'
 import {
   Plus,
   Settings,
@@ -231,6 +231,9 @@ export function Sidebar() {
   // Track which conversations have their artifact trees expanded
   const [expandedConversations, setExpandedConversations] = useState<Set<string>>(new Set())
   const [archiveConfirmConversationId, setArchiveConfirmConversationId] = useState<string | null>(null)
+  const [renamingConvId, setRenamingConvId] = useState<string | null>(null)
+  const [renameValue, setRenameValue] = useState('')
+  const renameInputRef = useRef<HTMLInputElement | null>(null)
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; items: ContextMenuItem[] } | null>(null)
   // Transfer dialog state
   const [transferDialogConv, setTransferDialogConv] = useState<{ id: string; title: string; workspaceId: string | null } | null>(null)
@@ -486,6 +489,14 @@ export function Sidebar() {
     }
   }
 
+  const submitRename = async (convId: string, value: string) => {
+    const next = value.trim()
+    setRenamingConvId(null)
+    if (!next) return
+    await window.jelico.conversations.updateTitle(convId, next)
+    await useChatStore.getState().loadConversations()
+  }
+
   const openConversationContextMenu = (event: React.MouseEvent, conv: ChatConversation) => {
     event.preventDefault()
     event.stopPropagation()
@@ -496,11 +507,12 @@ export function Sidebar() {
         { label: 'Open Chat', onClick: () => setActiveConversation(conv.id) },
         {
           label: 'Rename',
-          onClick: async () => {
-            const nextTitle = window.prompt('Rename chat', conv.title)
-            if (!nextTitle?.trim()) return
-            await window.jelico.conversations.updateTitle(conv.id, nextTitle.trim())
-            await useChatStore.getState().loadConversations()
+          onClick: () => {
+            setRenameValue(conv.title)
+            setRenamingConvId(conv.id)
+            requestAnimationFrame(() => {
+              renameInputRef.current?.select()
+            })
           },
         },
         { label: 'Copy Logs', onClick: () => void collectLogs(conv, 'copy') },
@@ -727,9 +739,25 @@ export function Sidebar() {
                                       aria-hidden="true"
                                     />
                                   )}
-                                  <span className={`break-words ${isArchiveConfirming ? 'font-medium' : ''}`}>
-                                    {isArchiveConfirming ? `Archive "${conv.title}"?` : conv.title}
-                                  </span>
+                                  {renamingConvId === conv.id ? (
+                                    <input
+                                      ref={renameInputRef}
+                                      value={renameValue}
+                                      onChange={(e) => setRenameValue(e.target.value)}
+                                      onBlur={() => void submitRename(conv.id, renameValue)}
+                                      onKeyDown={(e) => {
+                                        if (e.key === 'Enter') { e.preventDefault(); void submitRename(conv.id, renameValue) }
+                                        if (e.key === 'Escape') { e.preventDefault(); setRenamingConvId(null) }
+                                      }}
+                                      onClick={(e) => e.stopPropagation()}
+                                      className="w-full bg-bg-elevated border border-accent/60 rounded px-1 py-0 text-sm text-text-primary focus:outline-none focus:border-accent"
+                                      autoFocus
+                                    />
+                                  ) : (
+                                    <span className={`break-words ${isArchiveConfirming ? 'font-medium' : ''}`}>
+                                      {isArchiveConfirming ? `Archive "${conv.title}"?` : conv.title}
+                                    </span>
+                                  )}
                                 </div>
 
                                 {!isArchiveConfirming && isWorktreeConversation && (

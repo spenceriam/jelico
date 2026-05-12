@@ -17,14 +17,14 @@ interface ContextMenuProps {
 
 export function ContextMenu({ x, y, items, onClose }: ContextMenuProps) {
   useEffect(() => {
-    const close = () => onClose()
-    window.addEventListener('mousedown', close)
-    window.addEventListener('blur', close)
-    window.addEventListener('keydown', close)
+    const handleKeyDown = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose() }
+    window.addEventListener('mousedown', onClose)
+    window.addEventListener('blur', onClose)
+    window.addEventListener('keydown', handleKeyDown)
     return () => {
-      window.removeEventListener('mousedown', close)
-      window.removeEventListener('blur', close)
-      window.removeEventListener('keydown', close)
+      window.removeEventListener('mousedown', onClose)
+      window.removeEventListener('blur', onClose)
+      window.removeEventListener('keydown', handleKeyDown)
     }
   }, [onClose])
 
@@ -37,9 +37,9 @@ export function ContextMenu({ x, y, items, onClose }: ContextMenuProps) {
       style={{ left: x, top: y }}
       onMouseDown={(event) => event.stopPropagation()}
     >
-      {items.map((item) => (
+      {items.map((item, index) => (
         <button
-          key={item.label}
+          key={index}
           disabled={item.disabled}
           className={`block w-full px-3 py-2 text-left transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${
             item.danger

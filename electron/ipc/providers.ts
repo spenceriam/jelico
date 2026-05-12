@@ -1414,8 +1414,11 @@ export function registerProviderHandlers() {
               if (!apiKey) throw new Error('API key not found.')
               const endpoint = buildCompatibleChatCompletionsEndpoint(provider.base_url)
               if (!endpoint) throw new Error('Provider base URL is not configured.')
+              const probeAbort = new AbortController()
+              const probeTimeout = setTimeout(() => probeAbort.abort(), 10_000)
               const response = await fetch(endpoint, {
                 method: 'POST',
+                signal: probeAbort.signal,
                 headers: {
                   'Content-Type': 'application/json',
                   Authorization: `Bearer ${apiKey}`,
@@ -1443,6 +1446,7 @@ export function registerProviderHandlers() {
                   max_tokens: 64,
                 }),
               })
+              clearTimeout(probeTimeout)
 
               const text = await response.text()
               if (!response.ok) throw new Error(`Probe failed with HTTP ${response.status}: ${text.slice(0, 200)}`)
