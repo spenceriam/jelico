@@ -383,6 +383,7 @@ function toApiFormat(row: any) {
     defaultModel: row.default_model,
     hiddenFromSelector: row.hidden_from_selector === 1,
     capabilityProfiles: row.capability_profiles || null,
+    modelToolCapabilities: (row as any).model_tool_capabilities || null,
     defaultReasoningEffort: row.default_reasoning_effort || null,
     isDefault: row.is_default === 1,
     createdAt: row.created_at,
@@ -718,6 +719,7 @@ export function registerProviderHandlers() {
       baseUrl: input.baseUrl,
       defaultModel: input.defaultModel,
       capabilityProfiles: input.capabilityProfiles,
+      modelToolCapabilities: input.modelToolCapabilities,
       defaultReasoningEffort: input.defaultReasoningEffort,
       isDefault: input.isDefault,
     })
@@ -735,6 +737,7 @@ export function registerProviderHandlers() {
     const provider = providerDb.update(id, {
       ...updates,
       capabilityProfiles: updates.capabilityProfiles,
+      modelToolCapabilities: updates.modelToolCapabilities,
       defaultReasoningEffort: updates.defaultReasoningEffort,
     })
 
@@ -1321,5 +1324,168 @@ export function registerProviderHandlers() {
 
   ipcMain.handle('keychain:delete', async (_, providerId: string) => {
     return await keychainService.deleteApiKey(providerId)
+  })
+
+  ipcMain.handle('providers:getModelToolCapability', async (_, providerId: string, modelId: string) => {
+    const provider = providerDb.get(providerId)
+    if (!provider) {
+      return {
+        support: 'unknown',
+        label: 'Tool support unknown',
+        source: 'unknown',
+        reason: 'Provider not found.',
+      }
+    }
+
+    const cached = (provider as any).model_tool_capabilities?.[modelId]
+    if (cached) return cached
+
+    const type = String(provider.type || '').toLowerCase()
+    const name = String(provider.name || '').toLowerCase()
+    const baseUrl = String(provider.base_url || '').toLowerCase()
+
+    if (type.includes('nous') || name.includes('nous') || baseUrl.includes('portal.nousresearch.com')) {
+      return {
+        support: 'chat_only',
+        label: 'Chat only',
+        source: 'explicit',
+        reason: 'This compatible endpoint is known to expose chat responses without reliable structured tool calls.',
+      }
+    }
+
+    if (['openai', 'anthropic', 'google'].includes(type)) {
+      return {
+        support: 'tools_supported',
+        label: 'Tools supported',
+        source: 'provider',
+        reason: 'Native provider integration supports structured tool calls.',
+      }
+    }
+
+    return {
+      support: 'unknown',
+      label: 'Tool support unknown',
+      source: 'unknown',
+      reason: 'Tool support has not been verified for this provider and model.',
+    }
+  })
+
+  ipcMain.handle('providers:verifyModelToolCapability', async (_, providerId: string, modelId: string) => {
+    const provider = providerDb.get(providerId)
+    if (!provider) {
+      return {
+        support: 'unknown',
+        label: 'Tool support unknown',
+        source: 'unknown',
+        reason: 'Provider not found.',
+      }
+    }
+
+    const result = ['openai', 'anthropic', 'google'].includes(String(provider.type || '').toLowerCase())
+      ? {
+          support: 'tools_supported',
+          label: 'Tools supported',
+          source: 'verified',
+          reason: 'Native provider integration is verified as tool-capable.',
+        }
+      : await (async () => {
+          const type = String(provider.type || '').toLowerCase()
+          const name = String(provider.name || '').toLowerCase()
+          const baseUrl = String(provider.base_url || '').toLowerCase()
+          if (type.includes('nous') || name.includes('nous') || baseUrl.includes('portal.nousresearch.com')) {
+            return {
+              support: 'chat_only',
+              label: 'Chat only',
+              source: 'explicit',
+              reason: 'This compatible endpoint is known to expose chat responses without reliable structured tool calls.',
+            }
+          }
+
+          if (
+            type === 'openai-compatible' ||
+            type === 'zai' ||
+            type === 'zai-china' ||
+            type === 'zai-coding' ||
+            type === 'zai-coding-china' ||
+            type === 'minimax'
+          ) {
+            try {
+              const apiKey = await keychainService.getApiKey(providerId)
+              if (!apiKey) throw new Error('API key not found.')
+              const endpoint = buildCompatibleChatCompletionsEndpoint(provider.base_url)
+              if (!endpoint) throw new Error('Provider base URL is not configured.')
+              const response = await fetch(endpoint, {
+                method: 'POST',
+                headers: {
+                  'Content-Type': 'application/json',
+                  Authorization: `Bearer ${apiKey}`,
+                },
+                body: JSON.stringify({
+                  model: modelId,
+                  messages: [
+                    { role: 'user', content: 'Call the provided tool with ok=true.' },
+                  ],
+                  tools: [
+                    {
+                      type: 'function',
+                      function: {
+                        name: 'jelico_tool_probe',
+                        description: 'Tool support probe.',
+                        parameters: {
+                          type: 'object',
+                          properties: { ok: { type: 'boolean' } },
+                          required: ['ok'],
+                        },
+                      },
+                    },
+                  ],
+                  tool_choice: { type: 'function', function: { name: 'jelico_tool_probe' } },
+                  max_tokens: 64,
+                }),
+              })
+
+              const text = await response.text()
+              if (!response.ok) throw new Error(`Probe failed with HTTP ${response.status}: ${text.slice(0, 200)}`)
+              const payload = JSON.parse(text)
+              const toolCalls = payload?.choices?.[0]?.message?.tool_calls
+              if (Array.isArray(toolCalls) && toolCalls.length > 0) {
+                return {
+                  support: 'tools_supported',
+                  label: 'Tools supported',
+                  source: 'verified',
+                  reason: 'Active provider probe returned a structured tool call for this exact model.',
+                }
+              }
+
+              return {
+                support: 'unknown',
+                label: 'Tool support unknown',
+                source: 'unknown',
+                reason: 'Active provider probe completed but did not return a structured tool call.',
+              }
+            } catch (error) {
+              return {
+                support: 'unknown',
+                label: 'Tool support unknown',
+                source: 'unknown',
+                reason: error instanceof Error ? error.message : 'Active provider probe failed.',
+              }
+            }
+          }
+
+          return {
+            support: 'unknown',
+            label: 'Tool support unknown',
+            source: 'unknown',
+            reason: 'Active verification is not available for this provider type yet.',
+          }
+        })()
+
+    const nextCapabilities = {
+      ...(((provider as any).model_tool_capabilities || {}) as Record<string, unknown>),
+      [modelId]: result,
+    }
+    providerDb.update(providerId, { modelToolCapabilities: nextCapabilities } as any)
+    return result
   })
 }

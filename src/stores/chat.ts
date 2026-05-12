@@ -1,5 +1,5 @@
 import { create } from 'zustand'
-import type { AgentMode } from '../lib/modes'
+import { normalizeBehaviorMode, type AgentMode } from '../lib/modes'
 import { useArtifactStore } from './artifacts'
 import type { Artifact } from './artifacts'
 import { useWorkspaceStore } from './workspaces'
@@ -15,6 +15,7 @@ import { resolveStreamReasoningEffort } from '../lib/conversationReasoning'
 import { hasIncompleteToolEvidence } from './chatInterruption'
 import { buildSoulLearningMessages } from './chatLearning'
 import { useToastStore } from './toasts'
+import { getLocalModelToolCapability, isLikelyToolTaskPrompt } from '../lib/modelToolCapabilities'
 import {
   getNextProcessableQueuedMessageIndex,
   getPersistableQueuedMessages,
@@ -200,6 +201,7 @@ interface ChatStore {
   isLoading: boolean
   error: string | null
   mode: AgentMode
+  fullExecuteEnabled: boolean
   modeTransitioning: boolean
   modeSwitchReason: string | null
   messageQueue: QueuedMessage[]
@@ -237,6 +239,7 @@ interface ChatStore {
   stopStreaming: () => Promise<void>
   archiveConversation: (id: string) => Promise<void>
   setMode: (mode: AgentMode) => void
+  setFullExecuteEnabled: (enabled: boolean) => void
   setModeTransitioning: (transitioning: boolean) => void
   handleModeSwitch: (fromMode: AgentMode, toMode: AgentMode, reason: string) => void
   clearError: () => void
@@ -413,18 +416,14 @@ async function getPreferredDefaultMode(): Promise<AgentMode> {
 
   try {
     const preference = await window.jelico.soul.getPreference(DEFAULT_MODE_PREFERENCE_KEY)
-    return isAgentMode(preference?.value) ? preference.value : 'auto'
+    return isAgentMode(preference?.value) ? normalizeBehaviorMode(preference.value) : 'auto'
   } catch (error) {
     console.warn('[Chat Store] Failed to load default mode preference, falling back to auto:', error)
     return 'auto'
   }
 }
 
-function isModeTransitionAllowed(currentMode: AgentMode, nextMode: AgentMode): boolean {
-  if (nextMode !== 'execute' || currentMode === 'execute') {
-    return true
-  }
-
+function isFullExecuteTransitionAllowed(): boolean {
   if (typeof window === 'undefined' || typeof window.confirm !== 'function') {
     return true
   }
@@ -802,6 +801,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
   isLoading: false,
   error: null,
   mode: 'auto' as AgentMode,
+  fullExecuteEnabled: false,
   messageQueue: [],
   pendingQueuedEdit: null,
   hasHydratedQueuedMessages: false,
@@ -1000,12 +1000,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
       useArtifactStore.getState().closeCanvas()
 
       // Reset fresh unsent chats to the user's saved default mode (auto when unset).
-      if (preferredMode === 'execute') {
-        get().setMode('execute')
-        if (get().mode !== 'execute' && currentMode !== 'auto') {
-          set({ mode: 'auto' })
-        }
-      } else if (preferredMode !== currentMode) {
+      if (preferredMode !== currentMode) {
         set({ mode: preferredMode })
       }
       return
@@ -1115,7 +1110,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
 
   // Internal flag to track if this is a regenerate (skips adding user message)
   sendMessage: async (content, providerId, model, attachments, _isRegenerate = false, _forcedConversationId: string | null = null) => {
-    const { activeConversationId, messages, mode } = get()
+    const { activeConversationId, messages, mode, fullExecuteEnabled } = get()
     const requestedConversationId = _forcedConversationId ?? activeConversationId
     const contextStore = useContextStore.getState()
 
@@ -1144,8 +1139,44 @@ export const useChatStore = create<ChatStore>((set, get) => ({
       return
     }
 
+    if (!_isRegenerate && isLikelyToolTaskPrompt(content)) {
+      const provider = useProviderStore.getState().providers.find((entry) => entry.id === providerId)
+      if (provider) {
+        const capability = getLocalModelToolCapability(provider, model)
+        if (capability.support !== 'tools_supported') {
+          const warningKey = `tool-capability-warning:${requestedConversationId || 'new'}:${providerId}:${model}:${capability.support}`
+          const alreadyAcknowledged = typeof window !== 'undefined' && localStorage.getItem(warningKey) === '1'
+          if (!alreadyAcknowledged) {
+            const result = await useDecisionPromptStore.getState().request({
+              title: capability.label,
+              message: `${provider.name} / ${model} may not support the tools needed for this request.`,
+              detail: capability.reason,
+              options: [
+                { label: 'Send anyway', value: 'send', variant: 'primary' },
+                { label: 'Open Providers', value: 'providers', variant: 'secondary' },
+              ],
+              defaultValue: 'send',
+              cancelValue: 'providers',
+            })
+
+            if (result.value !== 'send') {
+              const { useUIStore } = await import('./ui')
+              useUIStore.getState().openSettings('providers')
+              return
+            }
+
+            try {
+              localStorage.setItem(warningKey, '1')
+            } catch {
+              // Ignore storage failures; the warning will simply be shown again.
+            }
+          }
+        }
+      }
+    }
+
     let finalContent = content
-    const finalMode = mode
+    const finalMode = normalizeBehaviorMode(mode)
 
     let conversationId = requestedConversationId
 
@@ -1422,6 +1453,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
         model,
         reasoningEffort: streamReasoningEffort,
         mode: finalMode,
+        fullExecuteEnabled,
         messages: aiMessages,
         workspacePath: activeWorkspace?.path,
         artifacts: artifactContext,
@@ -2786,12 +2818,21 @@ export const useChatStore = create<ChatStore>((set, get) => ({
   },
 
   setMode: (mode) => {
-    const currentMode = get().mode
-    if (mode === currentMode) return
-    if (!isModeTransitionAllowed(currentMode, mode)) return
-    set({ mode })
+    const currentMode = normalizeBehaviorMode(get().mode)
+    const nextMode = normalizeBehaviorMode(mode)
+    if (nextMode === currentMode) return
+    set({ mode: nextMode })
 
     const activeConversationId = get().activeConversationId
+    if (activeConversationId) {
+      const modeNames = { auto: 'Auto', plan: 'Plan', explore: 'Explore', review: 'Review' } as const
+      get().addSystemNotification({
+        type: 'info',
+        conversationId: activeConversationId,
+        message: `Mode changed to ${modeNames[nextMode]}.`,
+      })
+    }
+
     if (!activeConversationId) return
 
     const streamChannelId = streamChannelByConversation.get(activeConversationId)
@@ -2799,9 +2840,37 @@ export const useChatStore = create<ChatStore>((set, get) => ({
     if (!streamChannelId || !streamState?.isStreaming) return
 
     try {
-      window.jelico.ai.updateStreamMode(streamChannelId, mode)
+      window.jelico.ai.updateStreamMode(streamChannelId, nextMode)
     } catch (error) {
       console.warn('[Chat Store] Failed to update active stream mode:', error)
+    }
+  },
+
+  setFullExecuteEnabled: (enabled) => {
+    const current = get().fullExecuteEnabled
+    if (current === enabled) return
+    if (enabled && !isFullExecuteTransitionAllowed()) return
+
+    set({ fullExecuteEnabled: enabled })
+
+    const activeConversationId = get().activeConversationId
+    if (activeConversationId) {
+      get().addSystemNotification({
+        type: 'info',
+        conversationId: activeConversationId,
+        message: enabled ? 'Full Execute enabled.' : 'Full Execute disabled.',
+      })
+    }
+
+    if (!activeConversationId) return
+    const streamChannelId = streamChannelByConversation.get(activeConversationId)
+    const streamState = get().conversationStreams[activeConversationId]
+    if (!streamChannelId || !streamState?.isStreaming) return
+
+    try {
+      window.jelico.ai.updateStreamExecutionPolicy?.(streamChannelId, enabled)
+    } catch (error) {
+      console.warn('[Chat Store] Failed to update active stream execution policy:', error)
     }
   },
 

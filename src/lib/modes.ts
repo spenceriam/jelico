@@ -1,5 +1,6 @@
 // Mode system - defines how the AI behaves
-export type AgentMode = 'auto' | 'explore' | 'execute' | 'plan' | 'review'
+export type BehaviorMode = 'auto' | 'explore' | 'plan' | 'review'
+export type AgentMode = BehaviorMode | 'execute'
 
 export interface ModeDefinition {
   id: AgentMode
@@ -106,13 +107,24 @@ Explain your findings and provide specific recommendations.`,
   },
 }
 
+export const behaviorModes: Record<BehaviorMode, ModeDefinition> = {
+  auto: modes.auto,
+  plan: modes.plan,
+  explore: modes.explore,
+  review: modes.review,
+}
+
+export function normalizeBehaviorMode(mode: AgentMode): BehaviorMode {
+  return mode === 'execute' ? 'auto' : mode
+}
+
 export function getMode(id: AgentMode): ModeDefinition {
   return modes[id]
 }
 
 export function cycleMode(current: AgentMode, direction: 1 | -1 = 1): AgentMode {
-  const order: AgentMode[] = ['auto', 'execute', 'plan', 'explore', 'review']
-  const idx = order.indexOf(current)
+  const order: BehaviorMode[] = ['auto', 'plan', 'explore', 'review']
+  const idx = order.indexOf(normalizeBehaviorMode(current))
   const next = (idx + direction + order.length) % order.length
   return order[next]
 }

@@ -17,6 +17,7 @@ interface ProviderConfig {
   defaultModel: string
   hiddenFromSelector?: boolean
   capabilityProfiles?: Record<string, unknown> | null
+  modelToolCapabilities?: Record<string, import('../lib/modelToolCapabilities').ModelToolCapability> | null
   defaultReasoningEffort?: ReasoningEffort | null
   isDefault: boolean
   createdAt: number
@@ -30,6 +31,7 @@ interface ProviderInput {
   defaultModel: string
   hiddenFromSelector?: boolean
   capabilityProfiles?: Record<string, unknown> | null
+  modelToolCapabilities?: Record<string, import('../lib/modelToolCapabilities').ModelToolCapability> | null
   defaultReasoningEffort?: ReasoningEffort | null
   isDefault?: boolean
   apiKey?: string

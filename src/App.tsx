@@ -1,4 +1,4 @@
-import { useEffect, useCallback, useState, useRef, type CSSProperties } from 'react'
+import { useEffect, useCallback, useState, useRef } from 'react'
 import { ArrowUpRight, Download, PanelLeftClose, PanelLeftOpen, RefreshCw, X } from 'lucide-react'
 import { useProviderStore } from './stores/providers'
 import { useChatStore } from './stores/chat'
@@ -28,6 +28,7 @@ import { PermissionDialog } from './components/Permissions/PermissionDialog'
 import { ClarificationPanel } from './components/Clarification/ClarificationPanel'
 import { WelcomeScreen, type OnboardingProfile } from './components/Onboarding/WelcomeScreen'
 import { ToastViewport } from './components/Feedback/ToastViewport'
+import { ContextMenu, type ContextMenuItem } from './components/Common/ContextMenu'
 
 // Default and constraints for canvas panel width
 const DEFAULT_CANVAS_WIDTH = 500
@@ -69,11 +70,11 @@ interface FontShortcutState {
 
 export default function App() {
   const isMacPlatform = navigator.platform.toUpperCase().includes('MAC')
-  const macDragRegionStyle = isMacPlatform ? ({ WebkitAppRegion: 'drag' } as CSSProperties) : {}
   const { providers, loadProviders, isLoading } = useProviderStore()
   const { loadConversations, activeConversationId, messages, isStreaming, conversationStreams } = useChatStore()
   const {
     settingsOpen,
+    openSettings,
     closeSettings,
     providerSetupOpen,
     closeProviderSetup,
@@ -84,7 +85,8 @@ export default function App() {
     appFontPt,
     setAppFontPt,
   } = useUIStore()
-  const { canvasOpen } = useArtifactStore()
+  const { canvasOpen, toggleCanvas } = useArtifactStore()
+  const [contextMenu, setContextMenu] = useState<{ x: number; y: number; items: ContextMenuItem[] } | null>(null)
   const { loadWorkspaces } = useWorkspaceStore()
   const { clearOncePermissions, loadPermissions } = usePermissionStore()
   const { loadSkills } = useSkillStore()
@@ -505,6 +507,22 @@ export default function App() {
       className="h-screen flex bg-bg-void text-text-primary overflow-hidden relative select-none app-font-scale"
       onDoubleClick={handleAppDoubleClick}
       onMouseDown={handleAppMouseDown}
+      onContextMenu={(event) => {
+        const target = event.target as HTMLElement | null
+        if (!target || target.closest('button,a,input,textarea,select,[role="button"],[data-context-menu-surface]')) return
+        event.preventDefault()
+        setContextMenu({
+          x: event.clientX,
+          y: event.clientY,
+          items: [
+            { label: 'New Chat', onClick: () => useChatStore.getState().setActiveConversation(null) },
+            { label: 'Settings', onClick: () => openSettings() },
+            { label: 'Provider Settings', onClick: () => openSettings('providers') },
+            { label: sidebarCollapsed ? 'Expand Sidebar' : 'Collapse Sidebar', onClick: toggleSidebar },
+            { label: canvasOpen ? 'Hide Canvas' : 'Show Canvas', onClick: toggleCanvas },
+          ],
+        })
+      }}
     >
       {/* Floating sidebar toggle button at left edge */}
       <button
@@ -527,20 +545,7 @@ export default function App() {
 
       <Sidebar />
 
-      <main
-        className="relative flex-1 flex flex-col min-w-0"
-        style={{ paddingTop: 'var(--titlebar-padding)' }}
-      >
-        {/* macOS titlebar safe-area fill for the main pane */}
-        <div
-          className={`pane-surface absolute top-0 left-0 right-0 ${isMacPlatform ? '' : 'pointer-events-none'}`}
-          style={{
-            height: 'var(--titlebar-padding)',
-            ...macDragRegionStyle,
-          }}
-          aria-hidden="true"
-        />
-
+      <main className="relative flex-1 flex flex-col min-w-0">
         {!showNewChatUI && <Header />}
         <div className="flex-1 flex min-h-0">
           <div className="flex-1 flex flex-col min-w-0">
@@ -614,6 +619,15 @@ export default function App() {
 
       {/* App-level decision prompt dialog */}
       <DecisionPromptDialog />
+
+      {contextMenu && (
+        <ContextMenu
+          x={contextMenu.x}
+          y={contextMenu.y}
+          items={contextMenu.items}
+          onClose={() => setContextMenu(null)}
+        />
+      )}
 
       {(showApplyBanner || showAvailableBanner) && (
         <div className="fixed bottom-4 right-4 z-[70] w-[min(90vw,420px)]" data-window-toggle="ignore">

@@ -1,5 +1,5 @@
 import { useEffect, useState, useRef } from 'react'
-import { modes, cycleMode, type AgentMode } from '../../lib/modes'
+import { behaviorModes, cycleMode, normalizeBehaviorMode, type BehaviorMode } from '../../lib/modes'
 import { useChatStore } from '../../stores/chat'
 
 interface ModeSelectorProps {
@@ -8,18 +8,19 @@ interface ModeSelectorProps {
 
 export function ModeSelector({ flatTop = false }: ModeSelectorProps) {
   const { mode, setMode, modeTransitioning } = useChatStore()
-  const [animatingMode, setAnimatingMode] = useState<AgentMode | null>(null)
-  const prevModeRef = useRef(mode)
+  const behaviorMode = normalizeBehaviorMode(mode)
+  const [animatingMode, setAnimatingMode] = useState<BehaviorMode | null>(null)
+  const prevModeRef = useRef(behaviorMode)
 
   // Animate when mode changes
   useEffect(() => {
-    if (mode !== prevModeRef.current) {
-      setAnimatingMode(mode)
+    if (behaviorMode !== prevModeRef.current) {
+      setAnimatingMode(behaviorMode)
       const timer = setTimeout(() => setAnimatingMode(null), 700)
-      prevModeRef.current = mode
+      prevModeRef.current = behaviorMode
       return () => clearTimeout(timer)
     }
-  }, [mode])
+  }, [behaviorMode])
 
   // Handle Tab key to cycle modes
   useEffect(() => {
@@ -39,18 +40,17 @@ export function ModeSelector({ flatTop = false }: ModeSelectorProps) {
 
         e.preventDefault()
         const direction = e.shiftKey ? -1 : 1
-        const newMode = cycleMode(mode, direction)
+        const newMode = cycleMode(behaviorMode, direction)
         setMode(newMode)
       }
 
-      // Number keys 1-5 for direct mode selection
+      // Number keys 1-4 for direct mode selection
       if (!e.ctrlKey && !e.metaKey && !e.altKey && !e.shiftKey) {
-        const modeKeys: Record<string, AgentMode> = {
+        const modeKeys: Record<string, BehaviorMode> = {
           '1': 'auto',
-          '2': 'execute',
-          '3': 'plan',
-          '4': 'explore',
-          '5': 'review',
+          '2': 'plan',
+          '3': 'explore',
+          '4': 'review',
         }
 
         const modeId = modeKeys[e.key]
@@ -71,7 +71,7 @@ export function ModeSelector({ flatTop = false }: ModeSelectorProps) {
 
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [mode, setMode])
+  }, [behaviorMode, setMode])
 
   return (
     <div className="flex items-center justify-center w-full">
@@ -79,7 +79,7 @@ export function ModeSelector({ flatTop = false }: ModeSelectorProps) {
         flex bg-bg-surface ${flatTop ? 'rounded-t-none rounded-b-lg' : 'rounded-lg'} overflow-hidden p-0 gap-0 transition-all duration-300
         ${modeTransitioning ? 'ring-2 ring-accent/50 ring-offset-2 ring-offset-bg-surface' : ''}
       `}>
-        {Object.values(modes).map((m) => (
+        {Object.values(behaviorModes).map((m) => (
           <button
             key={m.id}
             onClick={() => setMode(m.id)}
@@ -88,7 +88,7 @@ export function ModeSelector({ flatTop = false }: ModeSelectorProps) {
               relative overflow-hidden px-3 py-2 text-sm font-medium
               ${flatTop ? 'first:rounded-bl-lg last:rounded-br-lg' : 'first:rounded-l-lg last:rounded-r-lg'}
               transition-all duration-200
-              ${m.id === mode
+              ${m.id === behaviorMode
                 ? 'bg-accent/22 text-accent shadow-sm ring-1 ring-inset ring-accent z-10'
                 : 'text-text-muted border mode-chip-inactive hover:text-text-secondary'
               }

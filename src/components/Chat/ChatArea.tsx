@@ -1,5 +1,5 @@
 import { useRef, useEffect, useState, useMemo, useCallback, useLayoutEffect } from 'react'
-import { Settings, Loader2 } from 'lucide-react'
+import { Settings, Settings2, Loader2 } from 'lucide-react'
 import { useChatStore } from '../../stores/chat'
 import { useProviderStore } from '../../stores/providers'
 import { useUIStore } from '../../stores/ui'
@@ -1292,6 +1292,13 @@ function NewChatView({ disabled, isStreaming }: NewChatViewProps) {
           </label>
         )}
         <ModelSelector compact />
+        <button
+          onClick={() => openSettings('providers')}
+          className="p-2 text-text-muted hover:text-text-primary hover:bg-bg-surface rounded-md transition-colors"
+          title="Provider settings"
+        >
+          <Settings2 className="w-5 h-5" />
+        </button>
         <button
           onClick={() => openSettings()}
           className="p-2 text-text-muted hover:text-text-primary hover:bg-bg-surface rounded-md transition-colors"

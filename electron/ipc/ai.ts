@@ -7,7 +7,7 @@ import { z } from 'zod'
 import { providerDb, conversationDb, messageDb, workspaceDb, artifactDb } from '../services/database'
 import { keychainService } from '../services/keychain'
 import { buildSystemPrompt, buildLeanSystemPrompt, type AgentMode, getCachedPrompt } from '../lib/modes'
-import { getModeCapabilities, canSubAgentMutate, assertCapabilityMatrix } from '../lib/modeCapabilities'
+import { getEffectiveModeCapabilities, canSubAgentMutate, assertCapabilityMatrix } from '../lib/modeCapabilities'
 import { searchFileContents } from '../lib/contentSearch'
 import { buildMemoryContext, formatSoulForContext } from '../services/soul'
 import { listSkills } from '../services/skills'
@@ -83,6 +83,7 @@ startOrphanCleanup()
 const activeStreams = new Map<string, AbortController>()
 // Track effective mode per active stream so runtime mode changes can affect tool policy.
 const streamRuntimeModes = new Map<string, AgentMode>()
+const streamRuntimeFullExecute = new Map<string, boolean>()
 
 // Track pending clarification requests (requestId -> resolver)
 interface PendingClarification {
@@ -1299,6 +1300,7 @@ function getBuiltInTools(
     expectedArtifactMutation?: boolean
     allowAllSession?: boolean
     getRuntimeMode?: () => AgentMode
+    getRuntimeFullExecute?: () => boolean
     resetActivityTimeout?: () => void  // Allows blocking tools to keep stream alive
     spawnedAgentIds: Set<string>  // Track spawned agent IDs for orphan detection
     awaitedAgentIds: Set<string>  // Track awaited agent IDs for orphan detection
@@ -1313,10 +1315,13 @@ function getBuiltInTools(
 ) {
   assertCapabilityMatrix()
   const getRuntimeMode = () => streamContext.getRuntimeMode?.() ?? mode
-  const modeCapabilities = getModeCapabilities(mode)
+  const modeCapabilities = getEffectiveModeCapabilities({
+    mode: getRuntimeMode(),
+    fullExecuteEnabled: streamContext.getRuntimeFullExecute?.() ?? mode === 'execute',
+  })
   const canWrite = modeCapabilities.main.canWriteFiles
   const canExecute = modeCapabilities.main.canExecuteCommands
-  const shouldBypassPermissionsForMode = () => getRuntimeMode() === 'execute'
+  const shouldBypassPermissionsForMode = () => streamContext.getRuntimeFullExecute?.() === true || getRuntimeMode() === 'execute'
   // Web research is delegated through sub-agents in all modes.
   const canSpawnAgents = true
   // Main AI keeps direct web tools as an internal fallback after helper-agent research.
@@ -3909,8 +3914,10 @@ export function registerAIHandlers() {
 
       // Create provider instance
       const provider = getProviderInstance(providerConfig, apiKey || '')
-      const mode: AgentMode = params.mode || 'auto'
+      const mode: AgentMode = params.mode === 'execute' ? 'auto' : (params.mode || 'auto')
+      const fullExecuteEnabled = params.fullExecuteEnabled === true
       streamRuntimeModes.set(channelId, mode)
+      streamRuntimeFullExecute.set(channelId, fullExecuteEnabled)
       const latestUserText = getLatestUserMessageText(params.messages)
       const conversationRecord = params.conversationId ? conversationDb.get(params.conversationId) : null
       const workspaceIdForLearning = conversationRecord?.workspace_id || undefined
@@ -4123,6 +4130,7 @@ If you find yourself frequently hitting limits, suggest breaking the task into m
         expectedArtifactMutation,
         allowAllSession,
         getRuntimeMode: () => streamRuntimeModes.get(channelId) || mode,
+        getRuntimeFullExecute: () => streamRuntimeFullExecute.get(channelId) === true,
         resetActivityTimeout, // Allow blocking tools like wait_for_agent to keep stream alive
         spawnedAgentIds: new Set<string>(),  // Track spawned agent IDs for orphan detection
         awaitedAgentIds: new Set<string>(),  // Track awaited agent IDs for orphan detection
@@ -5118,6 +5126,7 @@ If you find yourself frequently hitting limits, suggest breaking the task into m
       clearTimeout(maxTimeoutId)
       activeStreams.delete(channelId)
       streamRuntimeModes.delete(channelId)
+      streamRuntimeFullExecute.delete(channelId)
 
       // Safety: ensure no background sub-agents keep running after parent stream ends.
       // Keep callback active until after cancel so renderer receives terminal status updates.
@@ -5145,7 +5154,13 @@ If you find yourself frequently hitting limits, suggest breaking the task into m
     if (!channelId || typeof channelId !== 'string') return
     if (!mode || typeof mode !== 'string') return
     if (!activeStreams.has(channelId)) return
-    streamRuntimeModes.set(channelId, mode)
+    streamRuntimeModes.set(channelId, mode === 'execute' ? 'auto' : mode)
+  })
+
+  ipcMain.on('ai:updateStreamExecutionPolicy', (_, channelId: string, fullExecuteEnabled: boolean) => {
+    if (!channelId || typeof channelId !== 'string') return
+    if (!activeStreams.has(channelId)) return
+    streamRuntimeFullExecute.set(channelId, fullExecuteEnabled === true)
   })
 
   // Stop streaming
@@ -5158,6 +5173,7 @@ If you find yourself frequently hitting limits, suggest breaking the task into m
       activeStreams.delete(channelId)
     }
     streamRuntimeModes.delete(channelId)
+    streamRuntimeFullExecute.delete(channelId)
 
     // Cancel running sub-agents immediately when user stops
     const cancelled = cancelAgentsForStream(channelId)

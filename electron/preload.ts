@@ -18,6 +18,10 @@ contextBridge.exposeInMainWorld('jelico', {
       ipcRenderer.invoke('providers:getModelLimits', providerId, modelId),
     getModelContextSize: (providerId: string, modelId: string) =>
       ipcRenderer.invoke('providers:getModelContextSize', providerId, modelId),
+    getModelToolCapability: (providerId: string, modelId: string) =>
+      ipcRenderer.invoke('providers:getModelToolCapability', providerId, modelId),
+    verifyModelToolCapability: (providerId: string, modelId: string) =>
+      ipcRenderer.invoke('providers:verifyModelToolCapability', providerId, modelId),
   },
   keychain: {
     setApiKey: (providerId: string, key: string) => ipcRenderer.invoke('keychain:set', providerId, key),
@@ -49,6 +53,11 @@ contextBridge.exposeInMainWorld('jelico', {
   queue: {
     list: () => ipcRenderer.invoke('queue:list'),
     replaceAll: (queuedMessages: any[]) => ipcRenderer.invoke('queue:replaceAll', queuedMessages),
+  },
+  logs: {
+    copyConversationLog: (markdown: string) => ipcRenderer.invoke('logs:copyConversationLog', markdown),
+    saveConversationLog: (defaultFileName: string, markdown: string) =>
+      ipcRenderer.invoke('logs:saveConversationLog', defaultFileName, markdown),
   },
   workspaces: {
     list: () => ipcRenderer.invoke('workspaces:list'),
@@ -396,6 +405,9 @@ contextBridge.exposeInMainWorld('jelico', {
     },
     updateStreamMode: (channelId: string, mode: 'auto' | 'explore' | 'execute' | 'plan' | 'review') => {
       ipcRenderer.send('ai:updateStreamMode', channelId, mode)
+    },
+    updateStreamExecutionPolicy: (channelId: string, fullExecuteEnabled: boolean) => {
+      ipcRenderer.send('ai:updateStreamExecutionPolicy', channelId, fullExecuteEnabled)
     },
     stopStream: (channelId: string) => {
       ipcRenderer.send('ai:stop', channelId)

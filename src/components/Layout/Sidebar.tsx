@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, type CSSProperties } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import {
   Plus,
   Settings,
@@ -29,6 +29,8 @@ import { useArtifactStore, type ArtifactType } from '../../stores/artifacts'
 import { useToastStore } from '../../stores/toasts'
 import { useUpdateStore } from '../../stores/updates'
 import { TransferDialog } from '../Conversations/TransferDialog'
+import { ContextMenu, type ContextMenuItem } from '../Common/ContextMenu'
+import { buildConversationLog } from '../../lib/conversationLog'
 import {
   CONVERSATION_SIDEBAR_STATUS_ORDER,
   getConversationSidebarStatus,
@@ -210,8 +212,6 @@ export function Sidebar() {
   const { artifacts, selectArtifact, openCanvas } = useArtifactStore()
   const addToast = useToastStore((state) => state.addToast)
   const updateAvailable = useUpdateStore((state) => state.info?.isUpdateAvailable)
-  const isMacPlatform = useMemo(() => navigator.platform.toUpperCase().includes('MAC'), [])
-  const macDragRegionStyle = isMacPlatform ? ({ WebkitAppRegion: 'drag' } as CSSProperties) : {}
   // Track which project groups are expanded (persisted to localStorage)
   const SIDEBAR_COLLAPSED_KEY = 'jelico:sidebar:collapsed-groups'
   const [expandedProjects, setExpandedProjects] = useState<Set<string>>(() => {
@@ -231,6 +231,7 @@ export function Sidebar() {
   // Track which conversations have their artifact trees expanded
   const [expandedConversations, setExpandedConversations] = useState<Set<string>>(new Set())
   const [archiveConfirmConversationId, setArchiveConfirmConversationId] = useState<string | null>(null)
+  const [contextMenu, setContextMenu] = useState<{ x: number; y: number; items: ContextMenuItem[] } | null>(null)
   // Transfer dialog state
   const [transferDialogConv, setTransferDialogConv] = useState<{ id: string; title: string; workspaceId: string | null } | null>(null)
 
@@ -441,6 +442,113 @@ export function Sidebar() {
     })
   }
 
+  const collectLogs = async (conv: ChatConversation, action: 'copy' | 'save') => {
+    try {
+      const conversation = await window.jelico.conversations.get(conv.id)
+      if (!conversation) throw new Error('Conversation not found')
+      const rows = await window.jelico.artifacts.getByConversation(conv.id)
+      const log = buildConversationLog({
+        conversation,
+        artifacts: rows.map((row: any) => ({
+          id: row.id,
+          conversationId: row.conversation_id || undefined,
+          type: row.type,
+          title: row.title,
+          content: row.content,
+          language: row.language || undefined,
+          filePath: row.file_path || undefined,
+          createdAt: row.created_at,
+          updatedAt: row.updated_at,
+          baseArtifactId: row.base_artifact_id || undefined,
+          revision: row.revision || 1,
+        })),
+      })
+
+      if (action === 'copy') {
+        await window.jelico.logs.copyConversationLog(log)
+        addToast({ title: 'Log copied', description: conv.title, variant: 'success', durationMs: 3200 })
+      } else {
+        const fileName = `${conv.title || 'jelico-conversation'}`
+          .replace(/[<>:"/\\|?*]+/g, '-')
+          .slice(0, 80) + '.md'
+        const result = await window.jelico.logs.saveConversationLog(fileName, log)
+        if (!result.canceled) {
+          addToast({ title: 'Log saved', description: result.filePath || conv.title, variant: 'success', durationMs: 3200 })
+        }
+      }
+    } catch (error) {
+      addToast({
+        title: 'Collect logs failed',
+        description: error instanceof Error ? error.message : 'Unable to collect logs.',
+        variant: 'error',
+        durationMs: 4200,
+      })
+    }
+  }
+
+  const openConversationContextMenu = (event: React.MouseEvent, conv: ChatConversation) => {
+    event.preventDefault()
+    event.stopPropagation()
+    setContextMenu({
+      x: event.clientX,
+      y: event.clientY,
+      items: [
+        { label: 'Open Chat', onClick: () => setActiveConversation(conv.id) },
+        {
+          label: 'Rename',
+          onClick: async () => {
+            const nextTitle = window.prompt('Rename chat', conv.title)
+            if (!nextTitle?.trim()) return
+            await window.jelico.conversations.updateTitle(conv.id, nextTitle.trim())
+            await useChatStore.getState().loadConversations()
+          },
+        },
+        { label: 'Copy Logs', onClick: () => void collectLogs(conv, 'copy') },
+        { label: 'Save Logs...', onClick: () => void collectLogs(conv, 'save') },
+        {
+          label: 'Transfer to Workspace',
+          disabled: Boolean(conv.workspaceId),
+          onClick: () => setTransferDialogConv({ id: conv.id, title: conv.title, workspaceId: conv.workspaceId || null }),
+        },
+        { label: 'Archive', danger: true, onClick: () => setArchiveConfirmConversationId(conv.id) },
+      ],
+    })
+  }
+
+  const openArtifactContextMenu = (event: React.MouseEvent, conv: ChatConversation, artifact: ReturnType<typeof getArtifactsForConversation>[number]) => {
+    event.preventDefault()
+    event.stopPropagation()
+    setContextMenu({
+      x: event.clientX,
+      y: event.clientY,
+      items: [
+        {
+          label: 'Open in Canvas',
+          onClick: async () => {
+            await setActiveConversation(conv.id)
+            selectArtifact(artifact.id)
+            openCanvas()
+          },
+        },
+        {
+          label: 'Reference in Prompt',
+          onClick: () => window.dispatchEvent(new CustomEvent('jelico:reference-artifact', {
+            detail: { id: artifact.id, title: artifact.title, type: artifact.type },
+          })),
+        },
+        { label: 'Reveal in Folder', onClick: () => void window.jelico.artifacts.reveal(artifact.id) },
+        {
+          label: 'Delete',
+          danger: true,
+          onClick: () => {
+            if (!window.confirm(`Delete artifact "${artifact.title}"?`)) return
+            void useArtifactStore.getState().removeArtifact(artifact.id)
+          },
+        },
+      ],
+    })
+  }
+
   useEffect(() => {
     if (!archiveConfirmConversationId) return
     if (conversations.some((conversation) => conversation.id === archiveConfirmConversationId)) return
@@ -453,18 +561,7 @@ export function Sidebar() {
   }
 
   return (
-    <div
-      className="pane-surface relative w-64 border-r border-border flex flex-col"
-      style={{ paddingTop: 'var(--titlebar-padding)' }}
-    >
-      <div
-        className="absolute left-0 right-0 top-0 z-10"
-        style={{
-          height: 'var(--titlebar-padding)',
-          ...macDragRegionStyle,
-        }}
-        aria-hidden="true"
-      />
+    <div className="pane-surface relative w-64 border-r border-border flex flex-col">
 
       {/* Header */}
       <div className="p-4">
@@ -586,6 +683,7 @@ export function Sidebar() {
                                   setArchiveConfirmConversationId(null)
                                   setActiveConversation(conv.id)
                                 }}
+                                onContextMenu={(event) => openConversationContextMenu(event, conv)}
                                 title={formatCreatedDate(conv.createdAt)}
                                 style={{
                                   width: 'calc(100% + 0.75rem)',
@@ -687,6 +785,7 @@ export function Sidebar() {
                                     return (
                                       <div
                                         key={artifact.id}
+                                        onContextMenu={(event) => openArtifactContextMenu(event, conv, artifact)}
                                         className="group flex items-center gap-2 px-2 py-1 text-xs text-text-muted hover:text-text-primary hover:bg-bg-hover rounded transition-colors"
                                       >
                                         <button
@@ -772,6 +871,15 @@ export function Sidebar() {
           onTransferComplete={() => {
             // Chat/workspace state is refreshed by the dialog after transfer
           }}
+        />
+      )}
+
+      {contextMenu && (
+        <ContextMenu
+          x={contextMenu.x}
+          y={contextMenu.y}
+          items={contextMenu.items}
+          onClose={() => setContextMenu(null)}
         />
       )}
     </div>
