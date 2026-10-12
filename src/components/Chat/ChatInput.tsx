@@ -1062,7 +1062,7 @@ export function ChatInput({
         } ${
           isDragging
             ? 'border-accent border-dashed bg-accent/5'
-            : 'border-accent hover:border-accent-bright focus-within:border-accent-bright'
+            : 'border-border hover:border-border-strong focus-within:border-accent-dim'
         }`}
         onDragOver={handleDragOver}
         onDragLeave={handleDragLeave}
@@ -1110,7 +1110,7 @@ export function ChatInput({
           </div>
 
           <div
-            className="min-w-0 text-center text-[13px] text-text-primary whitespace-nowrap overflow-hidden text-ellipsis px-1 sm:px-2"
+            className="min-w-0 text-center text-[13px] text-text-faint whitespace-nowrap overflow-hidden text-ellipsis px-1 sm:px-2 hidden md:block"
           >
             <span>Enter to submit · Shift+Enter for new line</span>
             <span className="mx-2 text-text-muted">|</span>
