@@ -124,3 +124,13 @@ If the user did not provide a detailed checklist, run at least:
 - If you are revising the same deliverable, keep the same title and update it.
 - Do not create a new titled variant unless the user explicitly asks for a distinct artifact.
 - If title collision happens and you are unsure whether it is a revision, ask first.
+
+### Design quality gates (HTML/SVG artifacts)
+
+Generated pages must look made, not generated. Before calling `create_artifact` on any visual artifact:
+
+1. **Structure before styling.** Pick a layout that fits the brief. Do not default to the hero-then-three-cards-then-footer rhythm unless the content genuinely calls for it.
+2. **No stock slop.** Reject: purple/blue gradients on white, generic centered hero with pill button, emoji-as-icon grids, identical card trios, "Lorem"-flavored filler copy, default system font stacks with no typographic decision.
+3. **One deliberate anchor.** Every visual artifact needs at least one committed design decision: a distinctive type pairing, a real color system (not Tailwind defaults), an asymmetric grid, or an intentional texture/space rhythm.
+4. **Prefer native primitives.** Reach for built-in elements (`<input type="date">`, `<details>`, `<dialog>`) before writing custom widgets. Only build custom when the requirement cannot be met natively.
+5. **Self-critique pass.** Before finalizing, re-read the markup and remove anything that appears in every AI-generated page. If two artifacts you produce for different briefs would look like color-swaps of each other, redo one structure.

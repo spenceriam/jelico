@@ -54,7 +54,9 @@ interface ArtifactStore {
   artifacts: Artifact[]
   selectedArtifactId: string | null
   selectedRevisionId: string | null  // Which revision to view (null = latest)
+  openArtifactIds: string[]  // Tabs currently open in the Canvas panel
   canvasOpen: boolean
+  libraryOpen: boolean  // Library browser overlay
   isLoading: boolean
   // Streaming preview - shown in Canvas while artifact is being generated
   streamingPreview: { type?: string; title?: string; content: string } | null
@@ -65,15 +67,18 @@ interface ArtifactStore {
   // Actions
   loadArtifacts: () => Promise<void>
   loadArtifactsForConversation: (conversationId: string) => Promise<void>
+  ensureArtifactContent: (id: string) => Promise<void>
   addArtifact: (artifact: Omit<Artifact, 'id' | 'createdAt' | 'updatedAt' | 'revision'>) => Promise<Artifact>
   updateArtifact: (id: string, updates: Partial<Omit<Artifact, 'id' | 'createdAt'>>) => Promise<void>
   removeArtifact: (id: string) => Promise<void>
   selectArtifact: (id: string | null) => void
+  closeArtifactTab: (id: string) => void
   selectRevision: (revisionId: string | null) => void
   getRevisions: (baseArtifactId: string) => Promise<Artifact[]>
   openCanvas: () => void
   closeCanvas: () => void
   toggleCanvas: () => void
+  toggleLibrary: () => void
   getArtifactsByConversation: (conversationId: string) => Artifact[]
   getBaseArtifactId: (artifact: Artifact) => string
   clearConversationArtifacts: (conversationId: string) => Promise<void>
@@ -86,7 +91,9 @@ export const useArtifactStore = create<ArtifactStore>((set, get) => ({
   artifacts: [],
   selectedArtifactId: null,
   selectedRevisionId: null,
+  openArtifactIds: [],
   canvasOpen: false,
+  libraryOpen: false,
   isLoading: false,
   streamingPreview: null,
   streamingOpenedFor: null,
@@ -94,7 +101,8 @@ export const useArtifactStore = create<ArtifactStore>((set, get) => ({
   loadArtifacts: async () => {
     set({ isLoading: true })
     try {
-      const rows: ArtifactRow[] = await window.jelico.artifacts.list()
+      // Metadata-only: artifact file contents load lazily via ensureArtifactContent
+      const rows: ArtifactRow[] = await window.jelico.artifacts.listSummaries()
       set({ artifacts: rows.map(rowToArtifact), isLoading: false })
     } catch (error) {
       console.error('Failed to load artifacts:', error)
@@ -104,17 +112,38 @@ export const useArtifactStore = create<ArtifactStore>((set, get) => ({
 
   loadArtifactsForConversation: async (conversationId) => {
     try {
-      const rows: ArtifactRow[] = await window.jelico.artifacts.getByConversation(conversationId)
+      const rows: ArtifactRow[] = await window.jelico.artifacts.getSummariesByConversation(conversationId)
       const newArtifacts = rows.map(rowToArtifact)
 
-      // Merge with existing artifacts, replacing any with same id
+      // Merge with existing artifacts, replacing any with same id.
+      // Preserve already-loaded content when a summary replaces a hydrated row.
       set((state) => {
-        const existingIds = new Set(newArtifacts.map(a => a.id))
-        const otherArtifacts = state.artifacts.filter(a => !existingIds.has(a.id) && a.conversationId !== conversationId)
-        return { artifacts: [...otherArtifacts, ...newArtifacts] }
+        const existingById = new Map(state.artifacts.map((a) => [a.id, a]))
+        const merged = newArtifacts.map((a) => {
+          const existing = existingById.get(a.id)
+          return existing && existing.content && !a.content ? { ...a, content: existing.content } : a
+        })
+        const existingIds = new Set(merged.map((a) => a.id))
+        const otherArtifacts = state.artifacts.filter((a) => !existingIds.has(a.id) && a.conversationId !== conversationId)
+        return { artifacts: [...otherArtifacts, ...merged] }
       })
     } catch (error) {
       console.error('Failed to load artifacts for conversation:', error)
+    }
+  },
+
+  ensureArtifactContent: async (id) => {
+    const artifact = get().artifacts.find((a) => a.id === id)
+    if (!artifact || artifact.content) return
+    try {
+      const row: ArtifactRow | null = await window.jelico.artifacts.get(id)
+      if (!row) return
+      const hydrated = rowToArtifact(row)
+      set((state) => ({
+        artifacts: state.artifacts.map((a) => (a.id === id ? { ...a, content: hydrated.content } : a)),
+      }))
+    } catch (error) {
+      console.error('Failed to load artifact content:', error)
     }
   },
 
@@ -136,6 +165,9 @@ export const useArtifactStore = create<ArtifactStore>((set, get) => ({
         selectedArtifactId: newArtifact.id,
         selectedRevisionId: null,
         canvasOpen: true,
+        openArtifactIds: state.openArtifactIds.includes(newArtifact.id)
+          ? state.openArtifactIds
+          : [...state.openArtifactIds, newArtifact.id],
       }))
 
       return newArtifact
@@ -193,11 +225,18 @@ export const useArtifactStore = create<ArtifactStore>((set, get) => ({
       await window.jelico.artifacts.delete(id)
 
       set((state) => {
-        const newArtifacts = state.artifacts.filter((a) => a.id !== id)
+        const removedBaseIds = new Set(
+          state.artifacts
+            .filter((a) => a.id === id || a.baseArtifactId === id)
+            .map((a) => a.id)
+        )
+        const newArtifacts = state.artifacts.filter((a) => !removedBaseIds.has(a.id))
+        const newOpenTabs = state.openArtifactIds.filter((tabId) => !removedBaseIds.has(tabId))
         return {
           artifacts: newArtifacts,
+          openArtifactIds: newOpenTabs,
           selectedArtifactId:
-            state.selectedArtifactId === id
+            state.selectedArtifactId && removedBaseIds.has(state.selectedArtifactId)
               ? newArtifacts[newArtifacts.length - 1]?.id || null
               : state.selectedArtifactId,
         }
@@ -209,10 +248,28 @@ export const useArtifactStore = create<ArtifactStore>((set, get) => ({
   },
 
   selectArtifact: (id) => {
-    set({
+    set((state) => ({
       selectedArtifactId: id,
       selectedRevisionId: null,  // Reset to latest when selecting new artifact
-      canvasOpen: id !== null,
+      canvasOpen: id !== null ? true : state.canvasOpen,
+      openArtifactIds:
+        id !== null && !state.openArtifactIds.includes(id)
+          ? [...state.openArtifactIds, id]
+          : state.openArtifactIds,
+    }))
+  },
+
+  closeArtifactTab: (id) => {
+    set((state) => {
+      const nextOpen = state.openArtifactIds.filter((openId) => openId !== id)
+      const closingSelected = state.selectedArtifactId === id
+      return {
+        openArtifactIds: nextOpen,
+        selectedArtifactId: closingSelected
+          ? nextOpen[nextOpen.length - 1] ?? null
+          : state.selectedArtifactId,
+        selectedRevisionId: closingSelected ? null : state.selectedRevisionId,
+      }
     })
   },
 
@@ -233,6 +290,7 @@ export const useArtifactStore = create<ArtifactStore>((set, get) => ({
   openCanvas: () => set({ canvasOpen: true }),
   closeCanvas: () => set({ canvasOpen: false }),
   toggleCanvas: () => set((state) => ({ canvasOpen: !state.canvasOpen })),
+  toggleLibrary: () => set((state) => ({ libraryOpen: !state.libraryOpen })),
 
   getArtifactsByConversation: (conversationId) => {
     return get().artifacts.filter((a) => a.conversationId === conversationId)
