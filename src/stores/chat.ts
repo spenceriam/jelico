@@ -224,6 +224,7 @@ interface ChatStore {
   // Actions
   loadConversations: () => Promise<void>
   createConversation: (providerId: string, model: string, initialMessageHint?: string) => Promise<string>
+  forkConversation: (id: string) => Promise<string | null>
   setActiveConversation: (id: string | null) => Promise<void>
   sendMessage: (content: string, providerId: string, model: string, attachments?: MessageAttachment[]) => Promise<void>
   updateExistingMessage: (messageId: string, updates: { content: string; attachments?: MessageAttachment[] }) => Promise<Message | null>
@@ -871,6 +872,18 @@ export const useChatStore = create<ChatStore>((set, get) => ({
       })
     } catch (error: any) {
       set({ error: error.message, isLoading: false })
+    }
+  },
+
+  forkConversation: async (id) => {
+    try {
+      const forked = await window.jelico.conversations.fork(id)
+      if (!forked) return null
+      await get().loadConversations()
+      return forked.id as string
+    } catch (error) {
+      console.error('Failed to fork conversation:', error)
+      return null
     }
   },
 

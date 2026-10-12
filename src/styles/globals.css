@@ -662,7 +662,7 @@
   .btn-primary:hover {
     background: var(--accent-bright);
     border-color: var(--accent-bright);
-    box-shadow: 0 4px 16px var(--accent-glow);
+    box-shadow: 0 2px 8px var(--accent-glow);
   }
 
   .btn-secondary {

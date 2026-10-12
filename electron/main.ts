@@ -7,6 +7,7 @@ import { registerProviderHandlers } from './ipc/providers'
 import { registerConversationHandlers } from './ipc/conversations'
 import { registerAIHandlers } from './ipc/ai'
 import { registerWorkspaceHandlers } from './ipc/workspaces'
+import { registerProjectHandlers } from './ipc/projects'
 import { registerArtifactHandlers } from './ipc/artifacts'
 import { registerSandboxHandlers } from './ipc/sandbox'
 import { registerMemoryHandlers } from './ipc/memory'
@@ -396,6 +397,7 @@ if (gotSingleInstanceLock) {
     registerConversationHandlers()
     registerAIHandlers()
     registerWorkspaceHandlers()
+    registerProjectHandlers()
     registerArtifactHandlers()
     registerSandboxHandlers()
     registerMemoryHandlers()

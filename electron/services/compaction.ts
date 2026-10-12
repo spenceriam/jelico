@@ -15,10 +15,14 @@ import { keychainService } from './keychain'
 import { getZaiProviderBaseUrl } from '../../src/lib/compatibleProviderModels'
 
 // Compaction thresholds
+// ELIDE is the soft stage: bulky tool outputs may be stubbed out at prompt
+// assembly time without touching stored history. COMPACT remains the hard
+// stage that summarizes and rewrites history.
 export const COMPACTION_THRESHOLDS = {
-  WARNING: 0.70,    // Show warning icon at 70%
-  COMPACT: 0.75,    // Auto-compact at 75%
-  CRITICAL: 0.90,   // Force compact at 90%
+  ELIDE: 0.60,    // Soft stage: elide bulky tool outputs at prompt assembly
+  WARNING: 0.70,  // Show warning icon at 70%
+  COMPACT: 0.75,  // Auto-compact at 75%
+  CRITICAL: 0.90, // Force compact at 90%
 }
 
 // How many recent messages to keep intact
@@ -58,6 +62,9 @@ function normalizeAnthropicCompatibleBaseUrl(baseUrl?: string | null): string | 
 function estimateTokens(text: string): number {
   return Math.ceil(text.length / 4)
 }
+
+// Soft-stage elision helpers live in electron/lib (Electron-free, unit-tested)
+export { elideBulkyToolOutputs, estimateMessagesTokensLoose } from '../lib/contextElision'
 
 // Estimate tokens for a message including tool data
 function estimateMessageTokens(message: Message): number {
@@ -228,15 +235,14 @@ async function generateSummary(
     throw new Error('API key not found')
   }
 
-  // Create provider instance - use a fast model if available
+  // Create provider instance
   let provider: any
-  let summaryModel = model
+  // Summarize with the provider's configured default model when available;
+  // otherwise reuse the conversation's model. Never hardcode a model id here.
+  let summaryModel = providerConfig.default_model || model
 
-  // Try to use a faster/cheaper model for summarization
   if (providerConfig.type === 'anthropic') {
     provider = createAnthropic({ apiKey: apiKey! })
-    // Use Haiku for summarization if available
-    summaryModel = 'claude-3-5-haiku-20241022'
   } else if (providerConfig.type === 'anthropic-compatible') {
     provider = createAnthropic({
       apiKey: apiKey!,

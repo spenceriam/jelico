@@ -1,3 +1,24 @@
+## [0.41.0] - 2026-10-12
+
+### Highlights
+- Long chats stay fast and steady: the transcript only renders what is on screen, streaming no longer jumps, and reopening a long conversation lands at the bottom instantly.
+- Artifacts are easier to work with: open artifacts stay as tabs, a new Library browser shows everything a chat produced, and startup no longer reads every artifact file.
+- Workspaces grew into real projects: conversations group under named projects you can rename, and you can fork any conversation to explore a different direction with its full history.
+
+### New
+- **Virtualized Transcript** - Chat history renders only the visible window, follows streaming smoothly when you are at the bottom, and never yanks you back when you scroll up.
+- **Canvas Tabs and Library** - Open artifacts remain available as tabs, and the Library view browses artifacts for this chat or all chats with on-demand loading.
+- **Projects and Forking** - Projects are now real entities migrated from your workspaces, renameable from the sidebar; any conversation can be forked with its full message history.
+- **Verify App Skill** - A built-in skill drives the running app like a user and captures evidence before claiming behavior changes work.
+
+### Changed
+- **Smarter Context Handling** - During long working sessions, bulky tool outputs are elided at a soft threshold before summarization kicks in, and agents that repeat the same call get nudged to change approach or stopped cleanly.
+- **Calmer Composer** - The input card border no longer glows at rest, hints are subtler, and button shadows are toned down.
+- **Faster Startup with Artifacts** - Artifact metadata loads at startup; file contents load only when you open an artifact.
+
+### Fixed
+- **Compaction Summarizer Model** - Conversation compaction no longer points at a retired Anthropic model ID; it uses your provider's configured default model.
+
 ## [0.39.2] - 2026-05-11
 
 ### Highlights

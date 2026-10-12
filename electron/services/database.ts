@@ -22,6 +22,7 @@ interface DbSchema {
   messages: MessageRow[]
   queued_messages: QueuedMessageRow[]
   workspaces: WorkspaceRow[]
+  projects: ProjectRow[]
   artifacts: ArtifactRow[]
   memories: MemoryRow[]
   permissions: PermissionRow[]
@@ -34,6 +35,7 @@ let db: DbSchema = {
   messages: [],
   queued_messages: [],
   workspaces: [],
+  projects: [],
   artifacts: [],
   memories: [],
   permissions: [],
@@ -56,6 +58,9 @@ function loadDb(): void {
       }
       if (!db.workspaces) {
         db.workspaces = []
+      }
+      if (!db.projects) {
+        db.projects = []
       }
       if (!db.artifacts) {
         db.artifacts = []
@@ -114,6 +119,7 @@ function loadDb(): void {
       messages: [],
       queued_messages: [],
       workspaces: [],
+      projects: [],
       artifacts: [],
       memories: [],
       permissions: [],
@@ -319,6 +325,43 @@ export async function initDatabase(): Promise<void> {
   // ONE-TIME: Relocate artifacts to workspace/sandbox locations
   // This can be removed after running once in development
   relocateArtifactsToWorkspaces()
+
+  // Idempotent: backfill project entities from existing workspaces
+  migrateWorkspacesToProjects()
+}
+
+/**
+ * Projects are the user-facing grouping; workspaces remain the on-disk roots.
+ * Migration derives one project per distinct workspace root (project_path || path).
+ * Idempotent: existing projects are matched by root_path and never duplicated.
+ */
+function migrateWorkspacesToProjects(): void {
+  let changed = false
+
+  for (const workspace of db.workspaces) {
+    const rootPath = workspace.project_path || workspace.path
+    if (!rootPath) continue
+
+    const existing = db.projects.find((project) => project.root_path === rootPath)
+    if (!existing) {
+      const now = Date.now()
+      const parts = rootPath.split(/[\\/]/).filter(Boolean)
+      const fallbackName = parts[parts.length - 1] || rootPath
+      db.projects.push({
+        id: uuid(),
+        name: workspace.name || fallbackName,
+        root_path: rootPath,
+        created_at: now,
+        updated_at: now,
+      })
+      changed = true
+    }
+  }
+
+  if (changed) {
+    saveDb()
+    console.log(`[Migration] Backfilled ${db.projects.length} project(s) from workspaces`)
+  }
 }
 
 // Provider operations
@@ -561,6 +604,32 @@ export const conversationDb = {
     saveDb()
   },
 
+  fork(id: string): ConversationRow | null {
+    const source = this.get(id)
+    if (!source) return null
+
+    const now = Date.now()
+    const forkId = uuid()
+    const forked: ConversationRow = {
+      ...source,
+      id: forkId,
+      title: `Fork of ${source.title}`,
+      archived_at: null,
+      created_at: now,
+      updated_at: now,
+    }
+    db.conversations.push(forked)
+
+    const copiedMessages = db.messages
+      .filter(m => m.conversation_id === id)
+      .sort((a, b) => a.created_at - b.created_at)
+      .map(m => ({ ...m, id: uuid(), conversation_id: forkId }))
+    db.messages.push(...copiedMessages)
+
+    saveDb()
+    return forked
+  },
+
   // Replace all messages for a conversation (used by compaction)
   updateMessages(id: string, newMessages: MessageRow[]): void {
     // Remove existing messages
@@ -649,6 +718,59 @@ export const workspaceDb = {
       workspace.updated_at = Date.now()
       saveDb()
     }
+  },
+}
+
+// Project operations
+// Projects are the user-facing grouping over workspaces (a project maps to a
+// workspace root path); workspaces remain the on-disk execution roots.
+export const projectDb = {
+  list(): ProjectRow[] {
+    return [...db.projects].sort((a, b) => b.updated_at - a.updated_at)
+  },
+
+  get(id: string): ProjectRow | null {
+    return db.projects.find(p => p.id === id) || null
+  },
+
+  getByRootPath(rootPath: string): ProjectRow | null {
+    return db.projects.find(p => p.root_path === rootPath) || null
+  },
+
+  create(input: { name: string; rootPath: string }): ProjectRow {
+    const existing = this.getByRootPath(input.rootPath)
+    if (existing) return existing
+
+    const now = Date.now()
+    const record: ProjectRow = {
+      id: uuid(),
+      name: input.name,
+      root_path: input.rootPath,
+      created_at: now,
+      updated_at: now,
+    }
+    db.projects.push(record)
+    saveDb()
+    return record
+  },
+
+  update(id: string, updates: { name?: string }): ProjectRow | null {
+    const project = db.projects.find(p => p.id === id)
+    if (!project) return null
+    if (updates.name !== undefined) {
+      const trimmed = updates.name.trim()
+      if (trimmed) project.name = trimmed
+    }
+    project.updated_at = Date.now()
+    saveDb()
+    return project
+  },
+
+  delete(id: string): void {
+    // Deleting a project never deletes workspaces or conversations; groups
+    // simply fall back to path-derived labels.
+    db.projects = db.projects.filter(p => p.id !== id)
+    saveDb()
   },
 }
 
@@ -865,6 +987,14 @@ interface WorkspaceRow {
   updated_at: number
 }
 
+interface ProjectRow {
+  id: string
+  name: string
+  root_path: string
+  created_at: number
+  updated_at: number
+}
+
 interface WorkspaceInput {
   name: string
   path: string
@@ -968,7 +1098,7 @@ function hydrateArtifactContent(artifact: ArtifactRow): ArtifactRow | null {
   return null
 }
 
-function getLatestReadableArtifacts(artifacts: ArtifactRow[]): ArtifactRow[] {
+function getLatestReadableArtifacts(artifacts: ArtifactRow[], hydrate = true): ArtifactRow[] {
   const groupedByBase = new Map<string, ArtifactRow[]>()
 
   for (const artifact of artifacts) {
@@ -984,6 +1114,10 @@ function getLatestReadableArtifacts(artifacts: ArtifactRow[]): ArtifactRow[] {
   const resolved: ArtifactRow[] = []
   for (const revisions of groupedByBase.values()) {
     const sorted = revisions.sort((a, b) => (b.revision ?? 1) - (a.revision ?? 1))
+    if (!hydrate) {
+      resolved.push(sorted[0])
+      continue
+    }
     const latestReadable = sorted
       .map((artifact) => hydrateArtifactContent(artifact))
       .find((artifact): artifact is ArtifactRow => artifact !== null)
@@ -998,6 +1132,17 @@ export const artifactDb = {
   list(): ArtifactRow[] {
     // Return latest readable revision for each base artifact across all conversations.
     return getLatestReadableArtifacts(db.artifacts).sort((a, b) => b.updated_at - a.updated_at)
+  },
+
+  listSummaries(): ArtifactRow[] {
+    // Metadata-only listing: never reads artifact files. Content is stripped for
+    // file-backed rows; legacy inline content is kept (it costs nothing extra).
+    return getLatestReadableArtifacts(db.artifacts, false)
+      .map((artifact) => ({
+        ...artifact,
+        content: artifact.file_path ? '' : (artifact.content ?? ''),
+      }))
+      .sort((a, b) => b.updated_at - a.updated_at)
   },
 
   get(id: string): ArtifactRow | null {
@@ -1030,6 +1175,17 @@ export const artifactDb = {
     // Return latest readable revision of each base artifact for this conversation.
     const artifacts = db.artifacts.filter(a => a.conversation_id === conversationId)
     return getLatestReadableArtifacts(artifacts).sort((a, b) => b.updated_at - a.updated_at)
+  },
+
+  getSummariesByConversation(conversationId: string): ArtifactRow[] {
+    // Metadata-only per-conversation listing; see listSummaries().
+    const artifacts = db.artifacts.filter(a => a.conversation_id === conversationId)
+    return getLatestReadableArtifacts(artifacts, false)
+      .map((artifact) => ({
+        ...artifact,
+        content: artifact.file_path ? '' : (artifact.content ?? ''),
+      }))
+      .sort((a, b) => b.updated_at - a.updated_at)
   },
 
   // Get all revisions of an artifact (by base id) - with content loaded from files

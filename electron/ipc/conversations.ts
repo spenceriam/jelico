@@ -162,6 +162,13 @@ export function registerConversationHandlers() {
     conversationDb.delete(id)
   })
 
+  // Fork a conversation: copies the conversation and its messages into a new
+  // conversation so the user can explore an alternative direction.
+  ipcMain.handle('conversations:fork', async (_, id: string) => {
+    const forked = conversationDb.fork(id)
+    return forked ? toConversationApi(forked) : null
+  })
+
   // Archive a conversation (keeps messages/artifacts for later restore)
   ipcMain.handle('conversations:archive', async (_, id: string) => {
     try {

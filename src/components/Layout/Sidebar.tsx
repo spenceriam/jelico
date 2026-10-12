@@ -19,12 +19,13 @@ import {
   FolderUp,
   GitFork,
   Box,
+  Pencil,
 } from 'lucide-react'
 import { useChatStore } from '../../stores/chat'
 import { useAgentStore } from '../../stores/agents'
 import { useClarificationStore } from '../../stores/clarification'
 import { useUIStore } from '../../stores/ui'
-import { useWorkspaceStore, type Workspace } from '../../stores/workspaces'
+import { useWorkspaceStore, type Workspace, type Project } from '../../stores/workspaces'
 import { useArtifactStore, type ArtifactType } from '../../stores/artifacts'
 import { useToastStore } from '../../stores/toasts'
 import { useUpdateStore } from '../../stores/updates'
@@ -56,6 +57,7 @@ interface ProjectGroup {
   id: string
   label: string
   path?: string
+  projectId?: string  // Backing project entity when one exists
   workspaceIds: string[]
   preferredWorkspaceId: string | null
   isSandbox: boolean
@@ -110,7 +112,8 @@ function getPathBasename(value: string): string {
 
 function buildProjectGroups(
   allConversations: ChatConversation[],
-  workspaceById: Map<string, Workspace>
+  workspaceById: Map<string, Workspace>,
+  projectByRootPath: Map<string, Project>
 ): ProjectGroup[] {
   const workspaceGroupsByProject = new Map<string, ProjectGroup>()
   const orphanConversations: ChatConversation[] = []
@@ -125,13 +128,15 @@ function buildProjectGroups(
 
     const projectPath = workspace.projectPath || workspace.path
     const projectKey = projectPath || `workspace-${workspace.id}`
+    const projectEntity = projectPath ? projectByRootPath.get(projectPath) : undefined
     const existingGroup = workspaceGroupsByProject.get(projectKey)
 
     if (!existingGroup) {
       workspaceGroupsByProject.set(projectKey, {
         id: `project-${projectKey}`,
-        label: projectPath ? getPathBasename(projectPath) : workspace.name,
+        label: projectEntity?.name || (projectPath ? getPathBasename(projectPath) : workspace.name),
         path: projectPath || workspace.path,
+        projectId: projectEntity?.id,
         workspaceIds: [workspace.id],
         preferredWorkspaceId: workspace.isWorktree ? null : workspace.id,
         isSandbox: false,
@@ -204,11 +209,12 @@ export function Sidebar() {
     conversationStreams,
     interruptedConversations,
     conversationErrors,
+    forkConversation,
   } = useChatStore()
   const agents = useAgentStore((state) => state.agents)
   const clarificationRequestsByConversation = useClarificationStore((state) => state.requestsByConversation)
   const { sidebarCollapsed, openSettings } = useUIStore()
-  const { workspaces, activeWorkspaceId, setActiveWorkspace } = useWorkspaceStore()
+  const { workspaces, activeWorkspaceId, setActiveWorkspace, projects, renameProject } = useWorkspaceStore()
   const { artifacts, selectArtifact, openCanvas } = useArtifactStore()
   const addToast = useToastStore((state) => state.addToast)
   const updateAvailable = useUpdateStore((state) => state.info?.isUpdateAvailable)
@@ -234,6 +240,8 @@ export function Sidebar() {
   const [renamingConvId, setRenamingConvId] = useState<string | null>(null)
   const [renameValue, setRenameValue] = useState('')
   const renameInputRef = useRef<HTMLInputElement | null>(null)
+  const [renamingGroupId, setRenamingGroupId] = useState<string | null>(null)
+  const [groupRenameDraft, setGroupRenameDraft] = useState('')
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; items: ContextMenuItem[] } | null>(null)
   // Transfer dialog state
   const [transferDialogConv, setTransferDialogConv] = useState<{ id: string; title: string; workspaceId: string | null } | null>(null)
@@ -243,9 +251,14 @@ export function Sidebar() {
     [workspaces]
   )
 
+  const projectByRootPath = useMemo(
+    () => new Map(projects.map((project) => [project.rootPath, project])),
+    [projects]
+  )
+
   const projectGroups = useMemo<ProjectGroup[]>(
-    () => buildProjectGroups(conversations, workspaceById),
-    [conversations, workspaceById]
+    () => buildProjectGroups(conversations, workspaceById, projectByRootPath),
+    [conversations, workspaceById, projectByRootPath]
   )
 
   const agentStateByConversation = useMemo(() => {
@@ -506,6 +519,14 @@ export function Sidebar() {
       items: [
         { label: 'Open Chat', onClick: () => setActiveConversation(conv.id) },
         {
+          label: 'Fork',
+          onClick: () => {
+            void forkConversation(conv.id).then((forkedId) => {
+              if (forkedId) void setActiveConversation(forkedId)
+            })
+          },
+        },
+        {
           label: 'Rename',
           onClick: () => {
             setRenameValue(conv.title)
@@ -620,28 +641,67 @@ export function Sidebar() {
           return (
             <div key={group.id} className="mb-3">
               <div className="flex items-center gap-1">
-                <button
-                  onClick={() => toggleProject(group.id)}
-                  style={{ marginLeft: '-0.75rem' }}
-                  className={`
-                    flex-1 min-w-0 flex items-center gap-2 pl-5 pr-2 py-1.5 rounded-l-none rounded-r-md text-left transition-colors
-                    ${isActiveProject
-                      ? 'bg-bg-elevated text-text-primary'
-                      : 'text-text-secondary hover:text-text-primary hover:bg-bg-hover'}
-                  `}
-                >
-                  {isExpanded ? (
-                    <ChevronDown className="w-3 h-3 flex-shrink-0 text-text-muted" />
-                  ) : (
-                    <ChevronRight className="w-3 h-3 flex-shrink-0 text-text-muted" />
-                  )}
-                  <GroupIcon className="w-4 h-4 flex-shrink-0 text-text-muted" />
-                  <div className="min-w-0 flex-1">
-                    <div className="text-sm truncate">
-                      {group.isSandbox || group.isOrphan ? group.label : `/${group.label}`}
-                    </div>
+                {renamingGroupId === group.id && group.projectId ? (
+                  <div className="flex-1 min-w-0 flex items-center gap-2 pl-5 pr-2 py-1.5">
+                    <GroupIcon className="w-4 h-4 flex-shrink-0 text-text-muted" />
+                    <input
+                      autoFocus
+                      value={groupRenameDraft}
+                      onChange={(event) => setGroupRenameDraft(event.target.value)}
+                      onClick={(event) => event.stopPropagation()}
+                      onKeyDown={(event) => {
+                        if (event.key === 'Enter') {
+                          void renameProject(group.projectId as string, groupRenameDraft)
+                          setRenamingGroupId(null)
+                        }
+                        if (event.key === 'Escape') {
+                          setRenamingGroupId(null)
+                        }
+                      }}
+                      onBlur={() => {
+                        void renameProject(group.projectId as string, groupRenameDraft)
+                        setRenamingGroupId(null)
+                      }}
+                      className="flex-1 min-w-0 bg-bg-deep border border-border rounded px-1.5 py-0.5 text-sm text-text-primary outline-none focus:border-accent"
+                    />
                   </div>
-                </button>
+                ) : (
+                  <button
+                    onClick={() => toggleProject(group.id)}
+                    style={{ marginLeft: '-0.75rem' }}
+                    className={`
+                      flex-1 min-w-0 flex items-center gap-2 pl-5 pr-2 py-1.5 rounded-l-none rounded-r-md text-left transition-colors
+                      ${isActiveProject
+                        ? 'bg-bg-elevated text-text-primary'
+                        : 'text-text-secondary hover:text-text-primary hover:bg-bg-hover'}
+                    `}
+                  >
+                    {isExpanded ? (
+                      <ChevronDown className="w-3 h-3 flex-shrink-0 text-text-muted" />
+                    ) : (
+                      <ChevronRight className="w-3 h-3 flex-shrink-0 text-text-muted" />
+                    )}
+                    <GroupIcon className="w-4 h-4 flex-shrink-0 text-text-muted" />
+                    <div className="min-w-0 flex-1">
+                      <div className="text-sm truncate">
+                        {group.isSandbox || group.isOrphan ? group.label : `/${group.label}`}
+                      </div>
+                    </div>
+                  </button>
+                )}
+
+                {!group.isOrphan && !group.isSandbox && group.projectId && renamingGroupId !== group.id && (
+                  <button
+                    onClick={() => {
+                      setRenamingGroupId(group.id)
+                      setGroupRenameDraft(group.label)
+                    }}
+                    className="p-1.5 text-text-muted hover:text-text-primary hover:bg-bg-hover rounded transition-colors"
+                    title={`Rename ${group.label}`}
+                  >
+                    <Pencil className="w-3 h-3" />
+                  </button>
+                )}
 
                 {!group.isOrphan && (
                   <button

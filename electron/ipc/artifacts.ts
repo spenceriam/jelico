@@ -9,6 +9,11 @@ export function registerArtifactHandlers() {
     return artifactDb.list()
   })
 
+  // List artifact metadata only (no file reads; content stripped for file-backed rows)
+  ipcMain.handle('artifacts:listSummaries', async () => {
+    return artifactDb.listSummaries()
+  })
+
   // Get a single artifact
   ipcMain.handle('artifacts:get', async (_, id: string) => {
     return artifactDb.get(id)
@@ -17,6 +22,11 @@ export function registerArtifactHandlers() {
   // Get artifacts for a conversation (returns latest revisions only)
   ipcMain.handle('artifacts:getByConversation', async (_, conversationId: string) => {
     return artifactDb.getByConversation(conversationId)
+  })
+
+  // Get artifact metadata for a conversation (no file reads)
+  ipcMain.handle('artifacts:getSummariesByConversation', async (_, conversationId: string) => {
+    return artifactDb.getSummariesByConversation(conversationId)
   })
 
   // Get all revisions of an artifact

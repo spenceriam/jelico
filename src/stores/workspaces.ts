@@ -13,8 +13,17 @@ export interface Workspace {
   updatedAt: number
 }
 
+export interface Project {
+  id: string
+  name: string
+  rootPath: string
+  createdAt: number
+  updatedAt: number
+}
+
 interface WorkspaceStore {
   workspaces: Workspace[]
+  projects: Project[]
   activeWorkspaceId: string | null
   createWorktreeOnNewChat: boolean
   isLoading: boolean
@@ -22,6 +31,8 @@ interface WorkspaceStore {
 
   // Actions
   loadWorkspaces: () => Promise<void>
+  loadProjects: () => Promise<void>
+  renameProject: (id: string, name: string) => Promise<void>
   selectFolder: () => Promise<Workspace | null>
   setActiveWorkspace: (id: string | null, skipDbUpdate?: boolean) => void
   setCreateWorktreeOnNewChat: (enabled: boolean) => void
@@ -67,6 +78,7 @@ function persistBooleanPreference(key: string, value: boolean) {
 
 export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
   workspaces: [],
+  projects: [],
   activeWorkspaceId: null,
   createWorktreeOnNewChat: readStoredBooleanPreference(WORKTREE_PREFERENCE_KEY, false),
   isLoading: false,
@@ -75,7 +87,10 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
   loadWorkspaces: async () => {
     set({ isLoading: true })
     try {
-      const workspaces = await window.jelico.workspaces.list()
+      const [workspaces, projects] = await Promise.all([
+        window.jelico.workspaces.list(),
+        window.jelico.projects.list(),
+      ])
       const { activeWorkspaceId } = get()
       const hasActiveWorkspace = activeWorkspaceId
         ? workspaces.some((workspace) => workspace.id === activeWorkspaceId)
@@ -87,11 +102,30 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
 
       set({
         workspaces,
+        projects,
         isLoading: false,
         activeWorkspaceId: hasActiveWorkspace ? activeWorkspaceId : null,
       })
     } catch (error: any) {
       set({ error: error.message, isLoading: false })
+    }
+  },
+
+  loadProjects: async () => {
+    try {
+      const projects = await window.jelico.projects.list()
+      set({ projects })
+    } catch (error: any) {
+      set({ error: error.message })
+    }
+  },
+
+  renameProject: async (id, name) => {
+    try {
+      await window.jelico.projects.update(id, { name })
+      await get().loadProjects()
+    } catch (error: any) {
+      set({ error: error.message })
     }
   },
 

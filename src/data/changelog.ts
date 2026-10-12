@@ -21,6 +21,24 @@ export interface ChangelogEntry {
 
 export const changelog: ChangelogEntry[] = [
   {
+    version: '0.41.0',
+    date: '2026-10-12',
+    changes: {
+      added: [
+        'Added virtualized chat transcript with bottom-anchored streaming follow and instant restore on long conversations (Fixes #191)',
+        'Added Canvas tab bar for open artifacts, a Library browser with this-chat/all-chats scope, and lazy artifact content loading (Fixes #189)',
+        'Added first-class projects migrated from workspaces, with sidebar grouping, persisted project rename, and conversation forking (Fixes #190)',
+        'Added staged context elision at a soft threshold, stuck-call detection with reminder and clean stop, and post-edit syntax diagnostics on file writes (Fixes #192)',
+        'Added built-in Verify App skill for driving the real app and capturing behavior evidence',
+      ],
+      changed: [
+        'Calmed composer card borders and primary-button glow; keyboard hints de-emphasized (Fixes #194)',
+        'Artifact startup loading is now metadata-only; file contents hydrate on demand (Fixes #189)',
+        'Compaction summarizer now uses the provider default model instead of a hardcoded retired model ID (Fixes #192)',
+      ],
+    },
+  },
+  {
     version: '0.40.0',
     date: '2026-05-11',
     changes: {
