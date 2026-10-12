@@ -1,5 +1,8 @@
 import { ipcMain } from 'electron'
 import { streamText, tool, stepCountIs } from 'ai'
+import { diagnoseWrittenFile } from '../services/postEditDiagnostics'
+import { COMPACTION_THRESHOLDS } from '../services/compaction'
+import { elideBulkyToolOutputs, estimateMessagesTokensLoose } from '../lib/contextElision'
 import { createAnthropic } from '@ai-sdk/anthropic'
 import { createOpenAI } from '@ai-sdk/openai'
 import { createGoogleGenerativeAI } from '@ai-sdk/google'
@@ -63,7 +66,7 @@ import {
   type WebProviderRuntime,
 } from '../services/webAdapter'
 import { scanWorkspaceSpecs, formatSpecContext } from '../services/specScanner'
-import { lookupModelsDevModelMetadata, lookupModelsDevOutputLimit, refreshModelCatalog } from '../services/modelCatalog'
+import { lookupModelsDevModelMetadata, lookupModelsDevContextLimit, lookupModelsDevOutputLimit, refreshModelCatalog } from '../services/modelCatalog'
 import { resolveModelCapabilityProfile, buildModelCapabilityProfilePrompt } from '../services/modelCapabilityProfiles'
 import {
   hasInterruptedMeaningfulMutationTool,
@@ -1144,8 +1147,27 @@ function normalizeAnthropicCompatibleBaseUrl(baseUrl?: string | null): string | 
   return `${trimmed}/v1`
 }
 
-async function resolveProviderMaxOutputTokens(providerConfig: any, modelId: string): Promise<number | undefined> {
+async function resolveProviderContextWindow(providerConfig: any, modelId: string): Promise<number> {
   const normalizedModel = String(modelId || '').trim()
+  if (normalizedModel) {
+    try {
+      await refreshModelCatalog(false)
+      const limit = lookupModelsDevContextLimit(providerConfig.type, normalizedModel, {
+        baseUrl: providerConfig.base_url,
+        providerName: providerConfig.name,
+      })
+      if (limit && Number.isFinite(limit) && limit > 0) {
+        return Math.round(limit)
+      }
+    } catch (error) {
+      console.warn('[AI] Failed to resolve models.dev context window:', error)
+    }
+  }
+  // Conservative fallback when the catalog has no answer
+  return 128_000
+}
+
+async function resolveProviderMaxOutputTokens(providerConfig: any, modelId: string): Promise<number | undefined> {  const normalizedModel = String(modelId || '').trim()
   if (!normalizedModel) return undefined
 
   try {
@@ -3556,15 +3578,20 @@ Note: If recommended option, list it first with "(Recommended)" suffix.`,
           await fs.mkdir(pathModule.dirname(actualPath), { recursive: true })
           await fs.writeFile(actualPath, content, 'utf-8')
 
+          // Post-edit diagnostics: surface syntax errors immediately so the
+          // model can fix them before spending turns on test runs.
+          const diagnostics = await diagnoseWrittenFile(actualPath, content)
+          const diagnosticsNote = diagnostics ? `\n\n${diagnostics}` : ''
+
           if (useSandbox) {
             return {
               success: true,
-              message: `File written to sandbox: ${sandboxRelativePath}`,
+              message: `File written to sandbox: ${sandboxRelativePath}${diagnosticsNote}`,
               sandbox: true,
               sandboxPath: sandboxRelativePath,
             }
           }
-          return { success: true, message: `File written to ${path}` }
+          return { success: true, message: `File written to ${path}${diagnosticsNote}` }
         } catch (error: any) {
           return { success: false, error: error.message }
         }
@@ -4150,6 +4177,20 @@ If you find yourself frequently hitting limits, suggest breaking the task into m
       let pendingCompletionRepairDirective = ''
       let kickoffSentInThisTurn = false
 
+      // Staged context management + stuck detection (arXiv 2609.20804):
+      // elide bulky tool outputs past the soft threshold, remind on repeated
+      // identical calls, and stop the loop on repeated identical failures.
+      const contextWindowTokens = await resolveProviderContextWindow(providerConfig, modelId)
+      const elideBudgetTokens = Math.floor(contextWindowTokens * COMPACTION_THRESHOLDS.ELIDE)
+      const STUCK_REMIND_AT = 5
+      const STUCK_TERMINATE_AT = 8
+      let lastStepSignature: string | null = null
+      let identicalStepStreak = 0
+      let lastFailSignature: string | null = null
+      let identicalFailStreak = 0
+      let stuckReminderPending = false
+      let stuckTerminatePending = false
+
       // Retry loop for transient errors
       let lastError: any = null
       const streamMaxTokens = await resolveProviderMaxOutputTokens(providerConfig, modelId)
@@ -4213,8 +4254,75 @@ If you find yourself frequently hitting limits, suggest breaking the task into m
             stopWhen: stepCountIs(MAX_TOOL_STEPS),
             abortSignal: abortController.signal,
             experimental_repairToolCall: createToolCallRepair(chatModel),
+            prepareStep: ({ messages: stepMessages }) => {
+              // Stop the tool loop cleanly after repeated identical failures:
+              // strip tools for one final wrap-up step.
+              if (stuckTerminatePending) {
+                stuckTerminatePending = false
+                return {
+                  toolChoice: 'none' as const,
+                  system: `${attemptSystemPrompt}\n\n[Harness notice] The same failing tool call was repeated ${identicalFailStreak} times, so tool use has been stopped for this turn. Summarize what you tried, what is blocked, and what you need from the user.`,
+                }
+              }
+
+              let nextMessages = stepMessages as any[]
+
+              if (stuckReminderPending) {
+                stuckReminderPending = false
+                nextMessages = [
+                  ...nextMessages,
+                  {
+                    role: 'user',
+                    content: `[Harness notice] You have repeated the identical tool call ${identicalStepStreak} times without new information. Change approach: adjust the arguments, use a different tool, or explain the blocker to the user.`,
+                  },
+                ]
+              }
+
+              // Soft-stage elision: past the threshold, stub bulky tool outputs
+              // in the outgoing prompt (stored history is untouched).
+              if (estimateMessagesTokensLoose(nextMessages) >= elideBudgetTokens) {
+                nextMessages = elideBulkyToolOutputs(nextMessages)
+              }
+
+              return nextMessages === stepMessages ? undefined : { messages: nextMessages }
+            },
             onStepFinish: ({ toolCalls, toolResults, text, finishReason }) => {
               stepCount++
+
+              // Stuck detection: identical-call streaks and identical-failure streaks
+              const stepCalls = (toolCalls || []).map((tc: any) => ({
+                name: tc.toolName,
+                input: tc.input ?? tc.args,
+              }))
+              const stepSignature = stepCalls.length > 0 ? JSON.stringify(stepCalls) : null
+              if (stepSignature) {
+                identicalStepStreak = stepSignature === lastStepSignature ? identicalStepStreak + 1 : 1
+                lastStepSignature = stepSignature
+                if (identicalStepStreak === STUCK_REMIND_AT) {
+                  stuckReminderPending = true
+                  console.log(`[AI] Stuck detection: identical call repeated ${identicalStepStreak}x, injecting reminder`)
+                }
+
+                const results = toolResults || []
+                const allFailed = results.length > 0 && results.every((r: any) => {
+                  const output = r.output ?? r.result
+                  if (output?.type === 'error-text' || output?.type === 'error-json') return true
+                  const value = output?.value ?? output
+                  return Boolean(value && typeof value === 'object' && (value.success === false || value.error))
+                })
+                if (allFailed) {
+                  identicalFailStreak = stepSignature === lastFailSignature ? identicalFailStreak + 1 : 1
+                  lastFailSignature = stepSignature
+                } else {
+                  identicalFailStreak = 0
+                  lastFailSignature = null
+                }
+                if (identicalFailStreak >= STUCK_TERMINATE_AT) {
+                  stuckTerminatePending = true
+                  console.log(`[AI] Stuck detection: identical failing call repeated ${identicalFailStreak}x, terminating tool loop`)
+                }
+              }
+
               if (DEBUG_API_REQUESTS) {
                 console.log('[AI] Step finished:', {
                   step: stepCount,
