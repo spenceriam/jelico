@@ -26,6 +26,7 @@ export function ChatArea() {
   const {
     messages,
     isStreaming,
+    isLoading,
     streamingContent,
     streamingToolCalls,
     streamingToolResults,
@@ -51,25 +52,10 @@ export function ChatArea() {
   const { canvasOpen } = useArtifactStore()
   const { isConversationCompacting } = useContextStore()
   const { setActiveRequest } = useClarificationStore()
-  const scrollContainerRef = useRef<HTMLDivElement>(null)
-  const messagesEndRef = useRef<HTMLDivElement>(null)
   const statusRowRef = useRef<HTMLDivElement>(null)
-  const shouldStickToBottomRef = useRef(true)
-  const lastMessageMetaRef = useRef<{ id: string | null; count: number }>({ id: null, count: 0 })
   const [userName, setUserName] = useState<string | null>(null)
   const [todoPanelHeight, setTodoPanelHeight] = useState(0)
   const [statusRowHeight, setStatusRowHeight] = useState(0)
-
-  const isNearBottom = useCallback((element: HTMLElement) => {
-    const distance = element.scrollHeight - element.scrollTop - element.clientHeight
-    return distance <= 96
-  }, [])
-
-  const scrollToBottom = useCallback((behavior: ScrollBehavior = 'auto') => {
-    const element = scrollContainerRef.current
-    if (!element) return
-    element.scrollTo({ top: element.scrollHeight, behavior })
-  }, [])
 
   // Load user name from soul preferences
   useEffect(() => {
@@ -103,47 +89,7 @@ export function ChatArea() {
   }, [activeConversationId, setActiveRequest])
 
   // Track whether the user is currently anchored near the bottom.
-  useEffect(() => {
-    const element = scrollContainerRef.current
-    if (!element) return
-
-    shouldStickToBottomRef.current = isNearBottom(element)
-
-    const handleScroll = () => {
-      shouldStickToBottomRef.current = isNearBottom(element)
-    }
-
-    element.addEventListener('scroll', handleScroll, { passive: true })
-    return () => element.removeEventListener('scroll', handleScroll)
-  }, [activeConversationId, isNearBottom])
-
-  // Auto-scroll to bottom on new content only when user is anchored near bottom.
-  useEffect(() => {
-    if (!shouldStickToBottomRef.current) return
-    scrollToBottom('smooth')
-  }, [messages, streamingContent, streamingToolCalls, streamingToolResults, scrollToBottom])
-
-  // Force-scroll when a NEW user message is appended, even if the user had scrolled up.
-  // This ensures submitting a prompt always brings the latest prompt + stream into view.
-  useEffect(() => {
-    const previous = lastMessageMetaRef.current
-    const count = messages.length
-    const lastMessage = count > 0 ? messages[count - 1] : null
-    const lastId = lastMessage?.id ?? null
-
-    const appendedNewMessage = count > previous.count && lastId !== previous.id
-    const appendedUserMessage = appendedNewMessage && lastMessage?.role === 'user'
-
-    lastMessageMetaRef.current = { id: lastId, count }
-
-    if (!appendedUserMessage) return
-
-    shouldStickToBottomRef.current = true
-    const frame = requestAnimationFrame(() => {
-      scrollToBottom('smooth')
-    })
-    return () => cancelAnimationFrame(frame)
-  }, [messages, scrollToBottom])
+  // (Handled by react-virtuoso followOutput inside MessageList.)
 
   // Force periodic re-renders during streaming for smooth status updates
   const [, forceUpdate] = useState(0)
@@ -281,14 +227,8 @@ export function ChatArea() {
     return `${reservedHeight + 12}px`
   }, [showBottomStatusRow, statusRowHeight, todoPanelHeight])
 
-  // Keep bottom anchoring stable when Todo/status heights change.
-  useEffect(() => {
-    if (!shouldStickToBottomRef.current) return
-    const frame = requestAnimationFrame(() => {
-      scrollToBottom('auto')
-    })
-    return () => cancelAnimationFrame(frame)
-  }, [messagesBottomPadding, scrollToBottom])
+  // Bottom anchoring when Todo/status heights change is handled by
+  // react-virtuoso (alignToBottom + followOutput) inside MessageList.
 
   const bottomStatusMessage = modeTransitioning && modeSwitchReason
     ? modeSwitchReason
@@ -567,83 +507,81 @@ export function ChatArea() {
     >
       {/* Messages area */}
       <div className="flex-1 min-h-0 relative">
-        <div ref={scrollContainerRef} className="h-full overflow-y-auto select-text">
-          <div
-            className={chatContainerClass}
-            style={{ paddingBottom: messagesBottomPadding }}
-          >
-            <MessageList
-              messages={messages}
-              isStreaming={isStreaming}
-              streamingContent={isStreaming ? streamingContent : undefined}
-              streamingStartedAt={isStreaming ? streamingStartTime : undefined}
-              streamingToolCalls={isStreaming ? streamingToolCalls : undefined}
-              streamingToolResults={isStreaming ? streamingToolResults : undefined}
-              streamingSegments={isStreaming ? streamingSegments : undefined}
-              systemNotifications={visibleSystemNotifications}
-              onRegenerate={handleRegenerate}
-              onRetryUnansweredMessage={handleRetryUnansweredMessage}
-              userName={userName || undefined}
-            />
+        <MessageList
+          messages={messages}
+          isStreaming={isStreaming}
+          streamingContent={isStreaming ? streamingContent : undefined}
+          streamingStartedAt={isStreaming ? streamingStartTime : undefined}
+          streamingToolCalls={isStreaming ? streamingToolCalls : undefined}
+          streamingToolResults={isStreaming ? streamingToolResults : undefined}
+          streamingSegments={isStreaming ? streamingSegments : undefined}
+          systemNotifications={visibleSystemNotifications}
+          onRegenerate={handleRegenerate}
+          onRetryUnansweredMessage={handleRetryUnansweredMessage}
+          userName={userName || undefined}
+          conversationId={activeConversationId}
+          isLoadingConversation={isLoading}
+          containerClassName={chatContainerClass}
+          footerPadding={messagesBottomPadding}
+          footer={(
+            <>
+              {interruptedStream && !isStreaming && (
+                <div className="mt-4 rounded-lg border border-border bg-bg-surface px-3 py-2 flex items-center justify-between gap-3">
+                  <p className="text-xs text-text-secondary">
+                    Looks like this response stopped. Restart where it left off?
+                  </p>
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => resumeInterruptedConversation(activeConversationId || undefined)}
+                      className="px-2 py-1 text-xs font-medium rounded-md bg-accent text-accent-foreground hover:opacity-90 transition-opacity"
+                    >
+                      Restart
+                    </button>
+                    <button
+                      onClick={() => dismissInterruptedConversation(activeConversationId || undefined)}
+                      className="px-2 py-1 text-xs font-medium rounded-md border border-border text-text-muted hover:text-text-primary hover:border-border-strong transition-colors"
+                    >
+                      Dismiss
+                    </button>
+                  </div>
+                </div>
+              )}
 
-            {interruptedStream && !isStreaming && (
-              <div className="mt-4 rounded-lg border border-border bg-bg-surface px-3 py-2 flex items-center justify-between gap-3">
-                <p className="text-xs text-text-secondary">
-                  Looks like this response stopped. Restart where it left off?
-                </p>
-                <div className="flex items-center gap-2">
+              {error && (
+                <div className="mt-4 rounded-lg border border-error/40 bg-error/10 px-3 py-2 flex items-center justify-between gap-3">
+                  <p className="text-xs text-error">{error}</p>
                   <button
-                    onClick={() => resumeInterruptedConversation(activeConversationId || undefined)}
-                    className="px-2 py-1 text-xs font-medium rounded-md bg-accent text-accent-foreground hover:opacity-90 transition-opacity"
-                  >
-                    Restart
-                  </button>
-                  <button
-                    onClick={() => dismissInterruptedConversation(activeConversationId || undefined)}
-                    className="px-2 py-1 text-xs font-medium rounded-md border border-border text-text-muted hover:text-text-primary hover:border-border-strong transition-colors"
+                    onClick={clearError}
+                    className="px-2 py-1 text-xs font-medium rounded-md border border-error/40 text-error hover:bg-error/10 transition-colors"
                   >
                     Dismiss
                   </button>
                 </div>
-              </div>
-            )}
+              )}
 
-            {error && (
-              <div className="mt-4 rounded-lg border border-error/40 bg-error/10 px-3 py-2 flex items-center justify-between gap-3">
-                <p className="text-xs text-error">{error}</p>
-                <button
-                  onClick={clearError}
-                  className="px-2 py-1 text-xs font-medium rounded-md border border-error/40 text-error hover:bg-error/10 transition-colors"
+              {/* Status indicator - part of chat flow, sticky above Todo panel while near bottom */}
+              {showBottomStatusRow && (
+                <div
+                  ref={statusRowRef}
+                  className="sticky z-10 flex items-center gap-2 mt-4 py-1 bg-bg-void"
+                  style={{ bottom: todoPanelHeight > 0 ? `${todoPanelHeight + 8}px` : '0px' }}
                 >
-                  Dismiss
-                </button>
-              </div>
-            )}
-
-            {/* Status indicator - part of chat flow, sticky above Todo panel while near bottom */}
-            {showBottomStatusRow && (
-              <div
-                ref={statusRowRef}
-                className="sticky z-10 flex items-center gap-2 mt-4 py-1 bg-bg-void"
-                style={{ bottom: todoPanelHeight > 0 ? `${todoPanelHeight + 8}px` : '0px' }}
-              >
-                <BrailleLoader className="text-accent status-line-loader" />
-                <div className="flex items-center gap-1.5">
-                  <ShimmerText className="text-sm text-text-secondary">
-                    {bottomStatusMessage}
-                  </ShimmerText>
-                  {isStreaming && streamingStartTime && (
-                    <span className="text-sm text-text-muted">
-                      ({formatElapsedTime(Date.now() - streamingStartTime)})
-                    </span>
-                  )}
+                  <BrailleLoader className="text-accent status-line-loader" />
+                  <div className="flex items-center gap-1.5">
+                    <ShimmerText className="text-sm text-text-secondary">
+                      {bottomStatusMessage}
+                    </ShimmerText>
+                    {isStreaming && streamingStartTime && (
+                      <span className="text-sm text-text-muted">
+                        ({formatElapsedTime(Date.now() - streamingStartTime)})
+                      </span>
+                    )}
+                  </div>
                 </div>
-              </div>
-            )}
-
-            <div ref={messagesEndRef} />
-          </div>
-        </div>
+              )}
+            </>
+          )}
+        />
 
         {/* Todo panel pinned to bottom of chat viewport */}
         <div className="absolute inset-x-0 bottom-0 pointer-events-none">

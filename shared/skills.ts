@@ -160,6 +160,37 @@ Focus on:
 Preserve readability unless a measured tradeoff is justified.`,
     },
   },
+  {
+    id: 'builtin:verify-app',
+    draft: {
+      name: 'Verify App',
+      description: 'Prove a behavior change by driving the real running app like a user and capturing evidence.',
+      whenToUse: 'Use before claiming any UI or behavior change is done, when the user asks to verify, test, or prove app behavior, or after fixing a bug that needs confirmation on the real app.',
+      suggestedMode: 'execute',
+      tags: ['verify', 'verification', 'proof', 'drive app', 'ui test', 'regression', 'evidence'],
+      instructions: `Never claim a behavior change works based on compilation, unit tests, or self-report. Drive the real app and capture evidence.
+
+Launch:
+- Start the app with \`npm run dev\` (Vite on 5173/5174 plus Electron) or \`npm run dev:stable\` for a no-hot-reload build.
+- The app is ready when the Electron window renders the chat UI. If a display is unavailable, run under Xvfb and say so in the evidence.
+
+Doctor (run first when anything looks off):
+- Is the process up, the dev server answering, and the window non-blank? Check logs before driving.
+
+Drive:
+- Exercise the real user path, not internal setters or test-only hooks: click, type, scroll, and navigate the way a user would.
+- Prefer stable handles (visible text, roles, data attributes) over coordinates.
+- For scroll and transcript checks: send enough messages to overflow the viewport, scroll up mid-stream, switch conversations, and reload the app to test restore.
+
+Evidence:
+- Capture the action and the resulting state (screenshots, scroll positions, rendered DOM counts), not just the final screen.
+- Verify side effects alongside what is visible: files written, rows persisted, state surviving reload.
+- Store evidence under the repo's evidence/ directory or the path the user gives, and reference it in the summary.
+
+Cleanup:
+- Kill only what you started. Evidence artifacts survive teardown.`,
+    },
+  },
 ]
 
 function cleanLineValue(value: string): string {
