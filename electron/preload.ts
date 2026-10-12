@@ -49,6 +49,7 @@ contextBridge.exposeInMainWorld('jelico', {
     archive: (id: string) => ipcRenderer.invoke('conversations:archive', id),
     restore: (id: string) => ipcRenderer.invoke('conversations:restore', id),
     delete: (id: string) => ipcRenderer.invoke('conversations:delete', id),
+    fork: (id: string) => ipcRenderer.invoke('conversations:fork', id),
   },
   queue: {
     list: () => ipcRenderer.invoke('queue:list'),
@@ -77,10 +78,18 @@ contextBridge.exposeInMainWorld('jelico', {
     removeWorktree: (mainWorkspaceId: string, worktreePath: string) =>
       ipcRenderer.invoke('workspaces:removeWorktree', mainWorkspaceId, worktreePath),
   },
+  projects: {
+    list: () => ipcRenderer.invoke('projects:list'),
+    create: (input: { name: string; rootPath: string }) => ipcRenderer.invoke('projects:create', input),
+    update: (id: string, updates: { name?: string }) => ipcRenderer.invoke('projects:update', id, updates),
+    delete: (id: string) => ipcRenderer.invoke('projects:delete', id),
+  },
   artifacts: {
     list: () => ipcRenderer.invoke('artifacts:list'),
+    listSummaries: () => ipcRenderer.invoke('artifacts:listSummaries'),
     get: (id: string) => ipcRenderer.invoke('artifacts:get', id),
     getByConversation: (conversationId: string) => ipcRenderer.invoke('artifacts:getByConversation', conversationId),
+    getSummariesByConversation: (conversationId: string) => ipcRenderer.invoke('artifacts:getSummariesByConversation', conversationId),
     getRevisions: (baseArtifactId: string) => ipcRenderer.invoke('artifacts:getRevisions', baseArtifactId),
     getLatestRevision: (baseArtifactId: string) => ipcRenderer.invoke('artifacts:getLatestRevision', baseArtifactId),
     create: (artifact: any) => ipcRenderer.invoke('artifacts:create', artifact),

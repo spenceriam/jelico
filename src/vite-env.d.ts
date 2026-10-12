@@ -52,6 +52,7 @@ interface Window {
       archive: (id: string) => Promise<Conversation | null>
       restore: (id: string) => Promise<Conversation | null>
       delete: (id: string) => Promise<void>
+      fork: (id: string) => Promise<Conversation | null>
     }
     queue: {
       list: () => Promise<QueuedMessageData[]>
@@ -79,6 +80,12 @@ interface Window {
       listBranches: (workspaceId: string) => Promise<GitBranch[]>
       createWorktree: (workspaceId: string, branch: string, targetPath?: string) => Promise<Workspace>
       removeWorktree: (mainWorkspaceId: string, worktreePath: string) => Promise<boolean>
+    }
+    projects: {
+      list: () => Promise<Project[]>
+      create: (input: { name: string; rootPath: string }) => Promise<Project>
+      update: (id: string, updates: { name?: string }) => Promise<Project | null>
+      delete: (id: string) => Promise<{ success: boolean }>
     }
     compaction: {
       getThresholds: () => Promise<CompactionThresholds>
@@ -152,8 +159,10 @@ interface Window {
     }
     artifacts: {
       list: () => Promise<ArtifactRow[]>
+      listSummaries: () => Promise<ArtifactRow[]>
       get: (id: string) => Promise<ArtifactRow | null>
       getByConversation: (conversationId: string) => Promise<ArtifactRow[]>
+      getSummariesByConversation: (conversationId: string) => Promise<ArtifactRow[]>
       create: (artifact: ArtifactInput) => Promise<ArtifactRow>
       update: (id: string, updates: Partial<ArtifactInput>) => Promise<ArtifactRow | null>
       delete: (id: string) => Promise<{ success: boolean }>
@@ -617,6 +626,14 @@ interface Workspace {
   isWorktree?: boolean
   projectPath?: string
   gitBranch?: string
+  createdAt: number
+  updatedAt: number
+}
+
+interface Project {
+  id: string
+  name: string
+  rootPath: string
   createdAt: number
   updatedAt: number
 }
